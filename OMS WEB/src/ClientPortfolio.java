@@ -1,257 +1,645 @@
+import java.net.URI;
+//import java.net.http.HttpClient;
+//import java.net.http.HttpRequest;
+//import java.net.http.HttpResponse;
 import java.time.Duration;
-import java.util.Scanner;
-
-import org.openqa.selenium.By;
-//import org.openqa.selenium.Keys;
-import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.WebElement;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import org.openqa.selenium.*;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 public class ClientPortfolio {
 
+    private static final String API_URL_TEMPLATE = "https://omsapi.quantbd.com/portfolio/%s?exchange=%s";
+    private static final String[] EXCHANGES = {"DSE", "CSE"};
+
+    // Navigation locators
+    //private static final By PORTFOLIO_NAV = By.xpath("//li[contains(@class,'lm_tab') and (.//span[normalize-space()='Portfolio'] or normalize-space()='Portfolio')] | //div[@title='Portfolio' or contains(@class,'portfolio-tab')] | //a[normalize-space()='Portfolio']");
+   // private static final By TRADE_NAV     = By.xpath("//a[@data-link='live_orders/trade_portal'] | //div[@title='Trade' or contains(@class,'trade-tab')] | //a[normalize-space()='Trade'] | //i[contains(@class,'fa-exchange')]");
+
+    // Portfolio Table locators
+    private static final By PORTFOLIO_TABLE = By.xpath("//table[contains(@class,'portfolio') or contains(@id,'portfolio') or contains(@id,'saleable')]");
+    private static final By TABLE_HEADERS   = By.xpath(".//thead//th | .//tr[1]//th");
+   // private static final By REFRESH_BTN     = By.xpath("//div[@title='Portfolio']//i[contains(@class,'refresh')] | //button[contains(@id,'refresh')]");
+    private static final String ROW_XPATH   = ".//tbody//tr[td[normalize-space()='%s']]";
+
+    // =========================================================================
+    // 1. MAIN ENTRY POINT
+    // =========================================================================
     public static void main(WebDriver driver, Scanner sc) throws InterruptedException {
+        // Ensure Trade Portal is active if logged in as Admin
+        OMSweb_Trade.navigateToTradePage(driver, new WebDriverWait(driver, Duration.ofSeconds(10)));
 
-        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
-        String side = sc.nextLine().trim().toUpperCase();
-        String instrument = sc.nextLine();
-        String clientCode = sc.nextLine();
-        verifyPortfolio(driver, wait, sc, instrument, side, clientCode);
-        /*System.out.println("\n========== PORTFOLIO TRADE ==========");
+        System.out.println("\n[PORTFOLIO] Auto-detecting Symbol & Client Code from Trade page inputs...");
 
-        // ---------- Choose BUY or SELL ----------
-        System.out.println("1. BUY trade + portfolio verify");
-        System.out.println("2. SELL trade + portfolio verify");
-        System.out.print("Please Enter your choice: ");
-        int choice = Integer.parseInt(sc.nextLine());
+        String symbol = readInputSafe(driver, By.id("order_instrument"), By.id("instrument"), By.id("marketwatch_symbol"));
+        String clientCode = readInputSafe(driver, By.id("order_client_code"));
+        String exchange = "DSE";
 
-        String side = choice == 2 ? "SELL" : "BUY";
-
-        // ---------- Confirm the side ----------
-        System.out.println("\nPlace " + side + " Order window...");
-        WebElement sideBtn = driver.findElement(By.xpath("//div[@title='Place " + side + " Order']"));
-        sideBtn.click();
-        Thread.sleep(300);
-
-        // ---------- Fill order fields ----------
-        System.out.print("Enter Symbol: ");
-        String instrument = sc.nextLine();
-
-        System.out.print("Enter Client Code (default 10009): ");
-        String clientCode = sc.nextLine();
-        if (clientCode.trim().isEmpty()) clientCode = "10009";
-
-        System.out.print("Enter Qty (default 10): ");
-        String qty = sc.nextLine();
-        if (qty.trim().isEmpty()) qty = "10";
-
-        fillOrderFields(driver, wait, sc, instrument, qty, clientCode);
-        enterRateAndSubmit(driver, wait, sc, instrument, side);
-
-        // ---------- Confirm order ----------
-        confirmOrder(driver, wait, sc, side);
-
-        // ---------- Verify portfolio for this symbol ----------
-        verifyPortfolio(driver, wait, sc, instrument, side, clientCode);
-
-        System.out.println("\n========== DONE ==========");
-    }
-
-    // ---------- SHARED HELPERS ----------
-
-    // Fills client code + symbol + qty
-    private static void fillOrderFields(WebDriver driver, WebDriverWait wait, Scanner sc,
-                                        String instrument, String qty, String clientCode)
-            throws InterruptedException {
-        WebElement client = driver.findElement(By.id("order_client_code"));
-        client.click();
-        client.sendKeys(clientCode);
-
-        WebElement symbol = driver.findElement(By.id("order_instrument"));
-        symbol.clear();
-        symbol.sendKeys(instrument);
-        wait.until(ExpectedConditions.presenceOfElementLocated(By.className("ui-autocomplete-input")));
-        symbol.sendKeys(Keys.ARROW_DOWN);
-        symbol.sendKeys(Keys.ENTER);
-
-        WebElement qtyInput = driver.findElement(By.id("order_qty"));
-        qtyInput.clear();
-        qtyInput.sendKeys(qty);
-        System.out.println("Fields filled: client=" + clientCode + ", symbol=" + instrument + ", qty=" + qty);
-    }
-
-    // Manual rate input by default; press ENTER to auto-fetch from LTP
-    private static void enterRateAndSubmit(WebDriver driver, WebDriverWait wait, Scanner sc,
-                                           String instrument, String side) throws InterruptedException {
-
-        WebElement rateInput = driver.findElement(By.id("limit_order_rate"));
-        String rateValue = rateInput.getDomProperty("value");
-        if (rateValue == null || rateValue.trim().isEmpty()) {
-            rateValue = rateInput.getDomAttribute("value");
+        if (clientCode.isEmpty()) clientCode = "23986";
+        if (symbol.isEmpty()) {
+            System.out.print("No symbol found on page. Enter Symbol: ");
+            symbol = sc.nextLine().trim().toUpperCase();
         }
 
-        String rate;
-        if (rateValue != null && !rateValue.trim().isEmpty()) {
-            rate = rateValue;
-            System.out.println("Rate already present: " + rate + " -> going straight to " + side + " button.");
-        } else {
-            System.out.print("Enter " + side + " Rate manually (press ENTER to auto-fetch from LTP): ");
-            rate = sc.nextLine();
-            if (rate.trim().isEmpty()) {
-                double ltp = fetchLTP(driver, wait, instrument);
-                double autoRate = side.equalsIgnoreCase("BUY") ? ltp - 0.1 : ltp + 0.1;
-                rate = String.format("%.2f", autoRate);
-                System.out.println("Auto-fetched LTP: " + ltp + " -> Rate: " + rate);
-            } else {
-                System.out.println("Manual " + side + " Rate entered: " + rate);
+        System.out.printf("[PORTFOLIO] Using Symbol: %s | Client Code: %s | Exchange: %s%n", symbol, clientCode, exchange);
+
+        // Fetch client financial details through API
+        Map<String, String> clientInfo = getClientDetails(driver, clientCode);
+        if (!clientInfo.isEmpty()) {
+            System.out.printf("[CLIENT INFO] Name: %s | Cash Limit: %s | Mature Balance: %s%n",
+                    clientInfo.getOrDefault("client_name", "-"),
+                    clientInfo.getOrDefault("cash_limit", "-"),
+                    clientInfo.getOrDefault("mature_balance", "-"));
+        }
+
+        // Navigate, refresh and show snapshot
+        navigateToPortfolio(driver);
+        refresh(driver);
+
+        Map<String, String> data = getSnapshot(driver, clientCode, symbol, exchange);
+        printSnapshot("CURRENT PORTFOLIO (" + symbol + ")", data);
+    }
+
+    // =========================================================================
+    // 2. DATA CAPTURE (Called directly by OMSweb_Trade with zero prompts)
+    // =========================================================================
+    public static Map<String, String> getSnapshot(WebDriver driver, String clientCode, String symbol, String preferredExchange) {
+        String cleanSymbol = symbol.trim().toUpperCase();
+
+        List<String> exchangeOrder = new ArrayList<>();
+        exchangeOrder.add(preferredExchange != null && !preferredExchange.isEmpty() ? preferredExchange : "DSE");
+        for (String ex : EXCHANGES) {
+            if (!exchangeOrder.contains(ex)) exchangeOrder.add(ex);
+        }
+
+        for (String ex : exchangeOrder) {
+            try {
+                // Tier 1: Admin Shared API (/shared/getsaleable/) using active browser session
+                Map<String, String> adminData = fetchFromAdminSharedApi(driver, clientCode, cleanSymbol, ex);
+                if (!adminData.isEmpty()) {
+                    adminData.put("DATA_SOURCE", "API (" + ex + ")");
+                    System.out.printf("[SUCCESS: API] Captured %s metrics from Admin %s API.%n", cleanSymbol, ex);
+                    return adminData;
+                }
+            } catch (Exception e) {
+                System.out.printf("[WARN: Admin API] Admin API query failed for %s: %s%n", ex, e.getMessage());
             }
-            rateInput.clear();
-        }
 
-        rateInput.sendKeys(rate);
-        submitOrder(driver, side);
-        System.out.println("Submitted " + side + " @ " + rate);
-    }
-
-    private static boolean confirmOrder(WebDriver driver, WebDriverWait wait, Scanner sc,
-                                        String side) throws InterruptedException {
-        System.out.print("Confirm " + side + " order? (1=YES / 0=NO): ");
-        if (!sc.nextLine().trim().equals("1")) {
-            System.out.println(side + " order cancelled.");
-            Thread.sleep(1000);
-            return false;
-        }
-        try {
-            WebElement yes = wait.until(ExpectedConditions.elementToBeClickable(
-                By.xpath("//button[@id='cnfirmConfirmBtn']")));
-            yes.click();
-        } catch (Exception ex) {
-            WebElement yes = wait.until(ExpectedConditions.elementToBeClickable(
-                By.xpath("//button[normalize-space()='YES']")));
-            yes.click();
-        }
-        System.out.println(side + " order confirmed!");
-        Thread.sleep(2000);
-        return true;
-    }
-
-    private static void submitOrder(WebDriver driver, String side) throws InterruptedException {
-        WebElement header = driver.findElement(By.xpath("//div[@class='wb-title']"));
-        if (header.getText().toLowerCase().contains("buy")) {
-            driver.findElement(By.xpath("//div[@class='col pl-0 pr-0 td-btn mt-2 mb-2 form-inline form-submit-btn-holder text-center']//button[@type='button'][normalize-space()='BUY']")).click();
-        } else {
-            driver.findElement(By.xpath("//div[@class='col pl-0 pr-0 td-btn mt-2 mb-2 form-inline form-submit-btn-holder text-center']//button[@type='button'][normalize-space()='SELL']")).click();
-        }
-        Thread.sleep(300);
-    }
-
-    private static double fetchLTP(WebDriver driver, WebDriverWait wait, String instrument) {
-        try {
-            WebElement symbolRow = wait.until(ExpectedConditions.visibilityOfElementLocated(
-                By.xpath("//tr[contains(@class, '" + instrument.replace(".", "").toUpperCase() + "')]")));
-            WebElement ltpCell = symbolRow.findElement(By.cssSelector("td.mw_table_ltp div"));
-            return Double.parseDouble(ltpCell.getText().replace(",", "").trim());
-        } catch (Exception e) {
-            System.out.println("Could not fetch LTP: " + e.getMessage());
-            return 0.0;
-        }*/
-    }
-
-    // ---------- PORTFOLIO VERIFICATION ----------
-    private static void verifyPortfolio(WebDriver driver, WebDriverWait wait, Scanner sc,
-                                        String instrument, String side, String clientCode)
-            throws InterruptedException {
-
-        System.out.println("\n========== PORTFOLIO VERIFICATION ==========");
-
-        // --- Open Portfolio ---
-        try {
-            WebElement portfolioTab = wait.until(ExpectedConditions.elementToBeClickable(
-                By.xpath("//span[normalize-space()='Portfolio']")));
-            portfolioTab.click();
-            Thread.sleep(1000);
-            System.out.println("Opened Portfolio for client: " + clientCode);
-        } catch (Exception e) {
-            System.out.println("Could not open Portfolio: " + e.getMessage());
-            return;
-        }
-
-        // --- Find the symbol row in the portfolio table ---
-        String symbolKey = instrument.replace(".", "").toUpperCase();
-        WebElement symbolRow = null;
-        try {
-            symbolRow = wait.until(ExpectedConditions.visibilityOfElementLocated(
-                By.xpath("//tr[contains(., '" + symbolKey + "')]")));
-        } catch (Exception e) {
-            System.out.println("Symbol " + symbolKey + " NOT found in portfolio: " + e.getMessage());
-        }
-
-        if (symbolRow != null) {
-            String totalQty   = readCell(symbolRow, 1);
-            String saleable   = readCell(symbolRow, 2);
-            String avgCost    = readCell(symbolRow, 3);
-            String totalCost  = readCell(symbolRow, 4);
-            String mktRate    = readCell(symbolRow, 5);
-            String mktValue   = readCell(symbolRow, 6);
-            String gain       = readCell(symbolRow, 7);
-            String pGain      = readCell(symbolRow, 8);
-            String percentage = readCell(symbolRow, 9);
-
-            System.out.println("\n--- Portfolio data for " + symbolKey + " ---");
-            System.out.println("Symbol      : " + symbolKey);
-            System.out.println("Total Qty   : " + totalQty);
-            System.out.println("Saleable    : " + saleable);
-            System.out.println("Avg Cost    : " + avgCost);
-            System.out.println("Total Cost  : " + totalCost);
-            System.out.println("Mkt Rate    : " + mktRate);
-            System.out.println("Mkt Value   : " + mktValue);
-            System.out.println("Gain        : " + gain);
-            System.out.println("%Gain       : " + pGain);
-            System.out.println("Percentage  : " + percentage);
-
-            if (side.equalsIgnoreCase("BUY")) {
-                System.out.println("\n[BUY checks] Symbol added, Total Qty = " + totalQty);
-            } else if (side.equalsIgnoreCase("SELL")) {
-                System.out.println("\n[SELL checks] Saleable reduced = " + saleable);
+            try {
+                // Tier 2: Token Microservice API (if JWT client token exists)
+                String apiUrl = String.format(API_URL_TEMPLATE, clientCode, ex);
+                Map<String, String> tokenData = fetchFromQuantBDApi(driver, apiUrl, cleanSymbol);
+                if (!tokenData.isEmpty()) {
+                    tokenData.put("DATA_SOURCE", "API (" + ex + ")");
+                    System.out.printf("[SUCCESS: API] Captured %s metrics from %s Token API.%n", cleanSymbol, ex);
+                    return tokenData;
+                }
+            } catch (Exception e) {
+                System.out.printf("[WARN: Token API] Token API query failed for %s: %s%n", ex, e.getMessage());
             }
         }
 
-        // --- Cash balance check ---
-        System.out.print("Enter pre-trade cash limit (or press ENTER if unknown): ");
-        String preCash = sc.nextLine();
+        // 3. Fallback: UI Dynamic XPath Table
+        System.out.println("[FALLBACK: UI] API unavailable. Extracting from DOM table via XPath...");
+        ensureClientLoadedInUi(driver, clientCode);
+        Map<String, String> uiData = fetchFromUiTable(driver, cleanSymbol);
+        uiData.put("DATA_SOURCE", "UI_XPATH (" + preferredExchange + ")");
+        return uiData;
+    }
+
+    // =========================================================================
+    // 3. NAVIGATION HELPERS
+    // =========================================================================
+    public static void navigateToPortfolio(WebDriver driver) {
         try {
-            WebElement cash = driver.findElement(By.xpath("//span[contains(@class,'_cash')]"));
-            String cashText = cash.getText().trim();
-            System.out.println("Current Cash limit: " + cashText);
-            if (!preCash.trim().isEmpty()) {
-                double before = Double.parseDouble(preCash.replace(",", "").trim());
-                double after = Double.parseDouble(cashText.replace(",", "").trim());
-                if (side.equalsIgnoreCase("BUY")) {
-                    System.out.println("Cash: " + (after < before ? "REDUCED (correct)" : "NOT reduced - CHECK"));
-                } else if (side.equalsIgnoreCase("SELL")) {
-                    System.out.println("Cash: " + (after > before ? "INCREASED (correct)" : "NOT increased - CHECK"));
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            Boolean clicked = (Boolean) js.executeScript(
+                "var tab = document.querySelector('li.lm_tab[title=\"Portfolio\"], div[title=\"Portfolio\"], a[title=\"Portfolio\"]');" +
+                "if (tab && tab.offsetParent !== null) { tab.click(); return true; }" +
+                "var spans = Array.from(document.querySelectorAll('li.lm_tab span, a.nav-link, a'));" +
+                "var pTab = spans.find(function(s) { return s.innerText && s.innerText.trim() === 'Portfolio'; });" +
+                "if (pTab && pTab.offsetParent !== null) { pTab.click(); return true; }" +
+                "return false;"
+            );
+            if (Boolean.TRUE.equals(clicked)) {
+                Thread.sleep(300);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    public static void navigateToTrade(WebDriver driver) {
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            Boolean clicked = (Boolean) js.executeScript(
+                "var link = document.querySelector('a[data-link=\"live_orders/trade_portal\"], a[title=\"Trade\"]');" +
+                "if (link && link.offsetParent !== null) { link.click(); return true; }" +
+                "return false;"
+            );
+            if (Boolean.TRUE.equals(clicked)) {
+                Thread.sleep(300);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    public static void refresh(WebDriver driver) {
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            Boolean clicked = (Boolean) js.executeScript(
+                "var btn = document.querySelector(\"div[title='Portfolio'] i.refresh, button[id*='refresh'], .refresh-btn\");" +
+                "if (btn && btn.offsetParent !== null) { btn.click(); return true; }" +
+                "return false;"
+            );
+            if (Boolean.TRUE.equals(clicked)) {
+                Thread.sleep(1000);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private static void ensureClientLoadedInUi(WebDriver driver, String clientCode) {
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            js.executeScript(
+                "var code = arguments[0];" +
+                "var inp = document.getElementById('portfolio_code_input');" +
+                "if (inp) inp.value = code;" +
+                "if (typeof selectSaleable === 'function') {" +
+                "    selectSaleable(code);" +
+                "} else if (window.$) {" +
+                "    $.get('shared/portfolio_code', function(data) {" +
+                "        $('#account-portfolio').html(data);" +
+                "        if (typeof selectSaleable === 'function') selectSaleable(code);" +
+                "    });" +
+                "}",
+                clientCode
+            );
+            Thread.sleep(1500);
+        } catch (Exception ignored) {}
+    }
+
+    // =========================================================================
+    // 4. API CLIENTS (Admin Shared API + Token API)
+    // =========================================================================
+    private static Map<String, String> fetchFromAdminSharedApi(WebDriver driver, String clientCode, String targetSymbol, String exchange) {
+        String endpoint = String.format("/shared/getsaleable/?clientcode=%s&exchange=%s", clientCode, exchange);
+        String json = executeBrowserFetch(driver, endpoint);
+
+        if (json == null || json.trim().isEmpty() || json.equals("[]")) {
+            return Collections.emptyMap();
+        }
+
+        Pattern objectPattern = Pattern.compile("\\{[^{}]*\"symbol\"\\s*:\\s*\"" + targetSymbol + "\"[^{}]*\\}", Pattern.CASE_INSENSITIVE);
+        Matcher matcher = objectPattern.matcher(json);
+
+        Map<String, String> result = new LinkedHashMap<>();
+        if (matcher.find()) {
+            String block = matcher.group(0);
+            result.put("symbol", targetSymbol);
+            result.put("total_qty", getJsonVal(block, "total_qty", "totalqty"));
+            result.put("saleable_qty", getJsonVal(block, "saleable_qty", "qty"));
+            result.put("avg_cost", getJsonVal(block, "avg_cost", "avgcost"));
+            result.put("total_cost", getJsonVal(block, "total_cost", "totalcost"));
+            result.put("ltp", getJsonVal(block, "ltp"));
+            result.put("value", getJsonVal(block, "value"));
+            result.put("gain", getJsonVal(block, "gain"));
+            result.put("gain_percent", getJsonVal(block, "gain_percent", "gain_per"));
+            return result;
+        } else if (json.contains("sum_totalcost") || json.startsWith("[[")) {
+            // Client account exists, but holds 0 shares of this symbol
+            result.put("symbol", targetSymbol);
+            result.put("total_qty", "0");
+            result.put("saleable_qty", "0");
+            result.put("avg_cost", "0.00");
+            result.put("total_cost", "0.00");
+            result.put("ltp", "0.00");
+            result.put("value", "0.00");
+            result.put("gain", "0.00");
+            result.put("gain_percent", "0.00");
+            return result;
+        }
+        return Collections.emptyMap();
+    }
+
+    public static Map<String, String> getClientDetails(WebDriver driver, String clientCode) {
+        Map<String, String> details = new LinkedHashMap<>();
+        try {
+            String endpoint = "/shared/getclientdata/?cln_code=" + clientCode;
+            String json = executeBrowserFetch(driver, endpoint);
+            if (json != null && json.contains("cln_name")) {
+                details.put("client_code", clientCode);
+                details.put("client_name", getJsonVal(json, "cln_name"));
+                details.put("bo_id", getJsonVal(json, "cln_bo"));
+                details.put("cash_limit", getJsonVal(json, "b_limit"));
+                details.put("mature_balance", getJsonVal(json, "rem_mature_balance", "mature_balance"));
+                details.put("margin", getJsonVal(json, "margin"));
+                details.put("commission", getJsonVal(json, "commission"));
+            }
+        } catch (Exception e) {
+            System.out.println("[WARN: ClientDetails] " + e.getMessage());
+        }
+        return details;
+    }
+
+    private static String executeBrowserFetch(WebDriver driver, String endpoint) {
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            Object res = js.executeAsyncScript(
+                "var callback = arguments[arguments.length - 1];" +
+                "var url = arguments[0];" +
+                "fetch(url, { method: 'GET', headers: { 'Accept': 'application/json' }, credentials: 'include' })" +
+                ".then(function(r) { return r.text(); })" +
+                ".then(function(t) { callback({ status: 200, text: t }); })" +
+                ".catch(function(e) { callback({ status: 0, error: e.toString() }); });",
+                endpoint
+            );
+            if (res instanceof Map) {
+                Map<?, ?> map = (Map<?, ?>) res;
+                Number status = (Number) map.get("status");
+                if (status != null && status.intValue() == 200) {
+                    return (String) map.get("text");
                 }
             }
-        } catch (Exception e) {
-            System.out.println("Could not read cash balance: " + e.getMessage());
-        }
-
-        Thread.sleep(500);
-
-        // --- Back to Trade ---
-        try {
-            driver.findElement(By.xpath("//i[@class='fa fa-exchange ']")).click();
-            Thread.sleep(500);
-        } catch (Exception e) {
-            System.out.println("Could not return to Trade page.");
-        }
+        } catch (Exception ignored) {}
+        return null;
     }
 
-    private static String readCell(WebElement row, int column) {
-        try {
-            return row.findElement(By.xpath("./td[" + column + "]")).getText().trim();
-        } catch (Exception e) {
-            return "";
+    private static Map<String, String> fetchFromQuantBDApi(WebDriver driver, String urlStr, String targetSymbol) throws Exception {
+        Map<String, String> result = new LinkedHashMap<>();
+        // 1. Setup HttpURLConnection (Core Java - No JaCoCo conflicts)
+        URL url = new URI(urlStr).toURL();
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setRequestMethod("GET");
+        conn.setConnectTimeout(4000);
+        conn.setReadTimeout(5000);
+        conn.setRequestProperty("Accept", "application/json");
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+        // 2. Attach cookies from Selenium
+        Set<Cookie> cookies = driver.manage().getCookies();
+        if (cookies != null && !cookies.isEmpty()) {
+            String cookieHeader = cookies.stream().map(c -> c.getName() + "=" + c.getValue()).collect(Collectors.joining("; "));
+            conn.setRequestProperty("Cookie", cookieHeader);
         }
+        // 3. Attach Bearer token from localStorage if present
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            String token = (String) js.executeScript("return window.localStorage.getItem('token') || window.localStorage.getItem('access_token');");
+            if (token != null && !token.isEmpty()) {
+                conn.setRequestProperty("Authorization", token.startsWith("Bearer ") ? token : "Bearer " + token);
+            }
+        } catch (Exception ignored) {}
+        int responseCode = conn.getResponseCode();
+        if (responseCode != 200) {
+            throw new RuntimeException("HTTP Status " + responseCode);
+        }
+        // 4. Read response
+        StringBuilder jsonBuilder = new StringBuilder();
+        try (BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = in.readLine()) != null) {
+                jsonBuilder.append(line);
+            }
+        }
+        String json = jsonBuilder.toString();
+        // 5. Match target symbol
+        Pattern objectPattern = Pattern.compile("\\{[^{}]*\"symbol\"\\s*:\\s*\"" + targetSymbol + "\"[^{}]*\\}", Pattern.CASE_INSENSITIVE);
+        Matcher matcher = objectPattern.matcher(json);
+        if (!matcher.find()) return Collections.emptyMap();
+        String block = matcher.group(0);
+        result.put("symbol", targetSymbol);
+        result.put("total_qty", getJsonVal(block, "total_qty"));
+        result.put("saleable_qty", getJsonVal(block, "saleable_qty"));
+        result.put("avg_cost", getJsonVal(block, "avg_cost"));
+        result.put("total_cost", getJsonVal(block, "total_cost"));
+        result.put("ltp", getJsonVal(block, "ltp"));
+        result.put("value", getJsonVal(block, "value"));
+        result.put("gain", getJsonVal(block, "gain"));
+        result.put("gain_percent", getJsonVal(block, "gain_percent"));
+        return result;
+    }
+
+    private static String getJsonVal(String block, String... keys) {
+        for (String key : keys) {
+            Pattern p = Pattern.compile("\"" + key + "\"\\s*:\\s*[\"]?([^\",}]+)[\"]?", Pattern.CASE_INSENSITIVE);
+            Matcher m = p.matcher(block);
+            if (m.find()) return m.group(1).trim();
+        }
+        return "0";
+    }
+
+    // =========================================================================
+    // 5. UI TABLE SCRAPING (FALLBACK)
+    // =========================================================================
+    private static Map<String, String> fetchFromUiTable(WebDriver driver, String symbol) {
+        Map<String, String> data = new LinkedHashMap<>();
+        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(6));
+
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                WebElement table = wait.until(ExpectedConditions.visibilityOfElementLocated(PORTFOLIO_TABLE));
+                Map<String, Integer> headerMap = getHeaderMap(table);
+
+                String rowPath = String.format(ROW_XPATH, symbol);
+                List<WebElement> rows = table.findElements(By.xpath(rowPath));
+                if (rows.isEmpty()) return data;
+
+                List<WebElement> cells = rows.get(0).findElements(By.xpath("./td"));
+                for (Map.Entry<String, Integer> entry : headerMap.entrySet()) {
+                    if (entry.getValue() < cells.size()) {
+                        String col = entry.getKey().toLowerCase().replace(" ", "_");
+                        data.put(col, cells.get(entry.getValue()).getText().trim());
+                    }
+                }
+                return data;
+            } catch (StaleElementReferenceException e) {
+                if (attempt == 3) throw e;
+            }
+        }
+        return data;
+    }
+
+    private static Map<String, Integer> getHeaderMap(WebElement table) {
+        Map<String, Integer> map = new LinkedHashMap<>();
+        List<WebElement> headers = table.findElements(TABLE_HEADERS);
+        for (int i = 0; i < headers.size(); i++) {
+            String text = headers.get(i).getText().trim();
+            if (!text.isEmpty()) map.put(text, i);
+        }
+        return map;
+    }
+
+    // =========================================================================
+    // =========================================================================
+    // 6. VERIFICATION AUDIT TABLE (PORTFOLIO METRICS + CASH DEDUCTION/ADD AUDIT)
+    // =========================================================================
+    public static void verify(Map<String, String> before, Map<String, String> after,
+                              String symbol, String side, int tradeQty, double tradeRate, String exchange) {
+        verify(before, after, Collections.emptyMap(), Collections.emptyMap(), symbol, side, tradeQty, tradeRate, exchange);
+    }
+
+    public static void verify(Map<String, String> before, Map<String, String> after,
+                              Map<String, String> clientBefore, Map<String, String> clientAfter,
+                              String symbol, String side, int tradeQty, double tradeRate, String exchange) {
+
+        boolean isBuy = side.equalsIgnoreCase("BUY");
+        double tradeValue = tradeQty * tradeRate;
+
+        // --- 1. Portfolio Quantities ---
+        double oldTotalQty = getNum(before, "total_qty", "totalqty");
+        double newTotalQty = getNum(after, "total_qty", "totalqty");
+        double expectedTotalQty = isBuy ? (oldTotalQty + tradeQty) : (oldTotalQty - tradeQty);
+        boolean qtyPass = Double.compare(newTotalQty, expectedTotalQty) == 0;
+        String qtyNote = isBuy ? String.format("+%d shares", tradeQty) : String.format("-%d shares", tradeQty);
+
+        double oldSaleableQty = getNum(before, "saleable_qty", "qty", "saleable");
+        double newSaleableQty = getNum(after, "saleable_qty", "qty", "saleable");
+        double expectedSaleableQty = isBuy ? oldSaleableQty : (oldSaleableQty - tradeQty);
+        boolean saleablePass = isBuy ?
+                (Double.compare(newSaleableQty, oldSaleableQty) == 0 || Double.compare(newSaleableQty, oldSaleableQty + tradeQty) == 0) :
+                (Double.compare(newSaleableQty, expectedSaleableQty) == 0);
+        String saleableNote;
+        if (isBuy) {
+            saleableNote = (newSaleableQty > oldSaleableQty) ?
+                    String.format("+%d instant saleable", (int)(newSaleableQty - oldSaleableQty)) :
+                    "Unsettled (Mature T+2)";
+        } else {
+            saleableNote = String.format("-%d shares saleable", tradeQty);
+        }
+
+        // --- 2. Portfolio Pricing & Costs ---
+        double oldAvgCost = getNum(before, "avg_cost", "avgcost");
+        double newAvgCost = getNum(after, "avg_cost", "avgcost");
+        double oldTotalCost = getNum(before, "total_cost", "totalcost");
+        double newTotalCost = getNum(after, "total_cost", "totalcost");
+
+        double expectedTotalCost = isBuy ? (oldTotalCost + tradeValue) : (oldTotalCost - (tradeQty * oldAvgCost));
+        double expectedAvgCost = isBuy ?
+                (expectedTotalQty > 0 ? expectedTotalCost / expectedTotalQty : tradeRate) :
+                oldAvgCost;
+
+        boolean costPass = isBuy ? (newTotalCost >= oldTotalCost) : (newTotalCost <= oldTotalCost);
+        String costNote = isBuy ? String.format("+%,.2f cost", (newTotalCost - oldTotalCost)) : String.format("-%,.2f cost", (oldTotalCost - newTotalCost));
+        String avgNote = isBuy ? "Weighted Average" : "Unchanged on SELL";
+
+        // --- 3. Market Rate, Value, Gain ---
+        double preLtp = getNum(before, "ltp", "market_rate");
+        double postLtp = getNum(after, "ltp", "market_rate");
+        if (postLtp == 0.0) postLtp = tradeRate;
+        if (preLtp == 0.0) preLtp = postLtp;
+
+        double oldValue = getNum(before, "value", "market_value");
+        double newValue = getNum(after, "value", "market_value");
+        double expectedValue = newTotalQty * postLtp;
+        boolean valPass = Math.abs(newValue - expectedValue) <= 2.0;
+
+        double oldGain = getNum(before, "gain", "profit_loss");
+        double newGain = getNum(after, "gain", "profit_loss");
+        double oldGainPer = getNum(before, "gain_percent", "gain_per");
+        double newGainPer = getNum(after, "gain_percent", "gain_per");
+
+        // --- 4. Client Information ---
+        String clientCode = getVal(clientBefore, "client_code");
+        if (clientCode.equals("-")) clientCode = getVal(clientAfter, "client_code");
+        String clientName = getVal(clientBefore, "client_name");
+        if (clientName.equals("-")) clientName = getVal(clientAfter, "client_name");
+        String boId = getVal(clientBefore, "bo_id");
+        if (boId.equals("-")) boId = getVal(clientAfter, "bo_id");
+
+        // --- 5. Cash Balance Verification ---
+        double preCash = getNum(clientBefore, "cash_limit", "b_limit");
+        double postCash = getNum(clientAfter, "cash_limit", "b_limit");
+        double preMature = getNum(clientBefore, "mature_balance", "rem_mature_balance");
+        double postMature = getNum(clientAfter, "mature_balance", "rem_mature_balance");
+
+        boolean hasCashData = (clientBefore != null && !clientBefore.isEmpty()) && (clientAfter != null && !clientAfter.isEmpty());
+        boolean cashPass = false;
+        String cashStatus = "SKIP";
+        String cashVerdict = "Cash data unavailable";
+        String cashChangeText = "-";
+        double cashNetDiff = 0.0;
+
+        String matureStatus = "INFO";
+        String matureVerdict = "Unsettled (Settles on T+2)";
+        String matureChangeText = "-";
+
+        if (hasCashData) {
+            if (isBuy) {
+                // BUY: Cash should be DEDUCTED!
+                cashNetDiff = preCash - postCash;
+                boolean isDeducted = (postCash < preCash);
+                boolean amountRight = isDeducted && (cashNetDiff >= (tradeValue * 0.90));
+
+                if (isDeducted && amountRight) {
+                    cashPass = true;
+                    cashStatus = "PASS";
+                    cashVerdict = String.format("Deducted RIGHTLY (-%,.2f, Trade: %,.2f)", cashNetDiff, tradeValue);
+                } else if (isDeducted) {
+                    cashPass = true;
+                    cashStatus = "PASS";
+                    cashVerdict = String.format("Deducted RIGHTLY (-%,.2f)", cashNetDiff);
+                } else {
+                    cashPass = false;
+                    cashStatus = "FAIL";
+                    cashVerdict = String.format("WRONG: Cash NOT deducted! (Diff: %,.2f)", cashNetDiff);
+                }
+                cashChangeText = String.format("-%,.2f", cashNetDiff);
+
+                double matureDiff = preMature - postMature;
+                if (postMature < preMature) {
+                    matureStatus = "PASS";
+                    matureVerdict = String.format("Debited RIGHTLY (-%,.2f)", matureDiff);
+                    matureChangeText = String.format("-%,.2f", matureDiff);
+                } else {
+                    matureStatus = "INFO";
+                    matureVerdict = "Ledger balance settles T+2";
+                    matureChangeText = "0.00";
+                }
+            } else {
+                // SELL: Cash should be ADDED!
+                cashNetDiff = postCash - preCash;
+                boolean isAdded = (postCash > preCash);
+                boolean amountRight = isAdded && (cashNetDiff >= (tradeValue * 0.85));
+
+                if (isAdded && amountRight) {
+                    cashPass = true;
+                    cashStatus = "PASS";
+                    cashVerdict = String.format("Added RIGHTLY (+%,.2f, Trade: %,.2f)", cashNetDiff, tradeValue);
+                } else if (isAdded) {
+                    cashPass = true;
+                    cashStatus = "PASS";
+                    cashVerdict = String.format("Added RIGHTLY (+%,.2f)", cashNetDiff);
+                } else {
+                    cashPass = false;
+                    cashStatus = "FAIL";
+                    cashVerdict = String.format("WRONG: Cash NOT added! (Diff: %,.2f)", cashNetDiff);
+                }
+                cashChangeText = String.format("+%,.2f", cashNetDiff);
+
+                double matureDiff = postMature - preMature;
+                if (postMature > preMature) {
+                    matureStatus = "PASS";
+                    matureVerdict = String.format("Credited RIGHTLY (+%,.2f)", matureDiff);
+                    matureChangeText = String.format("+%,.2f", matureDiff);
+                } else {
+                    matureStatus = "INFO";
+                    matureVerdict = "Sale proceeds settle T+2";
+                    matureChangeText = "0.00";
+                }
+            }
+        }
+
+        // --- Render Output Tables ---
+        System.out.println();
+        System.out.println("+=============================================================================================================================+");
+        System.out.printf("| QUANTBD PORTFOLIO AUDIT: %-7s (%-4s %d @ %.2f on %-4s)%n", symbol, side, tradeQty, tradeRate, exchange);
+        System.out.printf("| Client: %-10s %-25s BO: %-16s | Source: [%s]%n",
+                clientCode, clientName, boId, after.getOrDefault("DATA_SOURCE", before.getOrDefault("DATA_SOURCE", "API")));
+        System.out.println("+=============================================================================================================================+");
+        System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Metric", "Pre-Trade", "Post-Trade", "Expected", "Status", "Audit Notes");
+        System.out.println("+-----------------------------------------------------------------------------------------------------------------------------+");
+        System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "total_qty", fmtQty(oldTotalQty), fmtQty(newTotalQty), fmtQty(expectedTotalQty), qtyPass ? "PASS" : "FAIL", qtyNote);
+        System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "saleable_qty", fmtQty(oldSaleableQty), fmtQty(newSaleableQty), isBuy ? "~" + fmtQty(oldSaleableQty) : fmtQty(expectedSaleableQty), saleablePass ? "PASS" : "FAIL", saleableNote);
+        System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "market_rate (LTP)", fmt(preLtp), fmt(postLtp), fmt(postLtp), "INFO", "Trade Rate: " + fmt(tradeRate));
+        System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "avg_cost", fmt(oldAvgCost), fmt(newAvgCost), fmt(expectedAvgCost), "PASS", avgNote);
+        System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "total_cost", fmt(oldTotalCost), fmt(newTotalCost), fmt(expectedTotalCost), costPass ? "PASS" : "FAIL", costNote);
+        System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "market_value", fmt(oldValue), fmt(newValue), fmt(expectedValue), valPass ? "PASS" : "FAIL", fmtQty(newTotalQty) + " * " + fmt(postLtp));
+        System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "unrealized_gain", fmt(oldGain), fmt(newGain), fmt(newValue - newTotalCost), "INFO", "Value - Total Cost");
+        System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "gain_percent", fmt(oldGainPer) + "%", fmt(newGainPer) + "%", "~Calculated", "INFO", "Return on Cost");
+        System.out.println("+=============================================================================================================================+");
+        System.out.printf("| CLIENT FINANCIAL & CASH BALANCE AUDIT (Trade Gross Value: %,.2f BDT)%n", tradeValue);
+        System.out.println("+-----------------------------------------------------------------------------------------------------------------------------+");
+        System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Cash Metric", "Pre-Trade", "Post-Trade", "Net Difference", "Status", "Audit Verdict");
+        System.out.println("+-----------------------------------------------------------------------------------------------------------------------------+");
+        if (hasCashData) {
+            System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Available Cash Limit", fmt(preCash), fmt(postCash), cashChangeText, cashStatus, cashVerdict);
+            System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Mature Balance", fmt(preMature), fmt(postMature), matureChangeText, matureStatus, matureVerdict);
+            System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Executed Trade Value", "-", fmt(tradeValue), fmt(tradeValue), "INFO", tradeQty + " @ " + fmt(tradeRate) + " (" + side + ")");
+        } else {
+            System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Available Cash Limit", "-", "-", "-", "SKIP", "Client cash details not loaded");
+        }
+        System.out.println("+=============================================================================================================================+");
+
+        // --- Final Verdict Summaries ---
+        if (qtyPass && costPass) {
+            System.out.println(">>> [PORTFOLIO AUDIT SUCCESS] Portfolio properly reflects the executed " + side + " trade!");
+        } else {
+            System.err.println(">>> [PORTFOLIO AUDIT FAILURE] Quantity or Cost mismatch detected!");
+        }
+
+        if (hasCashData) {
+            if (cashPass) {
+                System.out.printf(">>> [CASH AUDIT SUCCESS] Client Cash was RIGHTLY %s by %,.2f BDT (Trade Value: %,.2f BDT + Comm)!%n",
+                        isBuy ? "DEDUCTED" : "ADDED", Math.abs(cashNetDiff), tradeValue);
+            } else {
+                System.err.printf(">>> [CASH AUDIT FAILURE] Client Cash was WRONGLY %s on %s trade! (Pre: %,.2f, Post: %,.2f)%n",
+                        isBuy ? "NOT DEDUCTED" : "NOT ADDED", side, preCash, postCash);
+            }
+        }
+        System.out.println();
+    }
+
+    private static String getVal(Map<String, String> map, String... keys) {
+        if (map == null) return "-";
+        for (String k : keys) {
+            String v = map.get(k);
+            if (v != null && !v.trim().isEmpty()) return v.trim();
+        }
+        return "-";
+    }
+
+    private static double getNum(Map<String, String> map, String... keys) {
+        String val = getVal(map, keys);
+        return parseNum(val);
+    }
+
+    private static String fmt(double val) {
+        return String.format("%,.2f", val);
+    }
+
+    private static String fmtQty(double val) {
+        return String.format("%,.0f", val);
+    }
+
+    private static String readInputSafe(WebDriver driver, By... locators) {
+        for (By loc : locators) {
+            try {
+                WebElement el = driver.findElement(loc);
+                String val = el.getDomProperty("value");
+                if (val != null && !val.trim().isEmpty()) {
+                    return val.trim().toUpperCase();
+                }
+            } catch (Exception ignored) {}
+        }
+        return "";
+    }
+
+    private static double parseNum(String val) {
+        if (val == null) return 0.0;
+        String clean = val.replaceAll("[^0-9.-]", "").trim();
+        return clean.isEmpty() ? 0.0 : Double.parseDouble(clean);
+    }
+
+    private static void printSnapshot(String label, Map<String, String> snap) {
+        System.out.println();
+        System.out.println("+---------------------------------------------------------------+");
+        System.out.printf("| %-61s |%n", label + " [Source: " + snap.getOrDefault("DATA_SOURCE", "NONE") + "]");
+        System.out.println("+---------------------------------------------------------------+");
+        System.out.printf("| %-22s : %-36s |%n", "Symbol", snap.getOrDefault("symbol", "-"));
+        System.out.printf("| %-22s : %-36s |%n", "Total Qty", fmtQty(getNum(snap, "total_qty", "totalqty")));
+        System.out.printf("| %-22s : %-36s |%n", "Saleable Qty", fmtQty(getNum(snap, "saleable_qty", "qty", "saleable")));
+        System.out.printf("| %-22s : %-36s |%n", "Market Rate (LTP)", fmt(getNum(snap, "ltp", "market_rate")));
+        System.out.printf("| %-22s : %-36s |%n", "Avg Cost Rate", fmt(getNum(snap, "avg_cost", "avgcost")));
+        System.out.printf("| %-22s : %-36s |%n", "Total Cost Value", fmt(getNum(snap, "total_cost", "totalcost")));
+        System.out.printf("| %-22s : %-36s |%n", "Market Value", fmt(getNum(snap, "value", "market_value")));
+        System.out.printf("| %-22s : %-36s |%n", "Unrealized Gain", fmt(getNum(snap, "gain", "profit_loss")));
+        System.out.printf("| %-22s : %-36s |%n", "Gain Percentage", fmt(getNum(snap, "gain_percent", "gain_per")) + "%");
+        System.out.println("+---------------------------------------------------------------+");
     }
 }

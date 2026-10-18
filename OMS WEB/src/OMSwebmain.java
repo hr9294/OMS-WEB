@@ -14,8 +14,8 @@ public class OMSwebmain {
 
     public static void main(String[] args) throws InterruptedException, IOException {
 
-        System.setProperty("webdriver.chrome.driver",
-            "D:\\Automation & Load Testing\\Selenium\\Software\\152.0.7977.64 chromedriver-win64\\chromedriver-win64\\chromedriver.exe");
+        //System.setProperty("webdriver.chrome.driver",
+           // "D:\\Automation & Load Testing\\Selenium\\Software\\152.0.7977.64 chromedriver-win64\\chromedriver-win64\\chromedriver.exe");
 
         ChromeOptions options = new ChromeOptions();
 
@@ -64,6 +64,9 @@ public class OMSwebmain {
 
         // Client Portfolio
         ClientPortfolio.main(driver, sc);
+        
+        //Order Summary
+        Order_Summary.main(driver, sc);
 
         sc.close();
     }
