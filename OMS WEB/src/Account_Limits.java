@@ -19,7 +19,7 @@ public class Account_Limits {
     // =========================================================================
     // 1. ENDPOINTS & SELECTORS (Matched to your screenshot)
     // =========================================================================
-    private static final String API_URL_TEMPLATE = "https://omsapi.quantbd.com/account-limit/%s?exchange=%s";
+    private static final String API_URL_TEMPLATE = "https://omsapi.quantbd.com/portfolio/account-limit/%s?exchange=%s";
     private static final String[] EXCHANGES = {"DSE", "CSE"};
 
     // Navigation Tabs
@@ -105,10 +105,24 @@ public class Account_Limits {
     }
 
     // =========================================================================
-    // 4. DATA CAPTURE: API FIRST (DSE + CSE) -> UI XPATH FALLBACK
+    // 4. DATA CAPTURE: API FIRST (ADMIN SHARED -> QUANTBD TOKEN -> UI XPATH)
     // =========================================================================
     public static Map<String, String> getSnapshot(WebDriver driver, String clientCode, String preferredExchange) {
-        // Strategy 1: Try QuantBD Account Limits API
+        // Tier 1: Admin Shared API (/shared/get_account_limit/)
+        try {
+            String adminUrl = String.format("/shared/get_account_limit/?client_code=%s", clientCode);
+            String json = executeBrowserFetch(driver, adminUrl);
+            Map<String, String> adminData = parseAccountLimitsJson(json);
+            if (!adminData.isEmpty()) {
+                adminData.put("DATA_SOURCE", "API (Admin Shared)");
+                System.out.printf("[SUCCESS: API] Captured Account Limits for %s from Admin API.%n", clientCode);
+                return adminData;
+            }
+        } catch (Exception e) {
+            System.out.printf("[WARN: Admin API] Account Limits query failed: %s%n", e.getMessage());
+        }
+
+        // Tier 2: Try QuantBD Token API
         List<String> exchangeOrder = new ArrayList<>();
         exchangeOrder.add(preferredExchange != null && !preferredExchange.isEmpty() ? preferredExchange : "DSE");
         for (String ex : EXCHANGES) {
@@ -121,13 +135,13 @@ public class Account_Limits {
                 Map<String, String> data = fetchFromApi(driver, apiUrl);
                 if (!data.isEmpty()) {
                     data.put("DATA_SOURCE", "API (" + ex + ")");
-                    System.out.printf("[SUCCESS: API] Captured Account Limits for %s from %s API.%n", clientCode, ex);
+                    System.out.printf("[SUCCESS: API] Captured Account Limits for %s from %s Token API.%n", clientCode, ex);
                     return data;
                 }
             } catch (Exception ignored) {}
         }
 
-        // Strategy 2: Fallback to DOM Table Scraping (Exact tables in your screenshot)
+        // Tier 3 Fallback: DOM Table Scraping (Exact tables in your screenshot)
         System.out.println("[FALLBACK: UI] API unavailable. Extracting from Account Limits DOM tables...");
         Map<String, String> uiData = fetchFromUiTables(driver);
         uiData.put("DATA_SOURCE", "UI_XPATH (" + preferredExchange + ")");
@@ -244,6 +258,75 @@ public class Account_Limits {
         return "0";
     }
 
+    private static String executeBrowserFetch(WebDriver driver, String endpoint) {
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            Object res = js.executeAsyncScript(
+                "var callback = arguments[arguments.length - 1];" +
+                "var url = arguments[0];" +
+                "fetch(url, { method: 'GET', headers: { 'Accept': 'application/json' }, credentials: 'include' })" +
+                ".then(function(r) { return r.text(); })" +
+                ".then(function(t) { callback({ status: 200, text: t }); })" +
+                ".catch(function(e) { callback({ status: 0, error: e.toString() }); });",
+                endpoint
+            );
+            if (res instanceof Map) {
+                Map<?, ?> map = (Map<?, ?>) res;
+                Number status = (Number) map.get("status");
+                if (status != null && status.intValue() == 200) {
+                    return (String) map.get("text");
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("[WARN: BrowserFetch] " + e.getMessage());
+        }
+        return null;
+    }
+
+    private static Map<String, String> parseAccountLimitsJson(String json) {
+        Map<String, String> result = new LinkedHashMap<>();
+        if (json == null || json.trim().isEmpty() || !json.contains("ClientCode")) return result;
+
+        result.put("Initial_Limit", getJsonVal(json, "initial_cash", "initial_limit"));
+        result.put("Remaining_Cash", getJsonVal(json, "Cash", "cash"));
+        result.put("Cash_Day_Order", getJsonVal(json, "total_active_orders_value", "day_order"));
+        result.put("Total_Transaction", getJsonVal(json, "total_value", "total_transaction"));
+        result.put("Net_Transaction", getJsonVal(json, "net_value", "net_transaction"));
+
+        result.put("Buy_Limit", getJsonVal(json, "main_buy_initial_limit"));
+        result.put("Buy_Day_Order", getJsonVal(json, "buy_active_orders_value"));
+        result.put("Buy_Exec_Value", getJsonVal(json, "buy_value"));
+
+        double buyActive = parseDbl(result.get("Buy_Day_Order"));
+        double buyExec = parseDbl(result.get("Buy_Exec_Value"));
+        result.put("Buy_Remaining", String.format(Locale.US, "%.2f", buyActive - buyExec));
+
+        result.put("Sell_Limit", getJsonVal(json, "main_sell_initial_limit"));
+        result.put("Sell_Day_Order", getJsonVal(json, "sell_active_orders_value"));
+        result.put("Sell_Exec_Value", getJsonVal(json, "sell_value"));
+
+        double sellActive = parseDbl(result.get("Sell_Day_Order"));
+        double sellExec = parseDbl(result.get("Sell_Exec_Value"));
+        result.put("Sell_Remaining", String.format(Locale.US, "%.2f", sellActive - sellExec));
+
+        result.put("Mature_Balance", getJsonVal(json, "mature_balance"));
+        result.put("Ledger_Balance", getJsonVal(json, "ledger_balance"));
+        return result;
+    }
+
+    private static double parseDbl(String val) {
+        if (val == null) return 0.0;
+        String clean = val.replaceAll("[^0-9.-]", "").trim();
+        if (clean.isEmpty() || clean.equals("-") || clean.equals("--") || clean.equals(".") || clean.equals("-.")) {
+            return 0.0;
+        }
+        try {
+            return Double.parseDouble(clean);
+        } catch (Exception e) {
+            return 0.0;
+        }
+    }
+
     // =========================================================================
     // 7. QUANTITATIVE VERIFICATION FOR ACCOUNT LIMITS
     // =========================================================================
@@ -316,7 +399,14 @@ public class Account_Limits {
     private static double parseNum(String val) {
         if (val == null) return 0.0;
         String clean = val.replaceAll("[^0-9.-]", "").trim();
-        return clean.isEmpty() ? 0.0 : Double.parseDouble(clean);
+        if (clean.isEmpty() || clean.equals("-") || clean.equals("--") || clean.equals(".") || clean.equals("-.")) {
+            return 0.0;
+        }
+        try {
+            return Double.parseDouble(clean);
+        } catch (Exception e) {
+            return 0.0;
+        }
     }
 
     private static void printSnapshot(String label, Map<String, String> snap) {

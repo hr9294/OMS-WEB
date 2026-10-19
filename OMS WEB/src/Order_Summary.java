@@ -22,7 +22,7 @@ public class Order_Summary {
     // =========================================================================
     // 1. ENDPOINTS & SELECTORS (Matched to your screenshot)
     // =========================================================================
-    private static final String API_URL_TEMPLATE = "https://omsapi.quantbd.com/ordersummary/%s?exchange=%s";
+    private static final String API_URL_TEMPLATE = "https://omsapi.quantbd.com/portfolio/order-summary/%s?exchange=%s";
     private static final String[] EXCHANGES = {"DSE", "CSE"};
 
     // Navigation Tabs
@@ -140,12 +140,26 @@ public class Order_Summary {
     }
 
     // =========================================================================
-    // 4. DATA CAPTURE: API FIRST (DSE + CSE) -> UI XPATH FALLBACK
+    // 4. DATA CAPTURE: API FIRST (ADMIN LIVE -> QUANTBD TOKEN -> UI XPATH)
     // =========================================================================
     public static Map<String, String> getSnapshot(WebDriver driver, String clientCode, String symbol, String preferredExchange) {
         String cleanSymbol = symbol.trim().toUpperCase();
 
-        // Strategy 1: Try QuantBD Order Summary API
+        // Tier 1: Admin Live Orders API (/live_orders/order_summary_view/)
+        try {
+            String adminUrl = String.format("/live_orders/order_summary_view/?page=1&per_page=50&client_code=%s&symbol_code=%s", clientCode, cleanSymbol);
+            String json = executeBrowserFetch(driver, adminUrl);
+            Map<String, String> adminData = parseOrderSummaryJson(json, cleanSymbol);
+            if (!adminData.isEmpty()) {
+                adminData.put("DATA_SOURCE", "API (Admin Live)");
+                System.out.printf("[SUCCESS: API] Captured Order Summary for %s from Admin Live API.%n", cleanSymbol);
+                return adminData;
+            }
+        } catch (Exception e) {
+            System.out.printf("[WARN: Admin API] Order Summary query failed: %s%n", e.getMessage());
+        }
+
+        // Tier 2: QuantBD Microservice Token API (DSE + CSE)
         List<String> exchangeOrder = new ArrayList<>();
         exchangeOrder.add(preferredExchange != null && !preferredExchange.isEmpty() ? preferredExchange : "DSE");
         for (String ex : EXCHANGES) {
@@ -158,13 +172,13 @@ public class Order_Summary {
                 Map<String, String> data = fetchFromApi(driver, apiUrl, cleanSymbol);
                 if (!data.isEmpty()) {
                     data.put("DATA_SOURCE", "API (" + ex + ")");
-                    System.out.printf("[SUCCESS: API] Captured Order Summary for %s from %s API.%n", cleanSymbol, ex);
+                    System.out.printf("[SUCCESS: API] Captured Order Summary for %s from %s Token API.%n", cleanSymbol, ex);
                     return data;
                 }
             } catch (Exception ignored) {}
         }
 
-        // Strategy 2: Fallback to DOM Table Scraping (Exact tables in your screenshot)
+        // Tier 3 Fallback: DOM Table Scraping (Exact tables in your screenshot)
         System.out.println("[FALLBACK: UI] API unavailable. Extracting from Order Summary DOM tables...");
         Map<String, String> uiData = fetchFromUiTables(driver, cleanSymbol);
         uiData.put("DATA_SOURCE", "UI_XPATH (" + preferredExchange + ")");
@@ -295,6 +309,88 @@ public class Order_Summary {
         return "0";
     }
 
+    private static String executeBrowserFetch(WebDriver driver, String endpoint) {
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            Object res = js.executeAsyncScript(
+                "var callback = arguments[arguments.length - 1];" +
+                "var url = arguments[0];" +
+                "fetch(url, { method: 'GET', headers: { 'Accept': 'application/json' }, credentials: 'include' })" +
+                ".then(function(r) { return r.text(); })" +
+                ".then(function(t) { callback({ status: 200, text: t }); })" +
+                ".catch(function(e) { callback({ status: 0, error: e.toString() }); });",
+                endpoint
+            );
+            if (res instanceof Map) {
+                Map<?, ?> map = (Map<?, ?>) res;
+                Number status = (Number) map.get("status");
+                if (status != null && status.intValue() == 200) {
+                    return (String) map.get("text");
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("[WARN: BrowserFetch] " + e.getMessage());
+        }
+        return null;
+    }
+
+    private static Map<String, String> parseOrderSummaryJson(String json, String targetSymbol) {
+        Map<String, String> result = new LinkedHashMap<>();
+        if (json == null || json.trim().isEmpty() || !json.contains("\"code\":200")) return result;
+
+        result.put("Symbol", targetSymbol);
+
+        Pattern symRowPattern = Pattern.compile("\\{[^{}]*\"symbol\"\\s*:\\s*\"" + targetSymbol + "\"[^{}]*\\}", Pattern.CASE_INSENSITIVE);
+        Matcher m = symRowPattern.matcher(json);
+        if (m.find()) {
+            String block = m.group(0);
+            result.put("B Qty", getJsonVal(block, "buy_order_qty", "buy_qty", "b_qty"));
+            result.put("S Qty", getJsonVal(block, "sell_order_qty", "sell_qty", "s_qty"));
+            result.put("B Ordr", getJsonVal(block, "buy_order", "buy_orders", "b_ordr"));
+            result.put("S Ordr", getJsonVal(block, "sell_order", "sell_orders", "s_ordr"));
+            result.put("Total Ordr", getJsonVal(block, "total_order", "total_orders", "total_ordr"));
+            result.put("B Amount", getJsonVal(block, "buy_amount", "b_amount"));
+            result.put("S Amount", getJsonVal(block, "sell_amount", "s_amount"));
+            result.put("Net Amount", getJsonVal(block, "net_amount"));
+            result.put("Avg Price", getJsonVal(block, "total_avg_price", "avg_price", "buy_avg_price"));
+            result.put("Buy_Exec_Qty", getJsonVal(block, "buy_exec_qty"));
+            result.put("Sell_Exec_Qty", getJsonVal(block, "sell_exec_qty"));
+            result.put("Total_Exec_Qty", getJsonVal(block, "total_exec_qty"));
+        } else {
+            result.put("B Qty", "0");
+            result.put("S Qty", "0");
+            result.put("B Ordr", "0");
+            result.put("S Ordr", "0");
+            result.put("Total Ordr", "0");
+            result.put("B Amount", "0.00");
+            result.put("S Amount", "0.00");
+            result.put("Net Amount", "0.00");
+            result.put("Avg Price", "0.00");
+            result.put("Buy_Exec_Qty", "0");
+            result.put("Sell_Exec_Qty", "0");
+            result.put("Total_Exec_Qty", "0");
+        }
+
+        Pattern totalPattern = Pattern.compile("\"total_summary_data\"\\s*:\\s*\\{([^}]+)\\}");
+        Matcher tm = totalPattern.matcher(json);
+        if (tm.find()) {
+            String totalBlock = tm.group(1);
+            result.put("Buy_Orders", getJsonVal(totalBlock, "buy_orders"));
+            result.put("Buy_Ord_Qty", getJsonVal(totalBlock, "buy_order_qty"));
+            result.put("Buy_Exec_Qty_Total", getJsonVal(totalBlock, "buy_exec_qty"));
+            result.put("Buy_Exec_Value", getJsonVal(totalBlock, "buy_value"));
+            result.put("Sell_Orders", getJsonVal(totalBlock, "sell_orders"));
+            result.put("Sell_Ord_Qty", getJsonVal(totalBlock, "sell_order_qty"));
+            result.put("Sell_Exec_Qty_Total", getJsonVal(totalBlock, "sell_exec_qty"));
+            result.put("Sell_Exec_Value", getJsonVal(totalBlock, "sell_value"));
+            result.put("Total_Orders", getJsonVal(totalBlock, "total_orders"));
+            result.put("Total_Ord_Qty", getJsonVal(totalBlock, "total_order_qty"));
+            result.put("Total_Exec_Qty_Total", getJsonVal(totalBlock, "total_exec_qty"));
+            result.put("Total_Exec_Value", getJsonVal(totalBlock, "total_value"));
+        }
+        return result;
+    }
+
     // =========================================================================
     // 7. QUANTITATIVE VERIFICATION FOR ORDER SUMMARY
     // =========================================================================
@@ -365,7 +461,14 @@ public class Order_Summary {
     private static double parseNum(String val) {
         if (val == null) return 0.0;
         String clean = val.replaceAll("[^0-9.-]", "").trim();
-        return clean.isEmpty() ? 0.0 : Double.parseDouble(clean);
+        if (clean.isEmpty() || clean.equals("-") || clean.equals("--") || clean.equals(".") || clean.equals("-.")) {
+            return 0.0;
+        }
+        try {
+            return Double.parseDouble(clean);
+        } catch (Exception e) {
+            return 0.0;
+        }
     }
 
     private static void printSnapshot(String label, Map<String, String> snap) {

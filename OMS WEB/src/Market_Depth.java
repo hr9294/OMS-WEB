@@ -19,7 +19,7 @@ public class Market_Depth {
     // =========================================================================
     // 1. ENDPOINTS & SELECTORS
     // =========================================================================
-    private static final String API_URL_TEMPLATE = "https://omsapi.quantbd.com/market-depth/%s?exchange=%s";
+    private static final String API_URL_TEMPLATE = "https://omsapi.quantbd.com/market-data/depth%s?exchange=%s";
     private static final String[] EXCHANGES = {"DSE", "CSE"};
 
     // Navigation Tabs
@@ -91,31 +91,46 @@ public class Market_Depth {
     }
 
     // =========================================================================
-    // 4. DATA CAPTURE: API FIRST -> UI XPATH FALLBACK
+    // 4. DATA CAPTURE: API FIRST (ADMIN SHARED -> QUANTBD TOKEN -> UI XPATH)
     // =========================================================================
     public static Map<String, String> getSnapshot(WebDriver driver, String symbol, String preferredExchange) {
         String cleanSymbol = symbol.trim().toUpperCase();
+        String ex = (preferredExchange != null && !preferredExchange.isEmpty()) ? preferredExchange : "DSE";
 
-        // 1. Try API First
-        List<String> exchangeOrder = new ArrayList<>();
-        exchangeOrder.add(preferredExchange != null && !preferredExchange.isEmpty() ? preferredExchange : "DSE");
-        for (String ex : EXCHANGES) {
-            if (!exchangeOrder.contains(ex)) exchangeOrder.add(ex);
+        // Tier 1: Admin Shared Market Depth API (/shared/getmktdepth/)
+        try {
+            String adminUrl = String.format("/shared/getmktdepth/?mkt_group=PUBLIC&mkt_symbol=%s&exchange=%s", cleanSymbol, ex);
+            String json = executeBrowserFetch(driver, adminUrl);
+            Map<String, String> adminData = parseMarketDepthJson(json, cleanSymbol);
+            if (!adminData.isEmpty()) {
+                adminData.put("DATA_SOURCE", "API (Admin Shared)");
+                System.out.printf("[SUCCESS: API] Captured 12+ metrics for %s from Admin %s API.%n", cleanSymbol, ex);
+                return adminData;
+            }
+        } catch (Exception e) {
+            System.out.printf("[WARN: Admin API] Market Depth query failed for %s: %s%n", ex, e.getMessage());
         }
 
-        for (String ex : exchangeOrder) {
-            String apiUrl = String.format(API_URL_TEMPLATE, cleanSymbol, ex);
+        // Tier 2: Try QuantBD Token API
+        List<String> exchangeOrder = new ArrayList<>();
+        exchangeOrder.add(ex);
+        for (String otherEx : EXCHANGES) {
+            if (!exchangeOrder.contains(otherEx)) exchangeOrder.add(otherEx);
+        }
+
+        for (String targetEx : exchangeOrder) {
+            String apiUrl = String.format(API_URL_TEMPLATE, cleanSymbol, targetEx);
             try {
                 Map<String, String> data = fetchFromApi(driver, apiUrl, cleanSymbol);
                 if (!data.isEmpty()) {
-                    data.put("DATA_SOURCE", "API (" + ex + ")");
-                    System.out.printf("[SUCCESS: API] Captured 12+ metrics for %s from %s API.%n", cleanSymbol, ex);
+                    data.put("DATA_SOURCE", "API (" + targetEx + ")");
+                    System.out.printf("[SUCCESS: API] Captured 12+ metrics for %s from %s Token API.%n", cleanSymbol, targetEx);
                     return data;
                 }
             } catch (Exception ignored) {}
         }
 
-        // 2. Fallback to DOM Scraping
+        // Tier 3 Fallback: DOM Scraping
         System.out.println("[FALLBACK: UI] API unavailable. Extracting from Market Depth DOM...");
         Map<String, String> uiData = fetchFromUiDOM(driver);
         uiData.put("DATA_SOURCE", "UI_XPATH (" + preferredExchange + ")");
@@ -282,6 +297,74 @@ public class Market_Depth {
         return "-";
     }
 
+    private static String executeBrowserFetch(WebDriver driver, String endpoint) {
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            Object res = js.executeAsyncScript(
+                "var callback = arguments[arguments.length - 1];" +
+                "var url = arguments[0];" +
+                "fetch(url, { method: 'GET', headers: { 'Accept': 'application/json' }, credentials: 'include' })" +
+                ".then(function(r) { return r.text(); })" +
+                ".then(function(t) { callback({ status: 200, text: t }); })" +
+                ".catch(function(e) { callback({ status: 0, error: e.toString() }); });",
+                endpoint
+            );
+            if (res instanceof Map) {
+                Map<?, ?> map = (Map<?, ?>) res;
+                Number status = (Number) map.get("status");
+                if (status != null && status.intValue() == 200) {
+                    return (String) map.get("text");
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("[WARN: BrowserFetch] " + e.getMessage());
+        }
+        return null;
+    }
+
+    private static Map<String, String> parseMarketDepthJson(String json, String cleanSymbol) {
+        Map<String, String> result = new LinkedHashMap<>();
+        if (json == null || json.trim().isEmpty() || !json.contains("symbol_data")) return result;
+
+        Pattern symPat = Pattern.compile("\"symbol_data\"\\s*:\\s*\\{([^}]+)\\}");
+        Matcher sm = symPat.matcher(json);
+        if (sm.find()) {
+            String b = sm.group(1);
+            result.put("Last", getJsonVal(b, "ltp", "last", "last_price"));
+            result.put("Open", getJsonVal(b, "open"));
+            result.put("Trade", getJsonVal(b, "total_trades", "trades", "trade_count"));
+            result.put("Vol", getJsonVal(b, "total_qty", "volume", "vol"));
+            result.put("DH", getJsonVal(b, "dh", "high", "day_high"));
+            result.put("DL", getJsonVal(b, "dl", "low", "day_low"));
+            result.put("CH", getJsonVal(b, "circuit_up", "cu", "circuit_high"));
+            result.put("CL", getJsonVal(b, "circuit_down", "cd", "circuit_low"));
+
+            result.put("YCP", getJsonVal(b, "ycp", "yesterday_close_price"));
+            result.put("Close", getJsonVal(b, "close", "close_price"));
+            result.put("Value", getJsonVal(b, "total_value", "value"));
+            result.put("L.vol", getJsonVal(b, "last_qty", "l_vol", "lvol"));
+            result.put("SH", getJsonVal(b, "circuit_up", "sh"));
+            result.put("SL", getJsonVal(b, "circuit_down", "sl"));
+            result.put("Net", getJsonVal(b, "ltp_change", "net", "change"));
+            result.put("D%", getJsonVal(b, "ltp_changeper", "d_percent", "change_percent"));
+            result.put("Ctg", getJsonVal(b, "symbol_category", "category"));
+            result.put("52 wk", getJsonVal(b, "h_52w", "52wk"));
+            result.put("VWAP", getJsonVal(b, "vwap"));
+            result.put("Mkt", getJsonVal(b, "board", "market_type"));
+        }
+
+        Pattern depthPat = Pattern.compile("\"market_depth\"\\s*:\\s*\\{([^}]+)\\}");
+        Matcher dm = depthPat.matcher(json);
+        if (dm.find()) {
+            String db = dm.group(1);
+            result.put("Best_Bid_Price", getJsonVal(db, "best_bid", "bid_price"));
+            result.put("Best_Bid_Qty", getJsonVal(db, "bid_qty"));
+            result.put("Best_Ask_Price", getJsonVal(db, "best_ask", "ask_price"));
+            result.put("Best_Ask_Qty", getJsonVal(db, "ask_qty"));
+        }
+        return result;
+    }
+
     // =========================================================================
     // 7. VERIFICATION
     // =========================================================================
@@ -366,6 +449,13 @@ public class Market_Depth {
     private static double parseNum(String val) {
         if (val == null) return 0.0;
         String clean = val.replaceAll("[^0-9.-]", "").trim();
-        return clean.isEmpty() ? 0.0 : Double.parseDouble(clean);
+        if (clean.isEmpty() || clean.equals("-") || clean.equals("--") || clean.equals(".") || clean.equals("-.")) {
+            return 0.0;
+        }
+        try {
+            return Double.parseDouble(clean);
+        } catch (Exception e) {
+            return 0.0;
+        }
     }
 }

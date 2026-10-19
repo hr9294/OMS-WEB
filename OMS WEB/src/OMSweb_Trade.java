@@ -148,7 +148,11 @@ public class OMSweb_Trade {
 			
 			Market_Depth.navigateToMarketDepth(driver);
 			Map<String, String> preDepth = Market_Depth.getSnapshot(driver, instrument, exchange);
-			System.out.println("[ACCOUNT LIMITS] Pre-Trade Snapshot Captured (Source: " + preDepth.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
+			System.out.println("[MARKET DEPTH] Pre-Trade Snapshot Captured (Source: " + preDepth.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
+
+			Order_Terminal.navigateToOrderTerminal(driver);
+			Map<String, String> preOrderTerminal = Order_Terminal.getSnapshot(driver, clientCode, instrument, exchange);
+			System.out.println("[ORDER TERMINAL] Pre-Trade Snapshot Captured (Source: " + preOrderTerminal.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
 			// Return back to Trade Page if needed
 			if (!isAlreadyOnTradePage(driver)) {
 				System.out.println("[TRADE] Returning to Trade Page...");
@@ -258,7 +262,16 @@ public class OMSweb_Trade {
 			Market_Depth.navigateToMarketDepth(driver);
 			Map<String, String> postDepth = Market_Depth.getSnapshot(driver, instrument, exchange);
 			Market_Depth.verify(preDepth, postDepth, instrument, sideText, tradeQty, executedRate, exchange);
-			
+
+			// Audit Order Terminal
+			Order_Terminal.navigateToOrderTerminal(driver);
+			Order_Terminal.refresh(driver);
+			Map<String, String> postOrderTerminal = Order_Terminal.getSnapshot(driver, clientCode, instrument, exchange);
+			Order_Terminal.verify(preOrderTerminal, postOrderTerminal, instrument, sideText, tradeQty, executedRate, exchange);
+
+			// Click that newly placed order in Order Terminal table
+			Order_Terminal.clickOrderRow(driver, postOrderTerminal.get("Order_ID"), clientCode, instrument);
+
 			// Return to Trade Page if needed
 			if (!isAlreadyOnTradePage(driver)) {
 				System.out.println("[TRADE] Returning to Trade Page...");
@@ -280,15 +293,6 @@ public class OMSweb_Trade {
 			} else {
 				runWidgetColorSelection(driver, sc);
 			}
-
-			// Locate and click the FIRST row in the order terminal table
-			try {
-				WebElement firstRow = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath(
-						"/html[1]/body[1]/div[3]/div[2]/div[1]/div[1]/div[1]/div[3]/div[1]/div[2]/div[1]/div[1]/div[3]/div[1]/table[1]/tbody[1]/tr[1]")));
-				firstRow.click();
-				Thread.sleep(300);
-				System.out.println("First order row selected.");
-			} catch (Exception ignored) {}
 		}
 	}
 
@@ -388,6 +392,10 @@ public class OMSweb_Trade {
 	// ---------- PARTIALLY FILLED ----------
 	private static void placePartiallyFilledOrder(WebDriver driver, WebDriverWait wait, Scanner sc, String instrument)
 			throws InterruptedException {
+		if (!isAlreadyOnTradePage(driver)) {
+			navigateToTradePage(driver, wait);
+		}
+
 		System.out.print("Enter BUY qty for the partially-filled test: ");
 		String buyQty = sc.nextLine();
 		System.out.print("Enter SELL qty (should be LOWER than " + buyQty + "): ");
@@ -416,6 +424,11 @@ public class OMSweb_Trade {
 		Thread.sleep(1000);
 		System.out.println("Partially filled test: BUY " + buyQty + " / SELL " + sellQty + " (sell lower).");
 
+		// Click order in Order Terminal
+		Order_Terminal.navigateToOrderTerminal(driver);
+		Order_Terminal.refresh(driver);
+		Order_Terminal.clickOrderRow(driver, null, sellClientCode, instrument);
+
 		System.out.print("\nDo you want to select an Order Status type now? (1=YES / 0=NO, then ENTER): ");
 		if (sc.nextLine().trim().equals("1")) {
 			selectOrderStatus(driver, wait, sc, instrument);
@@ -425,6 +438,10 @@ public class OMSweb_Trade {
 	// ---------- FILLED ----------
 	private static void placeFilledOrder(WebDriver driver, WebDriverWait wait, Scanner sc, String instrument)
 			throws InterruptedException {
+		if (!isAlreadyOnTradePage(driver)) {
+			navigateToTradePage(driver, wait);
+		}
+
 		System.out.print("Enter qty for the filled test: ");
 		String qty = sc.nextLine();
 
@@ -451,6 +468,12 @@ public class OMSweb_Trade {
 
 		System.out.println("Filled test: BUY & SELL placed with different client codes.");
 
+		// Click order in Order Terminal
+		Thread.sleep(1000);
+		Order_Terminal.navigateToOrderTerminal(driver);
+		Order_Terminal.refresh(driver);
+		Order_Terminal.clickOrderRow(driver, null, sellClientCode, instrument);
+
 		System.out.print("\nDo you want to select an Order Status type now? (1=YES / 0=NO, then ENTER): ");
 		if (sc.nextLine().trim().equals("1")) {
 			selectOrderStatus(driver, wait, sc, instrument);
@@ -460,6 +483,10 @@ public class OMSweb_Trade {
 	// ---------- CANCELLED ----------
 	private static void placeCancelledOrder(WebDriver driver, WebDriverWait wait, Scanner sc, String instrument)
 			throws InterruptedException {
+		if (!isAlreadyOnTradePage(driver)) {
+			navigateToTradePage(driver, wait);
+		}
+
 		System.out.print("Enter side for cancel test (1=BUY / 2=SELL, default 1): ");
 		String sideChoice = sc.nextLine();
 		String side = sideChoice.trim().equals("2") ? "SELL" : "BUY";
@@ -479,16 +506,17 @@ public class OMSweb_Trade {
 		confirmOrder(driver, wait, sc);
 
 		Thread.sleep(1000);
+		Order_Terminal.navigateToOrderTerminal(driver);
+		Order_Terminal.refresh(driver);
+		WebElement firstRow = Order_Terminal.findOrderRow(driver, null, clientCode, instrument);
 
-		WebElement firstRow = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath(
-				"/html[1]/body[1]/div[3]/div[2]/div[1]/div[1]/div[1]/div[3]/div[1]/div[2]/div[1]/div[1]/div[3]/div[1]/table[1]/tbody[1]/tr[1]")));
-
-		firstRow.click();
-		Thread.sleep(300);
-		System.out.println("First order row selected.");
-
-		new org.openqa.selenium.interactions.Actions(driver).contextClick(firstRow).perform();
-		Thread.sleep(500);
+		if (firstRow != null) {
+			Order_Terminal.clickOrderRow(driver, null, clientCode, instrument);
+			new org.openqa.selenium.interactions.Actions(driver).contextClick(firstRow).perform();
+			Thread.sleep(500);
+		} else {
+			System.out.println("[WARN] Order row could not be found to cancel.");
+		}
 
 		String[] cancelXpaths = { "//li[contains(translate(normalize-space(),'CANCEL','cancel'),'cancel')]",
 				"//a[contains(translate(normalize-space(),'CANCEL','cancel'),'cancel')]",
@@ -532,6 +560,10 @@ public class OMSweb_Trade {
 	// ---------- REJECTED ----------
 	private static void placeRejectedOrder(WebDriver driver, WebDriverWait wait, Scanner sc, String instrument)
 			throws InterruptedException {
+		if (!isAlreadyOnTradePage(driver)) {
+			navigateToTradePage(driver, wait);
+		}
+
 		System.out.print("Enter side (1=BUY / 2=SELL, default 1): ");
 		String sideChoice = sc.nextLine();
 		String side = sideChoice.trim().equals("2") ? "SELL" : "BUY";
@@ -558,6 +590,12 @@ public class OMSweb_Trade {
 		confirmOrder(driver, wait, sc);
 		System.out.println("Order submitted at out-of-circuit price -> expected REJECTED.");
 
+		// Click order in Order Terminal
+		Thread.sleep(1000);
+		Order_Terminal.navigateToOrderTerminal(driver);
+		Order_Terminal.refresh(driver);
+		Order_Terminal.clickOrderRow(driver, null, clientCode, instrument);
+
 		System.out.print("\nDo you want to select an Order Status type now? (1=YES / 0=NO, then ENTER): ");
 		if (sc.nextLine().trim().equals("1")) {
 			selectOrderStatus(driver, wait, sc, instrument);
@@ -567,6 +605,10 @@ public class OMSweb_Trade {
 	// ---------- EXPIRED ----------
 	private static void placeExpiredOrder(WebDriver driver, WebDriverWait wait, Scanner sc, String instrument)
 			throws InterruptedException {
+		if (!isAlreadyOnTradePage(driver)) {
+			navigateToTradePage(driver, wait);
+		}
+
 		System.out.print("Enter side (1=BUY / 2=SELL, default 1): ");
 		String sideChoice = sc.nextLine();
 		String side = sideChoice.trim().equals("2") ? "SELL" : "BUY";
@@ -594,6 +636,12 @@ public class OMSweb_Trade {
 		enterRateAndSubmit(driver, wait, sc, instrument, side);
 		confirmOrder(driver, wait, sc);
 		System.out.println("IOC order placed -> expected EXPIRED if not filled immediately.");
+
+		// Click order in Order Terminal
+		Thread.sleep(1000);
+		Order_Terminal.navigateToOrderTerminal(driver);
+		Order_Terminal.refresh(driver);
+		Order_Terminal.clickOrderRow(driver, null, clientCode, instrument);
 
 		System.out.print("\nDo you want to select an Order Status type now? (1=YES / 0=NO, then ENTER): ");
 		if (sc.nextLine().trim().equals("1")) {

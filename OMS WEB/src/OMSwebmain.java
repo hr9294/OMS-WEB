@@ -67,6 +67,12 @@ public class OMSwebmain {
         
         //Order Summary
         Order_Summary.main(driver, sc);
+        
+      //Account Limits
+        Account_Limits.main(driver, sc);
+        
+      //Market Depth
+        Market_Depth.main(driver, sc);
 
         sc.close();
     }

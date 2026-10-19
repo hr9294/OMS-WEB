@@ -623,7 +623,14 @@ public class ClientPortfolio {
     private static double parseNum(String val) {
         if (val == null) return 0.0;
         String clean = val.replaceAll("[^0-9.-]", "").trim();
-        return clean.isEmpty() ? 0.0 : Double.parseDouble(clean);
+        if (clean.isEmpty() || clean.equals("-") || clean.equals("--") || clean.equals(".") || clean.equals("-.")) {
+            return 0.0;
+        }
+        try {
+            return Double.parseDouble(clean);
+        } catch (Exception e) {
+            return 0.0;
+        }
     }
 
     private static void printSnapshot(String label, Map<String, String> snap) {
