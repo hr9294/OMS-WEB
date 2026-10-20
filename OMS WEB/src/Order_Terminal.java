@@ -44,8 +44,6 @@ public class Order_Terminal {
     // Order Terminal Table
     private static final By TERMINAL_TABLE   = By.xpath("//table[contains(@id,'market_table') or contains(@class,'order_terminal_table')]");
     private static final By TABLE_HEADERS    = By.xpath(".//thead//th");
-    private static final String ROW_BY_CLIENT = ".//tbody//tr[td[normalize-space()='%s']]";
-    private static final String ROW_BY_SYMBOL = ".//tbody//tr[td[contains(normalize-space(),'%s')]]";
 
     // =========================================================================
     // 2. MAIN ENTRY POINT (Matching your runner's signature)
@@ -114,6 +112,10 @@ public class Order_Terminal {
             );
             if (Boolean.TRUE.equals(clicked)) {
                 Thread.sleep(400);
+            } else {
+                WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(3));
+                wait.until(ExpectedConditions.elementToBeClickable(TRADE_TAB)).click();
+                Thread.sleep(400);
             }
         } catch (Exception ignored) {}
     }
@@ -139,7 +141,8 @@ public class Order_Terminal {
 
     public static void clearFilter(WebDriver driver) {
         try {
-            driver.findElement(BTN_CLEAR).click();
+            try { driver.findElement(BTN_CLEAR).click(); } catch (Exception ignored) {}
+            try { driver.findElement(BTN_RESET).click(); } catch (Exception ignored) {}
             Thread.sleep(400);
         } catch (Exception ignored) {}
     }
@@ -148,6 +151,10 @@ public class Order_Terminal {
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
             js.executeScript("if (typeof get_order_history === 'function') { get_order_history(); }");
+            try {
+                WebElement btn = driver.findElement(REFRESH_BTN);
+                if (btn.isDisplayed()) btn.click();
+            } catch (Exception ignored) {}
             Thread.sleep(800);
         } catch (Exception ignored) {}
     }
