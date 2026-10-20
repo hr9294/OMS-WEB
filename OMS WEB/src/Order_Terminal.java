@@ -565,7 +565,7 @@ public class Order_Terminal {
         System.out.println("+================================================================================================================+");
         System.out.printf("| %-18s | %-16s | %-18s | %-18s | %-7s%n", "Metric", "Pre-Trade", "Post-Trade", "Expected", "Status");
         System.out.println("+----------------------------------------------------------------------------------------------------------------+");
-        System.out.printf("| Order ID           | %-16s | %-18s | %-18s | %-7s%n", preOrderId, postOrderId, "~Generated ID", !postOrderId.equals("-") ? "PASS" : "FAIL");
+        System.out.printf("| Order ID           | %-16s | %-18s | %-18s | %-7s%n", preOrderId, postOrderId, "~Generated ID", orderNewPass ? "PASS" : "FAIL");
         System.out.printf("| Side               | %-16s | %-18s | %-18s | %-7s%n", before.getOrDefault("Side", "-"), postSide, side, sidePass ? "PASS" : "FAIL");
         System.out.printf("| Order Status       | %-16s | %-18s | %-18s | %-7s%n", before.getOrDefault("Status", "-"), postStatus, "Filled/Accepted", statusPass ? "PASS" : "INFO");
         System.out.printf("| Execution Type     | %-16s | %-18s | %-18s | %-7s%n", before.getOrDefault("Exec_Type", "-"), postExecType, "Trade Executed", "INFO");
@@ -578,7 +578,7 @@ public class Order_Terminal {
         System.out.printf("| Dealer / User ID   | %-16s | %-18s | %-18s | %-7s%n", "-", after.getOrDefault("Dealer_ID", "-") + " / " + after.getOrDefault("User_ID", "-"), "Authenticated", "INFO");
         System.out.println("+================================================================================================================+");
 
-        if (sidePass && !postOrderId.equals("-")) {
+        if (sidePass && orderNewPass) {
             System.out.println(">>> [ORDER TERMINAL AUDIT PASSED] Order recorded and status verified in Order Terminal!");
         } else {
             System.err.println(">>> [ORDER TERMINAL AUDIT WARNING] Order terminal verification had warnings!");
