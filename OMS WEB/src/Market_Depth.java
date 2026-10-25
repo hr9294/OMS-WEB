@@ -37,11 +37,6 @@ public class Market_Depth {
             "//div[contains(@class,'market-depth') or contains(.,'Market Depth')]//input[contains(@class,'symbol') or contains(@placeholder,'Symbol')] | " +
             "//input[@id='depth_symbol'] | //input[contains(@id,'symbol_mktdpt')]");
 
-    // Order Book Level 2 Table
-    private static final By DEPTH_TABLE = By.xpath(
-            "//table[thead//th[contains(.,'BID') or contains(.,'ASK')]] | " +
-            "//table[contains(@class,'market-depth-bidAndask')] | //div[contains(@class,'market-depth')]//table[last()]");
-
     // =========================================================================
     // 2. MAIN ENTRY POINT
     // =========================================================================
