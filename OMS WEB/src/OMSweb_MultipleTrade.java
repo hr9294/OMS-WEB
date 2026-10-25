@@ -293,10 +293,6 @@ public class OMSweb_MultipleTrade {
         return queue;
     }
 
-    private static List<TradeOrder> buildTradePipeline(String symbol, int totalTrades, double baseOffset) {
-        return buildTradePipeline(null, symbol, totalTrades, baseOffset);
-    }
-
     // ==========================================
     // 6. METRICS TELEMETRY
     // ==========================================
