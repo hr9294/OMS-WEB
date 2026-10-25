@@ -56,27 +56,18 @@ public class OMSwebmain {
         // Login
         OMSweb_Login.main(driver, sc);
 
-        // Trade Page
+        // Trade Page (Automatically captures, executes trade, and audits Portfolio, Order Summary, Limits, Depth & Terminal)
         OMSweb_Trade.main(driver, sc);
 
-        // Multiple trades (uncomment to use)
+        // Optional / Standalone diagnostic viewers (uncomment only if inspecting a single widget standalone without trading):
         // OMSweb_MultipleTrade.main(driver, sc);
+        // ClientPortfolio.main(driver, sc);
+        // Order_Summary.main(driver, sc);
+        // Account_Limits.main(driver, sc);
+        // Market_Depth.main(driver, sc);
+        // Order_Terminal.main(driver, sc);
 
-        // Client Portfolio
-        ClientPortfolio.main(driver, sc);
-        
-        //Order Summary
-        Order_Summary.main(driver, sc);
-        
-      //Account Limits
-        Account_Limits.main(driver, sc);
-        
-      //Market Depth
-        Market_Depth.main(driver, sc);
-        
-      //Order Terminal
-        Order_Terminal.main(driver, sc);
-
+        System.out.println("\n[UFTFAST OMS] Trade session completed. Exiting application.");
         sc.close();
     }
 }
