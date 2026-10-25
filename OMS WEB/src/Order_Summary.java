@@ -143,7 +143,7 @@ public class Order_Summary {
     // 4. DATA CAPTURE: API FIRST (ADMIN LIVE -> QUANTBD TOKEN -> UI XPATH)
     // =========================================================================
     public static Map<String, String> getSnapshot(WebDriver driver, String clientCode, String symbol, String preferredExchange) {
-        String cleanSymbol = symbol.trim().toUpperCase();
+        String cleanSymbol = cleanSymbol(symbol);
 
         // Tier 1: Admin Live Orders API (/live_orders/order_summary_view/)
         try {
@@ -445,13 +445,23 @@ public class Order_Summary {
         System.out.println();
     }
 
+        public static String cleanSymbol(String sym) {
+        if (sym == null) return "";
+        String s = sym.trim().toUpperCase();
+        s = s.replaceAll("\\[[A-Z0-9]+\\]", "");
+        if (s.contains(".")) {
+            s = s.split("\\.")[0];
+        }
+        return s.trim();
+    }
+
     private static String readInputSafe(WebDriver driver, By... locators) {
         for (By loc : locators) {
             try {
                 WebElement el = driver.findElement(loc);
                 String val = el.getDomProperty("value");
                 if (val != null && !val.trim().isEmpty()) {
-                    return val.trim().toUpperCase();
+                    return cleanSymbol(val);
                 }
             } catch (Exception ignored) {}
         }
@@ -472,9 +482,23 @@ public class Order_Summary {
     }
 
     private static void printSnapshot(String label, Map<String, String> snap) {
+        String sym = snap.getOrDefault("Symbol", "-");
         System.out.printf("\n--- %s [Source: %s] ---%n", label, snap.getOrDefault("DATA_SOURCE", "NONE"));
-        snap.forEach((k, v) -> {
-            if (!k.equals("DATA_SOURCE")) System.out.printf("   %-16s: %s%n", k, v);
-        });
+        System.out.println("   [INSTRUMENT SUMMARY FOR " + sym + "]");
+        System.out.printf("   %-20s: %-10s | %-20s: %s%n", "Buy Orders", snap.getOrDefault("B Ordr", "0"), "Sell Orders", snap.getOrDefault("S Ordr", "0"));
+        System.out.printf("   %-20s: %-10s | %-20s: %s%n", "Buy Order Qty", snap.getOrDefault("B Qty", "0"), "Sell Order Qty", snap.getOrDefault("S Qty", "0"));
+        System.out.printf("   %-20s: %-10s | %-20s: %s%n", "Buy Exec Qty", snap.getOrDefault("Buy_Exec_Qty", "0"), "Sell Exec Qty", snap.getOrDefault("Sell_Exec_Qty", "0"));
+        System.out.printf("   %-20s: %-10s | %-20s: %s%n", "Buy Exec Value", snap.getOrDefault("B Amount", "0.00"), "Sell Exec Value", snap.getOrDefault("S Amount", "0.00"));
+        System.out.printf("   %-20s: %-10s | %-20s: %s%n", "Total Orders", snap.getOrDefault("Total Ordr", "0"), "Total Exec Qty", snap.getOrDefault("Total_Exec_Qty", "0"));
+        System.out.printf("   %-20s: %-10s | %-20s: %s%n", "Net Exec Value", snap.getOrDefault("Net Amount", "0.00"), "Avg Exec Price", snap.getOrDefault("Avg Price", "0.00"));
+
+        if (snap.containsKey("Buy_Orders") || snap.containsKey("Total_Orders")) {
+            System.out.println("   [CLIENT PORTFOLIO-WIDE TOTALS (ALL SYMBOLS)]");
+            System.out.printf("   %-20s: %-10s | %-20s: %s%n", "All Buy Orders", snap.getOrDefault("Buy_Orders", "-"), "All Sell Orders", snap.getOrDefault("Sell_Orders", "-"));
+            System.out.printf("   %-20s: %-10s | %-20s: %s%n", "All Buy Ord Qty", snap.getOrDefault("Buy_Ord_Qty", "-"), "All Sell Ord Qty", snap.getOrDefault("Sell_Ord_Qty", "-"));
+            System.out.printf("   %-20s: %-10s | %-20s: %s%n", "All Buy Exec Qty", snap.getOrDefault("Buy_Exec_Qty_Total", "-"), "All Sell Exec Qty", snap.getOrDefault("Sell_Exec_Qty_Total", "-"));
+            System.out.printf("   %-20s: %-10s | %-20s: %s%n", "All Buy Exec Value", snap.getOrDefault("Buy_Exec_Value", "-"), "All Sell Exec Value", snap.getOrDefault("Sell_Exec_Value", "-"));
+            System.out.printf("   %-20s: %-10s | %-20s: %s%n", "Total Client Orders", snap.getOrDefault("Total_Orders", "-"), "Total Client Value", snap.getOrDefault("Total_Exec_Value", "-"));
+        }
     }
 }

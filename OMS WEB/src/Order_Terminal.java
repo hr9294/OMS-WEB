@@ -266,7 +266,7 @@ public class Order_Terminal {
     // 4. DATA CAPTURE: API FIRST (ADMIN LIVE -> QUANTBD TOKEN -> UI XPATH)
     // =========================================================================
     public static Map<String, String> getSnapshot(WebDriver driver, String clientCode, String symbol, String preferredExchange) {
-        String cleanSymbol = symbol.trim().toUpperCase();
+        String cleanSymbol = cleanSymbol(symbol);
 
         // Tier 1: Admin Live Order Terminal API (/live_orders/market_orders_compact/)
         try {
@@ -619,13 +619,23 @@ public class Order_Terminal {
         System.out.println("+===============================================================================================================================================================+");
     }
 
+        public static String cleanSymbol(String sym) {
+        if (sym == null) return "";
+        String s = sym.trim().toUpperCase();
+        s = s.replaceAll("\\[[A-Z0-9]+\\]", "");
+        if (s.contains(".")) {
+            s = s.split("\\.")[0];
+        }
+        return s.trim();
+    }
+
     private static String readInputSafe(WebDriver driver, By... locators) {
         for (By loc : locators) {
             try {
                 WebElement el = driver.findElement(loc);
                 String val = el.getDomProperty("value");
                 if (val != null && !val.trim().isEmpty()) {
-                    return val.trim().toUpperCase();
+                    return cleanSymbol(val);
                 }
             } catch (Exception ignored) {}
         }

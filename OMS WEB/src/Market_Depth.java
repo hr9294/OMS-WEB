@@ -104,6 +104,7 @@ public class Market_Depth {
     }
 
     public static void searchSymbolInDepth(WebDriver driver, String symbol, String exchange) {
+        symbol = cleanSymbol(symbol);
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
             js.executeScript(
@@ -138,7 +139,7 @@ public class Market_Depth {
     // 4. DATA CAPTURE: API FIRST (ADMIN SHARED -> QUANTBD TOKEN -> UI DOM)
     // =========================================================================
     public static Map<String, String> getSnapshot(WebDriver driver, String symbol, String preferredExchange) {
-        String cleanSymbol = symbol.trim().toUpperCase();
+        String cleanSymbol = cleanSymbol(symbol);
         String ex = (preferredExchange != null && !preferredExchange.isEmpty()) ? preferredExchange : "DSE";
 
         // Tier 1: Admin Shared Market Depth API (/shared/getmktdepth/)
@@ -630,13 +631,23 @@ public class Market_Depth {
         return sb.toString();
     }
 
+        public static String cleanSymbol(String sym) {
+        if (sym == null) return "";
+        String s = sym.trim().toUpperCase();
+        s = s.replaceAll("\\[[A-Z0-9]+\\]", "");
+        if (s.contains(".")) {
+            s = s.split("\\.")[0];
+        }
+        return s.trim();
+    }
+
     private static String readInputSafe(WebDriver driver, By... locators) {
         for (By loc : locators) {
             try {
                 WebElement el = driver.findElement(loc);
                 String val = el.getDomProperty("value");
                 if (val != null && !val.trim().isEmpty()) {
-                    return val.trim().toUpperCase();
+                    return cleanSymbol(val);
                 }
             } catch (Exception ignored) {}
         }

@@ -301,6 +301,16 @@ public class OMSweb_Trade {
 	// =========================================================================
 	// NAVIGATION HELPERS (TRADE <-> PORTFOLIO)
 	// =========================================================================
+	    public static String cleanSymbol(String sym) {
+        if (sym == null) return "";
+        String s = sym.trim().toUpperCase();
+        s = s.replaceAll("\\[[A-Z0-9]+\\]", "");
+        if (s.contains(".")) {
+            s = s.split("\\.")[0];
+        }
+        return s.trim();
+    }
+
 	public static void navigateToTradePage(WebDriver driver, WebDriverWait wait) {
 		try {
 			// Check if already on Trade portal (marketwatch_symbol or order_instrument visible)

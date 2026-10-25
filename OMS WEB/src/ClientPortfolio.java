@@ -78,7 +78,7 @@ public class ClientPortfolio {
     // 2. DATA CAPTURE (Called directly by OMSweb_Trade with zero prompts)
     // =========================================================================
     public static Map<String, String> getSnapshot(WebDriver driver, String clientCode, String symbol, String preferredExchange) {
-        String cleanSymbol = symbol.trim().toUpperCase();
+        String cleanSymbol = cleanSymbol(symbol);
 
         List<String> exchangeOrder = new ArrayList<>();
         exchangeOrder.add(preferredExchange != null && !preferredExchange.isEmpty() ? preferredExchange : "DSE");
@@ -333,6 +333,16 @@ public class ClientPortfolio {
     // =========================================================================
     // 5. UI TABLE SCRAPING (FALLBACK)
     // =========================================================================
+        public static String cleanSymbol(String sym) {
+        if (sym == null) return "";
+        String s = sym.trim().toUpperCase();
+        s = s.replaceAll("\\[[A-Z0-9]+\\]", "");
+        if (s.contains(".")) {
+            s = s.split("\\.")[0];
+        }
+        return s.trim();
+    }
+
     public static Map<String, String> defaultZeroPortfolio(String symbol) {
         Map<String, String> result = new LinkedHashMap<>();
         result.put("symbol", symbol);
@@ -706,7 +716,7 @@ public class ClientPortfolio {
                 WebElement el = driver.findElement(loc);
                 String val = el.getDomProperty("value");
                 if (val != null && !val.trim().isEmpty()) {
-                    return val.trim().toUpperCase();
+                    return cleanSymbol(val);
                 }
             } catch (Exception ignored) {}
         }
