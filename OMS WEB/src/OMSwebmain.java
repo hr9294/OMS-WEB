@@ -56,11 +56,12 @@ public class OMSwebmain {
         // Login
         OMSweb_Login.main(driver, sc);
 
-        // Trade Page (Automatically captures, executes trade, and audits Portfolio, Order Summary, Limits, Depth & Terminal)
+        // Trade Page 
         OMSweb_Trade.main(driver, sc);
 
-        // Optional / Standalone diagnostic viewers (uncomment only if inspecting a single widget standalone without trading):
+        
         // OMSweb_MultipleTrade.main(driver, sc);
+        // Position.main(driver, sc);
         // ClientPortfolio.main(driver, sc);
         // Order_Summary.main(driver, sc);
         // Account_Limits.main(driver, sc);

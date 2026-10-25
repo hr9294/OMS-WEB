@@ -169,6 +169,7 @@ public class OMSweb_Trade {
 			int int_side = Integer.parseInt(sc.nextLine());
 			String sideText = int_side == 1 ? "BUY" : "SELL";
 
+			Position.ClientPosition sellClientInfo = null;
 			if (int_side == 1) {
 				WebElement buy = wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//div[@title='Place BUY Order']")));
 				buy.click();
@@ -177,6 +178,17 @@ public class OMSweb_Trade {
 				WebElement sell = wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//div[@title='Place SELL Order']")));
 				sell.click();
 				System.out.println("Sell action performed.");
+
+				// --- Connect to Position Widget to Find Client with Saleable Shares ---
+				sellClientInfo = Position.promptOrSelectClientForSell(driver, sc, instrument, exchange, clientCode);
+				if (sellClientInfo != null && !sellClientInfo.getClientCode().isEmpty()) {
+					clientCode = sellClientInfo.getClientCode();
+				}
+				// Return to Trade Page if needed
+				if (!isAlreadyOnTradePage(driver)) {
+					navigateToTradePage(driver, wait);
+					wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//div[@title='Place SELL Order']"))).click();
+				}
 			} else {
 				System.out.println("Wrong value. Starting over.");
 				continue;
@@ -202,9 +214,18 @@ public class OMSweb_Trade {
 			System.out.println("Order Symbol selected: " + instrument);
 
 			// ---------- Fill Qty ----------
-			System.out.print("Enter Qty (or press Enter for default 10): ");
+			if (sideText.equals("SELL") && sellClientInfo != null && sellClientInfo.getSaleableQty() > 0) {
+				System.out.printf("Enter Qty (Max Saleable: %,.0f | default 10): ", sellClientInfo.getSaleableQty());
+			} else {
+				System.out.print("Enter Qty (or press Enter for default 10): ");
+			}
 			String qty = sc.nextLine().trim();
 			if (qty.isEmpty()) qty = "10";
+
+			if (sideText.equals("SELL") && sellClientInfo != null && sellClientInfo.getSaleableQty() > 0 && Integer.parseInt(qty) > sellClientInfo.getSaleableQty()) {
+				System.out.printf("[WARN] Entered qty %s exceeds client %s's saleable balance (%,.0f)! Order may be rejected.%n",
+						qty, clientCode, sellClientInfo.getSaleableQty());
+			}
 			WebElement qtyInput = driver.findElement(By.id("order_qty"));
 			qtyInput.clear();
 			qtyInput.sendKeys(qty);

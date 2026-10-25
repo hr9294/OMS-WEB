@@ -1,11 +1,18 @@
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Scanner;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.openqa.selenium.By;
 import org.openqa.selenium.ElementClickInterceptedException;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.Keys;
+import org.openqa.selenium.NoSuchElementException;
+import org.openqa.selenium.StaleElementReferenceException;
+import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -13,164 +20,297 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 
 public class OMSweb_MultipleTrade {
 
-    public static void main(WebDriver driver, Scanner sc) throws InterruptedException {
+    // ==========================================
+    // 1. DOM LOCATORS
+    // ==========================================
+    private static final By TRADE_PAGE_NAV        = By.xpath("//i[contains(@class, 'fa-exchange')]");
+    private static final By SEARCH_INSTRUMENT_INP = By.id("instrument");
+    private static final By MARKETWATCH_INPUT     = By.id("marketwatch_symbol");
+    private static final By ORDER_WINDOW          = By.id("order-window");
+    private static final By CLIENT_CODE_INPUT     = By.id("order_client_code");
+    private static final By ORDER_INSTRUMENT_INP  = By.id("order_instrument");
+    private static final By ORDER_QTY_INPUT       = By.id("order_qty");
+    private static final By LIMIT_RATE_INPUT      = By.id("limit_order_rate");
+    private static final By CONFIRM_YES_BUTTON    = By.xpath("//button[normalize-space()='YES']");
+    private static final By AUTOCOMPLETE_MENU     = By.cssSelector(".ui-autocomplete");
 
-        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(1));
+    // ==========================================
+    // 2. DOMAIN ENUM & DATA MODEL
+    // ==========================================
+    public enum OrderSide { BUY, SELL }
+
+    public static class TradeOrder {
+        final OrderSide side;
+        final String clientCode;
+        final String symbol;
+        final int quantity;
+        final double priceOffset;
+
+        public TradeOrder(OrderSide side, String clientCode, String symbol, int quantity, double priceOffset) {
+            this.side = side;
+            this.clientCode = clientCode;
+            this.symbol = symbol;
+            this.quantity = quantity;
+            this.priceOffset = priceOffset;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("[%s] Client: %s | %s x %d (Offset: %.2f)", 
+                side, clientCode, symbol, quantity, priceOffset);
+        }
+    }
+
+    // ==========================================
+    // 3. MAIN ENTRY POINT
+    // ==========================================
+    public static void main(WebDriver driver, Scanner sc) throws InterruptedException {
+        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(2));
         JavascriptExecutor js = (JavascriptExecutor) driver;
 
-        // Navigate to Trade Page
-        WebElement tradepage = driver.findElement(By.xpath("//i[@class='fa fa-exchange ']"));
-        tradepage.click();
-        Thread.sleep(300);
+        // 1. Navigate & Setup
+        waitAndClick(wait, TRADE_PAGE_NAV);
 
-        System.out.println("Search Symbol: ");
-        String instrument = sc.nextLine();
+        System.out.print("Search Symbol: ");
+        String instrument = sc.nextLine().trim();
 
-        WebElement searchSymbol = driver.findElement(By.id("instrument"));
-        searchSymbol.clear();
-        searchSymbol.sendKeys(instrument);
-        searchSymbol.sendKeys(Keys.ARROW_DOWN);
-        searchSymbol.sendKeys(Keys.ENTER);
-        js.executeScript("arguments[0].scrollIntoView(true);", searchSymbol);
-        Thread.sleep(500);
+        fillAndSelectAutocomplete(driver, wait, js, SEARCH_INSTRUMENT_INP, instrument);
+        fillAndSelectAutocomplete(driver, wait, js, MARKETWATCH_INPUT, instrument);
 
-        // Input into marketwatch_symbol
-        WebElement marketWatchInput = driver.findElement(By.id("marketwatch_symbol"));
-        marketWatchInput.clear();
-        marketWatchInput.sendKeys(instrument);
-        marketWatchInput.sendKeys(Keys.ARROW_DOWN);
-        marketWatchInput.sendKeys(Keys.ENTER);
-        js.executeScript("arguments[0].scrollIntoView(true);", marketWatchInput);
-        Thread.sleep(500);
-
-        Instant start = Instant.now();
-
+        // 2. Pre-generate Trade Pipeline
         int totalTrades = 500;
         double baseOffset = 0.1;
+        Duration maxDuration = Duration.ofSeconds(60);
 
-        // BUY
-        String[] buyClientCodes = {"10009", "10004", "10102", "10340", "10351"};
-        String[] buySymbols = {instrument, instrument, instrument, instrument, instrument};
-        String[] buyQtys = {"10", "12", "15", "18", "20"};
+        List<TradeOrder> tradeQueue = buildTradePipeline(driver, instrument, totalTrades, baseOffset);
 
-        // SELL
-        String[] sellClientCodes = {"11310", "12245", "14118", "19363", "26687"};
-        String[] sellSymbols = {instrument, instrument, instrument, instrument, instrument};
-        String[] sellQtys = {"10", "12", "15", "18", "20"};
+        // 3. High-Speed Execution Loop
+        Instant sessionStart = Instant.now();
+        int executedCount = 0;
+        int failedCount = 0;
 
-        for (int i = 0; i < totalTrades; i++) {
-            String action = (i % 2 == 0) ? "BUY" : "SELL";
-            int index = i / 2;
-            System.out.println("\nStarting trade " + (i + 1) + ": " + action);
+        System.out.println("\n>>> Starting Trade Engine [Max Duration: " + maxDuration.getSeconds() + "s] <<<");
 
-            try {
-                WebDriverWait wait1 = new WebDriverWait(driver, Duration.ofSeconds(1));
-                WebElement actionBtn = wait1.until(
-                    ExpectedConditions.elementToBeClickable(
-                        By.xpath("//div[@title='Place " + action + " Order']")
-                    )
-                );
-                actionBtn.click();
-                System.out.println("Clicked " + action + " window.");
-                Thread.sleep(100);
-
-            } catch (Exception e) {
-                System.out.println("Failed to click " + action + " button on trade " + (i + 1));
-                e.printStackTrace();
-                i--;
-            }
-
-            String clientCode = action.equals("BUY") ? buyClientCodes[index % buyClientCodes.length] : sellClientCodes[index % sellClientCodes.length];
-            String symbol = action.equals("BUY") ? buySymbols[index % buySymbols.length] : sellSymbols[index % sellSymbols.length];
-            String qty = action.equals("BUY") ? buyQtys[index % buyQtys.length] : sellQtys[index % sellQtys.length];
-
-            driver.findElement(By.xpath("//input[@id='order_client_code']")).sendKeys(clientCode);
-            System.out.println("Selected Client Code: " + clientCode);
-            Thread.sleep(100);
-
-            WebElement orderwindow = driver.findElement(By.id("order-window"));
-            orderwindow.click();
-            Thread.sleep(100);
-
-            WebElement symbolInput = driver.findElement(By.id("order_instrument"));
-            symbolInput.clear();
-            symbolInput.sendKeys(symbol);
-            wait.until(ExpectedConditions.presenceOfElementLocated(By.className("ui-autocomplete-input")));
-            symbolInput.sendKeys(Keys.ARROW_DOWN);
-            symbolInput.sendKeys(Keys.ENTER);
-            System.out.println("Selected Symbol: " + symbol);
-
-            driver.findElement(By.id("order_qty")).sendKeys(qty);
-            System.out.println("Entered Qty: " + qty);
-
-            // LTP fetching & limit rate
-            try {
-                String rowXPath = "//tr[contains(@class, '" + instrument.replace(".", "").toUpperCase() + "')]";
-                WebElement symbolRow = wait.until(ExpectedConditions.visibilityOfElementLocated(By.xpath(rowXPath)));
-
-                WebElement ltpCell = symbolRow.findElement(By.cssSelector("td.mw_table_ltp div"));
-                String ltpText = ltpCell.getText().replace(",", "").trim();
-                double ltp = Double.parseDouble(ltpText);
-                System.out.println("Fetched LTP: " + ltp);
-
-                // Dynamic offset
-                double offset = baseOffset + (i % 10) * 0.10;
-                double limitRate = action.equals("BUY") ? (ltp - offset) : (ltp + offset);
-
-                WebElement rateInput = driver.findElement(By.id("limit_order_rate"));
-                rateInput.clear();
-                rateInput.sendKeys(String.format("%.2f", limitRate));
-                System.out.println("Fetched LTP: " + ltp + " -> Limit Rate: " + String.format("%.2f", limitRate));
-            } catch (Exception e) {
-                e.printStackTrace();
-                System.out.println("Failed to fetch LTP or set limit rate.");
-                continue;
-            }
-
-            WebElement header = driver.findElement(By.xpath("//div[@class='wb-title']"));
-            if (header.getText().toLowerCase().contains("buy")) {
-                driver.findElement(By.xpath("//div[@class='col pl-0 pr-0 td-btn mt-2 mb-2 form-inline form-submit-btn-holder text-center']//button[@type='button'][normalize-space()='BUY']")).click();
-            } else {
-                driver.findElement(By.xpath("//div[@class='col pl-0 pr-0 td-btn mt-2 mb-2 form-inline form-submit-btn-holder text-center']//button[@type='button'][normalize-space()='SELL']")).click();
-            }
-
-            for (int attempt = 0; attempt < 3; attempt++) {
-                try {
-                    WebDriverWait wait1 = new WebDriverWait(driver, Duration.ofSeconds(1));
-                    WebElement yesBtn = wait1.until(
-                        ExpectedConditions.elementToBeClickable(By.xpath("//button[normalize-space()='YES']"))
-                    );
-                    yesBtn.click();
-                    System.out.println("YES button clicked.");
-                    break;
-                } catch (ElementClickInterceptedException e) {
-                    System.out.println("Click intercepted, retrying... Attempt " + (attempt + 1));
-                    Thread.sleep(100);
-                    if (attempt == 2) {
-                        WebElement yesBtn = driver.findElement(By.xpath("//button[normalize-space()='YES']"));
-                        ((JavascriptExecutor) driver).executeScript("arguments[0].click();", yesBtn);
-                        System.out.println("YES button clicked via JS fallback.");
-                    }
-                }
-            }
-
-            if (Duration.between(start, Instant.now()).getSeconds() >= 60) {
-                System.out.println("Stopped after 60 Seconds.");
+        for (int i = 0; i < tradeQueue.size(); i++) {
+            // Guard clause: Total time budget
+            if (Duration.between(sessionStart, Instant.now()).compareTo(maxDuration) >= 0) {
+                System.out.println("⏱ Max execution duration reached. Halting engine.");
                 break;
             }
 
-            // Clear fields after a BUY
-            if (action.equalsIgnoreCase("BUY")) {
-                try {
-                    driver.findElement(By.id("order_client_code")).clear();
-                    driver.findElement(By.id("order_instrument")).clear();
-                    driver.findElement(By.id("order_qty")).clear();
-                    driver.findElement(By.id("limit_order_rate")).clear();
-                    System.out.println("Order window cleared for next trade.");
-                } catch (Exception clearEx) {
-                    System.out.println("Failed to clear order window: " + clearEx.getMessage());
+            TradeOrder order = tradeQueue.get(i);
+            Instant tradeStart = Instant.now();
+
+            try {
+                // A. Open Order Modal
+                By actionBtn = By.xpath(String.format("//div[@title='Place %s Order']", order.side.name()));
+                waitAndClick(wait, actionBtn);
+
+                // B. Client Code & Focus
+                sendTextForcefully(driver, wait, js, CLIENT_CODE_INPUT, order.clientCode);
+                waitAndClick(wait, ORDER_WINDOW);
+
+                // C. Instrument Selection
+                fillAndSelectAutocomplete(driver, wait, js, ORDER_INSTRUMENT_INP, order.symbol);
+
+                // D. Quantity
+                sendTextForcefully(driver, wait, js, ORDER_QTY_INPUT, String.valueOf(order.quantity));
+
+                // E. Real-time LTP Extraction & Dynamic Price Calculation
+                double ltp = fetchLTP(wait, order.symbol);
+                double limitRate = (order.side == OrderSide.BUY) 
+                    ? (ltp - order.priceOffset) 
+                    : (ltp + order.priceOffset);
+
+                sendTextForcefully(driver, wait, js, LIMIT_RATE_INPUT, String.format("%.2f", limitRate));
+
+                // F. Submit BUY / SELL
+                By submitBtn = By.xpath(String.format(
+                    "//div[contains(@class, 'form-submit-btn-holder')]//button[normalize-space()='%s']", 
+                    order.side.name()
+                ));
+                waitAndClick(wait, submitBtn);
+
+                // G. Confirmation Modal with Retry & JS Fallback
+                confirmOrderWithRetry(driver, wait, js);
+
+                executedCount++;
+                long latency = Duration.between(tradeStart, Instant.now()).toMillis();
+                System.out.printf("✔ [#%d] Placed: %s @ %.2f (LTP: %.2f) [%d ms]%n", 
+                    executedCount, order, limitRate, ltp, latency);
+
+                // H. Reset Form on BUY to prevent input residue
+                if (order.side == OrderSide.BUY) {
+                    resetOrderForm(driver, js);
+                }
+
+            } catch (Exception ex) {
+                failedCount++;
+                System.err.printf("✖ [Trade #%d Failed] %s - %s%n", (i + 1), order.side, ex.getMessage());
+                resetOrderForm(driver, js); // Safe recovery
+            }
+        }
+
+        // 4. Telemetry & Performance Summary
+        printExecutionSummary(executedCount, failedCount, Duration.between(sessionStart, Instant.now()));
+    }
+
+    // ==========================================
+    // 4. RESILIENT DRIVER UTILITIES
+    // ==========================================
+
+    private static double fetchLTP(WebDriverWait wait, String symbol) {
+        String cleanSymbol = symbol.replace(".", "").toUpperCase();
+        By rowXPath = By.xpath("//tr[contains(@class, '" + cleanSymbol + "')]");
+        WebElement row = wait.until(ExpectedConditions.visibilityOfElementLocated(rowXPath));
+        WebElement ltpCell = row.findElement(By.cssSelector("td.mw_table_ltp div"));
+
+        String rawText = ltpCell.getText();
+        Matcher matcher = Pattern.compile("(\\d+(\\.\\d+)?)").matcher(rawText.replace(",", ""));
+        if (matcher.find()) {
+            return Double.parseDouble(matcher.group(1));
+        }
+        throw new IllegalStateException("Failed to parse numeric LTP from string: '" + rawText + "'");
+    }
+
+    private static void fillAndSelectAutocomplete(WebDriver driver, WebDriverWait wait, JavascriptExecutor js, By locator, String text) {
+        WebElement input = wait.until(ExpectedConditions.elementToBeClickable(locator));
+        clearFieldForcefully(driver, js, locator);
+        input.sendKeys(text);
+
+        try {
+            wait.until(ExpectedConditions.presenceOfElementLocated(AUTOCOMPLETE_MENU));
+        } catch (TimeoutException ignored) {
+            // Dropdown may use a custom DOM class; proceed to key selection
+        }
+        input.sendKeys(Keys.ARROW_DOWN);
+        input.sendKeys(Keys.ENTER);
+    }
+
+    private static void sendTextForcefully(WebDriver driver, WebDriverWait wait, JavascriptExecutor js, By locator, String value) {
+        WebElement element = wait.until(ExpectedConditions.visibilityOfElementLocated(locator));
+        clearFieldForcefully(driver, js, locator);
+        element.sendKeys(value);
+    }
+
+    /**
+     * Completely avoids getAttribute() calls while ensuring the input
+     * is thoroughly wiped across React, Vue, Angular, or standard forms.
+     */
+    private static void clearFieldForcefully(WebDriver driver, JavascriptExecutor js, By locator) {
+        try {
+            WebElement elem = driver.findElement(locator);
+            elem.sendKeys(Keys.chord(Keys.CONTROL, "a"), Keys.BACK_SPACE);
+            elem.clear();
+
+            // Direct JS wipe with event dispatching (no getAttribute needed)
+            js.executeScript(
+                "arguments[0].value = '';" +
+                "arguments[0].dispatchEvent(new Event('input', { bubbles: true }));" +
+                "arguments[0].dispatchEvent(new Event('change', { bubbles: true }));",
+                elem
+            );
+        } catch (NoSuchElementException ignored) {}
+    }
+
+    private static void waitAndClick(WebDriverWait wait, By locator) {
+        wait.until(ExpectedConditions.elementToBeClickable(locator)).click();
+    }
+
+    private static void confirmOrderWithRetry(WebDriver driver, WebDriverWait wait, JavascriptExecutor js) {
+        int maxAttempts = 3;
+        for (int attempt = 0; attempt < maxAttempts; attempt++) {
+            try {
+                WebElement btn = wait.until(ExpectedConditions.elementToBeClickable(CONFIRM_YES_BUTTON));
+                btn.click();
+                return;
+            } catch (ElementClickInterceptedException | StaleElementReferenceException e) {
+                if (attempt == maxAttempts - 1) {
+                    WebElement btn = driver.findElement(CONFIRM_YES_BUTTON);
+                    js.executeScript("arguments[0].click();", btn);
+                    return;
                 }
             }
         }
+    }
+
+    private static void resetOrderForm(WebDriver driver, JavascriptExecutor js) {
+        clearFieldForcefully(driver, js, CLIENT_CODE_INPUT);
+        clearFieldForcefully(driver, js, ORDER_INSTRUMENT_INP);
+        clearFieldForcefully(driver, js, ORDER_QTY_INPUT);
+        clearFieldForcefully(driver, js, LIMIT_RATE_INPUT);
+    }
+
+    // ==========================================
+    // 5. DATA PIPELINE BUILDER
+    // ==========================================
+    private static List<TradeOrder> buildTradePipeline(WebDriver driver, String symbol, int totalTrades, double baseOffset) {
+        String[] buyClients = {"10009", "10004", "10102", "10340", "10351"};
+        int[] buyQtys = {10, 12, 15, 18, 20};
+
+        String[] sellClients = null;
+        if (driver != null) {
+            try {
+                Position.navigateToPosition(driver);
+                Position.searchSymbolInPosition(driver, symbol, "DSE");
+                List<Position.ClientPosition> holdingClients = Position.getClientsWithSaleable(driver, symbol, "DSE");
+                if (holdingClients != null && !holdingClients.isEmpty()) {
+                    sellClients = holdingClients.stream().map(Position.ClientPosition::getClientCode).toArray(String[]::new);
+                    System.out.printf("[POSITION] Retrieved %d real client(s) with saleable %s from Position widget for multi-trade SELL side.%n",
+                            sellClients.length, symbol);
+                }
+            } catch (Exception e) {
+                System.out.println("[WARN: Position Multi-Trade] " + e.getMessage());
+            }
+            try {
+                OMSweb_Trade.navigateToTradePage(driver, new WebDriverWait(driver, Duration.ofSeconds(6)));
+            } catch (Exception ignored) {}
+        }
+
+        if (sellClients == null || sellClients.length == 0) {
+            sellClients = new String[]{"11310", "12245", "14118", "19363", "26687"};
+            System.out.println("[POSITION] Using default fallback clients for multi-trade SELL side.");
+        }
+
+        int[] sellQtys = {10, 12, 15, 18, 20};
+
+        List<TradeOrder> queue = new ArrayList<>(totalTrades);
+        for (int i = 0; i < totalTrades; i++) {
+            OrderSide side = (i % 2 == 0) ? OrderSide.BUY : OrderSide.SELL;
+            int idx = i / 2;
+            double offset = baseOffset + (i % 10) * 0.10;
+
+            String client = (side == OrderSide.BUY) 
+                ? buyClients[idx % buyClients.length] 
+                : sellClients[idx % sellClients.length];
+
+            int qty = (side == OrderSide.BUY) 
+                ? buyQtys[idx % buyQtys.length] 
+                : sellQtys[idx % sellQtys.length];
+
+            queue.add(new TradeOrder(side, client, symbol, qty, offset));
+        }
+        return queue;
+    }
+
+    private static List<TradeOrder> buildTradePipeline(String symbol, int totalTrades, double baseOffset) {
+        return buildTradePipeline(null, symbol, totalTrades, baseOffset);
+    }
+
+    // ==========================================
+    // 6. METRICS TELEMETRY
+    // ==========================================
+    private static void printExecutionSummary(int success, int failed, Duration totalDuration) {
+        double totalSeconds = totalDuration.toMillis() / 1000.0;
+        double tps = totalSeconds > 0 ? (success / totalSeconds) : 0;
+
+        System.out.println("\n=======================================================");
+        System.out.println("                 OMS EXECUTION SUMMARY                 ");
+        System.out.println("=======================================================");
+        System.out.printf("Total Execution Time : %.2f seconds%n", totalSeconds);
+        System.out.printf("Successful Orders    : %d%n", success);
+        System.out.printf("Failed Orders        : %d%n", failed);
+        System.out.printf("Throughput (TPS)     : %.2f Trades / Sec%n", tps);
+        System.out.println("=======================================================\n");
     }
 }
