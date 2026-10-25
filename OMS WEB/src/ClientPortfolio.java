@@ -26,10 +26,14 @@ public class ClientPortfolio {
    // private static final By TRADE_NAV     = By.xpath("//a[@data-link='live_orders/trade_portal'] | //div[@title='Trade' or contains(@class,'trade-tab')] | //a[normalize-space()='Trade'] | //i[contains(@class,'fa-exchange')]");
 
     // Portfolio Table locators
-    private static final By PORTFOLIO_TABLE = By.xpath("//table[contains(@class,'portfolio') or contains(@id,'portfolio') or contains(@id,'saleable')]");
+    private static final By PORTFOLIO_TABLE = By.xpath(
+            "//table[@id='symbol_position_table'] | " +
+            "//table[contains(@id,'position_table') or contains(@class,'position_table') or contains(@class,'position-table')] | " +
+            "//table[contains(@class,'portfolio') or contains(@id,'portfolio') or contains(@id,'saleable')] | " +
+            "//div[contains(@id,'account-portfolio') or contains(@id,'portfolio')]//table");
     private static final By TABLE_HEADERS   = By.xpath(".//thead//th | .//tr[1]//th");
    // private static final By REFRESH_BTN     = By.xpath("//div[@title='Portfolio']//i[contains(@class,'refresh')] | //button[contains(@id,'refresh')]");
-    private static final String ROW_XPATH   = ".//tbody//tr[td[normalize-space()='%s']]";
+    private static final String ROW_XPATH   = ".//tbody//tr[td[1][normalize-space()='%s'] or td[normalize-space()='%s']]";
 
     // =========================================================================
     // 1. MAIN ENTRY POINT
@@ -212,18 +216,9 @@ public class ClientPortfolio {
             result.put("gain", getJsonVal(block, "gain"));
             result.put("gain_percent", getJsonVal(block, "gain_percent", "gain_per"));
             return result;
-        } else if (json.contains("sum_totalcost") || json.startsWith("[[")) {
+        } else if (json.contains("sum_totalcost") || json.contains("data") || json.contains("success") || json.startsWith("[[")) {
             // Client account exists, but holds 0 shares of this symbol
-            result.put("symbol", targetSymbol);
-            result.put("total_qty", "0");
-            result.put("saleable_qty", "0");
-            result.put("avg_cost", "0.00");
-            result.put("total_cost", "0.00");
-            result.put("ltp", "0.00");
-            result.put("value", "0.00");
-            result.put("gain", "0.00");
-            result.put("gain_percent", "0.00");
-            return result;
+            return defaultZeroPortfolio(targetSymbol);
         }
         return Collections.emptyMap();
     }
@@ -337,18 +332,90 @@ public class ClientPortfolio {
     // =========================================================================
     // 5. UI TABLE SCRAPING (FALLBACK)
     // =========================================================================
+    public static Map<String, String> defaultZeroPortfolio(String symbol) {
+        Map<String, String> result = new LinkedHashMap<>();
+        result.put("symbol", symbol);
+        result.put("total_qty", "0");
+        result.put("saleable_qty", "0");
+        result.put("avg_cost", "0.00");
+        result.put("total_cost", "0.00");
+        result.put("ltp", "0.00");
+        result.put("value", "0.00");
+        result.put("gain", "0.00");
+        result.put("gain_percent", "0.00");
+        return result;
+    }
+
+    private static void normalizeUiKeys(Map<String, String> data) {
+        if (data.containsKey("saleable") && !data.containsKey("saleable_qty")) {
+            data.put("saleable_qty", data.get("saleable"));
+        }
+        if (data.containsKey("mkt_rate") && !data.containsKey("ltp")) {
+            data.put("ltp", data.get("mkt_rate"));
+        }
+        if (data.containsKey("mkt_value") && !data.containsKey("value")) {
+            data.put("value", data.get("mkt_value"));
+        }
+        if ((data.containsKey("%_gain") || data.containsKey("gain_%") || data.containsKey("gain_percentage")) && !data.containsKey("gain_percent")) {
+            data.put("gain_percent", data.getOrDefault("%_gain", data.getOrDefault("gain_%", data.get("gain_percentage"))));
+        }
+    }
+
     private static Map<String, String> fetchFromUiTable(WebDriver driver, String symbol) {
         Map<String, String> data = new LinkedHashMap<>();
-        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(6));
 
-        for (int attempt = 1; attempt <= 3; attempt++) {
+        // Tier 1: Direct fast JavaScript extraction from symbol_position_table DOM
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            Object res = js.executeScript(
+                "var sym = arguments[0].trim().toUpperCase();" +
+                "var tbl = document.getElementById('symbol_position_table') || document.querySelector('table[id*=position]') || document.querySelector('table.symbol_position_table');" +
+                "if (!tbl) return null;" +
+                "var headers = Array.from(tbl.querySelectorAll('thead th, tr:first-child th')).map(function(h) { return h.innerText.trim(); });" +
+                "var rows = tbl.querySelectorAll('tbody tr');" +
+                "if (rows.length === 0) return { _empty: true };" +
+                "for (var i = 0; i < rows.length; i++) {" +
+                "    var cells = rows[i].querySelectorAll('td');" +
+                "    if (cells.length > 0 && cells[0].innerText.trim().toUpperCase() === sym) {" +
+                "        var obj = {};" +
+                "        for (var j = 0; j < cells.length && j < headers.length; j++) {" +
+                "            if (headers[j]) obj[headers[j]] = cells[j].innerText.trim();" +
+                "        }" +
+                "        return obj;" +
+                "    }" +
+                "}" +
+                "return { _not_found: true };",
+                symbol
+            );
+
+            if (res instanceof Map) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> map = (Map<String, Object>) res;
+                if (map.containsKey("_not_found") || map.containsKey("_empty")) {
+                    return defaultZeroPortfolio(symbol);
+                }
+                for (Map.Entry<String, Object> entry : map.entrySet()) {
+                    String col = entry.getKey().toLowerCase().replace(" ", "_");
+                    data.put(col, String.valueOf(entry.getValue()).trim());
+                }
+                normalizeUiKeys(data);
+                data.putIfAbsent("symbol", symbol);
+                return data;
+            }
+        } catch (Exception ignored) {}
+
+        // Tier 2: Selenium Explicit wait on table locator
+        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(4));
+        for (int attempt = 1; attempt <= 2; attempt++) {
             try {
                 WebElement table = wait.until(ExpectedConditions.visibilityOfElementLocated(PORTFOLIO_TABLE));
                 Map<String, Integer> headerMap = getHeaderMap(table);
 
-                String rowPath = String.format(ROW_XPATH, symbol);
+                String rowPath = String.format(ROW_XPATH, symbol, symbol);
                 List<WebElement> rows = table.findElements(By.xpath(rowPath));
-                if (rows.isEmpty()) return data;
+                if (rows.isEmpty()) {
+                    return defaultZeroPortfolio(symbol);
+                }
 
                 List<WebElement> cells = rows.get(0).findElements(By.xpath("./td"));
                 for (Map.Entry<String, Integer> entry : headerMap.entrySet()) {
@@ -357,12 +424,17 @@ public class ClientPortfolio {
                         data.put(col, cells.get(entry.getValue()).getText().trim());
                     }
                 }
+                normalizeUiKeys(data);
+                data.putIfAbsent("symbol", symbol);
                 return data;
-            } catch (StaleElementReferenceException e) {
-                if (attempt == 3) throw e;
+            } catch (Exception e) {
+                if (attempt == 2) {
+                    System.out.printf("[WARN: UI Portfolio] Table not visible or timed out: %s%n", e.getMessage());
+                }
             }
         }
-        return data;
+
+        return defaultZeroPortfolio(symbol);
     }
 
     private static Map<String, Integer> getHeaderMap(WebElement table) {
