@@ -73,6 +73,9 @@ public class OMSwebmain {
         
       //Market Depth
         Market_Depth.main(driver, sc);
+        
+      //Order Terminal
+        Order_Terminal.main(driver, sc);
 
         sc.close();
     }

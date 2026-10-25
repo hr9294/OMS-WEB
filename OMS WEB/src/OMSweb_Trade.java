@@ -149,6 +149,7 @@ public class OMSweb_Trade {
 			Market_Depth.navigateToMarketDepth(driver);
 			Map<String, String> preDepth = Market_Depth.getSnapshot(driver, instrument, exchange);
 			System.out.println("[MARKET DEPTH] Pre-Trade Snapshot Captured (Source: " + preDepth.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
+			Market_Depth.printDepthReport(instrument, preDepth);
 
 			Order_Terminal.navigateToOrderTerminal(driver);
 			Map<String, String> preOrderTerminal = Order_Terminal.getSnapshot(driver, clientCode, instrument, exchange);
