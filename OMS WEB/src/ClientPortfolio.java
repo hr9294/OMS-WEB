@@ -59,10 +59,11 @@ public class ClientPortfolio {
         // Fetch client financial details through API
         Map<String, String> clientInfo = getClientDetails(driver, clientCode);
         if (!clientInfo.isEmpty()) {
-            System.out.printf("[CLIENT INFO] Name: %s | Cash Limit: %s | Mature Balance: %s%n",
+            System.out.printf("[CLIENT INFO] Name: %s | Cash Limit: %s | Mature Balance: %s | Commission: %s%n",
                     clientInfo.getOrDefault("client_name", "-"),
                     clientInfo.getOrDefault("cash_limit", "-"),
-                    clientInfo.getOrDefault("mature_balance", "-"));
+                    clientInfo.getOrDefault("mature_balance", "-"),
+                    clientInfo.getOrDefault("commission", "-"));
         }
 
         // Navigate, refresh and show snapshot
@@ -536,6 +537,8 @@ public class ClientPortfolio {
         String cashVerdict = "Cash data unavailable";
         String cashChangeText = "-";
         double cashNetDiff = 0.0;
+        double commCharges = 0.0;
+        double commPercent = 0.0;
 
         String matureStatus = "INFO";
         String matureVerdict = "Unsettled (Settles on T+2)";
@@ -545,17 +548,20 @@ public class ClientPortfolio {
             if (isBuy) {
                 // BUY: Cash should be DEDUCTED!
                 cashNetDiff = preCash - postCash;
+                commCharges = Math.max(0.0, cashNetDiff - tradeValue);
+                commPercent = (tradeValue > 0) ? (commCharges / tradeValue) * 100.0 : 0.0;
+
                 boolean isDeducted = (postCash < preCash);
                 boolean amountRight = isDeducted && (cashNetDiff >= (tradeValue * 0.90));
 
                 if (isDeducted && amountRight) {
                     cashPass = true;
                     cashStatus = "PASS";
-                    cashVerdict = String.format("Deducted RIGHTLY (-%,.2f, Trade: %,.2f)", cashNetDiff, tradeValue);
+                    cashVerdict = String.format("Deducted RIGHTLY (-%,.2f | Comm: %,.2f)", cashNetDiff, commCharges);
                 } else if (isDeducted) {
                     cashPass = true;
                     cashStatus = "PASS";
-                    cashVerdict = String.format("Deducted RIGHTLY (-%,.2f)", cashNetDiff);
+                    cashVerdict = String.format("Deducted RIGHTLY (-%,.2f | Comm: %,.2f)", cashNetDiff, commCharges);
                 } else {
                     cashPass = false;
                     cashStatus = "FAIL";
@@ -576,17 +582,20 @@ public class ClientPortfolio {
             } else {
                 // SELL: Cash should be ADDED!
                 cashNetDiff = postCash - preCash;
+                commCharges = Math.max(0.0, tradeValue - cashNetDiff);
+                commPercent = (tradeValue > 0) ? (commCharges / tradeValue) * 100.0 : 0.0;
+
                 boolean isAdded = (postCash > preCash);
                 boolean amountRight = isAdded && (cashNetDiff >= (tradeValue * 0.85));
 
                 if (isAdded && amountRight) {
                     cashPass = true;
                     cashStatus = "PASS";
-                    cashVerdict = String.format("Added RIGHTLY (+%,.2f, Trade: %,.2f)", cashNetDiff, tradeValue);
+                    cashVerdict = String.format("Added RIGHTLY (+%,.2f | Comm: %,.2f)", cashNetDiff, commCharges);
                 } else if (isAdded) {
                     cashPass = true;
                     cashStatus = "PASS";
-                    cashVerdict = String.format("Added RIGHTLY (+%,.2f)", cashNetDiff);
+                    cashVerdict = String.format("Added RIGHTLY (+%,.2f | Comm: %,.2f)", cashNetDiff, commCharges);
                 } else {
                     cashPass = false;
                     cashStatus = "FAIL";
@@ -606,6 +615,9 @@ public class ClientPortfolio {
                 }
             }
         }
+
+        String configuredComm = getVal(clientBefore, "commission");
+        if (configuredComm.equals("-")) configuredComm = getVal(clientAfter, "commission");
 
         // --- Render Output Tables ---
         System.out.println();
@@ -633,6 +645,8 @@ public class ClientPortfolio {
             System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Available Cash Limit", fmt(preCash), fmt(postCash), cashChangeText, cashStatus, cashVerdict);
             System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Mature Balance", fmt(preMature), fmt(postMature), matureChangeText, matureStatus, matureVerdict);
             System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Executed Trade Value", "-", fmt(tradeValue), fmt(tradeValue), "INFO", tradeQty + " @ " + fmt(tradeRate) + " (" + side + ")");
+            System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Commission & Fees", "-", fmt(commCharges), String.format("%s%s", isBuy ? "-" : "-", fmt(commCharges)), "INFO", String.format("%,.2f BDT (%.2f%%%s)", commCharges, commPercent, (!configuredComm.equals("-") && !configuredComm.equals("0") ? ", Rate: " + configuredComm : "")));
+            System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Net Cash Impact", fmt(preCash), fmt(postCash), cashChangeText, cashPass ? "PASS" : "FAIL", isBuy ? String.format("Trade: %,.2f + Comm: %,.2f", tradeValue, commCharges) : String.format("Trade: %,.2f - Comm: %,.2f", tradeValue, commCharges));
         } else {
             System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Available Cash Limit", "-", "-", "-", "SKIP", "Client cash details not loaded");
         }
@@ -647,11 +661,18 @@ public class ClientPortfolio {
 
         if (hasCashData) {
             if (cashPass) {
-                System.out.printf(">>> [CASH AUDIT SUCCESS] Client Cash was RIGHTLY %s by %,.2f BDT (Trade Value: %,.2f BDT + Comm)!%n",
-                        isBuy ? "DEDUCTED" : "ADDED", Math.abs(cashNetDiff), tradeValue);
+                System.out.printf(">>> [CASH AUDIT SUCCESS] Client Cash was RIGHTLY %s by %,.2f BDT!%n",
+                        isBuy ? "DEDUCTED" : "ADDED", Math.abs(cashNetDiff));
+                System.out.printf("    |-- Executed Trade Value : %,.2f BDT (%d @ %.2f on %s)%n", tradeValue, tradeQty, tradeRate, exchange);
+                System.out.printf("    |-- Commission & Charges : %,.2f BDT (%.2f%%%s)%n",
+                        commCharges, commPercent, (!configuredComm.equals("-") && !configuredComm.equals("0") ? ", Configured Rate: " + configuredComm : ""));
+                System.out.printf("    |-- Total Cash %-9s : %,.2f BDT (%s)%n",
+                        isBuy ? "Deducted" : "Credited",
+                        Math.abs(cashNetDiff),
+                        isBuy ? String.format("%,.2f + %,.2f Comm", tradeValue, commCharges) : String.format("%,.2f - %,.2f Comm", tradeValue, commCharges));
             } else {
-                System.err.printf(">>> [CASH AUDIT FAILURE] Client Cash was WRONGLY %s on %s trade! (Pre: %,.2f, Post: %,.2f)%n",
-                        isBuy ? "NOT DEDUCTED" : "NOT ADDED", side, preCash, postCash);
+                System.err.printf(">>> [CASH AUDIT FAILURE] Client Cash was WRONGLY %s on %s trade! (Pre: %,.2f, Post: %,.2f, Trade: %,.2f, Comm: %,.2f)%n",
+                        isBuy ? "NOT DEDUCTED" : "NOT ADDED", side, preCash, postCash, tradeValue, commCharges);
             }
         }
         System.out.println();

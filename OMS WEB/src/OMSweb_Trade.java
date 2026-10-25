@@ -123,11 +123,12 @@ public class OMSweb_Trade {
 			// ---------- Client Financial Details via API ----------
 			Map<String, String> clientInfoBefore = ClientPortfolio.getClientDetails(driver, clientCode);
 			if (!clientInfoBefore.isEmpty()) {
-				System.out.printf("[CLIENT INFO] %s (BO: %s) | Cash Limit: %s | Mature: %s%n",
+				System.out.printf("[CLIENT INFO] %s (BO: %s) | Cash Limit: %s | Mature: %s | Commission: %s%n",
 						clientInfoBefore.getOrDefault("client_name", "-"),
 						clientInfoBefore.getOrDefault("bo_id", "-"),
 						clientInfoBefore.getOrDefault("cash_limit", "-"),
-						clientInfoBefore.getOrDefault("mature_balance", "-"));
+						clientInfoBefore.getOrDefault("mature_balance", "-"),
+						clientInfoBefore.getOrDefault("commission", "-"));
 			}
 
 			// =====================================================================
