@@ -892,6 +892,29 @@ public class OMSweb_Trade {
 		}
 	}
 
+	// ---------- DOM PROPERTY HELPERS (Selenium 4 compliant, replacing deprecated getAttribute) ----------
+	private static String getElementValue(WebElement el) {
+		if (el == null) return "";
+		try {
+			String val = el.getDomProperty("value");
+			if (val == null || val.trim().isEmpty()) {
+				val = el.getDomAttribute("value");
+			}
+			return val != null ? val.trim() : "";
+		} catch (Exception e) {
+			return "";
+		}
+	}
+
+	private static String getElementValueSafe(WebDriver driver, By by) {
+		try {
+			WebElement el = driver.findElement(by);
+			return getElementValue(el);
+		} catch (Exception e) {
+			return "";
+		}
+	}
+
 	// ---------- DISPLAY COMMISSION ON BUY & SELL WINDOW ----------
 	public static void displayCommissionOnOrderWindow(WebDriver driver, String clientCode, int qty, double rate) {
 		if (driver == null) return;
@@ -904,8 +927,8 @@ public class OMSweb_Trade {
 			if (qty <= 0) {
 				try {
 					WebElement qEl = driver.findElement(By.id("order_qty"));
-					String qVal = qEl.getAttribute("value");
-					if (qVal != null && !qVal.trim().isEmpty()) {
+					String qVal = getElementValue(qEl);
+					if (!qVal.isEmpty()) {
 						qty = Integer.parseInt(qVal.replaceAll("[^0-9]", ""));
 					}
 				} catch (Exception ignored) {}
@@ -913,8 +936,8 @@ public class OMSweb_Trade {
 			if (rate <= 0.0) {
 				try {
 					WebElement rEl = driver.findElement(By.id("limit_order_rate"));
-					String rVal = rEl.getAttribute("value");
-					if (rVal != null && !rVal.trim().isEmpty()) {
+					String rVal = getElementValue(rEl);
+					if (!rVal.isEmpty()) {
 						rate = Double.parseDouble(rVal.replaceAll("[^0-9.]", ""));
 					}
 				} catch (Exception ignored) {}
@@ -926,9 +949,9 @@ public class OMSweb_Trade {
 				// 1. Try DOM hidden input #stock_commission_value
 				try {
 					WebElement scv = driver.findElement(By.id("stock_commission_value"));
-					String v = scv.getAttribute("value");
-					if (v != null && !v.trim().isEmpty()) {
-						double parsed = Double.parseDouble(v.trim());
+					String v = getElementValue(scv);
+					if (!v.isEmpty()) {
+						double parsed = Double.parseDouble(v);
 						if (parsed > 0) {
 							commRate = (parsed < 0.05) ? (parsed * 100.0) : parsed;
 						}
@@ -1123,11 +1146,11 @@ public class OMSweb_Trade {
 			String side) throws InterruptedException {
 		handleRate(driver, wait, sc, instrument, side);
 		try {
-			String clientCode = driver.findElement(By.id("order_client_code")).getAttribute("value");
-			String qtyStr = driver.findElement(By.id("order_qty")).getAttribute("value");
-			String rateStr = driver.findElement(By.id("limit_order_rate")).getAttribute("value");
-			int q = (qtyStr != null && !qtyStr.isEmpty()) ? Integer.parseInt(qtyStr.replaceAll("[^0-9]", "")) : 0;
-			double r = (rateStr != null && !rateStr.isEmpty()) ? Double.parseDouble(rateStr.replaceAll("[^0-9.]", "")) : 0.0;
+			String clientCode = getElementValueSafe(driver, By.id("order_client_code"));
+			String qtyStr = getElementValueSafe(driver, By.id("order_qty"));
+			String rateStr = getElementValueSafe(driver, By.id("limit_order_rate"));
+			int q = (!qtyStr.isEmpty()) ? Integer.parseInt(qtyStr.replaceAll("[^0-9]", "")) : 0;
+			double r = (!rateStr.isEmpty()) ? Double.parseDouble(rateStr.replaceAll("[^0-9.]", "")) : 0.0;
 			displayCommissionOnOrderWindow(driver, clientCode, q, r);
 		} catch (Exception ignored) {}
 		submitOrder(driver, side);
