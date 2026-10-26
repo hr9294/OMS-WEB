@@ -904,8 +904,12 @@ public class Position {
                     WebElement rateInp = driver.findElement(By.id("limit_order_rate"));
                     rateInp.clear();
                     rateInp.sendKeys(String.valueOf(rate));
+                    ((JavascriptExecutor) driver).executeScript("$('#limit_order_rate').trigger('input').trigger('change');");
                 } catch (Exception ignored) {}
             }
+
+            // Display Commission on Sell Window if client has commission
+            OMSweb_Trade.displayCommissionOnOrderWindow(driver, clientCode, qty, rate);
 
             // Click Submit SELL Button
             driver.findElement(By.xpath(

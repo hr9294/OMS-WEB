@@ -124,6 +124,9 @@ public class OMSweb_MultipleTrade {
 
                 sendTextForcefully(driver, wait, js, LIMIT_RATE_INPUT, String.format("%.2f", limitRate));
 
+                // Display Commission on Order Window if client has commission
+                OMSweb_Trade.displayCommissionOnOrderWindow(driver, order.clientCode, order.quantity, limitRate);
+
                 // F. Submit BUY / SELL
                 By submitBtn = By.xpath(String.format(
                     "//div[contains(@class, 'form-submit-btn-holder')]//button[normalize-space()='%s']", 

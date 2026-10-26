@@ -315,6 +315,9 @@ public class OMSweb_Trade {
 				order_client_code.click();
 				order_client_code.clear();
 				order_client_code.sendKeys(clientCode);
+				try {
+					((JavascriptExecutor) driver).executeScript("$('#order_client_code').trigger('change');");
+				} catch (Exception ignored) {}
 				System.out.println("Client Code entered: " + clientCode);
 				Thread.sleep(200);
 
@@ -332,6 +335,9 @@ public class OMSweb_Trade {
 				WebElement qtyElem = driver.findElement(By.id("order_qty"));
 				qtyElem.clear();
 				qtyElem.sendKeys(String.valueOf(tradeQty));
+				try {
+					((JavascriptExecutor) driver).executeScript("$('#order_qty').trigger('input').trigger('change');");
+				} catch (Exception ignored) {}
 				System.out.println("Qty entered: " + tradeQty);
 
 				// Fill Rate (only for limit orders)
@@ -340,11 +346,15 @@ public class OMSweb_Trade {
 						WebElement rateInput = driver.findElement(By.id("limit_order_rate"));
 						rateInput.clear();
 						rateInput.sendKeys(String.valueOf(executedRate));
+						((JavascriptExecutor) driver).executeScript("$('#limit_order_rate').trigger('input').trigger('change');");
 					} catch (Exception ignored) {}
 				} else if (isPriorityOrder && executedRate <= 0.0) {
 					double mRate = getEnteredRate(driver);
 					if (mRate > 0.0) executedRate = mRate;
 				}
+
+				// Display Commission on Buy and Sell window when client has commission
+				displayCommissionOnOrderWindow(driver, clientCode, tradeQty, executedRate);
 
 				// Submit Order
 				WebElement header = driver.findElement(By.xpath("//div[@class='wb-title']"));
@@ -862,6 +872,155 @@ public class OMSweb_Trade {
 		}
 	}
 
+	// ---------- DISPLAY COMMISSION ON BUY & SELL WINDOW ----------
+	public static void displayCommissionOnOrderWindow(WebDriver driver, String clientCode, int qty, double rate) {
+		if (driver == null) return;
+		try {
+			if (clientCode == null) clientCode = "";
+			String cleanCode = clientCode.trim();
+			boolean isZeroComm = cleanCode.equals("00239") || cleanCode.equals("239");
+
+			// If qty or rate were not provided, attempt reading from order modal DOM inputs
+			if (qty <= 0) {
+				try {
+					WebElement qEl = driver.findElement(By.id("order_qty"));
+					String qVal = qEl.getAttribute("value");
+					if (qVal != null && !qVal.trim().isEmpty()) {
+						qty = Integer.parseInt(qVal.replaceAll("[^0-9]", ""));
+					}
+				} catch (Exception ignored) {}
+			}
+			if (rate <= 0.0) {
+				try {
+					WebElement rEl = driver.findElement(By.id("limit_order_rate"));
+					String rVal = rEl.getAttribute("value");
+					if (rVal != null && !rVal.trim().isEmpty()) {
+						rate = Double.parseDouble(rVal.replaceAll("[^0-9.]", ""));
+					}
+				} catch (Exception ignored) {}
+			}
+
+			// Determine client commission rate
+			double commRate = 0.0;
+			if (!isZeroComm && !cleanCode.isEmpty()) {
+				// 1. Try DOM hidden input #stock_commission_value
+				try {
+					WebElement scv = driver.findElement(By.id("stock_commission_value"));
+					String v = scv.getAttribute("value");
+					if (v != null && !v.trim().isEmpty()) {
+						double parsed = Double.parseDouble(v.trim());
+						if (parsed > 0) {
+							commRate = (parsed < 0.05) ? (parsed * 100.0) : parsed;
+						}
+					}
+				} catch (Exception ignored) {}
+
+				// 2. If not found in DOM, fetch client details via API
+				if (commRate <= 0.0) {
+					try {
+						Map<String, String> details = ClientPortfolio.getClientDetails(driver, cleanCode);
+						if (details != null && details.containsKey("commission")) {
+							String cStr = details.get("commission").replaceAll("[^0-9.]", "");
+							if (!cStr.isEmpty()) {
+								commRate = Double.parseDouble(cStr);
+							}
+						}
+					} catch (Exception ignored) {}
+				}
+			}
+
+			if (commRate <= 0.0) {
+				isZeroComm = true;
+			}
+
+			double orderValue = (qty > 0 && rate > 0.0) ? (qty * rate) : 0.0;
+			double commAmount = (commRate > 0.0 && orderValue > 0.0) ? (orderValue * (commRate / 100.0)) : 0.0;
+
+			// Update DOM via JavascriptExecutor: unblur and style #stock_commission, update values
+			JavascriptExecutor js = (JavascriptExecutor) driver;
+			js.executeScript(
+					"var commRate = arguments[0];" +
+					"var commAmount = arguments[1];" +
+					"var orderVal = arguments[2];" +
+					"var isZero = arguments[3];" +
+					"var sc = document.getElementById('stock_commission');" +
+					"var scv = document.getElementById('stock_commission_value');" +
+					"var sv = document.getElementById('stock_value');" +
+					"var ov = document.getElementById('order_value');" +
+					"if (typeof blurTimerCommission !== 'undefined' && blurTimerCommission) { clearTimeout(blurTimerCommission); }" +
+					"if (sc) {" +
+					"    sc.classList.remove('blurred');" +
+					"    sc.style.setProperty('filter', 'none', 'important');" +
+					"    sc.style.setProperty('-webkit-filter', 'none', 'important');" +
+					"    sc.style.setProperty('opacity', '1', 'important');" +
+					"    if (!isZero && commRate > 0) {" +
+					"        sc.style.setProperty('display', 'inline-block', 'important');" +
+					"        sc.style.setProperty('visibility', 'visible', 'important');" +
+					"        sc.style.setProperty('color', '#FFB800', 'important');" +
+					"        sc.style.setProperty('font-weight', 'bold', 'important');" +
+					"        sc.style.setProperty('font-size', '13px', 'important');" +
+					"        if (commAmount > 0) {" +
+					"            sc.innerText = ' (Comm: ' + commAmount.toFixed(2) + ' BDT @ ' + commRate.toFixed(2) + '%)';" +
+					"            sc.title = 'Client Commission: ' + commAmount.toFixed(2) + ' BDT (' + commRate.toFixed(2) + '%)';" +
+					"        } else {" +
+					"            sc.innerText = ' (Comm: ' + commRate.toFixed(2) + '%)';" +
+					"            sc.title = 'Client Commission Rate: ' + commRate.toFixed(2) + '%';" +
+					"        }" +
+					"    } else {" +
+					"        sc.innerText = '';" +
+					"        sc.style.setProperty('display', 'none', 'important');" +
+					"    }" +
+					"}" +
+					"if (scv) {" +
+					"    scv.value = (!isZero && commRate > 0) ? (commRate / 100.0).toString() : '0.00';" +
+					"}" +
+					"if (sv && orderVal > 0) {" +
+					"    var totalVal = (!isZero && commRate > 0) ? (orderVal + commAmount) : orderVal;" +
+					"    sv.innerHTML = '<span style=\'color: #00DB86;\'><b>' + Number(totalVal).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</b></span>';" +
+					"}" +
+					"if (ov && orderVal > 0) {" +
+					"    ov.value = ((!isZero && commRate > 0) ? (orderVal + commAmount) : orderVal).toFixed(2);" +
+					"}" +
+					"if (!window._comm_listener_attached) {" +
+					"    window._comm_listener_attached = true;" +
+					"    $(document).on('input change keyup', '#order_qty, #limit_order_rate', function() {" +
+					"        var _sc = document.getElementById('stock_commission');" +
+					"        var _scv = document.getElementById('stock_commission_value');" +
+					"        if (_sc && _scv) {" +
+					"            var cR = parseFloat(_scv.value) || 0;" +
+					"            var q = parseFloat($('#order_qty').val()) || 0;" +
+					"            var r = parseFloat($('#limit_order_rate').val()) || 0;" +
+					"            if (cR > 0 && q > 0 && r > 0) {" +
+					"                var cAmt = (q * r) * cR;" +
+					"                var pct = cR < 0.05 ? (cR * 100) : cR;" +
+					"                _sc.classList.remove('blurred');" +
+					"                _sc.style.setProperty('filter', 'none', 'important');" +
+					"                _sc.style.setProperty('-webkit-filter', 'none', 'important');" +
+					"                _sc.style.setProperty('opacity', '1', 'important');" +
+					"                _sc.style.setProperty('display', 'inline-block', 'important');" +
+					"                _sc.style.setProperty('color', '#FFB800', 'important');" +
+					"                _sc.style.setProperty('font-weight', 'bold', 'important');" +
+					"                _sc.innerText = ' (Comm: ' + cAmt.toFixed(2) + ' BDT @ ' + pct.toFixed(2) + '%)';" +
+					"            } else if (cR <= 0) {" +
+					"                _sc.innerText = '';" +
+					"                _sc.style.setProperty('display', 'none', 'important');" +
+					"            }" +
+					"        }" +
+					"    });" +
+					"}",
+					commRate, commAmount, orderValue, isZeroComm);
+
+			if (!isZeroComm && commRate > 0) {
+				System.out.printf("[BUY/SELL WINDOW] Displayed Commission for Client %s: %.2f BDT (%.2f%%) | Order Value: %,.2f BDT%n",
+						cleanCode, commAmount, commRate, orderValue);
+			} else {
+				System.out.printf("[BUY/SELL WINDOW] Client %s has zero commission (Commission not shown on order window)%n", cleanCode);
+			}
+		} catch (Exception e) {
+			System.out.println("[WARN: displayCommissionOnOrderWindow] " + e.getMessage());
+		}
+	}
+
 	// ---------- SHARED HELPERS ----------
 	private static void fillOrderFields(WebDriver driver, WebDriverWait wait, String instrument, String qty,
 			String clientCode) throws InterruptedException {
@@ -869,6 +1028,9 @@ public class OMSweb_Trade {
 		client.click();
 		client.clear();
 		client.sendKeys(clientCode);
+		try {
+			((JavascriptExecutor) driver).executeScript("$('#order_client_code').trigger('change');");
+		} catch (Exception ignored) {}
 
 		WebElement symbol = driver.findElement(By.id("order_instrument"));
 		symbol.clear();
@@ -880,7 +1042,14 @@ public class OMSweb_Trade {
 		WebElement qtyInput = driver.findElement(By.id("order_qty"));
 		qtyInput.clear();
 		qtyInput.sendKeys(qty);
+		try {
+			((JavascriptExecutor) driver).executeScript("$('#order_qty').trigger('input').trigger('change');");
+		} catch (Exception ignored) {}
 		System.out.println("Fields filled: client=" + clientCode + ", symbol=" + instrument + ", qty=" + qty);
+
+		int q = 0;
+		try { q = Integer.parseInt(qty.trim()); } catch (Exception ignored) {}
+		displayCommissionOnOrderWindow(driver, clientCode, q, 0.0);
 	}
 
 	private static void handleRate(WebDriver driver, WebDriverWait wait, Scanner sc, String instrument, String side)
@@ -909,11 +1078,22 @@ public class OMSweb_Trade {
 		}
 		rateInput.clear();
 		rateInput.sendKeys(rate);
+		try {
+			((JavascriptExecutor) driver).executeScript("$('#limit_order_rate').trigger('input').trigger('change');");
+		} catch (Exception ignored) {}
 	}
 
 	private static void enterRateAndSubmit(WebDriver driver, WebDriverWait wait, Scanner sc, String instrument,
 			String side) throws InterruptedException {
 		handleRate(driver, wait, sc, instrument, side);
+		try {
+			String clientCode = driver.findElement(By.id("order_client_code")).getAttribute("value");
+			String qtyStr = driver.findElement(By.id("order_qty")).getAttribute("value");
+			String rateStr = driver.findElement(By.id("limit_order_rate")).getAttribute("value");
+			int q = (qtyStr != null && !qtyStr.isEmpty()) ? Integer.parseInt(qtyStr.replaceAll("[^0-9]", "")) : 0;
+			double r = (rateStr != null && !rateStr.isEmpty()) ? Double.parseDouble(rateStr.replaceAll("[^0-9.]", "")) : 0.0;
+			displayCommissionOnOrderWindow(driver, clientCode, q, r);
+		} catch (Exception ignored) {}
 		submitOrder(driver, side);
 		System.out.println("Submitted " + side + " order.");
 	}
