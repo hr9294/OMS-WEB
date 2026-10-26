@@ -25,13 +25,19 @@ public class OMSwebmain {
         options.addArguments("--disable-blink-features=AutomationControlled");
         options.addArguments("--disable-infobars");
 
-        // Privacy tweaks: disable password manager, notifications, etc.
+        // Privacy tweaks: disable password manager, leak detection, notifications, etc.
         Map<String, Object> prefs = new HashMap<>();
         prefs.put("credentials_enable_service", false);
         prefs.put("profile.password_manager_enabled", false);
+        prefs.put("profile.password_manager_leak_detection", false);
+        prefs.put("password_manager_leak_detection", false);
         prefs.put("safebrowsing.enabled", false);
+        prefs.put("safebrowsing.enhanced", false);
         prefs.put("profile.default_content_setting_values.notifications", 2);
         options.setExperimentalOption("prefs", prefs);
+
+        // Disable password leak detection & safe browsing check popups
+        options.addArguments("--disable-features=PasswordLeakDetection,PasswordCheck,PasswordLeakToggleMove,SafeBrowsing");
         options.setAcceptInsecureCerts(true);
 
         driver = new ChromeDriver(options);

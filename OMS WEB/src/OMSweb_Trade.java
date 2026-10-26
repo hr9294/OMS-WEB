@@ -440,6 +440,9 @@ public class OMSweb_Trade {
 
 	public static void navigateToTradePage(WebDriver driver, WebDriverWait wait) {
 		try {
+			// Automatically dismiss any password breach or system modal before navigation
+			OMSweb_Login.pressOkAutomatically(driver);
+
 			// Check if already on Trade portal (marketwatch_symbol or order_instrument visible)
 			if (isAlreadyOnTradePage(driver)) {
 				System.out.println("[NAV] Already on Trade page.");

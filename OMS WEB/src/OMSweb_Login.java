@@ -2,6 +2,10 @@ import java.util.Scanner;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
+import org.openqa.selenium.JavascriptExecutor;
+import java.util.List;
+import java.awt.Robot;
+import java.awt.event.KeyEvent;
 
 
 public class OMSweb_Login {
@@ -96,9 +100,53 @@ public class OMSweb_Login {
             // No active session
             System.out.println("No active session popup detected. Proceeding normally...");
         }
-	
-       
-        //sc.close();
-      
+
+        // Automatically press OK on breach or any system modal
+        pressOkAutomatically(driver);
+    }
+
+    // =========================================================================
+    // AUTOMATIC POPUP & BREACH MODAL DISMISSAL ("OK" BUTTON)
+    // =========================================================================
+    public static void pressOkAutomatically(WebDriver driver) {
+        try {
+            Thread.sleep(800); // Allow Chrome / DOM a brief moment to render popup if triggered
+        } catch (InterruptedException ignored) {}
+
+        // 1. Try DOM OK button if present in web modal
+        try {
+            List<WebElement> okButtons = driver.findElements(By.xpath(
+                "//button[translate(normalize-space(), 'ok', 'OK')='OK'] | " +
+                "//a[translate(normalize-space(), 'ok', 'OK')='OK'] | " +
+                "//button[contains(translate(text(), 'ok', 'OK'), 'OK')] | " +
+                "//div[contains(@class,'modal') or contains(@class,'dialog') or contains(@class,'popup')]//button"
+            ));
+            for (WebElement btn : okButtons) {
+                if (btn.isDisplayed()) {
+                    ((JavascriptExecutor) driver).executeScript("arguments[0].click();", btn);
+                    System.out.println("[POPUP] Automatically clicked OK button in DOM.");
+                    Thread.sleep(300);
+                    return;
+                }
+            }
+        } catch (Exception ignored) {}
+
+        // 2. Try JavaScript browser alert if present
+        try {
+            driver.switchTo().alert().accept();
+            System.out.println("[POPUP] Automatically accepted browser alert.");
+            return;
+        } catch (Exception ignored) {}
+
+        // 3. Native Robot ENTER key press to hit focused 'OK' button on Chrome native breach modal
+        try {
+            Robot robot = new Robot();
+            robot.delay(150);
+            robot.keyPress(KeyEvent.VK_ENTER);
+            robot.keyRelease(KeyEvent.VK_ENTER);
+            System.out.println("[POPUP] Automatically pressed OK (ENTER key) on popup.");
+        } catch (Exception e) {
+            System.out.println("[POPUP] Note sending automatic OK: " + e.getMessage());
+        }
+    }
 }
-	}
