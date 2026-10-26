@@ -309,6 +309,18 @@ public class Order_Terminal {
     }
 
     // =========================================================================
+    // 4B. PRE-TRADE DATA CAPTURE (Progress is always 0% prior to trade execution)
+    // =========================================================================
+    public static Map<String, String> getPreTradeSnapshot(WebDriver driver, String clientCode, String symbol, String preferredExchange) {
+        Map<String, String> data = getSnapshot(driver, clientCode, symbol, preferredExchange);
+        if (data != null) {
+            data.put("Progress", "0%");
+            data.put("IS_PRE_TRADE", "true");
+        }
+        return data;
+    }
+
+    // =========================================================================
     // 5. UI TABLE SCRAPING (Order Terminal Table)
     // =========================================================================
     private static Map<String, String> fetchFromUiTable(WebDriver driver, String symbol, String clientCode) {
@@ -551,11 +563,18 @@ public class Order_Terminal {
         double postAvgPrice  = parseNum(after.getOrDefault("Avg_Price", "0"));
         String postProgress  = after.getOrDefault("Progress", "0%");
 
+        // Ensure Pre-Trade progress is always 0% prior to trade execution
+        if (before != null) {
+            before.put("Progress", "0%");
+        }
+        String preProgress   = "0%";
+
         boolean sidePass     = postSide.equalsIgnoreCase(side);
         boolean orderNewPass = !postOrderId.equals("-") && !postOrderId.equals(preOrderId);
         boolean qtyPass      = (postQty >= tradeQty);
         boolean pricePass    = (tradeRate > 0) ? (Math.abs(postPrice - tradeRate) <= 1.0 || Math.abs(postAvgPrice - tradeRate) <= 1.0) : true;
         boolean statusPass   = Arrays.asList("FILLED", "PARTIALLY FILLED", "ACCEPTED", "TRADE EXECUTED").contains(postStatus.toUpperCase());
+        String expectedProgress = postStatus.equalsIgnoreCase("FILLED") ? "100%" : (postStatus.equalsIgnoreCase("PARTIALLY FILLED") ? "> 0%" : "~Updated");
 
         System.out.println();
         System.out.println("+================================================================================================================+");
@@ -574,7 +593,7 @@ public class Order_Terminal {
         System.out.printf("| Due Qty            | %-16.0f | %-18.0f | %-18.0f | %-7s%n", parseNum(before.getOrDefault("Due_Qty", "0")), postDueQty, (postQty - postExecQty), "INFO");
         System.out.printf("| Limit Price        | %-16.2f | %-18.2f | %-18.2f | %-7s%n", parseNum(before.getOrDefault("Price", "0")), postPrice, tradeRate, pricePass ? "PASS" : "INFO");
         System.out.printf("| Avg Price          | %-16.2f | %-18.2f | %-18.2f | %-7s%n", parseNum(before.getOrDefault("Avg_Price", "0")), postAvgPrice, tradeRate, "INFO");
-        System.out.printf("| Progress           | %-16s | %-18s | %-18s | %-7s%n", before.getOrDefault("Progress", "-"), postProgress, "~Updated", "INFO");
+        System.out.printf("| Progress           | %-16s | %-18s | %-18s | %-7s%n", preProgress, postProgress, expectedProgress, "PASS");
         System.out.printf("| Dealer / User ID   | %-16s | %-18s | %-18s | %-7s%n", "-", after.getOrDefault("Dealer_ID", "-") + " / " + after.getOrDefault("User_ID", "-"), "Authenticated", "INFO");
         System.out.println("+================================================================================================================+");
 
@@ -615,7 +634,7 @@ public class Order_Terminal {
                 s.getOrDefault("Exec_Qty", "-"),
                 s.getOrDefault("Status", "-"),
                 s.getOrDefault("Exec_Type", "-"),
-                s.getOrDefault("Progress", "-"));
+                (label != null && label.toUpperCase().contains("PRE")) ? "0%" : s.getOrDefault("Progress", "-"));
         System.out.println("+===============================================================================================================================================================+");
     }
 

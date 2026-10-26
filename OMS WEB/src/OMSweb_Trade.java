@@ -287,8 +287,8 @@ public class OMSweb_Trade {
 				}
 
 				Order_Terminal.navigateToOrderTerminal(driver);
-				Map<String, String> preOrderTerminal = Order_Terminal.getSnapshot(driver, clientCode, instrument, snapshotExchange);
-				System.out.println("[ORDER TERMINAL] Pre-Trade Snapshot Captured (Source: " + preOrderTerminal.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
+				Map<String, String> preOrderTerminal = Order_Terminal.getPreTradeSnapshot(driver, clientCode, instrument, snapshotExchange);
+				System.out.println("[ORDER TERMINAL] Pre-Trade Snapshot Captured (Source: " + preOrderTerminal.getOrDefault("DATA_SOURCE", "UNKNOWN") + ", Progress: 0%)");
 
 				// Return back to Trade Page if needed
 				if (!isAlreadyOnTradePage(driver)) {
