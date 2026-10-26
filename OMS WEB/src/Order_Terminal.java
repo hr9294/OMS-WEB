@@ -72,6 +72,34 @@ public class Order_Terminal {
 
         Map<String, String> snapshot = getSnapshot(driver, clientCode, symbol, exchange);
         printSnapshot("ORDER TERMINAL SNAPSHOT FOR " + symbol, snapshot);
+
+        // Status Filter & Multi-Selection Menu
+        System.out.println("\nOrder Terminal Status Filter & Selection Options:");
+        System.out.println("  1. Filter by Status: All Accepted Orders");
+        System.out.println("  2. Filter by Status: All Partially Filled Orders");
+        System.out.println("  3. Filter & Select Both (All Accepted & Partially Filled Orders)");
+        System.out.println("  4. Select Accepted & Partially Filled -> Right-Click Execute at Market");
+        System.out.println("  0. Skip (Exit)");
+        System.out.print("Enter choice (0-4, default=0): ");
+        String choice = sc.nextLine().trim();
+
+        if (choice.equals("1")) {
+            filterByStatus(driver, "ACCEPTED");
+            selectOrdersByStatus(driver, "ACCEPTED");
+        } else if (choice.equals("2")) {
+            filterByStatus(driver, "PARTIALLY FILLED");
+            selectOrdersByStatus(driver, "PARTIALLY FILLED");
+        } else if (choice.equals("3")) {
+            filterAndSelectAcceptedAndPartiallyFilled(driver);
+        } else if (choice.equals("4")) {
+            List<WebElement> selected = filterAndSelectAcceptedAndPartiallyFilled(driver);
+            if (!selected.isEmpty()) {
+                System.out.print("Right-click and Execute at Market for these " + selected.size() + " orders? (1=YES / 0=NO): ");
+                if (sc.nextLine().trim().equals("1")) {
+                    executeSelectedAtMarket(driver, selected);
+                }
+            }
+        }
         System.out.println("=======================================================\n");
     }
 
@@ -260,6 +288,295 @@ public class Order_Terminal {
         } catch (Exception ignored) {}
 
         return null;
+    }
+
+    // =========================================================================
+    // 3C. STATUS FILTERING & SELECTION (ACCEPTED & PARTIALLY FILLED ORDERS)
+    // =========================================================================
+
+    /**
+     * Filters the Order Terminal table by Order Status.
+     * Supported values:
+     *   "ACCEPTED"         - Shows only Accepted orders
+     *   "PARTIALLY FILLED" - Shows only Partially Filled orders
+     *   "ACTIVE"           - Shows both Accepted and Partially Filled orders
+     *   "FILLED"           - Shows Filled orders
+     *   "ALL"              - Resets filter, shows all orders
+     */
+    public static int filterByStatus(WebDriver driver, String status) {
+        navigateToOrderTerminal(driver);
+        try {
+            // 1. Try UI status dropdown/select if available
+            try {
+                WebElement selectElem = driver.findElement(By.xpath(
+                    "//select[contains(@id,'status') or contains(@name,'status') or contains(@class,'order_status') or contains(@id,'order_terminal_status')] | " +
+                    "//div[contains(@class,'order_terminal')]//select"
+                ));
+                if (selectElem != null && selectElem.isDisplayed()) {
+                    org.openqa.selenium.support.ui.Select s = new org.openqa.selenium.support.ui.Select(selectElem);
+                    for (WebElement opt : s.getOptions()) {
+                        String optText = opt.getText().toUpperCase();
+                        if (status.equalsIgnoreCase("ACTIVE")) {
+                            if (optText.contains("ALL") || optText.contains("OPEN") || optText.contains("ACTIVE")) {
+                                s.selectByVisibleText(opt.getText());
+                                break;
+                            }
+                        } else if (optText.contains(status.toUpperCase())) {
+                            s.selectByVisibleText(opt.getText());
+                            break;
+                        }
+                    }
+                    ((JavascriptExecutor) driver).executeScript("arguments[0].dispatchEvent(new Event('change', {bubbles:true}));", selectElem);
+                }
+            } catch (Exception ignored) {}
+
+            // 2. DOM Table Filter: adjust row visibility according to status
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            Object res = js.executeScript(
+                "var target = (arguments[0] || '').toUpperCase();" +
+                "var tbl = document.querySelector('table.order_terminal_table, table[id*=\"market_table\"]');" +
+                "if (!tbl) return 0;" +
+                "var rows = tbl.querySelectorAll('tbody tr');" +
+                "var count = 0;" +
+                "for (var i = 0; i < rows.length; i++) {" +
+                "    var r = rows[i];" +
+                "    var txt = (r.innerText || r.textContent || '').toUpperCase();" +
+                "    var match = false;" +
+                "    if (target === 'ALL' || target === '') {" +
+                "        match = true;" +
+                "    } else if (target === 'ACTIVE' || target === 'ACCEPTED_OR_PARTIALLY_FILLED') {" +
+                "        match = (txt.indexOf('ACCEPTED') !== -1 || txt.indexOf('PARTIALLY FILLED') !== -1 || txt.indexOf('PARTIALLY') !== -1);" +
+                "    } else if (target === 'ACCEPTED') {" +
+                "        match = (txt.indexOf('ACCEPTED') !== -1 && txt.indexOf('PARTIALLY') === -1);" +
+                "    } else if (target === 'PARTIALLY FILLED' || target === 'PARTIALLY_FILLED') {" +
+                "        match = (txt.indexOf('PARTIALLY FILLED') !== -1 || txt.indexOf('PARTIALLY') !== -1);" +
+                "    } else {" +
+                "        match = (txt.indexOf(target) !== -1);" +
+                "    }" +
+                "    r.style.display = match ? '' : 'none';" +
+                "    if (match) count++;" +
+                "}" +
+                "return count;",
+                status
+            );
+
+            int matchCount = (res instanceof Number) ? ((Number) res).intValue() : 0;
+            System.out.printf("[ORDER TERMINAL] Filtered table by Status '%s'. Visible matching orders: %d%n", status, matchCount);
+            Thread.sleep(400);
+            return matchCount;
+        } catch (Exception e) {
+            System.out.println("[WARN: Status Filter] " + e.getMessage());
+            return 0;
+        }
+    }
+
+    /**
+     * Multi-selects all orders matching the specified statuses (e.g. ACCEPTED and/or PARTIALLY FILLED).
+     */
+    public static List<WebElement> selectOrdersByStatus(WebDriver driver, String... targetStatuses) {
+        navigateToOrderTerminal(driver);
+        List<WebElement> selected = new ArrayList<>();
+        try {
+            Thread.sleep(400);
+            WebElement table = driver.findElement(TERMINAL_TABLE);
+            List<WebElement> rows = table.findElements(By.xpath(".//tbody//tr"));
+            Actions actions = new Actions(driver);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            System.out.printf("[ORDER TERMINAL] Scanning %d rows for statuses: %s...%n",
+                    rows.size(), Arrays.toString(targetStatuses));
+
+            List<String[]> selectedSummary = new ArrayList<>();
+
+            for (WebElement row : rows) {
+                try {
+                    // Check if row is visible (not hidden by filter)
+                    if (!row.isDisplayed()) continue;
+
+                    String rowText = row.getText().toUpperCase();
+                    boolean matches = false;
+                    String matchedStatus = "";
+
+                    for (String st : targetStatuses) {
+                        String cleanSt = st.trim().toUpperCase();
+                        if (cleanSt.equals("ACCEPTED") && rowText.contains("ACCEPTED") && !rowText.contains("PARTIALLY")) {
+                            matches = true;
+                            matchedStatus = "ACCEPTED";
+                            break;
+                        } else if ((cleanSt.equals("PARTIALLY FILLED") || cleanSt.equals("PARTIALLY_FILLED")) && (rowText.contains("PARTIALLY FILLED") || rowText.contains("PARTIALLY"))) {
+                            matches = true;
+                            matchedStatus = "PARTIALLY FILLED";
+                            break;
+                        } else if (cleanSt.equals("ACTIVE") && (rowText.contains("ACCEPTED") || rowText.contains("PARTIALLY"))) {
+                            matches = true;
+                            matchedStatus = rowText.contains("PARTIALLY") ? "PARTIALLY FILLED" : "ACCEPTED";
+                            break;
+                        } else if (rowText.contains(cleanSt)) {
+                            matches = true;
+                            matchedStatus = cleanSt;
+                            break;
+                        }
+                    }
+
+                    if (matches) {
+                        selected.add(row);
+
+                        // Highlight & check row
+                        js.executeScript(
+                            "var r = arguments[0];" +
+                            "r.classList.add('selected');" +
+                            "r.classList.add('active');" +
+                            "r.classList.add('order_highlight');" +
+                            "var cb = r.querySelector('input[type=\"checkbox\"]');" +
+                            "if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); }",
+                            row
+                        );
+
+                        // Multi-select with CTRL key
+                        try {
+                            actions.keyDown(Keys.CONTROL).click(row).keyUp(Keys.CONTROL).perform();
+                        } catch (Exception ignored) {}
+
+                        // Extract summary info
+                        String rowId = row.getDomAttribute("id");
+                        List<WebElement> cells = row.findElements(By.xpath("./td"));
+                        String orderId = (rowId != null && !rowId.isEmpty()) ? rowId : (cells.size() > 1 ? cells.get(1).getText().trim() : "-");
+                        String clientCode = (cells.size() > 4 ? cells.get(4).getText().trim() : "-");
+                        String sym = (cells.size() > 5 ? cells.get(5).getText().trim() : "-");
+                        String side = (cells.size() > 7 ? cells.get(7).getText().trim() : "-");
+                        String price = (cells.size() > 9 ? cells.get(9).getText().trim() : "-");
+                        String qty = (cells.size() > 11 ? cells.get(11).getText().trim() : "-");
+
+                        selectedSummary.add(new String[]{ orderId, clientCode, sym, side, price, qty, matchedStatus });
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            // Print summary table of selected orders
+            System.out.println();
+            System.out.println("+=======================================================================================================+");
+            System.out.printf("| SELECTED ORDERS BY STATUS IN ORDER TERMINAL (Total Selected: %d)%-36s |%n", selected.size(), "");
+            System.out.println("+=======================================================================================================+");
+            System.out.printf("| %-4s | %-12s | %-10s | %-10s | %-6s | %-8s | %-8s | %-18s |%n",
+                    "#", "Order ID", "Client", "Symbol", "Side", "Price", "Qty", "Status");
+            System.out.println("+-------------------------------------------------------------------------------------------------------+");
+
+            if (selectedSummary.isEmpty()) {
+                System.out.println("| No matching orders found for statuses: " + Arrays.toString(targetStatuses) + "                              |");
+            } else {
+                for (int i = 0; i < selectedSummary.size(); i++) {
+                    String[] s = selectedSummary.get(i);
+                    System.out.printf("| %-4d | %-12s | %-10s | %-10s | %-6s | %-8s | %-8s | %-18s |%n",
+                            (i + 1), s[0], s[1], s[2], s[3], s[4], s[5], s[6]);
+                }
+            }
+            System.out.println("+=======================================================================================================+\n");
+
+        } catch (Exception e) {
+            System.out.println("[WARN: Select Orders By Status] " + e.getMessage());
+        }
+        return selected;
+    }
+
+    /**
+     * Convenience method: Filters Order Terminal for Accepted and Partially Filled orders,
+     * then selects all of them.
+     */
+    public static List<WebElement> filterAndSelectAcceptedAndPartiallyFilled(WebDriver driver) {
+        System.out.println("[ORDER TERMINAL] Filtering and selecting all Accepted and Partially Filled orders...");
+        filterByStatus(driver, "ACTIVE");
+        return selectOrdersByStatus(driver, "ACCEPTED", "PARTIALLY FILLED");
+    }
+
+    /**
+     * Executes the currently selected rows at Market via Right-Click Context Menu.
+     */
+    public static boolean executeSelectedAtMarket(WebDriver driver, List<WebElement> selectedRows) {
+        if (selectedRows == null || selectedRows.isEmpty()) {
+            System.out.println("[TERMINAL] No selected rows provided for market execution.");
+            return false;
+        }
+
+        try {
+            Actions actions = new Actions(driver);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(4));
+
+            WebElement anchor = selectedRows.get(selectedRows.size() - 1);
+            System.out.printf("[TERMINAL] Right-clicking on selected order row (%s) to trigger 'Execute at Market'...%n",
+                    anchor.getDomAttribute("id"));
+
+            // 1. Right click via Actions
+            try {
+                actions.contextClick(anchor).perform();
+            } catch (Exception ignored) {}
+
+            // 2. Dispatch contextmenu event via JavaScript
+            js.executeScript(
+                "var row = arguments[0];" +
+                "var rect = row.getBoundingClientRect();" +
+                "var evt = new MouseEvent('contextmenu', {" +
+                "    bubbles: true," +
+                "    cancelable: true," +
+                "    view: window," +
+                "    clientX: rect.left + rect.width / 2," +
+                "    clientY: rect.top + rect.height / 2," +
+                "    button: 2," +
+                "    buttons: 2" +
+                "});" +
+                "row.dispatchEvent(evt);" +
+                "if (window.jQuery) { window.jQuery(row).trigger('contextmenu'); }",
+                anchor
+            );
+            Thread.sleep(600);
+
+            // 3. Click "Execute at Market" in context menu
+            boolean clicked = false;
+            try {
+                By execMenuBy = By.xpath(
+                    "//*[contains(@class,'context-menu') or contains(@class,'dropdown') or contains(@class,'menu') or self::li or self::a or self::span or self::div]" +
+                    "[translate(normalize-space(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')='execute at market' or " +
+                    "contains(translate(normalize-space(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'execute at market') or " +
+                    "contains(translate(normalize-space(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'execute market') or " +
+                    "contains(translate(normalize-space(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'market execute')]"
+                );
+                WebElement item = wait.until(ExpectedConditions.elementToBeClickable(execMenuBy));
+                item.click();
+                clicked = true;
+                System.out.println("✔ [CONTEXT MENU] Clicked 'Execute at Market' option.");
+            } catch (Exception e) {
+                Object res = js.executeScript(
+                    "var items = Array.from(document.querySelectorAll('.context-menu-item, .dropdown-item, .menu-item, ul.context-menu-list li, ul.dropdown-menu li, .vakata-context li, li, a, span, div'));" +
+                    "var target = items.find(function(el) {" +
+                    "    var txt = (el.innerText || el.textContent || '').trim().toLowerCase();" +
+                    "    return txt === 'execute at market' || txt.includes('execute at market') || txt === 'execute market' || txt === 'market execute';" +
+                    "});" +
+                    "if (target) { target.click(); return true; }" +
+                    "return false;"
+                );
+                if (Boolean.TRUE.equals(res)) {
+                    clicked = true;
+                    System.out.println("✔ [CONTEXT MENU: JS] Clicked 'Execute at Market' via DOM.");
+                }
+            }
+
+            Thread.sleep(500);
+
+            // 4. Confirm modal if shown
+            try {
+                WebElement confirmYes = wait.until(ExpectedConditions.elementToBeClickable(By.xpath(
+                    "//button[@id='cnfirmConfirmBtn'] | //button[normalize-space()='YES'] | //button[normalize-space()='Yes'] | //button[normalize-space()='Confirm'] | //button[normalize-space()='OK']")));
+                confirmYes.click();
+                System.out.println("✔ [CONFIRMATION] Confirmed market execution dialog [YES].");
+            } catch (Exception ignored) {}
+
+            Thread.sleep(1500);
+            refresh(driver);
+            return clicked;
+        } catch (Exception e) {
+            System.out.println("[WARN: Execute at Market] " + e.getMessage());
+            return false;
+        }
     }
 
     // =========================================================================

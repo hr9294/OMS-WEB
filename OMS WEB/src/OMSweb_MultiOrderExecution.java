@@ -537,180 +537,48 @@ public class OMSweb_MultiOrderExecution {
             Order_Terminal.refresh(driver);
             Thread.sleep(1000);
 
-            // Filter table by symbol to ensure target orders are immediately visible
+            // 1. Filter table by symbol to ensure target orders are in view
             try {
                 Order_Terminal.filterOrderTerminal(driver, "", symbol);
                 Thread.sleep(600);
             } catch (Exception ignored) {}
 
-            // Locate terminal table rows
-            List<WebElement> rows = driver.findElements(By.xpath(
-                    "//table[contains(@id,'market_table') or contains(@class,'order_terminal_table')]//tbody//tr"));
+            // 2. Filter by Status: All Accepted and Partially Filled orders
+            System.out.println("[TERMINAL] Filtering by Status: ALL ACCEPTED and PARTIALLY FILLED orders...");
+            Order_Terminal.filterByStatus(driver, "ACTIVE");
 
-            if (rows.isEmpty()) {
-                System.out.println("[WARN: TERMINAL] No table rows found in Order Terminal.");
-                return false;
-            }
+            // 3. Multi-select all Accepted and Partially Filled orders
+            System.out.println("[TERMINAL] Selecting all Accepted and Partially Filled order rows...");
+            List<WebElement> selectedRows = Order_Terminal.selectOrdersByStatus(driver, "ACCEPTED", "PARTIALLY FILLED");
 
-            System.out.printf("[TERMINAL] Located %d rows in Order Terminal table. Matching placed orders...%n", rows.size());
-
-            List<WebElement> selectedRows = new ArrayList<>();
-            Actions actions = new Actions(driver);
-
-            // Select matching rows for our placed orders
+            // Attach Order IDs to placed orders from the selected rows
             for (OrderItem order : placedOrders) {
-                for (WebElement row : rows) {
+                for (WebElement row : selectedRows) {
                     try {
                         String rowText = row.getText().toUpperCase();
                         if (rowText.contains(symbol) && rowText.contains(order.getClientCode())) {
-                            if (!selectedRows.contains(row)) {
-                                selectedRows.add(row);
-
-                                // Extract and attach Order ID from row
-                                String rowId = row.getDomAttribute("id");
-                                if (rowId == null || rowId.isEmpty() || rowId.equals("-")) {
-                                    List<WebElement> cells = row.findElements(By.tagName("td"));
-                                    if (cells.size() >= 2) rowId = cells.get(1).getText().trim();
-                                }
-                                if (rowId != null && !rowId.isEmpty()) {
-                                    order.setOrderId(rowId);
-                                }
-                                break;
+                            String rowId = row.getDomAttribute("id");
+                            if (rowId != null && !rowId.isEmpty()) {
+                                order.setOrderId(rowId);
                             }
                         }
                     } catch (Exception ignored) {}
                 }
             }
 
-            if (selectedRows.isEmpty() && !rows.isEmpty()) {
-                System.out.println("[TERMINAL] Exact client rows not matched. Falling back to selecting top row(s)...");
-                selectedRows.add(rows.get(0));
-                if (rows.size() > 1 && placedOrders.size() > 1) {
-                    selectedRows.add(rows.get(1));
-                }
+            if (selectedRows.isEmpty()) {
+                System.out.println("[TERMINAL] No Accepted or Partially Filled orders found to execute.");
+                return false;
             }
 
-            System.out.printf("[TERMINAL] Selecting %d order row(s) for multi-order execution...%n", selectedRows.size());
-
-            // 1. Perform Multi-Selection (CTRL + Click + JS highlight + Checkbox)
-            for (int i = 0; i < selectedRows.size(); i++) {
-                WebElement targetRow = selectedRows.get(i);
-                try {
-                    // Scroll into view
-                    js.executeScript("arguments[0].scrollIntoView({block: 'center', inline: 'center'});", targetRow);
-
-                    // Add highlight styling and select classes
-                    js.executeScript(
-                            "var r = arguments[0];" +
-                            "r.classList.add('selected');" +
-                            "r.classList.add('active');" +
-                            "r.classList.add('order_highlight');" +
-                            "var cb = r.querySelector('input[type=\"checkbox\"]');" +
-                            "if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); }",
-                            targetRow
-                    );
-
-                    // Click with CONTROL key for native multi-select
-                    actions.keyDown(Keys.CONTROL).click(targetRow).keyUp(Keys.CONTROL).perform();
-                    Thread.sleep(200);
-
-                    System.out.printf("  ✔ Selected Row #%d (ID: %s)%n", (i + 1), targetRow.getDomAttribute("id"));
-                } catch (Exception e) {
-                    // JS fallback click
-                    js.executeScript("arguments[0].click();", targetRow);
-                }
-            }
-
-            Thread.sleep(500);
-
-            // 2. Perform RIGHT-CLICK (Context Click) on the selected order row
-            WebElement anchorRow = selectedRows.get(selectedRows.size() - 1);
-            System.out.println("[TERMINAL] Performing RIGHT-CLICK on selected order row to open Context Menu...");
-
-            try {
-                actions.contextClick(anchorRow).perform();
-            } catch (Exception ex) {
-                System.out.println("[WARN: Actions contextClick] " + ex.getMessage());
-            }
-
-            // JavaScript Contextmenu event trigger fallback
-            js.executeScript(
-                    "var row = arguments[0];" +
-                    "var rect = row.getBoundingClientRect();" +
-                    "var evt = new MouseEvent('contextmenu', {" +
-                    "    bubbles: true," +
-                    "    cancelable: true," +
-                    "    view: window," +
-                    "    clientX: rect.left + rect.width / 2," +
-                    "    clientY: rect.top + rect.height / 2," +
-                    "    button: 2," +
-                    "    buttons: 2" +
-                    "});" +
-                    "row.dispatchEvent(evt);" +
-                    "if (window.jQuery) { window.jQuery(row).trigger('contextmenu'); }",
-                    anchorRow
-            );
-
-            Thread.sleep(600);
-
-            // 3. Click "Execute at Market" in the Context Menu
-            System.out.println("[TERMINAL] Searching for 'Execute at Market' option in Context Menu...");
-            boolean clickedExecute = false;
-
-            // Direct Selenium Click Attempt
-            try {
-                By execMenuBy = By.xpath(
-                        "//*[contains(@class,'context-menu') or contains(@class,'dropdown') or contains(@class,'menu') or self::li or self::a or self::span or self::div]" +
-                        "[translate(normalize-space(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')='execute at market' or " +
-                        "contains(translate(normalize-space(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'execute at market') or " +
-                        "contains(translate(normalize-space(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'execute market') or " +
-                        "contains(translate(normalize-space(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'market execute')]"
-                );
-                WebElement execMenuItem = wait.until(ExpectedConditions.elementToBeClickable(execMenuBy));
-                execMenuItem.click();
-                clickedExecute = true;
-                System.out.println("✔ [CONTEXT MENU] Successfully clicked 'Execute at Market' option!");
-            } catch (Exception e) {
-                // JavaScript DOM Query Fallback for Context Menu
-                Object res = js.executeScript(
-                        "var items = Array.from(document.querySelectorAll('.context-menu-item, .dropdown-item, .menu-item, ul.context-menu-list li, ul.dropdown-menu li, .vakata-context li, li, a, span, div'));" +
-                        "var target = items.find(function(el) {" +
-                        "    var txt = (el.innerText || el.textContent || '').trim().toLowerCase();" +
-                        "    return txt === 'execute at market' || txt.includes('execute at market') || txt === 'execute market' || txt === 'market execute';" +
-                        "});" +
-                        "if (target) { target.click(); return true; }" +
-                        "return false;"
-                );
-                if (Boolean.TRUE.equals(res)) {
-                    clickedExecute = true;
-                    System.out.println("✔ [CONTEXT MENU: JS] Successfully clicked 'Execute at Market' via DOM trigger!");
-                }
-            }
-
-            Thread.sleep(500);
-
-            // 4. Handle any Confirmation Modal ("Do you want to execute at market? [YES]")
-            try {
-                WebElement confirmModalYes = wait.until(ExpectedConditions.elementToBeClickable(By.xpath(
-                        "//button[@id='cnfirmConfirmBtn'] | //button[normalize-space()='YES'] | //button[normalize-space()='Yes'] | //button[normalize-space()='Confirm'] | //button[normalize-space()='OK']")));
-                confirmModalYes.click();
-                System.out.println("✔ [CONFIRMATION] Confirmed 'Execute at Market' dialog [YES].");
-            } catch (Exception ignored) {}
-
-            Thread.sleep(1500);
-
-            // 5. Refresh Order Terminal table to reflect execution updates
-            Order_Terminal.refresh(driver);
-            Thread.sleep(1000);
-
-            return clickedExecute;
+            // 4. Right-Click and Execute at Market via Order_Terminal helper
+            return Order_Terminal.executeSelectedAtMarket(driver, selectedRows);
 
         } catch (Exception e) {
             System.out.println("[WARN: Context Execution] " + e.getMessage());
             return false;
         }
     }
-
     // =========================================================================
     // 7. REAL-TIME MULTI-WIDGET AUDIT & VERIFICATION ENGINE (ALL 6 WIDGETS)
     // =========================================================================
