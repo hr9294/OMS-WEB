@@ -1,6 +1,6 @@
 import java.time.Duration;
-//import java.util.ArrayList;
-//import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
@@ -111,196 +111,260 @@ public class OMSweb_Trade {
 
 		while (keepTrading) {
 
-			// ---------- 1. Get Client Code & Exchange FIRST for Snapshot ----------
-			System.out.print("\nEnter Client Code (default 23986): ");
-			String clientCode = sc.nextLine().trim();
-			if (clientCode.isEmpty()) clientCode = "23986";
-
-			System.out.print("Enter Exchange (DSE / CSE, default DSE): ");
+			// ---------- 1. Get Exchange FIRST (default DSE) ----------
+			System.out.print("\nEnter Exchange (DSE / CSE, default DSE): ");
 			String exchange = sc.nextLine().trim().toUpperCase();
 			if (exchange.isEmpty()) exchange = "DSE";
 
-			// ---------- Client Financial Details via API ----------
-			Map<String, String> clientInfoBefore = ClientPortfolio.getClientDetails(driver, clientCode);
-			if (!clientInfoBefore.isEmpty()) {
-				System.out.printf("[CLIENT INFO] %s (BO: %s) | Cash Limit: %s | Mature: %s | Commission: %s%n",
-						clientInfoBefore.getOrDefault("client_name", "-"),
-						clientInfoBefore.getOrDefault("bo_id", "-"),
-						clientInfoBefore.getOrDefault("cash_limit", "-"),
-						clientInfoBefore.getOrDefault("mature_balance", "-"),
-						clientInfoBefore.getOrDefault("commission", "-"));
-			}
-
-			// =====================================================================
-			// [STEP 1] CAPTURE PRE-TRADE SNAPSHOT (DSE/CSE API -> UI FALLBACK)
-			// =====================================================================
-			System.out.println("\n[PORTFOLIO] Capturing PRE-TRADE Snapshot...");
-			navigateToPortfolioPage(driver, wait);
-			Map<String, String> beforeSnapshot = ClientPortfolio.getSnapshot(driver, clientCode, instrument, exchange);
-			System.out.println("[PORTFOLIO] Pre-Trade Snapshot Captured (Source: " + beforeSnapshot.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
-			
-			Order_Summary.navigateToOrderSummary(driver);
-			Map<String, String> preOrderSummary = Order_Summary.getSnapshot(driver, clientCode, instrument, exchange);
-			System.out.println("[ORDER SUMMARY] Pre-Trade Snapshot Captured (Source: " + preOrderSummary.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
-			
-			Account_Limits.navigateToAccountLimits(driver);
-			Map<String, String> preAccountLimits = Account_Limits.getSnapshot(driver, clientCode, exchange);
-			System.out.println("[ACCOUNT LIMITS] Pre-Trade Snapshot Captured (Source: " + preAccountLimits.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
-			
-			Market_Depth.navigateToMarketDepth(driver);
-			Map<String, String> preDepth = Market_Depth.getSnapshot(driver, instrument, exchange);
-			System.out.println("[MARKET DEPTH] Pre-Trade Snapshot Captured (Source: " + preDepth.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
-			Market_Depth.printDepthReport(instrument, preDepth);
-
-			Order_Terminal.navigateToOrderTerminal(driver);
-			Map<String, String> preOrderTerminal = Order_Terminal.getSnapshot(driver, clientCode, instrument, exchange);
-			System.out.println("[ORDER TERMINAL] Pre-Trade Snapshot Captured (Source: " + preOrderTerminal.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
-			// Return back to Trade Page if needed
-			if (!isAlreadyOnTradePage(driver)) {
-				System.out.println("[TRADE] Returning to Trade Page...");
-				navigateToTradePage(driver, wait);
-			}
-			// =====================================================================
-
-			// ---------- Choose Buy or Sell (1=BUY, 2=SELL) ----------
+			// ---------- 2. Choose Buy or Sell FIRST (1=BUY, 2=SELL) ----------
 			System.out.println("\nFor BUY, Please Enter: 1");
 			System.out.println("For SELL, Please Enter: 2");
 			System.out.print("Please Enter your choice: ");
-			int int_side = Integer.parseInt(sc.nextLine());
-			String sideText = int_side == 1 ? "BUY" : "SELL";
-
-			Position.ClientPosition sellClientInfo = null;
-			if (int_side == 1) {
-				WebElement buy = wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//div[@title='Place BUY Order']")));
-				buy.click();
-				System.out.println("Buy action performed.");
-			} else if (int_side == 2) {
-				WebElement sell = wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//div[@title='Place SELL Order']")));
-				sell.click();
-				System.out.println("Sell action performed.");
-
-				// --- Connect to Position Widget to Find Client with Saleable Shares ---
-				sellClientInfo = Position.promptOrSelectClientForSell(driver, sc, instrument, exchange, clientCode);
-				if (sellClientInfo != null && !sellClientInfo.getClientCode().isEmpty()) {
-					clientCode = sellClientInfo.getClientCode();
-				}
-				// Return to Trade Page if needed
-				if (!isAlreadyOnTradePage(driver)) {
-					navigateToTradePage(driver, wait);
-					wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//div[@title='Place SELL Order']"))).click();
-				}
-			} else {
-				System.out.println("Wrong value. Starting over.");
-				continue;
+			String sideInput = sc.nextLine().trim();
+			int int_side = 1;
+			try {
+				int_side = Integer.parseInt(sideInput);
+			} catch (Exception e) {
+				int_side = 1;
 			}
-			Thread.sleep(300);
+			String sideText = int_side == 2 ? "SELL" : "BUY";
 
-			// ---------- Fill Client Code ----------
-			WebElement order_client_code = wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("order_client_code")));
-			order_client_code.click();
-			order_client_code.clear();
-			order_client_code.sendKeys(clientCode);
-			System.out.println("Client Code entered: " + clientCode);
-			Thread.sleep(200);
+			// ---------- 3. AFTER Buy/Sell selection, THEN call for Client Code ----------
+			List<String> clientCodes = new ArrayList<>();
+			Map<String, Position.ClientPosition> positionMap = new HashMap<>();
 
-			// ---------- Fill Symbol ----------
-			WebElement symbolInput = driver.findElement(By.id("order_instrument"));
-			symbolInput.clear();
-			symbolInput.sendKeys(instrument);
-			wait.until(ExpectedConditions.presenceOfElementLocated(By.className("ui-autocomplete-input")));
-			symbolInput.sendKeys(Keys.ARROW_DOWN);
-			symbolInput.sendKeys(Keys.ENTER);
-			((JavascriptExecutor) driver).executeScript("arguments[0].scrollIntoView(true);", symbolInput);
-			System.out.println("Order Symbol selected: " + instrument);
+			if (int_side == 1) { // BUY
+				System.out.print("\nEnter Client Code (default 23986): ");
+				String input = sc.nextLine().trim();
+				if (input.isEmpty()) {
+					clientCodes.add("23986");
+				} else {
+					for (String code : input.split("[,\\s]+")) {
+						if (!code.trim().isEmpty()) {
+							clientCodes.add(code.trim());
+						}
+					}
+					if (clientCodes.isEmpty()) clientCodes.add("23986");
+				}
+				System.out.println("[BUY CLIENTS] Selected Client Code(s): " + clientCodes);
+			} else { // SELL
+				System.out.print("\nEnter Client Code (default from Position): ");
+				String input = sc.nextLine().trim();
+				if (!input.isEmpty()) {
+					for (String code : input.split("[,\\s]+")) {
+						if (!code.trim().isEmpty()) {
+							clientCodes.add(code.trim());
+						}
+					}
+				}
 
-			// ---------- Fill Qty ----------
-			if (sideText.equals("SELL") && sellClientInfo != null && sellClientInfo.getSaleableQty() > 0) {
-				System.out.printf("Enter Qty (Max Saleable: %,.0f | default 10): ", sellClientInfo.getSaleableQty());
+				// Otherwise input from position
+				if (clientCodes.isEmpty()) {
+					System.out.println("\n[POSITION] Querying holding clients from Position widget for " + instrument + "...");
+					List<Position.ClientPosition> picked = Position.promptOrSelectClientsForSell(driver, sc, instrument, exchange, "23986");
+					if (picked != null && !picked.isEmpty()) {
+						for (Position.ClientPosition cp : picked) {
+							clientCodes.add(cp.getClientCode());
+							positionMap.put(cp.getClientCode(), cp);
+						}
+					} else {
+						clientCodes.add("23986");
+					}
+				}
+				System.out.println("[SELL CLIENTS] Selected Client Code(s): " + clientCodes);
+			}
+
+			// Ensure we are on Trade Page
+			if (!isAlreadyOnTradePage(driver)) {
+				navigateToTradePage(driver, wait);
+			}
+
+			// ---------- 4. Qty & Rate Parameters ----------
+			String defaultQty = "10";
+			if (sideText.equals("SELL") && clientCodes.size() == 1 && positionMap.containsKey(clientCodes.get(0))) {
+				Position.ClientPosition singleSell = positionMap.get(clientCodes.get(0));
+				if (singleSell != null && singleSell.getSaleableQty() > 0) {
+					System.out.printf("Enter Qty (Max Saleable for %s: %,.0f | default 10): ",
+							singleSell.getClientCode(), singleSell.getSaleableQty());
+				} else {
+					System.out.print("Enter Qty (or press Enter for default 10): ");
+				}
 			} else {
 				System.out.print("Enter Qty (or press Enter for default 10): ");
 			}
-			String qty = sc.nextLine().trim();
-			if (qty.isEmpty()) qty = "10";
+			String qtyStr = sc.nextLine().trim();
+			if (qtyStr.isEmpty()) qtyStr = defaultQty;
+			int tradeQty = Integer.parseInt(qtyStr);
 
-			if (sideText.equals("SELL") && sellClientInfo != null && sellClientInfo.getSaleableQty() > 0 && Integer.parseInt(qty) > sellClientInfo.getSaleableQty()) {
-				System.out.printf("[WARN] Entered qty %s exceeds client %s's saleable balance (%,.0f)! Order may be rejected.%n",
-						qty, clientCode, sellClientInfo.getSaleableQty());
-			}
-			WebElement qtyInput = driver.findElement(By.id("order_qty"));
-			qtyInput.clear();
-			qtyInput.sendKeys(qty);
-			System.out.println("Qty entered: " + qty);
-
-			// ---------- Handle Rate ----------
+			// Handle Rate once
 			handleRate(driver, wait, sc, instrument, sideText);
 			double executedRate = getEnteredRate(driver);
 
-			// ---------- Submit Order ----------
-			WebElement header = driver.findElement(By.xpath("//div[@class='wb-title']"));
-			if (header.getText().toLowerCase().contains("buy")) {
-				driver.findElement(By.xpath(
-						"//div[@class='col pl-0 pr-0 td-btn mt-2 mb-2 form-inline form-submit-btn-holder text-center']//button[@type='button'][normalize-space()='BUY']"))
-						.click();
-			} else {
-				driver.findElement(By.xpath(
-						"//div[@class='col pl-0 pr-0 td-btn mt-2 mb-2 form-inline form-submit-btn-holder text-center']//button[@type='button'][normalize-space()='SELL']"))
-						.click();
+			// ---------- 5. Execute Trade(s) for the Client Code(s) ----------
+			for (int idx = 0; idx < clientCodes.size(); idx++) {
+				String clientCode = clientCodes.get(idx);
+				if (clientCodes.size() > 1) {
+					System.out.printf("%n=======================================================");
+					System.out.printf("%n>>> [%d/%d] EXECUTING %s FOR CLIENT: %s (%s x %d @ %.2f)%n",
+							(idx + 1), clientCodes.size(), sideText, clientCode, instrument, tradeQty, executedRate);
+					System.out.println("=======================================================");
+				}
+
+				// Check saleable balance warning for SELL
+				Position.ClientPosition sellInfo = positionMap.get(clientCode);
+				if (sideText.equals("SELL") && sellInfo != null && sellInfo.getSaleableQty() > 0 && tradeQty > sellInfo.getSaleableQty()) {
+					System.out.printf("[WARN] Entered qty %d exceeds client %s's saleable balance (%,.0f)! Order may be rejected.%n",
+							tradeQty, clientCode, sellInfo.getSaleableQty());
+				}
+
+				// Client Financial Details via API
+				Map<String, String> clientInfoBefore = ClientPortfolio.getClientDetails(driver, clientCode);
+				if (!clientInfoBefore.isEmpty()) {
+					System.out.printf("[CLIENT INFO: %s] %s (BO: %s) | Cash Limit: %s | Mature: %s | Commission: %s%n",
+							clientCode,
+							clientInfoBefore.getOrDefault("client_name", "-"),
+							clientInfoBefore.getOrDefault("bo_id", "-"),
+							clientInfoBefore.getOrDefault("cash_limit", "-"),
+							clientInfoBefore.getOrDefault("mature_balance", "-"),
+							clientInfoBefore.getOrDefault("commission", "-"));
+				}
+
+				// [STEP 1] CAPTURE PRE-TRADE SNAPSHOT (DSE/CSE API -> UI FALLBACK)
+				System.out.printf("%n[PORTFOLIO] Capturing PRE-TRADE Snapshot for Client: %s...%n", clientCode);
+				navigateToPortfolioPage(driver, wait);
+				Map<String, String> beforeSnapshot = ClientPortfolio.getSnapshot(driver, clientCode, instrument, exchange);
+				System.out.println("[PORTFOLIO] Pre-Trade Snapshot Captured (Source: " + beforeSnapshot.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
+
+				Order_Summary.navigateToOrderSummary(driver);
+				Map<String, String> preOrderSummary = Order_Summary.getSnapshot(driver, clientCode, instrument, exchange);
+				System.out.println("[ORDER SUMMARY] Pre-Trade Snapshot Captured (Source: " + preOrderSummary.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
+
+				Account_Limits.navigateToAccountLimits(driver);
+				Map<String, String> preAccountLimits = Account_Limits.getSnapshot(driver, clientCode, exchange);
+				System.out.println("[ACCOUNT LIMITS] Pre-Trade Snapshot Captured (Source: " + preAccountLimits.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
+
+				Market_Depth.navigateToMarketDepth(driver);
+				Map<String, String> preDepth = Market_Depth.getSnapshot(driver, instrument, exchange);
+				System.out.println("[MARKET DEPTH] Pre-Trade Snapshot Captured (Source: " + preDepth.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
+				if (clientCodes.size() == 1) {
+					Market_Depth.printDepthReport(instrument, preDepth);
+				}
+
+				Order_Terminal.navigateToOrderTerminal(driver);
+				Map<String, String> preOrderTerminal = Order_Terminal.getSnapshot(driver, clientCode, instrument, exchange);
+				System.out.println("[ORDER TERMINAL] Pre-Trade Snapshot Captured (Source: " + preOrderTerminal.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
+
+				// Return back to Trade Page if needed
+				if (!isAlreadyOnTradePage(driver)) {
+					System.out.println("[TRADE] Returning to Trade Page...");
+					navigateToTradePage(driver, wait);
+				}
+
+				// Open BUY or SELL modal
+				if (int_side == 1) {
+					WebElement buy = wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//div[@title='Place BUY Order']")));
+					buy.click();
+				} else {
+					WebElement sell = wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//div[@title='Place SELL Order']")));
+					sell.click();
+				}
+				Thread.sleep(300);
+
+				// Fill Client Code
+				WebElement order_client_code = wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("order_client_code")));
+				order_client_code.click();
+				order_client_code.clear();
+				order_client_code.sendKeys(clientCode);
+				System.out.println("Client Code entered: " + clientCode);
+				Thread.sleep(200);
+
+				// Fill Symbol
+				WebElement symbolInput = driver.findElement(By.id("order_instrument"));
+				symbolInput.clear();
+				symbolInput.sendKeys(instrument);
+				wait.until(ExpectedConditions.presenceOfElementLocated(By.className("ui-autocomplete-input")));
+				symbolInput.sendKeys(Keys.ARROW_DOWN);
+				symbolInput.sendKeys(Keys.ENTER);
+				((JavascriptExecutor) driver).executeScript("arguments[0].scrollIntoView(true);", symbolInput);
+				System.out.println("Order Symbol selected: " + instrument);
+
+				// Fill Qty
+				WebElement qtyElem = driver.findElement(By.id("order_qty"));
+				qtyElem.clear();
+				qtyElem.sendKeys(String.valueOf(tradeQty));
+				System.out.println("Qty entered: " + tradeQty);
+
+				// Fill Rate
+				if (executedRate > 0) {
+					try {
+						WebElement rateInput = driver.findElement(By.id("limit_order_rate"));
+						rateInput.clear();
+						rateInput.sendKeys(String.valueOf(executedRate));
+					} catch (Exception ignored) {}
+				}
+
+				// Submit Order
+				WebElement header = driver.findElement(By.xpath("//div[@class='wb-title']"));
+				if (header.getText().toLowerCase().contains("buy")) {
+					driver.findElement(By.xpath(
+							"//div[@class='col pl-0 pr-0 td-btn mt-2 mb-2 form-inline form-submit-btn-holder text-center']//button[@type='button'][normalize-space()='BUY']"))
+							.click();
+				} else {
+					driver.findElement(By.xpath(
+							"//div[@class='col pl-0 pr-0 td-btn mt-2 mb-2 form-inline form-submit-btn-holder text-center']//button[@type='button'][normalize-space()='SELL']"))
+							.click();
+				}
+				System.out.println("Clicked " + sideText + " button.");
+
+				// Confirm Order
+				if (!confirmOrder(driver, wait, sc)) {
+					System.out.printf("Order cancelled for client %s.%n", clientCode);
+					continue; // skip verification for cancelled order & move to next client
+				}
+
+				// [STEP 2] CAPTURE POST-TRADE SNAPSHOT & VERIFICATION
+				System.out.printf("%n[PORTFOLIO] Capturing POST-TRADE Snapshot & Verification for Client: %s...%n", clientCode);
+				navigateToPortfolioPage(driver, wait);
+				ClientPortfolio.refresh(driver);
+
+				Map<String, String> afterSnapshot = ClientPortfolio.getSnapshot(driver, clientCode, instrument, exchange);
+				Map<String, String> clientInfoAfter = ClientPortfolio.getClientDetails(driver, clientCode);
+
+				// Compare & Display Comprehensive Table with Portfolio & Cash Audit
+				ClientPortfolio.verify(beforeSnapshot, afterSnapshot, clientInfoBefore, clientInfoAfter, instrument, sideText, tradeQty, executedRate, exchange);
+
+				// Verify Order Summary
+				Order_Summary.navigateToOrderSummary(driver);
+				Order_Summary.refresh(driver);
+				Map<String, String> postOrderSummary = Order_Summary.getSnapshot(driver, clientCode, instrument, exchange);
+				Order_Summary.verify(preOrderSummary, postOrderSummary, instrument, sideText, tradeQty, executedRate, exchange);
+
+				// Account Limits
+				Account_Limits.navigateToAccountLimits(driver);
+				Account_Limits.refresh(driver);
+				Map<String, String> postAccountLimits = Account_Limits.getSnapshot(driver, clientCode, exchange);
+				Account_Limits.verify(preAccountLimits, postAccountLimits, sideText, tradeQty, executedRate, exchange);
+
+				// Audit Market Depth
+				Market_Depth.navigateToMarketDepth(driver);
+				Map<String, String> postDepth = Market_Depth.getSnapshot(driver, instrument, exchange);
+				Market_Depth.verify(preDepth, postDepth, instrument, sideText, tradeQty, executedRate, exchange);
+
+				// Audit Order Terminal
+				Order_Terminal.navigateToOrderTerminal(driver);
+				Order_Terminal.refresh(driver);
+				Map<String, String> postOrderTerminal = Order_Terminal.getSnapshot(driver, clientCode, instrument, exchange);
+				Order_Terminal.verify(preOrderTerminal, postOrderTerminal, instrument, sideText, tradeQty, executedRate, exchange);
+
+				// Click newly placed order row in Order Terminal
+				Order_Terminal.clickOrderRow(driver, postOrderTerminal.get("Order_ID"), clientCode, instrument);
+
+				// Return to Trade Page if needed
+				if (!isAlreadyOnTradePage(driver)) {
+					System.out.println("[TRADE] Returning to Trade Page...");
+					navigateToTradePage(driver, wait);
+				}
 			}
-			System.out.println("Clicked " + sideText + " button.");
-
-			// ---------- Confirm Order ----------
-			if (!confirmOrder(driver, wait, sc)) {
-				continue; // order cancelled -> skip portfolio check & trade again
-			}
-
-			// =====================================================================
-			//  CAPTURE POST-TRADE SNAPSHOT & VERIFICATION
-			// =====================================================================
-			System.out.println("\n[PORTFOLIO] Capturing POST-TRADE Snapshot & Verification...");
-			navigateToPortfolioPage(driver, wait);
-			ClientPortfolio.refresh(driver);
-
-			Map<String, String> afterSnapshot = ClientPortfolio.getSnapshot(driver, clientCode, instrument, exchange);
-
-			// Fetch updated Client Cash via API right after trade
-			Map<String, String> clientInfoAfter = ClientPortfolio.getClientDetails(driver, clientCode);
-
-			// Compare & Display Comprehensive Table with Portfolio & Cash Audit
-			int tradeQty = Integer.parseInt(qty);
-			ClientPortfolio.verify(beforeSnapshot, afterSnapshot, clientInfoBefore, clientInfoAfter, instrument, sideText, tradeQty, executedRate, exchange);
-
-			//  Verify Order Summary
-			Order_Summary.navigateToOrderSummary(driver);
-			Order_Summary.refresh(driver);
-			Map<String, String> postOrderSummary = Order_Summary.getSnapshot(driver, clientCode, instrument, exchange);
-			Order_Summary.verify(preOrderSummary, postOrderSummary, instrument, sideText, tradeQty, executedRate, exchange);
-			
-			// Account Limits
-			Account_Limits.navigateToAccountLimits(driver);
-			Account_Limits.refresh(driver);
-			Map<String, String> postAccountLimits = Account_Limits.getSnapshot(driver, clientCode, exchange);
-			Account_Limits.verify(preAccountLimits, postAccountLimits, sideText, tradeQty, executedRate, exchange);
-			
-			// Audit Market Depth
-			Market_Depth.navigateToMarketDepth(driver);
-			Map<String, String> postDepth = Market_Depth.getSnapshot(driver, instrument, exchange);
-			Market_Depth.verify(preDepth, postDepth, instrument, sideText, tradeQty, executedRate, exchange);
-
-			// Audit Order Terminal
-			Order_Terminal.navigateToOrderTerminal(driver);
-			Order_Terminal.refresh(driver);
-			Map<String, String> postOrderTerminal = Order_Terminal.getSnapshot(driver, clientCode, instrument, exchange);
-			Order_Terminal.verify(preOrderTerminal, postOrderTerminal, instrument, sideText, tradeQty, executedRate, exchange);
-
-			// Click that newly placed order in Order Terminal table
-			Order_Terminal.clickOrderRow(driver, postOrderTerminal.get("Order_ID"), clientCode, instrument);
-
-			// Return to Trade Page if needed
-			if (!isAlreadyOnTradePage(driver)) {
-				System.out.println("[TRADE] Returning to Trade Page...");
-				navigateToTradePage(driver, wait);
-			}
-			// =====================================================================
 
 			// ---------- After confirmation, ask to select an Order Status type ----------
 			System.out.print("\nDo you want to select an Order Status type now? (1=YES / 0=NO, then ENTER): ");

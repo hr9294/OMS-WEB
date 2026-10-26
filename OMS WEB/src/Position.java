@@ -785,7 +785,7 @@ public class Position {
         return null;
     }
 
-    public static ClientPosition promptOrSelectClientForSell(WebDriver driver, Scanner sc, String symbol, String exchange, String fallbackClient) {
+    public static List<ClientPosition> promptOrSelectClientsForSell(WebDriver driver, Scanner sc, String symbol, String exchange, String fallbackClient) {
         String cleanSym = cleanSymbol(symbol);
         searchSymbolInPosition(driver, cleanSym, exchange);
         List<ClientPosition> saleableClients = getClientsWithSaleable(driver, cleanSym, exchange);
@@ -797,7 +797,12 @@ public class Position {
             System.out.printf("Press Enter to keep current client [%s], or enter another client code: ", fallbackClient);
             String manual = sc.nextLine().trim();
             String chosen = manual.isEmpty() ? fallbackClient : manual;
-            return new ClientPosition(cleanSym, chosen, 0, 0, 0, 0, 0, 0, 0, 0);
+            List<ClientPosition> fallbackList = new ArrayList<>();
+            for (String c : chosen.split("[,\\s]+")) {
+                if (!c.trim().isEmpty()) fallbackList.add(new ClientPosition(cleanSym, c.trim(), 0, 0, 0, 0, 0, 0, 0, 0));
+            }
+            if (fallbackList.isEmpty()) fallbackList.add(new ClientPosition(cleanSym, fallbackClient, 0, 0, 0, 0, 0, 0, 0, 0));
+            return fallbackList;
         }
 
         // Preview top holding clients
@@ -815,29 +820,47 @@ public class Position {
         }
         System.out.println("+---------------------------------------------------------------+");
 
-        System.out.print("\nEnter specific Client Code for SELL, or press ENTER to pick a random holding client: ");
+        System.out.print("\nEnter specific Client Code for SELL (or multiple comma-separated), or press ENTER for random: ");
         String entered = sc.nextLine().trim();
 
+        List<ClientPosition> result = new ArrayList<>();
         if (entered.isEmpty()) {
             int randomIdx = ThreadLocalRandom.current().nextInt(saleableClients.size());
             ClientPosition randomClient = saleableClients.get(randomIdx);
             System.out.printf(">>> [POSITION SELECTED] Random Client: %s | Saleable Balance: %,.0f shares of %s%n",
                     randomClient.getClientCode(), randomClient.getSaleableQty(), cleanSym);
-            return randomClient;
+            result.add(randomClient);
+            return result;
         } else {
-            for (ClientPosition cp : saleableClients) {
-                if (cp.getClientCode().equalsIgnoreCase(entered)) {
-                    System.out.printf(">>> [POSITION CONFIRMED] Client: %s has %,.0f saleable shares of %s%n",
-                            cp.getClientCode(), cp.getSaleableQty(), cleanSym);
-                    return cp;
+            String[] tokens = entered.split("[,\\s]+");
+            for (String tok : tokens) {
+                if (tok.trim().isEmpty()) continue;
+                String c = tok.trim();
+                boolean found = false;
+                for (ClientPosition cp : saleableClients) {
+                    if (cp.getClientCode().equalsIgnoreCase(c)) {
+                        System.out.printf(">>> [POSITION CONFIRMED] Client: %s has %,.0f saleable shares of %s%n",
+                                cp.getClientCode(), cp.getSaleableQty(), cleanSym);
+                        result.add(cp);
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    System.out.printf("[INFO: POSITION] Client %s not found in table preview. Using client %s for trade.%n", c, c);
+                    result.add(new ClientPosition(cleanSym, c, 0, 0, 0, 0, 0, 0, 0, 0));
                 }
             }
-            System.out.printf("[INFO: POSITION] Client %s not found in table preview. Using client %s for trade.%n", entered, entered);
-            return new ClientPosition(cleanSym, entered, 0, 0, 0, 0, 0, 0, 0, 0);
+            return result;
         }
     }
 
-    // =========================================================================
+    public static ClientPosition promptOrSelectClientForSell(WebDriver driver, Scanner sc, String symbol, String exchange, String fallbackClient) {
+        List<ClientPosition> list = promptOrSelectClientsForSell(driver, sc, symbol, exchange, fallbackClient);
+        return list.isEmpty() ? null : list.get(0);
+    }
+
+        // =========================================================================
     // 7. SELL TRADE EXECUTION VIA TRADE PORTAL
     // =========================================================================
     public static boolean executeSellTrade(WebDriver driver, WebDriverWait wait, String clientCode, String symbol, int qty, double rate, String exchange) {
