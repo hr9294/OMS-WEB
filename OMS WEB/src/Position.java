@@ -875,6 +875,10 @@ public class Position {
             sellBtn.click();
             Thread.sleep(300);
 
+            // Select Exchange / Priority in Modal
+            OMSweb_Trade.selectExchangeInModal(driver, exchange);
+            Thread.sleep(200);
+
             // Fill Client Code
             WebElement clientInp = wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("order_client_code")));
             clientInp.click();

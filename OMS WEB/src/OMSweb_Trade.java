@@ -111,12 +111,7 @@ public class OMSweb_Trade {
 
 		while (keepTrading) {
 
-			// ---------- 1. Get Exchange FIRST (default DSE) ----------
-			System.out.print("\nEnter Exchange (DSE / CSE, default DSE): ");
-			String exchange = sc.nextLine().trim().toUpperCase();
-			if (exchange.isEmpty()) exchange = "DSE";
-
-			// ---------- 2. Choose Buy or Sell FIRST (1=BUY, 2=SELL) ----------
+			// ---------- 1. Choose Buy or Sell FIRST (1=BUY, 2=SELL) ----------
 			System.out.println("\nFor BUY, Please Enter: 1");
 			System.out.println("For SELL, Please Enter: 2");
 			System.out.print("Please Enter your choice: ");
@@ -129,7 +124,32 @@ public class OMSweb_Trade {
 			}
 			String sideText = int_side == 2 ? "SELL" : "BUY";
 
-			// ---------- 3. AFTER Buy/Sell selection, THEN call for Client Code ----------
+			// ---------- 2. Select Exchange / Priority Order Mode AFTER Side is chosen ----------
+			System.out.println("\nSelect Exchange / Order Mode:");
+			System.out.println("1. DSE (default)");
+			System.out.println("2. CSE");
+			System.out.println("3. Priority Order");
+			System.out.print("Please Enter your choice (1-3, or DSE/CSE/Priority, default 1): ");
+			String exInput = sc.nextLine().trim();
+
+			String exchange = "DSE";
+			boolean isPriorityOrder = false;
+
+			if (exInput.equalsIgnoreCase("3") || exInput.equalsIgnoreCase("Priority") || exInput.equalsIgnoreCase("P") || exInput.equalsIgnoreCase("Priority Order")) {
+				exchange = "Priority";
+				isPriorityOrder = true;
+			} else if (exInput.equalsIgnoreCase("2") || exInput.equalsIgnoreCase("CSE")) {
+				exchange = "CSE";
+			} else {
+				exchange = "DSE";
+			}
+
+			// For widgets & APIs, Priority order queries the underlying market exchange (DSE)
+			String snapshotExchange = isPriorityOrder ? "DSE" : exchange;
+			System.out.printf("[ORDER MODE] Side: %s | Exchange/Mode: %s (Snapshot Exchange: %s)%n",
+					sideText, exchange, snapshotExchange);
+
+			// ---------- 3. AFTER Buy/Sell & Exchange selection, THEN call for Client Code ----------
 			List<String> clientCodes = new ArrayList<>();
 			Map<String, Position.ClientPosition> positionMap = new HashMap<>();
 
@@ -161,7 +181,7 @@ public class OMSweb_Trade {
 				// Otherwise input from position
 				if (clientCodes.isEmpty()) {
 					System.out.println("\n[POSITION] Querying holding clients from Position widget for " + instrument + "...");
-					List<Position.ClientPosition> picked = Position.promptOrSelectClientsForSell(driver, sc, instrument, exchange, "23986");
+					List<Position.ClientPosition> picked = Position.promptOrSelectClientsForSell(driver, sc, instrument, snapshotExchange, "23986");
 					if (picked != null && !picked.isEmpty()) {
 						for (Position.ClientPosition cp : picked) {
 							clientCodes.add(cp.getClientCode());
@@ -196,9 +216,25 @@ public class OMSweb_Trade {
 			if (qtyStr.isEmpty()) qtyStr = defaultQty;
 			int tradeQty = Integer.parseInt(qtyStr);
 
-			// Handle Rate once
-			handleRate(driver, wait, sc, instrument, sideText);
-			double executedRate = getEnteredRate(driver);
+			// Handle Rate
+			double executedRate = 0.0;
+			if (isPriorityOrder) {
+				System.out.println("\n[PRIORITY ORDER] Mode active: orders execute at Market Rate across exchanges.");
+				double ltp = fetchLTP(driver, wait, instrument);
+				if (ltp > 0) {
+					executedRate = ltp;
+					System.out.printf("[PRIORITY ORDER] Auto-detected Market Rate (LTP): %.2f%n", executedRate);
+				} else {
+					System.out.print("Enter Estimated Market Rate for reporting (press ENTER for 0.0): ");
+					String rInput = sc.nextLine().trim();
+					if (!rInput.isEmpty()) {
+						try { executedRate = Double.parseDouble(rInput); } catch (Exception ignored) {}
+					}
+				}
+			} else {
+				handleRate(driver, wait, sc, instrument, sideText);
+				executedRate = getEnteredRate(driver);
+			}
 
 			// ---------- 5. Execute Trade(s) for the Client Code(s) ----------
 			for (int idx = 0; idx < clientCodes.size(); idx++) {
@@ -232,26 +268,26 @@ public class OMSweb_Trade {
 				// [STEP 1] CAPTURE PRE-TRADE SNAPSHOT (DSE/CSE API -> UI FALLBACK)
 				System.out.printf("%n[PORTFOLIO] Capturing PRE-TRADE Snapshot for Client: %s...%n", clientCode);
 				navigateToPortfolioPage(driver, wait);
-				Map<String, String> beforeSnapshot = ClientPortfolio.getSnapshot(driver, clientCode, instrument, exchange);
+				Map<String, String> beforeSnapshot = ClientPortfolio.getSnapshot(driver, clientCode, instrument, snapshotExchange);
 				System.out.println("[PORTFOLIO] Pre-Trade Snapshot Captured (Source: " + beforeSnapshot.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
 
 				Order_Summary.navigateToOrderSummary(driver);
-				Map<String, String> preOrderSummary = Order_Summary.getSnapshot(driver, clientCode, instrument, exchange);
+				Map<String, String> preOrderSummary = Order_Summary.getSnapshot(driver, clientCode, instrument, snapshotExchange);
 				System.out.println("[ORDER SUMMARY] Pre-Trade Snapshot Captured (Source: " + preOrderSummary.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
 
 				Account_Limits.navigateToAccountLimits(driver);
-				Map<String, String> preAccountLimits = Account_Limits.getSnapshot(driver, clientCode, exchange);
+				Map<String, String> preAccountLimits = Account_Limits.getSnapshot(driver, clientCode, snapshotExchange);
 				System.out.println("[ACCOUNT LIMITS] Pre-Trade Snapshot Captured (Source: " + preAccountLimits.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
 
 				Market_Depth.navigateToMarketDepth(driver);
-				Map<String, String> preDepth = Market_Depth.getSnapshot(driver, instrument, exchange);
+				Map<String, String> preDepth = Market_Depth.getSnapshot(driver, instrument, snapshotExchange);
 				System.out.println("[MARKET DEPTH] Pre-Trade Snapshot Captured (Source: " + preDepth.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
 				if (clientCodes.size() == 1) {
 					Market_Depth.printDepthReport(instrument, preDepth);
 				}
 
 				Order_Terminal.navigateToOrderTerminal(driver);
-				Map<String, String> preOrderTerminal = Order_Terminal.getSnapshot(driver, clientCode, instrument, exchange);
+				Map<String, String> preOrderTerminal = Order_Terminal.getSnapshot(driver, clientCode, instrument, snapshotExchange);
 				System.out.println("[ORDER TERMINAL] Pre-Trade Snapshot Captured (Source: " + preOrderTerminal.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
 
 				// Return back to Trade Page if needed
@@ -269,6 +305,10 @@ public class OMSweb_Trade {
 					sell.click();
 				}
 				Thread.sleep(300);
+
+				// Select Exchange / Priority in Modal
+				selectExchangeInModal(driver, exchange);
+				Thread.sleep(200);
 
 				// Fill Client Code
 				WebElement order_client_code = wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("order_client_code")));
@@ -294,13 +334,16 @@ public class OMSweb_Trade {
 				qtyElem.sendKeys(String.valueOf(tradeQty));
 				System.out.println("Qty entered: " + tradeQty);
 
-				// Fill Rate
-				if (executedRate > 0) {
+				// Fill Rate (only for limit orders)
+				if (!isPriorityOrder && executedRate > 0) {
 					try {
 						WebElement rateInput = driver.findElement(By.id("limit_order_rate"));
 						rateInput.clear();
 						rateInput.sendKeys(String.valueOf(executedRate));
 					} catch (Exception ignored) {}
+				} else if (isPriorityOrder && executedRate <= 0.0) {
+					double mRate = getEnteredRate(driver);
+					if (mRate > 0.0) executedRate = mRate;
 				}
 
 				// Submit Order
@@ -327,7 +370,7 @@ public class OMSweb_Trade {
 				navigateToPortfolioPage(driver, wait);
 				ClientPortfolio.refresh(driver);
 
-				Map<String, String> afterSnapshot = ClientPortfolio.getSnapshot(driver, clientCode, instrument, exchange);
+				Map<String, String> afterSnapshot = ClientPortfolio.getSnapshot(driver, clientCode, instrument, snapshotExchange);
 				Map<String, String> clientInfoAfter = ClientPortfolio.getClientDetails(driver, clientCode);
 
 				// Compare & Display Comprehensive Table with Portfolio & Cash Audit
@@ -336,24 +379,24 @@ public class OMSweb_Trade {
 				// Verify Order Summary
 				Order_Summary.navigateToOrderSummary(driver);
 				Order_Summary.refresh(driver);
-				Map<String, String> postOrderSummary = Order_Summary.getSnapshot(driver, clientCode, instrument, exchange);
+				Map<String, String> postOrderSummary = Order_Summary.getSnapshot(driver, clientCode, instrument, snapshotExchange);
 				Order_Summary.verify(preOrderSummary, postOrderSummary, instrument, sideText, tradeQty, executedRate, exchange);
 
 				// Account Limits
 				Account_Limits.navigateToAccountLimits(driver);
 				Account_Limits.refresh(driver);
-				Map<String, String> postAccountLimits = Account_Limits.getSnapshot(driver, clientCode, exchange);
+				Map<String, String> postAccountLimits = Account_Limits.getSnapshot(driver, clientCode, snapshotExchange);
 				Account_Limits.verify(preAccountLimits, postAccountLimits, sideText, tradeQty, executedRate, exchange);
 
 				// Audit Market Depth
 				Market_Depth.navigateToMarketDepth(driver);
-				Map<String, String> postDepth = Market_Depth.getSnapshot(driver, instrument, exchange);
+				Map<String, String> postDepth = Market_Depth.getSnapshot(driver, instrument, snapshotExchange);
 				Market_Depth.verify(preDepth, postDepth, instrument, sideText, tradeQty, executedRate, exchange);
 
 				// Audit Order Terminal
 				Order_Terminal.navigateToOrderTerminal(driver);
 				Order_Terminal.refresh(driver);
-				Map<String, String> postOrderTerminal = Order_Terminal.getSnapshot(driver, clientCode, instrument, exchange);
+				Map<String, String> postOrderTerminal = Order_Terminal.getSnapshot(driver, clientCode, instrument, snapshotExchange);
 				Order_Terminal.verify(preOrderTerminal, postOrderTerminal, instrument, sideText, tradeQty, executedRate, exchange);
 
 				// Click newly placed order row in Order Terminal
@@ -365,7 +408,6 @@ public class OMSweb_Trade {
 					navigateToTradePage(driver, wait);
 				}
 			}
-
 			// ---------- After confirmation, ask to select an Order Status type ----------
 			System.out.print("\nDo you want to select an Order Status type now? (1=YES / 0=NO, then ENTER): ");
 			if (sc.nextLine().trim().equals("1")) {
@@ -479,11 +521,22 @@ public class OMSweb_Trade {
 		try {
 			WebElement rateInput = driver.findElement(By.id("limit_order_rate"));
 			String val = rateInput.getDomProperty("value");
-			if (val == null || val.isEmpty()) val = rateInput.getDomProperty("value");
-			return Double.parseDouble(val.replaceAll("[^0-9.]", ""));
-		} catch (Exception e) {
-			return 0.0;
-		}
+			if (val == null || val.isEmpty()) val = rateInput.getDomAttribute("value");
+			if (val != null && !val.trim().isEmpty()) {
+				return Double.parseDouble(val.replaceAll("[^0-9.]", ""));
+			}
+		} catch (Exception ignoredLimit) {}
+
+		try {
+			WebElement marketInput = driver.findElement(By.id("market_order_rate"));
+			String mVal = marketInput.getDomProperty("value");
+			if (mVal == null || mVal.isEmpty()) mVal = marketInput.getDomAttribute("value");
+			if (mVal != null && !mVal.trim().isEmpty()) {
+				return Double.parseDouble(mVal.replaceAll("[^0-9.]", ""));
+			}
+		} catch (Exception ignoredMarket) {}
+
+		return 0.0;
 	}
 
 	// ---------- PARTIALLY FILLED ----------
@@ -743,6 +796,37 @@ public class OMSweb_Trade {
 		System.out.print("\nDo you want to select an Order Status type now? (1=YES / 0=NO, then ENTER): ");
 		if (sc.nextLine().trim().equals("1")) {
 			selectOrderStatus(driver, wait, sc, instrument);
+		}
+	}
+
+	// ---------- MODAL EXCHANGE SELECTION HELPER ----------
+	public static void selectExchangeInModal(WebDriver driver, String exchange) {
+		try {
+			String xcgId;
+			if ("PRIORITY".equalsIgnoreCase(exchange)) {
+				xcgId = "xcg1";
+			} else if ("CSE".equalsIgnoreCase(exchange)) {
+				xcgId = "xcg3";
+			} else {
+				xcgId = "xcg2"; // DSE
+			}
+
+			JavascriptExecutor js = (JavascriptExecutor) driver;
+			js.executeScript(
+					"var el = document.getElementById(arguments[0]);" +
+					"if (el) {" +
+					"    el.checked = true;" +
+					"    el.click();" +
+					"    if (typeof switch_exchange === 'function') switch_exchange(el);" +
+					"    var lbl = document.querySelector('label[for=' + arguments[0] + ']');" +
+					"    if (lbl) lbl.click();" +
+					"    var hidden = document.getElementById('exchange');" +
+					"    if (hidden) hidden.value = el.value;" +
+					"}",
+					xcgId);
+			System.out.println("[MODAL] Selected Exchange / Mode: " + exchange + " (" + xcgId + ")");
+		} catch (Exception e) {
+			System.out.println("[MODAL] Note selecting exchange: " + e.getMessage());
 		}
 	}
 
