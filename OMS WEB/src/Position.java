@@ -1,5 +1,6 @@
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
@@ -264,21 +265,69 @@ public class Position {
     }
 
     // =========================================================================
-    // 3. NAVIGATION HELPERS
+    // 3. NAVIGATION & VISIBILITY HELPERS
     // =========================================================================
     public static void navigateToPosition(WebDriver driver) {
+        ensurePositionWidgetVisible(driver);
+    }
+
+    public static boolean isPositionWidgetVisible(WebDriver driver) {
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
-            Boolean clicked = (Boolean) js.executeScript(
-                "var tab = document.querySelector('li.lm_tab[title*=\"Position\"], div[title*=\"Position\"], a[title*=\"Position\"]');" +
-                "if (tab && tab.offsetParent !== null) { tab.click(); return true; }" +
-                "var tabs = Array.from(document.querySelectorAll('li.lm_tab, a.nav-link, a, div.lm_header .lm_tab'));" +
-                "var posTab = tabs.find(function(t) { return t.innerText && t.innerText.trim().startsWith('Position'); });" +
-                "if (posTab && posTab.offsetParent !== null) { posTab.click(); return true; }" +
-                "var link = document.querySelector('a[data-link*=\"position\"], a[href*=\"position\"], a[title*=\"Position\"]');" +
-                "if (link && link.offsetParent !== null) { link.click(); return true; }" +
+            Object res = js.executeScript(
+                "var tbl = document.getElementById('symbol_position_table');" +
+                "if (tbl && tbl.offsetParent !== null) return true;" +
+                "var inp = document.getElementById('sc_instrument_search');" +
+                "if (inp && inp.offsetParent !== null) return true;" +
+                "var posTab = document.querySelector('li.lm_tab.lm_active[title*=\"Position\"], div.lm_tab.lm_active[title*=\"Position\"]');" +
+                "return !!posTab;"
+            );
+            return Boolean.TRUE.equals(res);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static boolean ensurePositionWidgetVisible(WebDriver driver) {
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            // Check if table is already visible
+            Boolean alreadyVis = (Boolean) js.executeScript(
+                "var tbl = document.getElementById('symbol_position_table');" +
+                "if (tbl && tbl.offsetParent !== null) return true;" +
                 "return false;"
             );
+            if (Boolean.TRUE.equals(alreadyVis)) {
+                return true;
+            }
+
+            System.out.println("[NAV] Position widget is hidden/inactive. Activating Position tab...");
+
+            // 1. Direct tab click via JS
+            Boolean clicked = (Boolean) js.executeScript(
+                "var tabs = Array.from(document.querySelectorAll('li.lm_tab, div.lm_tab, a.nav-link, a'));" +
+                "var posTab = tabs.find(function(t) { " +
+                "    var title = t.getAttribute('title') || ''; " +
+                "    var text = t.innerText ? t.innerText.trim() : ''; " +
+                "    return title.includes('Position') || text.startsWith('Position'); " +
+                "});" +
+                "if (posTab) {" +
+                "    posTab.click();" +
+                "    return true;" +
+                "}" +
+                "var dropdowns = Array.from(document.querySelectorAll('.lm_tabdropdown, .lm_controls .lm_tabdropdown'));" +
+                "for (var i = 0; i < dropdowns.length; i++) {" +
+                "    dropdowns[i].click();" +
+                "    var dropTabs = Array.from(document.querySelectorAll('.lm_tab, li'));" +
+                "    var dt = dropTabs.find(function(t) { return t.innerText && t.innerText.trim().startsWith('Position'); });" +
+                "    if (dt) { dt.click(); return true; }" +
+                "}" +
+                "var link = document.querySelector('a[data-link*=\"position\"], a[href*=\"position\"], a[title*=\"Position\"]');" +
+                "if (link) { link.click(); return true; }" +
+                "return false;"
+            );
+
             if (Boolean.TRUE.equals(clicked)) {
                 Thread.sleep(600);
             } else {
@@ -289,9 +338,21 @@ public class Position {
                 tab.click();
                 Thread.sleep(600);
             }
-            System.out.println("[NAV] Switched to Position tab.");
+
+            // Unhide container if hidden by CSS
+            js.executeScript(
+                "var tbl = document.getElementById('symbol_position_table');" +
+                "if (tbl) {" +
+                "    var p = tbl.closest('.lm_item_container') || tbl.closest('.lm_content') || tbl.parentElement;" +
+                "    if (p && p.style.display === 'none') p.style.display = 'block';" +
+                "}"
+            );
+
+            System.out.println("[NAV] Switched to Position tab and verified visibility.");
+            return true;
         } catch (Exception e) {
             System.out.println("[NAV] Position tab already active or clicked.");
+            return false;
         }
     }
 
@@ -302,49 +363,104 @@ public class Position {
     }
 
     // =========================================================================
-    // 4. SEARCH & FILTER IN POSITION WIDGET
+    // 4. SEARCH & FILTER IN POSITION WIDGET (UI & API)
     // =========================================================================
+    public static boolean isSymbolReflectedInPosition(WebDriver driver, String symbol) {
+        String cleanSym = cleanSymbol(symbol);
+        if (cleanSym.isEmpty()) return true;
+
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            Object res = js.executeScript(
+                "var targetSym = arguments[0];" +
+                "var inp = document.getElementById('sc_instrument_search');" +
+                "var currentVal = inp ? (inp.value || '').trim().toUpperCase() : '';" +
+                "if (currentVal.indexOf('.') !== -1) currentVal = currentVal.split('.')[0];" +
+                "var tbl = document.getElementById('symbol_position_table');" +
+                "if (!tbl) return false;" +
+                "var rows = tbl.querySelectorAll('tbody tr');" +
+                "if (rows.length === 0) {" +
+                "    return currentVal === targetSym;" +
+                "}" +
+                "var firstCell = rows[0].querySelector('td.position_symbol, td');" +
+                "var tableSym = firstCell ? (firstCell.innerText || '').trim().toUpperCase() : '';" +
+                "if (tableSym.indexOf('.') !== -1) tableSym = tableSym.split('.')[0];" +
+                "return (currentVal === targetSym) && (tableSym === '' || tableSym === targetSym);",
+                cleanSym
+            );
+            return Boolean.TRUE.equals(res);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public static void searchSymbolInPosition(WebDriver driver, String symbol, String exchange) {
+        manualSelectSymbolInPosition(driver, symbol, exchange);
+    }
+
+    public static void manualSelectSymbolInPosition(WebDriver driver, String symbol, String exchange) {
         String cleanSym = cleanSymbol(symbol);
         String ex = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "DSE";
 
+        ensurePositionWidgetVisible(driver);
+
         try {
-            navigateToPosition(driver);
             JavascriptExecutor js = (JavascriptExecutor) driver;
 
-            // Direct JS insertion and trigger
+            System.out.printf("[POSITION] Manually selecting Symbol: %s on Exchange: %s in Position search box...%n", cleanSym, ex);
+
+            // 1. JS value assignment, exchange selection, and event dispatch
             js.executeScript(
                 "var sym = arguments[0];" +
                 "var fullSym = sym.indexOf('.') === -1 ? (sym + '.PUBLIC') : sym;" +
-                "var ex = arguments[1] || 'DSE';" +
-                "var tbl = document.getElementById('symbol_position_table');" +
-                "var container = tbl ? (tbl.closest('.lm_item_container') || tbl.closest('.lm_content') || tbl.parentElement) : document;" +
-                "var selects = container ? container.querySelectorAll('select') : [];" +
-                "for (var s = 0; s < selects.length; s++) { selects[s].value = ex; selects[s].dispatchEvent(new Event('change', { bubbles: true })); }" +
-                "var inputs = container ? container.querySelectorAll('input:not([placeholder*=\"Search Code\"]):not([placeholder*=\"Code\"])') : [];" +
-                "if (inputs.length > 0) {" +
-                "    inputs[0].value = fullSym;" +
-                "    inputs[0].dispatchEvent(new Event('input', { bubbles: true }));" +
-                "    inputs[0].dispatchEvent(new Event('change', { bubbles: true }));" +
+                "var ex = arguments[1];" +
+                "var exSel = document.getElementById('exchange_position');" +
+                "if (exSel) {" +
+                "    exSel.value = ex;" +
+                "    exSel.dispatchEvent(new Event('change', { bubbles: true }));" +
                 "}" +
-                "if (typeof searchSymbolPosition === 'function') searchSymbolPosition(fullSym, ex);" +
-                "else if (typeof getSymbolPosition === 'function') getSymbolPosition(fullSym, ex);",
+                "var inp = document.getElementById('sc_instrument_search');" +
+                "if (!inp) {" +
+                "    inp = document.querySelector('input[placeholder*=\"Search Symbol\"].symbol_input, input[name=\"instrument_search\"]');" +
+                "}" +
+                "if (inp) {" +
+                "    inp.value = sym;" +
+                "    inp.dispatchEvent(new Event('input', { bubbles: true }));" +
+                "    inp.dispatchEvent(new Event('change', { bubbles: true }));" +
+                "    if (window.$ && $.ui && $(inp).autocomplete) {" +
+                "        try { $(inp).autocomplete('search', sym); } catch(e) {}" +
+                "    }" +
+                "}" +
+                "var searchBtn = inp ? (inp.parentElement.querySelector('button, i.fa-search') || inp.nextElementSibling) : null;" +
+                "if (searchBtn && searchBtn.tagName === 'BUTTON') {" +
+                "    searchBtn.click();" +
+                "}" +
+                "if (typeof get_symbol_client === 'function') {" +
+                "    get_symbol_client(1);" +
+                "}",
                 cleanSym, ex
             );
 
-            // Also send keys via Selenium if input is visible
+            // 2. Selenium key interaction
             try {
-                WebElement symInp = driver.findElement(By.xpath(
-                        "//table[@id='symbol_position_table']/preceding::input[not(contains(@placeholder,'Search Code'))][1] | " +
-                        "//div[contains(@class,'position') or .//table[@id='symbol_position_table']]//input[not(contains(@placeholder,'Search Code'))][1]"));
+                WebElement symInp = driver.findElement(By.id("sc_instrument_search"));
                 symInp.clear();
-                symInp.sendKeys(cleanSym + ".PUBLIC");
+                symInp.sendKeys(cleanSym);
                 symInp.sendKeys(Keys.ENTER);
+
+                // Check for any search button / magnifying glass icon adjacent to the input
+                List<WebElement> searchBtns = driver.findElements(By.xpath(
+                        "//input[@id='sc_instrument_search']/following-sibling::button | " +
+                        "//input[@id='sc_instrument_search']/parent::*//button[not(contains(.,'Clear')) and not(contains(.,'Close All'))] | " +
+                        "//div[contains(@class,'position') or .//table[@id='symbol_position_table']]//button[contains(@class,'search') or .//i[contains(@class,'search')]]"));
+                if (!searchBtns.isEmpty() && searchBtns.get(0).isDisplayed()) {
+                    searchBtns.get(0).click();
+                }
             } catch (Exception ignored) {}
 
-            Thread.sleep(1000);
+            Thread.sleep(1200);
         } catch (Exception e) {
-            System.out.println("[WARN: Position Search] " + e.getMessage());
+            System.out.println("[WARN: Position Manual Search] " + e.getMessage());
         }
     }
 
@@ -370,13 +486,117 @@ public class Position {
     }
 
     // =========================================================================
-    // 5. DATA EXTRACTION (DOM + API)
+    // 5. DATA EXTRACTION (DOM + API FALLBACK)
     // =========================================================================
     public static List<ClientPosition> getPositions(WebDriver driver, String symbol, String exchange) {
         String cleanSym = cleanSymbol(symbol);
+        String ex = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "DSE";
         List<ClientPosition> list = new ArrayList<>();
 
-        // Tier 1: Fast JavaScript DOM extraction from symbol_position_table
+        // Step 1: Check if Position widget is hidden or inactive
+        if (!isPositionWidgetVisible(driver)) {
+            System.out.println("[POSITION] Position widget is hidden or inactive. Ensuring visibility...");
+            ensurePositionWidgetVisible(driver);
+        }
+
+        // Step 2: Check if global search reflected on Position widget
+        boolean isReflected = isSymbolReflectedInPosition(driver, cleanSym);
+        if (!isReflected) {
+            System.out.printf("[POSITION] Global search did not reflect for symbol %s. Manually selecting symbol via search button...%n", cleanSym);
+            manualSelectSymbolInPosition(driver, cleanSym, ex);
+        }
+
+        // Step 3: Fast JavaScript DOM extraction from symbol_position_table
+        list = extractFromDomTable(driver, cleanSym);
+
+        // Step 4: If table is empty, retry manual selection once
+        if (list.isEmpty()) {
+            manualSelectSymbolInPosition(driver, cleanSym, ex);
+            list = extractFromDomTable(driver, cleanSym);
+        }
+
+        // Step 5: If still empty or UI failed, fetch directly from Position API (/shared/getsymbolclient/)
+        if (list.isEmpty()) {
+            System.out.printf("[POSITION] UI table empty or unreflected. Fetching data from Admin Position API (/shared/getsymbolclient/)...%n");
+            list = fetchPositionsFromApi(driver, cleanSym, ex);
+
+            // If API returned data, render it into the UI table so the screen stays synced
+            if (!list.isEmpty()) {
+                renderPositionsIntoUiTable(driver, list);
+            }
+        }
+
+        return list;
+    }
+
+    @SuppressWarnings("unchecked")
+    public static List<ClientPosition> fetchPositionsFromApi(WebDriver driver, String symbol, String exchange) {
+        String cleanSym = cleanSymbol(symbol);
+        String ex = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "DSE";
+        List<ClientPosition> list = new ArrayList<>();
+
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            String script =
+                "var done = arguments[arguments.length - 1];" +
+                "var sym = arguments[0];" +
+                "var ex = arguments[1];" +
+                "var url = '/shared/getsymbolclient/?page=1&per_page=100&symbol=' + encodeURIComponent(sym) + '&clientcode=&exchange=' + encodeURIComponent(ex);" +
+                "fetch(url, { method: 'GET', headers: { 'Accept': 'application/json' }, credentials: 'include' })" +
+                ".then(function(r) { return r.json(); })" +
+                ".then(function(data) { done(data); })" +
+                ".catch(function(err) { done({ error: err.toString() }); });";
+
+            Object raw = js.executeAsyncScript(script, cleanSym, ex);
+            if (raw instanceof Map) {
+                Map<String, Object> respMap = (Map<String, Object>) raw;
+                Object dataObj = respMap.get("data");
+                if (dataObj instanceof List) {
+                    List<Map<String, Object>> dataList = (List<Map<String, Object>>) dataObj;
+                    for (Map<String, Object> item : dataList) {
+                        String rowSym = cleanSymbol(String.valueOf(item.getOrDefault("symbol", cleanSym)));
+                        String clientCode = String.valueOf(item.getOrDefault("client_code", "")).trim();
+                        if (clientCode.isEmpty()) continue;
+
+                        double totalQty = parseNum(String.valueOf(item.getOrDefault("totalqty", "0")));
+                        double saleableQty = parseNum(String.valueOf(item.getOrDefault("qty", "0")));
+                        double avgCost = parseNum(String.valueOf(item.getOrDefault("avgcost", "0")));
+                        double totalCost = parseNum(String.valueOf(item.getOrDefault("totalcost", "0")));
+                        double mktRate = parseNum(String.valueOf(item.getOrDefault("ltp", "0")));
+                        double mktValue = parseNum(String.valueOf(item.getOrDefault("value", "0")));
+                        double gain = parseNum(String.valueOf(item.getOrDefault("gain", "0")));
+                        double gainPercent = parseNum(String.valueOf(item.getOrDefault("gain_per", "0")));
+
+                        list.add(new ClientPosition(
+                                rowSym.isEmpty() ? cleanSym : rowSym,
+                                clientCode,
+                                totalQty,
+                                saleableQty,
+                                avgCost,
+                                totalCost,
+                                mktRate,
+                                mktValue,
+                                gain,
+                                gainPercent
+                        ));
+                    }
+                }
+            }
+            if (!list.isEmpty()) {
+                System.out.printf("[SUCCESS: API] Captured %d Position record(s) for %s from Admin Position API (/shared/getsymbolclient/).%n",
+                        list.size(), cleanSym);
+            }
+        } catch (Exception e) {
+            System.out.println("[WARN: Position API] " + e.getMessage());
+        }
+
+        return list;
+    }
+
+    public static List<ClientPosition> extractFromDomTable(WebDriver driver, String cleanSym) {
+        List<ClientPosition> list = new ArrayList<>();
+
+        // Fast JavaScript DOM extraction from symbol_position_table
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
             Object res = js.executeScript(
@@ -433,7 +653,7 @@ public class Position {
             }
         } catch (Exception ignored) {}
 
-        // Tier 2: Selenium Explicit Elements Fallback
+        // Selenium Explicit Elements Fallback
         try {
             List<WebElement> rows = driver.findElements(By.xpath("//table[@id='symbol_position_table']//tbody//tr"));
             for (WebElement row : rows) {
@@ -459,6 +679,61 @@ public class Position {
         } catch (Exception ignored) {}
 
         return list;
+    }
+
+    public static void renderPositionsIntoUiTable(WebDriver driver, List<ClientPosition> positions) {
+        if (positions == null || positions.isEmpty()) return;
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            List<Map<String, String>> rowsData = new ArrayList<>();
+            for (ClientPosition p : positions) {
+                Map<String, String> m = new HashMap<>();
+                m.put("symbol", p.getSymbol());
+                m.put("client", p.getClientCode());
+                m.put("total_qty", fmtQty(p.getTotalQty()));
+                m.put("saleable", fmtQty(p.getSaleableQty()));
+                m.put("avg_cost", fmt(p.getAvgCost()));
+                m.put("total_cost", fmt(p.getTotalCost()));
+                m.put("mkt_rate", fmt(p.getMktRate()));
+                m.put("mkt_value", fmt(p.getMktValue()));
+                m.put("gain", fmt(p.getGain()));
+                m.put("gain_percent", fmt(p.getGainPercent()));
+                rowsData.add(m);
+            }
+
+            js.executeScript(
+                "var tbl = document.getElementById('symbol_position_table');" +
+                "if (!tbl) return;" +
+                "var tbody = tbl.querySelector('tbody');" +
+                "if (!tbody) {" +
+                "    tbody = document.createElement('tbody');" +
+                "    tbl.appendChild(tbody);" +
+                "}" +
+                "if (tbody.children.length === 0) {" +
+                "    var items = arguments[0];" +
+                "    for (var i = 0; i < items.length; i++) {" +
+                "        var item = items[i];" +
+                "        var tr = document.createElement('tr');" +
+                "        tr.style.textAlign = 'right';" +
+                "        tr.setAttribute('data-clientcode', item.client);" +
+                "        tr.setAttribute('data-symbol', item.symbol);" +
+                "        tr.setAttribute('data-qty', item.saleable);" +
+                "        tr.innerHTML = '<td class=\\'position_symbol text-left pl-2\\'>' + item.symbol + '</td>' +" +
+                "                       '<td class=\\'position_clientcode\\'>' + item.client + '</td>' +" +
+                "                       '<td class=\\'position_qty\\'>' + item.total_qty + '</td>' +" +
+                "                       '<td class=\\'position_saleable\\'>' + item.saleable + '</td>' +" +
+                "                       '<td class=\\'position_avgcost\\'>' + item.avg_cost + '</td>' +" +
+                "                       '<td class=\\'position_totalcost\\'>' + item.total_cost + '</td>' +" +
+                "                       '<td class=\\'position_mkt_rate\\'>' + item.mkt_rate + '</td>' +" +
+                "                       '<td class=\\'position_mkt_value\\'>' + item.mkt_value + '</td>' +" +
+                "                       '<td class=\\'position_gain\\'>' + item.gain + '</td>' +" +
+                "                       '<td class=\\'position_gain_percent\\'>' + item.gain_percent + '</td>';" +
+                "        tbody.appendChild(tr);" +
+                "    }" +
+                "}",
+                rowsData
+            );
+        } catch (Exception ignored) {}
     }
 
     public static List<ClientPosition> getClientsWithSaleable(WebDriver driver, String symbol, String exchange) {
