@@ -396,10 +396,17 @@ public class Order_Summary {
     // =========================================================================
     public static void verify(Map<String, String> before, Map<String, String> after,
                               String symbol, String side, int tradeQty, double tradeRate, String exchange) {
+        verify(before, after, symbol, side, tradeQty, tradeRate, exchange, tradeQty, 0);
+    }
+
+    public static void verify(Map<String, String> before, Map<String, String> after,
+                              String symbol, String side, int tradeQty, double tradeRate, String exchange,
+                              int executedQty, int dueQty) {
 
         boolean isBuy = side.equalsIgnoreCase("BUY");
+        int effExecQty = executedQty > 0 ? executedQty : tradeQty;
+        int effDueQty = dueQty >= 0 && executedQty > 0 ? dueQty : Math.max(0, tradeQty - effExecQty);
 
-        // Detailed Metrics
         String qtyKey = isBuy ? "B Qty" : "S Qty";
         String ordrKey = isBuy ? "B Ordr" : "S Ordr";
         String amountKey = isBuy ? "B Amount" : "S Amount";
@@ -415,16 +422,21 @@ public class Order_Summary {
 
         double expectedQty = oldQty + tradeQty;
         double expectedOrdr = oldOrdr + 1;
-        double tradeValue = tradeQty * tradeRate;
-        double expectedAmount = oldAmount + tradeValue;
+        double executedValue = effExecQty * tradeRate;
+        double expectedAmount = oldAmount + executedValue;
 
         boolean qtyPass = Double.compare(newQty, expectedQty) == 0;
         boolean ordrPass = Double.compare(newOrdr, expectedOrdr) == 0;
-        boolean amountPass = Math.abs(newAmount - expectedAmount) <= 1.0;
+        boolean amountPass = Math.abs(newAmount - expectedAmount) <= 1.0 || effExecQty == 0;
 
         System.out.println();
         System.out.println("+=========================================================================================+");
-        System.out.printf("| ORDER SUMMARY AUDIT: %-7s (%-4s %d @ %.2f on %-4s)%n", symbol, side, tradeQty, tradeRate, exchange);
+        if (effDueQty > 0) {
+            System.out.printf("| ORDER SUMMARY AUDIT: %-7s (%-4s %d placed, %d executed @ %.2f on %-4s)%n",
+                    symbol, side, tradeQty, effExecQty, tradeRate, exchange);
+        } else {
+            System.out.printf("| ORDER SUMMARY AUDIT: %-7s (%-4s %d @ %.2f on %-4s)%n", symbol, side, tradeQty, tradeRate, exchange);
+        }
         System.out.printf("| Sources: Pre-Trade [%s]  -->  Post-Trade [%s]%n",
                 before.getOrDefault("DATA_SOURCE", "NONE"), after.getOrDefault("DATA_SOURCE", "NONE"));
         System.out.println("+=========================================================================================+");
@@ -445,7 +457,7 @@ public class Order_Summary {
         System.out.println();
     }
 
-        public static String cleanSymbol(String sym) {
+    public static String cleanSymbol(String sym) {
         if (sym == null) return "";
         String s = sym.trim().toUpperCase();
         s = s.replaceAll("\\[[A-Z0-9]+\\]", "");

@@ -366,27 +366,60 @@ public class OMSweb_Trade {
 				}
 
 				// [STEP 2] CAPTURE POST-TRADE SNAPSHOT & VERIFICATION
-				System.out.printf("%n[PORTFOLIO] Capturing POST-TRADE Snapshot & Verification for Client: %s...%n", clientCode);
+				System.out.printf("%n[AUDIT] Capturing POST-TRADE Snapshot & Verification for Client: %s...%n", clientCode);
+
+				// 1. Visit Order Terminal first to detect order status, executed qty, and due qty
+				Order_Terminal.navigateToOrderTerminal(driver);
+				Order_Terminal.refresh(driver);
+				Map<String, String> postOrderTerminal = Order_Terminal.getSnapshot(driver, clientCode, instrument, snapshotExchange);
+
+				int executedQty = tradeQty;
+				int dueQty = 0;
+				String orderStatus = postOrderTerminal.getOrDefault("Status", "Filled");
+				try {
+					double eq = Double.parseDouble(postOrderTerminal.getOrDefault("Exec_Qty", "0").replaceAll("[^0-9.]", ""));
+					double dq = Double.parseDouble(postOrderTerminal.getOrDefault("Due_Qty", "0").replaceAll("[^0-9.]", ""));
+					if (eq > 0 || dq > 0) {
+						executedQty = (int) eq;
+						dueQty = (int) dq;
+					}
+				} catch (Exception ignored) {}
+
+				// 2. Capture Portfolio Snapshot & Client Info
 				navigateToPortfolioPage(driver, wait);
 				ClientPortfolio.refresh(driver);
 
 				Map<String, String> afterSnapshot = ClientPortfolio.getSnapshot(driver, clientCode, instrument, snapshotExchange);
 				Map<String, String> clientInfoAfter = ClientPortfolio.getClientDetails(driver, clientCode);
 
+				// Fallback: If Order Terminal didn't show Exec_Qty, check actual portfolio delta
+				if (executedQty == tradeQty && afterSnapshot != null && beforeSnapshot != null) {
+					try {
+						double oldQ = Double.parseDouble(beforeSnapshot.getOrDefault("total_qty", "0").replaceAll("[^0-9.]", ""));
+						double newQ = Double.parseDouble(afterSnapshot.getOrDefault("total_qty", "0").replaceAll("[^0-9.]", ""));
+						double diffQ = Math.abs(newQ - oldQ);
+						if (diffQ > 0 && diffQ < tradeQty) {
+							executedQty = (int) diffQ;
+							dueQty = tradeQty - executedQty;
+							orderStatus = "Partially Filled";
+						}
+					} catch (Exception ignored) {}
+				}
+
 				// Compare & Display Comprehensive Table with Portfolio & Cash Audit
-				ClientPortfolio.verify(beforeSnapshot, afterSnapshot, clientInfoBefore, clientInfoAfter, instrument, sideText, tradeQty, executedRate, exchange);
+				ClientPortfolio.verify(beforeSnapshot, afterSnapshot, clientInfoBefore, clientInfoAfter, instrument, sideText, tradeQty, executedRate, exchange, executedQty, dueQty, orderStatus);
 
 				// Verify Order Summary
 				Order_Summary.navigateToOrderSummary(driver);
 				Order_Summary.refresh(driver);
 				Map<String, String> postOrderSummary = Order_Summary.getSnapshot(driver, clientCode, instrument, snapshotExchange);
-				Order_Summary.verify(preOrderSummary, postOrderSummary, instrument, sideText, tradeQty, executedRate, exchange);
+				Order_Summary.verify(preOrderSummary, postOrderSummary, instrument, sideText, tradeQty, executedRate, exchange, executedQty, dueQty);
 
 				// Account Limits
 				Account_Limits.navigateToAccountLimits(driver);
 				Account_Limits.refresh(driver);
 				Map<String, String> postAccountLimits = Account_Limits.getSnapshot(driver, clientCode, snapshotExchange);
-				Account_Limits.verify(preAccountLimits, postAccountLimits, sideText, tradeQty, executedRate, exchange);
+				Account_Limits.verify(preAccountLimits, postAccountLimits, sideText, tradeQty, executedRate, exchange, executedQty, dueQty);
 
 				// Audit Market Depth
 				Market_Depth.navigateToMarketDepth(driver);
@@ -394,14 +427,10 @@ public class OMSweb_Trade {
 				Market_Depth.verify(preDepth, postDepth, instrument, sideText, tradeQty, executedRate, exchange);
 
 				// Audit Order Terminal
-				Order_Terminal.navigateToOrderTerminal(driver);
-				Order_Terminal.refresh(driver);
-				Map<String, String> postOrderTerminal = Order_Terminal.getSnapshot(driver, clientCode, instrument, snapshotExchange);
 				Order_Terminal.verify(preOrderTerminal, postOrderTerminal, instrument, sideText, tradeQty, executedRate, exchange);
 
 				// Click newly placed order row in Order Terminal
 				Order_Terminal.clickOrderRow(driver, postOrderTerminal.get("Order_ID"), clientCode, instrument);
-
 				// Return to Trade Page if needed
 				if (!isAlreadyOnTradePage(driver)) {
 					System.out.println("[TRADE] Returning to Trade Page...");

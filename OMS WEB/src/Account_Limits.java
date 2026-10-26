@@ -332,9 +332,20 @@ public class Account_Limits {
     // =========================================================================
     public static void verify(Map<String, String> before, Map<String, String> after,
                               String side, int tradeQty, double tradeRate, String exchange) {
+        verify(before, after, side, tradeQty, tradeRate, exchange, tradeQty, 0);
+    }
+
+    public static void verify(Map<String, String> before, Map<String, String> after,
+                              String side, int tradeQty, double tradeRate, String exchange,
+                              int executedQty, int dueQty) {
 
         boolean isBuy = side.equalsIgnoreCase("BUY");
-        double tradeValue = tradeQty * tradeRate;
+        int effExecQty = executedQty > 0 ? executedQty : tradeQty;
+        int effDueQty = dueQty >= 0 && executedQty > 0 ? dueQty : Math.max(0, tradeQty - effExecQty);
+
+        double executedTradeValue = effExecQty * tradeRate;
+        double dueTradeValue = effDueQty * tradeRate;
+        double totalTradeValue = tradeQty * tradeRate;
 
         // Cash fields
         double oldRemainingCash = parseNum(before.getOrDefault("Remaining_Cash", "0"));
@@ -352,18 +363,24 @@ public class Account_Limits {
         double newExecVal = parseNum(after.getOrDefault(execKey, "0"));
 
         // Expected math
-        double expectedDayOrder = oldDayOrder + tradeValue;
-        double expectedTotalTx = oldTotalTx + tradeValue;
-        double expectedExecVal = oldExecVal + tradeValue;
-        double expectedCash = isBuy ? (oldRemainingCash - tradeValue) : (oldRemainingCash + tradeValue);
+        double expectedDayOrder = oldDayOrder + totalTradeValue;
+        double expectedTotalTx = oldTotalTx + executedTradeValue;
+        double expectedExecVal = oldExecVal + executedTradeValue;
+        double expectedCash = isBuy ? (oldRemainingCash - (executedTradeValue + dueTradeValue)) : (oldRemainingCash + executedTradeValue);
 
         boolean dayOrderPass = Math.abs(newDayOrder - expectedDayOrder) <= 1.0;
-        boolean totalTxPass  = Math.abs(newTotalTx - expectedTotalTx) <= 1.0;
-        boolean execValPass  = Math.abs(newExecVal - expectedExecVal) <= 1.0;
+        boolean totalTxPass  = Math.abs(newTotalTx - expectedTotalTx) <= 1.0 || effExecQty == 0;
+        boolean execValPass  = Math.abs(newExecVal - expectedExecVal) <= 1.0 || effExecQty == 0;
 
         System.out.println();
         System.out.println("+=========================================================================================+");
-        System.out.printf("| ACCOUNT LIMITS AUDIT: %-4s %d @ %.2f (Trade Value: %,.2f on %-4s)%n", side, tradeQty, tradeRate, tradeValue, exchange);
+        if (effDueQty > 0) {
+            System.out.printf("| ACCOUNT LIMITS AUDIT: %-4s %d placed, %d executed @ %.2f (Due: %d on %-4s)%n",
+                    side, tradeQty, effExecQty, tradeRate, effDueQty, exchange);
+        } else {
+            System.out.printf("| ACCOUNT LIMITS AUDIT: %-4s %d @ %.2f (Trade Value: %,.2f on %-4s)%n",
+                    side, tradeQty, tradeRate, executedTradeValue, exchange);
+        }
         System.out.printf("| Sources: Pre-Trade [%s]  -->  Post-Trade [%s]%n",
                 before.getOrDefault("DATA_SOURCE", "NONE"), after.getOrDefault("DATA_SOURCE", "NONE"));
         System.out.println("+=========================================================================================+");
@@ -375,7 +392,7 @@ public class Account_Limits {
         System.out.printf("| Remaining Cash       | %-16.2f | %-16.2f | %-16.2f | %-7s%n", oldRemainingCash, newRemainingCash, expectedCash, "INFO");
         System.out.println("+=========================================================================================+");
 
-        if (dayOrderPass && totalTxPass && execValPass) {
+        if (dayOrderPass && (totalTxPass || effExecQty == 0) && (execValPass || effExecQty == 0)) {
             System.out.println(">>> [ACCOUNT LIMITS AUDIT PASSED] Account limits and cash reflect the trade accurately!");
         } else {
             System.err.println(">>> [ACCOUNT LIMITS AUDIT FAILED] Limits mismatch detected!");

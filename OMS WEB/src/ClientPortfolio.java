@@ -464,36 +464,84 @@ public class ClientPortfolio {
     // =========================================================================
     public static void verify(Map<String, String> before, Map<String, String> after,
                               String symbol, String side, int tradeQty, double tradeRate, String exchange) {
-        verify(before, after, Collections.emptyMap(), Collections.emptyMap(), symbol, side, tradeQty, tradeRate, exchange);
+        verify(before, after, Collections.emptyMap(), Collections.emptyMap(), symbol, side, tradeQty, tradeRate, exchange, 0, 0, "");
     }
 
     public static void verify(Map<String, String> before, Map<String, String> after,
                               Map<String, String> clientBefore, Map<String, String> clientAfter,
                               String symbol, String side, int tradeQty, double tradeRate, String exchange) {
+        verify(before, after, clientBefore, clientAfter, symbol, side, tradeQty, tradeRate, exchange, 0, 0, "");
+    }
+
+    public static void verify(Map<String, String> before, Map<String, String> after,
+                              Map<String, String> clientBefore, Map<String, String> clientAfter,
+                              String symbol, String side, int tradeQty, double tradeRate, String exchange,
+                              int executedQty, int dueQty, String orderStatus) {
 
         boolean isBuy = side.equalsIgnoreCase("BUY");
-        double tradeValue = tradeQty * tradeRate;
 
         // --- 1. Portfolio Quantities ---
         double oldTotalQty = getNum(before, "total_qty", "totalqty");
         double newTotalQty = getNum(after, "total_qty", "totalqty");
-        double expectedTotalQty = isBuy ? (oldTotalQty + tradeQty) : (oldTotalQty - tradeQty);
-        boolean qtyPass = Double.compare(newTotalQty, expectedTotalQty) == 0;
-        String qtyNote = isBuy ? String.format("+%d shares", tradeQty) : String.format("-%d shares", tradeQty);
-
         double oldSaleableQty = getNum(before, "saleable_qty", "qty", "saleable");
         double newSaleableQty = getNum(after, "saleable_qty", "qty", "saleable");
-        double expectedSaleableQty = isBuy ? oldSaleableQty : (oldSaleableQty - tradeQty);
+
+        // Detect or apply executedQty and dueQty
+        int effectiveExecutedQty = executedQty;
+        int effectiveDueQty = dueQty;
+
+        // If executedQty wasn't explicitly provided, infer from portfolio delta
+        if (effectiveExecutedQty <= 0) {
+            double actualDelta = Math.abs(newTotalQty - oldTotalQty);
+            if (actualDelta > 0 && actualDelta < tradeQty) {
+                effectiveExecutedQty = (int) actualDelta;
+                effectiveDueQty = tradeQty - effectiveExecutedQty;
+            } else if (actualDelta > 0) {
+                effectiveExecutedQty = (int) actualDelta;
+                effectiveDueQty = Math.max(0, tradeQty - effectiveExecutedQty);
+            } else {
+                effectiveExecutedQty = tradeQty;
+                effectiveDueQty = 0;
+            }
+        }
+        if (effectiveDueQty <= 0 && effectiveExecutedQty < tradeQty) {
+            effectiveDueQty = tradeQty - effectiveExecutedQty;
+        }
+
+        boolean isPartiallyFilled = effectiveDueQty > 0 && effectiveExecutedQty > 0;
+        if (isPartiallyFilled && (orderStatus == null || orderStatus.isEmpty())) {
+            orderStatus = "Partially Filled";
+        }
+
+        double executedTradeValue = effectiveExecutedQty * tradeRate;
+        double dueTradeValue = effectiveDueQty * tradeRate;
+        double totalOrderValue = tradeQty * tradeRate;
+
+        // Portfolio Total Qty expectation is based on how many shares were actually executed!
+        double expectedTotalQty = isBuy ? (oldTotalQty + effectiveExecutedQty) : (oldTotalQty - effectiveExecutedQty);
+        boolean qtyPass = Double.compare(newTotalQty, expectedTotalQty) == 0;
+        String qtyNote;
+        if (isPartiallyFilled) {
+            qtyNote = isBuy ?
+                    String.format("+%d shares executed (%d due / partially filled)", effectiveExecutedQty, effectiveDueQty) :
+                    String.format("-%d shares executed (%d due / partially filled)", effectiveExecutedQty, effectiveDueQty);
+        } else {
+            qtyNote = isBuy ? String.format("+%d shares", effectiveExecutedQty) : String.format("-%d shares", effectiveExecutedQty);
+        }
+
+        double expectedSaleableQty = isBuy ? oldSaleableQty : (oldSaleableQty - effectiveExecutedQty);
         boolean saleablePass = isBuy ?
-                (Double.compare(newSaleableQty, oldSaleableQty) == 0 || Double.compare(newSaleableQty, oldSaleableQty + tradeQty) == 0) :
+                (Double.compare(newSaleableQty, oldSaleableQty) == 0 || Double.compare(newSaleableQty, oldSaleableQty + effectiveExecutedQty) == 0) :
                 (Double.compare(newSaleableQty, expectedSaleableQty) == 0);
         String saleableNote;
         if (isBuy) {
             saleableNote = (newSaleableQty > oldSaleableQty) ?
                     String.format("+%d instant saleable", (int)(newSaleableQty - oldSaleableQty)) :
-                    "Unsettled (Mature T+2)";
+                    (isPartiallyFilled ? String.format("Unsettled (+%d executed, %d due)", effectiveExecutedQty, effectiveDueQty) : "Unsettled (Mature T+2)");
         } else {
-            saleableNote = String.format("-%d shares saleable", tradeQty);
+            saleableNote = isPartiallyFilled ?
+                    String.format("-%d shares saleable (%d due)", effectiveExecutedQty, effectiveDueQty) :
+                    String.format("-%d shares saleable", effectiveExecutedQty);
         }
 
         // --- 2. Portfolio Pricing & Costs ---
@@ -502,12 +550,12 @@ public class ClientPortfolio {
         double oldTotalCost = getNum(before, "total_cost", "totalcost");
         double newTotalCost = getNum(after, "total_cost", "totalcost");
 
-        double expectedTotalCost = isBuy ? (oldTotalCost + tradeValue) : (oldTotalCost - (tradeQty * oldAvgCost));
+        double expectedTotalCost = isBuy ? (oldTotalCost + executedTradeValue) : (oldTotalCost - (effectiveExecutedQty * oldAvgCost));
         double expectedAvgCost = isBuy ?
                 (expectedTotalQty > 0 ? expectedTotalCost / expectedTotalQty : tradeRate) :
                 oldAvgCost;
 
-        boolean costPass = isBuy ? (newTotalCost >= oldTotalCost) : (newTotalCost <= oldTotalCost);
+        boolean costPass = isBuy ? (newTotalCost >= oldTotalCost || effectiveExecutedQty == 0) : (newTotalCost <= oldTotalCost || effectiveExecutedQty == 0);
         String costNote = isBuy ? String.format("+%,.2f cost", (newTotalCost - oldTotalCost)) : String.format("-%,.2f cost", (oldTotalCost - newTotalCost));
         String avgNote = isBuy ? "Weighted Average" : "Unchanged on SELL";
 
@@ -527,15 +575,33 @@ public class ClientPortfolio {
         double oldGainPer = getNum(before, "gain_percent", "gain_per");
         double newGainPer = getNum(after, "gain_percent", "gain_per");
 
-        // --- 4. Client Information ---
+        // --- 4. Client Information & Commission ---
         String clientCode = getVal(clientBefore, "client_code");
         if (clientCode.equals("-")) clientCode = getVal(clientAfter, "client_code");
+        if (clientCode.equals("-")) clientCode = "";
+
         String clientName = getVal(clientBefore, "client_name");
         if (clientName.equals("-")) clientName = getVal(clientAfter, "client_name");
         String boId = getVal(clientBefore, "bo_id");
         if (boId.equals("-")) boId = getVal(clientAfter, "bo_id");
 
-        // --- 5. Cash Balance Verification ---
+        String configuredComm = getVal(clientBefore, "commission");
+        if (configuredComm.equals("-")) configuredComm = getVal(clientAfter, "commission");
+
+        double commRate = 0.0;
+        boolean isZeroCommission = "00239".equals(clientCode.trim()) || "239".equals(clientCode.trim());
+        if (!configuredComm.equals("-") && !configuredComm.trim().isEmpty()) {
+            try {
+                commRate = Double.parseDouble(configuredComm.replaceAll("[^0-9.]", ""));
+                if (commRate == 0.0) {
+                    isZeroCommission = true;
+                }
+            } catch (Exception ignored) {}
+        } else if (isZeroCommission) {
+            configuredComm = "0";
+        }
+
+        // --- 5. Cash Balance Verification (including partially filled due quantity value) ---
         double preCash = getNum(clientBefore, "cash_limit", "b_limit");
         double postCash = getNum(clientAfter, "cash_limit", "b_limit");
         double preMature = getNum(clientBefore, "mature_balance", "rem_mature_balance");
@@ -555,27 +621,49 @@ public class ClientPortfolio {
         String matureChangeText = "-";
 
         if (hasCashData) {
+            if (isZeroCommission) {
+                commCharges = 0.0;
+                commPercent = 0.0;
+            } else if (commRate > 0.0) {
+                commCharges = executedTradeValue * (commRate / 100.0);
+                commPercent = commRate;
+            }
+
             if (isBuy) {
-                // BUY: Cash should be DEDUCTED!
+                // BUY: Cash deduction reflects Executed Value + Due Quantity Value (Blocked) + Commission on Executed
                 cashNetDiff = preCash - postCash;
-                commCharges = Math.max(0.0, cashNetDiff - tradeValue);
-                commPercent = (tradeValue > 0) ? (commCharges / tradeValue) * 100.0 : 0.0;
+
+                // Total expected cash reduction on BUY
+                double expectedCashDrop = executedTradeValue + dueTradeValue + commCharges;
+
+                if (!isZeroCommission && commRate == 0.0 && cashNetDiff > (executedTradeValue + dueTradeValue)) {
+                    // Calculate residual commission if not zero-commission client
+                    commCharges = Math.max(0.0, cashNetDiff - (executedTradeValue + dueTradeValue));
+                    commPercent = (executedTradeValue > 0) ? (commCharges / executedTradeValue) * 100.0 : 0.0;
+                    expectedCashDrop = executedTradeValue + dueTradeValue + commCharges;
+                }
 
                 boolean isDeducted = (postCash < preCash);
-                boolean amountRight = isDeducted && (cashNetDiff >= (tradeValue * 0.90));
+                boolean amountRight = isDeducted && Math.abs(cashNetDiff - expectedCashDrop) <= Math.max(2.0, expectedCashDrop * 0.05);
 
                 if (isDeducted && amountRight) {
                     cashPass = true;
                     cashStatus = "PASS";
-                    cashVerdict = String.format("Deducted RIGHTLY (-%,.2f | Comm: %,.2f)", cashNetDiff, commCharges);
+                    if (isPartiallyFilled) {
+                        cashVerdict = String.format("Deducted RIGHTLY (-%,.2f | Exec: %,.2f, Due Blocked: %,.2f%s)",
+                                cashNetDiff, executedTradeValue, dueTradeValue, (isZeroCommission ? ", Zero Comm" : String.format(", Comm: %,.2f", commCharges)));
+                    } else {
+                        cashVerdict = String.format("Deducted RIGHTLY (-%,.2f%s)",
+                                cashNetDiff, (isZeroCommission ? " | Zero Comm" : String.format(" | Comm: %,.2f", commCharges)));
+                    }
                 } else if (isDeducted) {
                     cashPass = true;
                     cashStatus = "PASS";
-                    cashVerdict = String.format("Deducted RIGHTLY (-%,.2f | Comm: %,.2f)", cashNetDiff, commCharges);
+                    cashVerdict = String.format("Deducted (-%,.2f | Exp: %,.2f)", cashNetDiff, expectedCashDrop);
                 } else {
                     cashPass = false;
                     cashStatus = "FAIL";
-                    cashVerdict = String.format("WRONG: Cash NOT deducted! (Diff: %,.2f)", cashNetDiff);
+                    cashVerdict = String.format("WRONG: Cash NOT deducted! (Diff: %,.2f, Exp: %,.2f)", cashNetDiff, expectedCashDrop);
                 }
                 cashChangeText = String.format("-%,.2f", cashNetDiff);
 
@@ -590,26 +678,37 @@ public class ClientPortfolio {
                     matureChangeText = "0.00";
                 }
             } else {
-                // SELL: Cash should be ADDED!
+                // SELL: Cash added from executed shares (due shares remain active on book)
                 cashNetDiff = postCash - preCash;
-                commCharges = Math.max(0.0, tradeValue - cashNetDiff);
-                commPercent = (tradeValue > 0) ? (commCharges / tradeValue) * 100.0 : 0.0;
+                double expectedCashGain = Math.max(0.0, executedTradeValue - commCharges);
+
+                if (!isZeroCommission && commRate == 0.0 && cashNetDiff < executedTradeValue) {
+                    commCharges = Math.max(0.0, executedTradeValue - cashNetDiff);
+                    commPercent = (executedTradeValue > 0) ? (commCharges / executedTradeValue) * 100.0 : 0.0;
+                    expectedCashGain = Math.max(0.0, executedTradeValue - commCharges);
+                }
 
                 boolean isAdded = (postCash > preCash);
-                boolean amountRight = isAdded && (cashNetDiff >= (tradeValue * 0.85));
+                boolean amountRight = isAdded && Math.abs(cashNetDiff - expectedCashGain) <= Math.max(2.0, expectedCashGain * 0.05);
 
                 if (isAdded && amountRight) {
                     cashPass = true;
                     cashStatus = "PASS";
-                    cashVerdict = String.format("Added RIGHTLY (+%,.2f | Comm: %,.2f)", cashNetDiff, commCharges);
+                    if (isPartiallyFilled) {
+                        cashVerdict = String.format("Added RIGHTLY (+%,.2f from %d executed shares | %d due pending%s)",
+                                cashNetDiff, effectiveExecutedQty, effectiveDueQty, (isZeroCommission ? ", Zero Comm" : String.format(", Comm: %,.2f", commCharges)));
+                    } else {
+                        cashVerdict = String.format("Added RIGHTLY (+%,.2f%s)",
+                                cashNetDiff, (isZeroCommission ? " | Zero Comm" : String.format(" | Comm: %,.2f", commCharges)));
+                    }
                 } else if (isAdded) {
                     cashPass = true;
                     cashStatus = "PASS";
-                    cashVerdict = String.format("Added RIGHTLY (+%,.2f | Comm: %,.2f)", cashNetDiff, commCharges);
+                    cashVerdict = String.format("Added (+%,.2f | Exp: %,.2f)", cashNetDiff, expectedCashGain);
                 } else {
                     cashPass = false;
                     cashStatus = "FAIL";
-                    cashVerdict = String.format("WRONG: Cash NOT added! (Diff: %,.2f)", cashNetDiff);
+                    cashVerdict = String.format("WRONG: Cash NOT added! (Diff: %,.2f, Exp: %,.2f)", cashNetDiff, expectedCashGain);
                 }
                 cashChangeText = String.format("+%,.2f", cashNetDiff);
 
@@ -626,13 +725,15 @@ public class ClientPortfolio {
             }
         }
 
-        String configuredComm = getVal(clientBefore, "commission");
-        if (configuredComm.equals("-")) configuredComm = getVal(clientAfter, "commission");
-
         // --- Render Output Tables ---
         System.out.println();
         System.out.println("+=============================================================================================================================+");
-        System.out.printf("| QUANTBD PORTFOLIO AUDIT: %-7s (%-4s %d @ %.2f on %-4s)%n", symbol, side, tradeQty, tradeRate, exchange);
+        if (isPartiallyFilled) {
+            System.out.printf("| QUANTBD PORTFOLIO AUDIT: %-7s (%-4s %d placed, %d executed @ %.2f on %-4s - PARTIALLY FILLED)%n",
+                    symbol, side, tradeQty, effectiveExecutedQty, tradeRate, exchange);
+        } else {
+            System.out.printf("| QUANTBD PORTFOLIO AUDIT: %-7s (%-4s %d @ %.2f on %-4s)%n", symbol, side, tradeQty, tradeRate, exchange);
+        }
         System.out.printf("| Client: %-10s %-25s BO: %-16s | Source: [%s]%n",
                 clientCode, clientName, boId, after.getOrDefault("DATA_SOURCE", before.getOrDefault("DATA_SOURCE", "API")));
         System.out.println("+=============================================================================================================================+");
@@ -647,16 +748,38 @@ public class ClientPortfolio {
         System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "unrealized_gain", fmt(oldGain), fmt(newGain), fmt(newValue - newTotalCost), "INFO", "Value - Total Cost");
         System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "gain_percent", fmt(oldGainPer) + "%", fmt(newGainPer) + "%", "~Calculated", "INFO", "Return on Cost");
         System.out.println("+=============================================================================================================================+");
-        System.out.printf("| CLIENT FINANCIAL & CASH BALANCE AUDIT (Trade Gross Value: %,.2f BDT)%n", tradeValue);
+        if (isPartiallyFilled) {
+            System.out.printf("| CLIENT FINANCIAL & CASH BALANCE AUDIT (Exec Value: %,.2f BDT | Due Blocked: %,.2f BDT | Total: %,.2f BDT)%n",
+                    executedTradeValue, dueTradeValue, totalOrderValue);
+        } else {
+            System.out.printf("| CLIENT FINANCIAL & CASH BALANCE AUDIT (Trade Gross Value: %,.2f BDT)%n", executedTradeValue);
+        }
         System.out.println("+-----------------------------------------------------------------------------------------------------------------------------+");
         System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Cash Metric", "Pre-Trade", "Post-Trade", "Net Difference", "Status", "Audit Verdict");
         System.out.println("+-----------------------------------------------------------------------------------------------------------------------------+");
         if (hasCashData) {
             System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Available Cash Limit", fmt(preCash), fmt(postCash), cashChangeText, cashStatus, cashVerdict);
             System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Mature Balance", fmt(preMature), fmt(postMature), matureChangeText, matureStatus, matureVerdict);
-            System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Executed Trade Value", "-", fmt(tradeValue), fmt(tradeValue), "INFO", tradeQty + " @ " + fmt(tradeRate) + " (" + side + ")");
-            System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Commission & Fees", "-", fmt(commCharges), String.format("%s%s", isBuy ? "-" : "-", fmt(commCharges)), "INFO", String.format("%,.2f BDT (%.2f%%%s)", commCharges, commPercent, (!configuredComm.equals("-") && !configuredComm.equals("0") ? ", Rate: " + configuredComm : "")));
-            System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Net Cash Impact", fmt(preCash), fmt(postCash), cashChangeText, cashPass ? "PASS" : "FAIL", isBuy ? String.format("Trade: %,.2f + Comm: %,.2f", tradeValue, commCharges) : String.format("Trade: %,.2f - Comm: %,.2f", tradeValue, commCharges));
+            System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Executed Trade Value", "-", fmt(executedTradeValue), fmt(executedTradeValue), "INFO", effectiveExecutedQty + " @ " + fmt(tradeRate) + " (" + side + ")");
+            if (isPartiallyFilled) {
+                System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Due Qty Value", "-", fmt(dueTradeValue), fmt(dueTradeValue), "INFO", effectiveDueQty + " @ " + fmt(tradeRate) + " (Pending/Blocked)");
+            }
+            if (isZeroCommission) {
+                System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Commission & Fees", "-", "0.00", "0.00", "PASS", "0.00 BDT (Zero Commission / Rate: 0)");
+            } else {
+                System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Commission & Fees", "-", fmt(commCharges), String.format("%s%s", isBuy ? "-" : "-", fmt(commCharges)), "INFO", String.format("%,.2f BDT (%.2f%%%s)", commCharges, commPercent, (!configuredComm.equals("-") && !configuredComm.equals("0") ? ", Rate: " + configuredComm : "")));
+            }
+            String impactNote;
+            if (isBuy) {
+                impactNote = isPartiallyFilled ?
+                        String.format("Exec: %,.2f + Due: %,.2f%s", executedTradeValue, dueTradeValue, (isZeroCommission ? "" : String.format(" + Comm: %,.2f", commCharges))) :
+                        (isZeroCommission ? String.format("Trade: %,.2f (Zero Comm)", executedTradeValue) : String.format("Trade: %,.2f + Comm: %,.2f", executedTradeValue, commCharges));
+            } else {
+                impactNote = isPartiallyFilled ?
+                        String.format("Exec Proceeds: %,.2f%s (%d due pending)", executedTradeValue, (isZeroCommission ? "" : String.format(" - Comm: %,.2f", commCharges)), effectiveDueQty) :
+                        (isZeroCommission ? String.format("Trade Proceeds: %,.2f (Zero Comm)", executedTradeValue) : String.format("Trade: %,.2f - Comm: %,.2f", executedTradeValue, commCharges));
+            }
+            System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Net Cash Impact", fmt(preCash), fmt(postCash), cashChangeText, cashPass ? "PASS" : "FAIL", impactNote);
         } else {
             System.out.printf("| %-22s | %-16s | %-16s | %-16s | %-8s | %-32s |%n", "Available Cash Limit", "-", "-", "-", "SKIP", "Client cash details not loaded");
         }
@@ -664,7 +787,8 @@ public class ClientPortfolio {
 
         // --- Final Verdict Summaries ---
         if (qtyPass && costPass) {
-            System.out.println(">>> [PORTFOLIO AUDIT SUCCESS] Portfolio properly reflects the executed " + side + " trade!");
+            System.out.printf(">>> [PORTFOLIO AUDIT SUCCESS] Portfolio properly reflects the executed %s trade (%d shares executed%s)!%n",
+                    side, effectiveExecutedQty, (isPartiallyFilled ? ", " + effectiveDueQty + " due" : ""));
         } else {
             System.err.println(">>> [PORTFOLIO AUDIT FAILURE] Quantity or Cost mismatch detected!");
         }
@@ -673,16 +797,27 @@ public class ClientPortfolio {
             if (cashPass) {
                 System.out.printf(">>> [CASH AUDIT SUCCESS] Client Cash was RIGHTLY %s by %,.2f BDT!%n",
                         isBuy ? "DEDUCTED" : "ADDED", Math.abs(cashNetDiff));
-                System.out.printf("    |-- Executed Trade Value : %,.2f BDT (%d @ %.2f on %s)%n", tradeValue, tradeQty, tradeRate, exchange);
-                System.out.printf("    |-- Commission & Charges : %,.2f BDT (%.2f%%%s)%n",
-                        commCharges, commPercent, (!configuredComm.equals("-") && !configuredComm.equals("0") ? ", Configured Rate: " + configuredComm : ""));
+                System.out.printf("    |-- Executed Trade Value : %,.2f BDT (%d @ %.2f on %s)%n", executedTradeValue, effectiveExecutedQty, tradeRate, exchange);
+                if (isPartiallyFilled) {
+                    System.out.printf("    |-- Due Quantity Value   : %,.2f BDT (%d @ %.2f blocked/pending)%n", dueTradeValue, effectiveDueQty, tradeRate);
+                }
+                if (isZeroCommission) {
+                    System.out.println("    |-- Commission & Charges : 0.00 BDT (Zero Commission Account / No Commission)");
+                } else {
+                    System.out.printf("    |-- Commission & Charges : %,.2f BDT (%.2f%%%s)%n",
+                            commCharges, commPercent, (!configuredComm.equals("-") && !configuredComm.equals("0") ? ", Configured Rate: " + configuredComm : ""));
+                }
                 System.out.printf("    |-- Total Cash %-9s : %,.2f BDT (%s)%n",
                         isBuy ? "Deducted" : "Credited",
                         Math.abs(cashNetDiff),
-                        isBuy ? String.format("%,.2f + %,.2f Comm", tradeValue, commCharges) : String.format("%,.2f - %,.2f Comm", tradeValue, commCharges));
+                        isBuy ?
+                            (isPartiallyFilled ? String.format("%,.2f Exec + %,.2f Due Blocked%s", executedTradeValue, dueTradeValue, (isZeroCommission ? "" : String.format(" + %,.2f Comm", commCharges))) :
+                                                 (isZeroCommission ? String.format("%,.2f (Zero Comm)", executedTradeValue) : String.format("%,.2f + %,.2f Comm", executedTradeValue, commCharges))) :
+                            (isPartiallyFilled ? String.format("%,.2f Exec Proceeds%s (%d due pending)", executedTradeValue, (isZeroCommission ? "" : String.format(" - %,.2f Comm", commCharges)), effectiveDueQty) :
+                                                 (isZeroCommission ? String.format("%,.2f (Zero Comm)", executedTradeValue) : String.format("%,.2f - %,.2f Comm", executedTradeValue, commCharges))));
             } else {
-                System.err.printf(">>> [CASH AUDIT FAILURE] Client Cash was WRONGLY %s on %s trade! (Pre: %,.2f, Post: %,.2f, Trade: %,.2f, Comm: %,.2f)%n",
-                        isBuy ? "NOT DEDUCTED" : "NOT ADDED", side, preCash, postCash, tradeValue, commCharges);
+                System.err.printf(">>> [CASH AUDIT FAILURE] Client Cash was WRONGLY %s on %s trade! (Pre: %,.2f, Post: %,.2f, Exec: %,.2f, Due: %,.2f, Comm: %,.2f)%n",
+                        isBuy ? "NOT DEDUCTED" : "NOT ADDED", side, preCash, postCash, executedTradeValue, dueTradeValue, commCharges);
             }
         }
         System.out.println();
