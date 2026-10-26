@@ -902,8 +902,14 @@ public class Position {
             if (rate > 0) {
                 try {
                     WebElement rateInp = driver.findElement(By.id("limit_order_rate"));
-                    rateInp.clear();
-                    rateInp.sendKeys(String.valueOf(rate));
+                    if (rateInp.isDisplayed()) {
+                        rateInp.clear();
+                        rateInp.sendKeys(String.valueOf(rate));
+                    } else {
+                        ((JavascriptExecutor) driver).executeScript(
+                                "arguments[0].value = arguments[1]; try { $(arguments[0]).trigger('input').trigger('change'); } catch(e){}",
+                                rateInp, String.valueOf(rate));
+                    }
                     ((JavascriptExecutor) driver).executeScript("$('#limit_order_rate').trigger('input').trigger('change');");
                 } catch (Exception ignored) {}
             }

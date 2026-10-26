@@ -232,8 +232,10 @@ public class OMSweb_Trade {
 					}
 				}
 			} else {
-				handleRate(driver, wait, sc, instrument, sideText);
-				executedRate = getEnteredRate(driver);
+				executedRate = handleRate(driver, wait, sc, instrument, sideText);
+				if (executedRate <= 0.0) {
+					executedRate = getEnteredRate(driver);
+				}
 			}
 
 			// ---------- 5. Execute Trade(s) for the Client Code(s) ----------
@@ -344,8 +346,14 @@ public class OMSweb_Trade {
 				if (!isPriorityOrder && executedRate > 0) {
 					try {
 						WebElement rateInput = driver.findElement(By.id("limit_order_rate"));
-						rateInput.clear();
-						rateInput.sendKeys(String.valueOf(executedRate));
+						if (rateInput.isDisplayed()) {
+							rateInput.clear();
+							rateInput.sendKeys(String.valueOf(executedRate));
+						} else {
+							((JavascriptExecutor) driver).executeScript(
+									"arguments[0].value = arguments[1]; try { $(arguments[0]).trigger('input').trigger('change'); } catch(e){}",
+									rateInput, String.valueOf(executedRate));
+						}
 						((JavascriptExecutor) driver).executeScript("$('#limit_order_rate').trigger('input').trigger('change');");
 					} catch (Exception ignored) {}
 				} else if (isPriorityOrder && executedRate <= 0.0) {
@@ -774,8 +782,20 @@ public class OMSweb_Trade {
 		double ltp = fetchLTP(driver, wait, instrument);
 		double outOfCircuitRate = side.equalsIgnoreCase("BUY") ? ltp + 500 : ltp - 500;
 		WebElement rateInput = driver.findElement(By.id("limit_order_rate"));
-		rateInput.clear();
-		rateInput.sendKeys(String.format("%.2f", outOfCircuitRate));
+		try {
+			if (rateInput.isDisplayed()) {
+				rateInput.clear();
+				rateInput.sendKeys(String.format(java.util.Locale.US, "%.2f", outOfCircuitRate));
+			} else {
+				((JavascriptExecutor) driver).executeScript(
+						"arguments[0].value = arguments[1]; try { $(arguments[0]).trigger('input').trigger('change'); } catch(e){}",
+						rateInput, String.format(java.util.Locale.US, "%.2f", outOfCircuitRate));
+			}
+		} catch (Exception e) {
+			((JavascriptExecutor) driver).executeScript(
+					"arguments[0].value = arguments[1]; try { $(arguments[0]).trigger('input').trigger('change'); } catch(e){}",
+					rateInput, String.format(java.util.Locale.US, "%.2f", outOfCircuitRate));
+		}
 		System.out.println("Set out-of-circuit rate: " + String.format("%.2f", outOfCircuitRate));
 
 		submitOrder(driver, side);
@@ -1052,35 +1072,51 @@ public class OMSweb_Trade {
 		displayCommissionOnOrderWindow(driver, clientCode, q, 0.0);
 	}
 
-	private static void handleRate(WebDriver driver, WebDriverWait wait, Scanner sc, String instrument, String side)
+	private static double handleRate(WebDriver driver, WebDriverWait wait, Scanner sc, String instrument, String side)
 			throws InterruptedException {
-		WebElement rateInput = driver.findElement(By.id("limit_order_rate"));
-
-		String rateValue = rateInput.getDomProperty("value");
-		if (rateValue == null || rateValue.trim().isEmpty()) {
-			rateValue = rateInput.getDomAttribute("value");
-		}
-
-		if (rateValue != null && !rateValue.trim().isEmpty()) {
-			System.out.println("Rate already present: " + rateValue + " -> going straight to " + side + " button.");
-			return;
-		}
+		WebElement rateInput = null;
+		try {
+			rateInput = driver.findElement(By.id("limit_order_rate"));
+		} catch (Exception ignored) {}
 
 		System.out.print("Enter " + side + " Rate manually (press ENTER to auto-fetch from LTP): ");
-		String rate = sc.nextLine();
-		if (rate.trim().isEmpty()) {
+		String rate = sc.nextLine().trim();
+		double parsedRate = 0.0;
+		if (rate.isEmpty()) {
 			double ltp = fetchLTP(driver, wait, instrument);
 			double autoRate = side.equalsIgnoreCase("BUY") ? ltp - 0.1 : ltp + 0.1;
-			rate = String.format("%.2f", autoRate);
+			rate = String.format(java.util.Locale.US, "%.2f", autoRate);
+			parsedRate = autoRate;
 			System.out.println("Auto-fetched LTP: " + ltp + " -> Rate: " + rate);
 		} else {
+			try {
+				parsedRate = Double.parseDouble(rate.replaceAll("[^0-9.]", ""));
+			} catch (Exception ignored) {}
 			System.out.println("Manual " + side + " Rate entered: " + rate);
 		}
-		rateInput.clear();
-		rateInput.sendKeys(rate);
-		try {
-			((JavascriptExecutor) driver).executeScript("$('#limit_order_rate').trigger('input').trigger('change');");
-		} catch (Exception ignored) {}
+
+		if (rateInput != null) {
+			try {
+				if (rateInput.isDisplayed()) {
+					rateInput.clear();
+					rateInput.sendKeys(rate);
+				} else {
+					((JavascriptExecutor) driver).executeScript(
+							"arguments[0].value = arguments[1]; try { $(arguments[0]).trigger('input').trigger('change'); } catch(e){}",
+							rateInput, rate);
+				}
+			} catch (Exception e) {
+				try {
+					((JavascriptExecutor) driver).executeScript(
+							"arguments[0].value = arguments[1]; try { $(arguments[0]).trigger('input').trigger('change'); } catch(e){}",
+							rateInput, rate);
+				} catch (Exception ignored) {}
+			}
+			try {
+				((JavascriptExecutor) driver).executeScript("$('#limit_order_rate').trigger('input').trigger('change');");
+			} catch (Exception ignored) {}
+		}
+		return parsedRate;
 	}
 
 	private static void enterRateAndSubmit(WebDriver driver, WebDriverWait wait, Scanner sc, String instrument,
