@@ -7,8 +7,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
@@ -204,7 +202,7 @@ public class OMSweb_MultiOrderExecution {
         System.out.println("\n===============================================================================");
         System.out.println(" STEP 4: REAL-TIME AUDIT & VERIFICATION ACROSS ALL 6 WIDGETS");
         System.out.println("===============================================================================");
-        runComprehensiveMultiWidgetAudit(driver, wait, baseline, placedOrders, symbol, exchange, currentLtp);
+        runComprehensiveMultiWidgetAudit(driver, wait, baseline, placedOrders, symbol, exchange);
 
         // Return to Trade page cleanly
         try {
@@ -716,7 +714,7 @@ public class OMSweb_MultiOrderExecution {
     // =========================================================================
     // 7. REAL-TIME MULTI-WIDGET AUDIT & VERIFICATION ENGINE (ALL 6 WIDGETS)
     // =========================================================================
-    private static void runComprehensiveMultiWidgetAudit(WebDriver driver, WebDriverWait wait, BaselineStore base, List<OrderItem> placedOrders, String symbol, String exchange, double ltp) {
+    private static void runComprehensiveMultiWidgetAudit(WebDriver driver, WebDriverWait wait, BaselineStore base, List<OrderItem> placedOrders, String symbol, String exchange) {
         Map<String, String> scorecard = new LinkedHashMap<>();
 
         // ---------------------------------------------------------------------
@@ -725,7 +723,6 @@ public class OMSweb_MultiOrderExecution {
         System.out.println("\n-------------------------------------------------------------------------------");
         System.out.println(" [AUDIT 1/6] ORDER TERMINAL REAL-TIME VERIFICATION");
         System.out.println("-------------------------------------------------------------------------------");
-        boolean terminalPass = false;
         try {
             Order_Terminal.navigateToOrderTerminal(driver);
             Order_Terminal.refresh(driver);
@@ -744,7 +741,6 @@ public class OMSweb_MultiOrderExecution {
 
                 Order_Terminal.verify(base.orderTerminal, postSnap, symbol, order.getSide().name(), order.getQuantity(), order.getRate(), exchange);
             }
-            terminalPass = true;
             scorecard.put("Order Terminal", "PASS (Orders Captured & Terminal Verified)");
         } catch (Exception e) {
             System.out.println("[FAIL: Order Terminal Audit] " + e.getMessage());
@@ -757,7 +753,6 @@ public class OMSweb_MultiOrderExecution {
         System.out.println("\n-------------------------------------------------------------------------------");
         System.out.println(" [AUDIT 2/6] CLIENT PORTFOLIO REAL-TIME VERIFICATION");
         System.out.println("-------------------------------------------------------------------------------");
-        boolean portfolioPass = true;
         try {
             ClientPortfolio.navigateToPortfolio(driver);
             ClientPortfolio.refresh(driver);
