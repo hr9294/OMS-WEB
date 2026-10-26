@@ -816,8 +816,9 @@ public class OMSweb_Trade {
 			"var results = [];" +
 			"chooseColors.forEach(function(chooseDiv, index) {" +
 			"    var stack = chooseDiv.closest('.lm_stack');" +
+			"    var posTab = stack ? stack.querySelector('.lm_tab[title*=Position], .lm_tab .lm_title') : null;" +
 			"    var activeTab = stack ? stack.querySelector('.lm_tab.lm_active .lm_title, .lm_tab .lm_title') : null;" +
-			"    var title = activeTab ? activeTab.innerText.trim() : ('Widget ' + (index + 1));" +
+			"    var title = activeTab ? activeTab.innerText.trim() : (posTab ? 'Position' : ('Widget ' + (index + 1)));" +
 			"    var items = Array.from(chooseDiv.querySelectorAll('ul.color-card li.color-item'));" +
 			"    var targetLi = items.find(function(li) {" +
 			"        var colorDiv = li.querySelector('[data-link-color]');" +

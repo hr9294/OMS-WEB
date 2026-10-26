@@ -65,12 +65,161 @@ public class Position {
     }
 
     // =========================================================================
+    // WIDGET COLOR LINKING
+    // =========================================================================
+    public static final String[] COLOR_NAMES = { "Turquoise", "Yellow", "Orange", "Green", "Red", "Pink" };
+    public static final String[] COLOR_HEXES = { "#42EADDFF", "#FEE715FF", "#F95700ff", "#06d001", "#EB0506", "#FF3EA5FF" };
+
+    public static void runWidgetColorSelection(WebDriver driver, Scanner sc) throws InterruptedException {
+        System.out.println("\n=== Position Widget Color Link ===");
+        System.out.println("1.Turquoise  2.Yellow  3.Orange");
+        System.out.println("4.Green      5.Red     6.Pink");
+        System.out.print("Enter choice (1-6, or press Enter to skip): ");
+        String input = sc.nextLine().trim();
+        if (input.isEmpty()) return;
+        int colorChoice;
+        try {
+            colorChoice = Integer.parseInt(input);
+        } catch (NumberFormatException e) {
+            return;
+        }
+        if (colorChoice < 1 || colorChoice > 6) return;
+
+        setWidgetColor(driver, colorChoice);
+    }
+
+    public static boolean setWidgetColor(WebDriver driver, int colorChoice) {
+        if (colorChoice < 1 || colorChoice > 6) return false;
+        String chosenColorName = COLOR_NAMES[colorChoice - 1];
+        String targetHex = COLOR_HEXES[colorChoice - 1];
+        return applyWidgetColor(driver, chosenColorName, targetHex);
+    }
+
+    public static boolean setWidgetColor(WebDriver driver, String colorNameOrHex) {
+        if (colorNameOrHex == null || colorNameOrHex.trim().isEmpty()) return false;
+        String val = colorNameOrHex.trim();
+        for (int i = 0; i < COLOR_NAMES.length; i++) {
+            if (COLOR_NAMES[i].equalsIgnoreCase(val) || COLOR_HEXES[i].equalsIgnoreCase(val)) {
+                return setWidgetColor(driver, i + 1);
+            }
+        }
+        return applyWidgetColor(driver, val, val);
+    }
+
+    private static boolean applyWidgetColor(WebDriver driver, String chosenColorName, String targetHex) {
+        try {
+            navigateToPosition(driver);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            String script =
+                "var targetHex = arguments[0];" +
+                "var tbl = document.getElementById('symbol_position_table');" +
+                "var stack = tbl ? (tbl.closest('.lm_stack') || tbl.closest('.lm_item_container')) : null;" +
+                "var chooseDiv = null;" +
+                "if (stack) {" +
+                "    chooseDiv = stack.querySelector('.lm_header .chooseColor, .lm_controls .chooseColor, .chooseColor');" +
+                "}" +
+                "if (!chooseDiv) {" +
+                "    var tabs = Array.from(document.querySelectorAll('.lm_tab'));" +
+                "    var posTab = tabs.find(function(t) { return t.innerText && t.innerText.includes('Position'); });" +
+                "    if (posTab) {" +
+                "        var tabStack = posTab.closest('.lm_stack');" +
+                "        if (tabStack) chooseDiv = tabStack.querySelector('.chooseColor');" +
+                "    }" +
+                "}" +
+                "if (!chooseDiv) {" +
+                "    chooseDiv = document.querySelector('.chooseColor');" +
+                "}" +
+                "if (!chooseDiv) return { success: false, error: 'chooseColor element not found' };" +
+                "var items = Array.from(chooseDiv.querySelectorAll('ul.color-card li.color-item, li.color-item'));" +
+                "var targetLi = items.find(function(li) {" +
+                "    var colorDiv = li.querySelector('[data-link-color]');" +
+                "    return colorDiv && colorDiv.getAttribute('data-link-color').toLowerCase() === targetHex.toLowerCase();" +
+                "});" +
+                "if (targetLi) {" +
+                "    if (window.$) {" +
+                "        window.$(targetLi).trigger('click');" +
+                "    } else {" +
+                "        targetLi.click();" +
+                "    }" +
+                "    var selectedDiv = chooseDiv.querySelector('.selectedColor');" +
+                "    var finalColor = selectedDiv ? (selectedDiv.getAttribute('data-link-color') || selectedDiv.style.backgroundColor) : '';" +
+                "    return { success: true, color: finalColor };" +
+                "} else {" +
+                "    return { success: false, error: 'Color hex not found in palette' };" +
+                "}";
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = (Map<String, Object>) js.executeScript(script, targetHex);
+
+            if (result != null && Boolean.TRUE.equals(result.get("success"))) {
+                System.out.printf(">>> [POSITION COLOR LINK] Successfully linked Position widget to %s (%s)%n",
+                        chosenColorName, targetHex);
+                Thread.sleep(300);
+                return true;
+            } else {
+                String err = (result != null && result.containsKey("error")) ? (String) result.get("error") : "Failed to select color";
+                System.out.printf("[WARN: Position Color Link] %s%n", err);
+                return false;
+            }
+        } catch (Exception e) {
+            System.out.printf("[WARN: Position Color Link] %s%n", e.getMessage());
+            return false;
+        }
+    }
+
+    public static String getWidgetColor(WebDriver driver) {
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            String script =
+                "var tbl = document.getElementById('symbol_position_table');" +
+                "var stack = tbl ? (tbl.closest('.lm_stack') || tbl.closest('.lm_item_container')) : null;" +
+                "var chooseDiv = null;" +
+                "if (stack) chooseDiv = stack.querySelector('.chooseColor');" +
+                "if (!chooseDiv) {" +
+                "    var tabs = Array.from(document.querySelectorAll('.lm_tab'));" +
+                "    var posTab = tabs.find(function(t) { return t.innerText && t.innerText.includes('Position'); });" +
+                "    if (posTab && posTab.closest('.lm_stack')) chooseDiv = posTab.closest('.lm_stack').querySelector('.chooseColor');" +
+                "}" +
+                "if (chooseDiv) {" +
+                "    var selectedDiv = chooseDiv.querySelector('.selectedColor');" +
+                "    if (selectedDiv) {" +
+                "        return selectedDiv.getAttribute('data-link-color') || selectedDiv.style.backgroundColor || '';" +
+                "    }" +
+                "}" +
+                "return '';";
+
+            Object res = js.executeScript(script);
+            if (res != null) {
+                String hex = String.valueOf(res).trim();
+                for (int i = 0; i < COLOR_HEXES.length; i++) {
+                    if (COLOR_HEXES[i].equalsIgnoreCase(hex)) {
+                        return COLOR_NAMES[i] + " (" + hex + ")";
+                    }
+                }
+                return hex;
+            }
+        } catch (Exception ignored) {}
+        return "";
+    }
+
+    // =========================================================================
     // 2. MAIN STANDALONE ENTRY POINT
     // =========================================================================
     public static void main(WebDriver driver, Scanner sc) throws InterruptedException {
         System.out.println("\n=======================================================");
         System.out.println("               POSITION WIDGET VIEWER                  ");
         System.out.println("=======================================================");
+
+        navigateToPosition(driver);
+
+        // Display and offer Position Widget Color Link
+        String currentColor = getWidgetColor(driver);
+        System.out.printf("[COLOR LINK] Position Widget Current Color: %s%n", currentColor.isEmpty() ? "Default / Unlinked" : currentColor);
+        System.out.print("Do you want to change Position Widget Color Link? (1=YES / 0=NO): ");
+        if (sc.nextLine().trim().equals("1")) {
+            runWidgetColorSelection(driver, sc);
+        }
 
         String symbol = cleanSymbol(readInputSafe(driver, By.id("order_instrument"), By.id("instrument"), By.id("marketwatch_symbol")));
         if (symbol.isEmpty()) {
