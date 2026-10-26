@@ -62,8 +62,17 @@ public class OMSwebmain {
         // Login
         OMSweb_Login.main(driver, sc);
 
-        // Trade Page 
-        OMSweb_Trade.main(driver, sc);
+        System.out.println("\nSelect Trading Execution Engine:");
+        System.out.println("  1. Standard Trade & 6-Widget Verification [Default]");
+        System.out.println("  2. Multi-Order Execution, Right-Click 'Execute at Market' & Real-time 6-Widget Audit");
+        System.out.print("Enter Choice (1 or 2, default=1): ");
+        String engChoice = sc.nextLine().trim();
+        if ("2".equals(engChoice)) {
+            OMSweb_MultiOrderExecution.main(driver, sc);
+        } else {
+            // Standard Trade Page
+            OMSweb_Trade.main(driver, sc);
+        }
 
         
         // OMSweb_MultipleTrade.main(driver, sc);
