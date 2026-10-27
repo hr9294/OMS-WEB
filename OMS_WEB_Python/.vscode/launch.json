@@ -1,0 +1,49 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "🚀 OMS Web: Interactive Main Runner (main.py)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "⚡ OMS Web: Multi-Order Execution & Market Trigger",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "args": ["--mode", "multi-order"],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "🏎️ OMS Web: High-Speed Multi-Trade Load Tester",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "args": ["--mode", "load-test"],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "📊 OMS Web: Standard Trade & 6-Widget Verification",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "args": ["--mode", "trade"],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "🔍 OMS Web: Account Limits & High-Cash Client Discovery",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "args": ["--mode", "account-limits"],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}

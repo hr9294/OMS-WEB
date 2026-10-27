@@ -1,0 +1,54 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "🚀 OMS Web Python: Interactive Main Runner",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/OMS_WEB_Python/main.py",
+            "cwd": "${workspaceFolder}/OMS_WEB_Python",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "⚡ OMS Web Python: Multi-Order Execution & Market Trigger",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/OMS_WEB_Python/main.py",
+            "cwd": "${workspaceFolder}/OMS_WEB_Python",
+            "args": ["--mode", "multi-order"],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "🏎️ OMS Web Python: High-Speed Multi-Trade Load Tester",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/OMS_WEB_Python/main.py",
+            "cwd": "${workspaceFolder}/OMS_WEB_Python",
+            "args": ["--mode", "load-test"],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "📊 OMS Web Python: Standard Trade & 6-Widget Verification",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/OMS_WEB_Python/main.py",
+            "cwd": "${workspaceFolder}/OMS_WEB_Python",
+            "args": ["--mode", "trade"],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "🔍 OMS Web Python: Account Limits & High-Cash Client Discovery",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/OMS_WEB_Python/main.py",
+            "cwd": "${workspaceFolder}/OMS_WEB_Python",
+            "args": ["--mode", "account-limits"],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        }
+    ]
+}
