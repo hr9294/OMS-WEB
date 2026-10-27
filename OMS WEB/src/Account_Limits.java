@@ -23,7 +23,6 @@ public class Account_Limits {
     private static final String[] EXCHANGES = {"DSE", "CSE"};
 
     // Navigation Tabs
-    private static final By ACCOUNT_LIMITS_TAB = By.xpath("//div[contains(@class,'lm_tab') and contains(.,'Account Limit')] | //a[normalize-space()='Account Limits'] | //div[@title='Account Limit']");
     private static final By TRADE_TAB          = By.xpath("//div[contains(@class,'lm_tab') and contains(.,'Trade')] | //i[contains(@class,'fa-exchange')] | //a[normalize-space()='Trade']");
 
     // Filter Bar

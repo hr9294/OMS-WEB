@@ -899,17 +899,6 @@ public class OMSweb_MultiOrderExecution {
         return s.trim();
     }
 
-    private static String readInputSafe(WebDriver driver, By... locators) {
-        for (By loc : locators) {
-            try {
-                WebElement el = driver.findElement(loc);
-                String val = el.getDomProperty("value");
-                if (val != null && !val.trim().isEmpty()) return cleanSymbol(val);
-            } catch (Exception ignored) {}
-        }
-        return "";
-    }
-
     private static double parseNum(String val) {
         if (val == null) return 0.0;
         String clean = val.replaceAll("[^0-9.-]", "").trim();
