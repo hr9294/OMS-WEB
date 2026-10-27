@@ -49,6 +49,28 @@ class OrderItem:
         )
 
 
+def parse_client_list(user_in: str, defaults: List[str]) -> List[str]:
+    """Parses a single client or comma-separated client list."""
+    if not user_in or not user_in.strip():
+        return list(defaults)
+    clients = [c.strip() for c in re.split(r"[,;\s]+", user_in.strip()) if c.strip()]
+    return clients if clients else list(defaults)
+
+
+def set_trade_page_client_code(driver: webdriver.Chrome, client_code: str) -> None:
+    """Sets active client code directly in Trade Page without page switching."""
+    if not client_code or not client_code.strip():
+        return
+    try:
+        el = driver.find_element(By.ID, "order_client_code")
+        el.clear()
+        el.send_keys(client_code.strip())
+        el.send_keys(Keys.TAB)
+        print(f"[TRADE PAGE] Active Client Code set to: {client_code.strip()}")
+    except Exception:
+        pass
+
+
 def build_order_queue(
     driver: webdriver.Chrome,
     choice: int,
@@ -57,32 +79,10 @@ def build_order_queue(
     ref_price: float,
     different_prices: bool = True
 ) -> List[OrderItem]:
-    """Builds the non-crossing order queue with dynamic high-cash client discovery."""
+    """Builds the non-crossing order queue with manual client entry (100% on Trade Page)."""
     queue: List[OrderItem] = []
 
-    # 1. Discover Active BUY Clients with Cash >= 100,000 BDT & Valid BO ID
-    real_buy_clients = account_limits.get_active_buy_clients_with_cash(driver, 100000.0, 5)
-    if not real_buy_clients:
-        real_buy_clients = ["08096", "00224", "08833", "00507", "09139"]
-
-    # 2. Query Real Holding Clients for SELL side from Position widget
-    real_sell_clients: List[str] = []
-    try:
-        holdings = position.get_clients_with_saleable(driver, symbol, exchange)
-        if holdings:
-            real_sell_clients = [h.client_code for h in holdings]
-            print(f"[POSITION] Found {len(real_sell_clients)} real holding clients with saleable shares of {symbol}.")
-    except Exception as e:
-        print(f"[POSITION: WARN] {e}")
-
-    if not real_sell_clients:
-        real_sell_clients = ["11310", "12245", "14118", "19363", "26687"]
-
-    # AUTOMATICALLY RETURN TO TRADE PAGE & RESTORE PREVIOUS CHANGES & CLIENT
-    primary_buy_client = real_buy_clients[0] if real_buy_clients else "23986"
-    oms_trade.restore_trade_page_state(driver, symbol, primary_buy_client)
-
-    # 3. Calculate safe spread delta to prevent orders from executing upon initial placement
+    # Calculate safe spread delta to prevent orders from executing upon initial placement
     if ref_price <= 20.0:
         spread_delta = 0.50
     elif ref_price <= 100.0:
@@ -96,11 +96,19 @@ def build_order_queue(
 
     if choice == 1:
         # Strategy 1: Multiple BUY orders (DOWN prices < P) + Opposite SELL order (UPPER price > P)
-        buy_count = min(3, len(real_buy_clients))
+        buy_in = input("\nEnter BUY Client Code(s) (single or comma-separated, default=08096): ").strip()
+        buy_clients = parse_client_list(buy_in, ["08096", "00224", "08833"])
+
+        sell_in = input("Enter Opposite SELL Client Code [default=11310]: ").strip()
+        sell_client = sell_in or "11310"
+
+        set_trade_page_client_code(driver, buy_clients[0])
+
+        buy_count = 3 if len(buy_clients) == 1 else min(3, len(buy_clients))
         total_buy_qty = 0
 
         for i in range(buy_count):
-            buy_client = real_buy_clients[i % len(real_buy_clients)]
+            buy_client = buy_clients[i % len(buy_clients)]
             qty = 10 + (i * 2)
             total_buy_qty += qty
             step = (i * 0.50) if different_prices else 0.0
@@ -109,17 +117,24 @@ def build_order_queue(
             item_counter += 1
 
         # Opposite SELL order at UPPER price (> ref_price)
-        sell_client = real_sell_clients[0]
         sell_rate = round(ref_price + spread_delta, 2)
         queue.append(OrderItem(item_counter, "SELL", sell_client, symbol, total_buy_qty, sell_rate, True))
 
     elif choice == 2:
         # Strategy 2: Multiple SELL orders (UPPER prices > P) + Opposite BUY order (DOWN price < P)
-        sell_count = min(3, len(real_sell_clients))
+        sell_in = input("\nEnter SELL Client Code(s) (single or comma-separated, default=11310): ").strip()
+        sell_clients = parse_client_list(sell_in, ["11310", "12245", "14118"])
+
+        buy_in = input("Enter Opposite BUY Client Code [default=08096]: ").strip()
+        buy_client = buy_in or "08096"
+
+        set_trade_page_client_code(driver, sell_clients[0])
+
+        sell_count = 3 if len(sell_clients) == 1 else min(3, len(sell_clients))
         total_sell_qty = 0
 
         for i in range(sell_count):
-            sell_client = real_sell_clients[i % len(real_sell_clients)]
+            sell_client = sell_clients[i % len(sell_clients)]
             qty = 10
             total_sell_qty += qty
             step = (i * 0.50) if different_prices else 0.0
@@ -128,7 +143,6 @@ def build_order_queue(
             item_counter += 1
 
         # Opposite BUY order at DOWN price (< ref_price)
-        buy_client = real_buy_clients[0]
         buy_rate = max(0.10, round(ref_price - spread_delta, 2))
         queue.append(OrderItem(item_counter, "BUY", buy_client, symbol, total_sell_qty, buy_rate, True))
 
@@ -142,18 +156,37 @@ def build_order_queue(
         p_count = int(cnt_str) if cnt_str.isdigit() else 2
 
         total_qty = 0
+        first_client = ""
         for i in range(p_count):
-            client = real_buy_clients[i % len(real_buy_clients)] if p_side == "BUY" else real_sell_clients[i % len(real_sell_clients)]
-            qty = 10
+            default_client = "08096" if p_side == "BUY" else "11310"
+            c_in = input(f"  Order #{i+1} Client [{default_client}]: ").strip()
+            client = c_in or default_client
+            if not first_client:
+                first_client = client
+
+            q_in = input("  Quantity (default 10): ").strip()
+            qty = int(q_in) if q_in.isdigit() else 10
             total_qty += qty
+
             step = (i * 0.50) if different_prices else 0.0
-            rate = max(0.10, round(ref_price - spread_delta - step, 2)) if p_side == "BUY" else round(ref_price + spread_delta + step, 2)
+            default_rate = max(0.10, round(ref_price - spread_delta - step, 2)) if p_side == "BUY" else round(ref_price + spread_delta + step, 2)
+            r_in = input(f"  Price Rate (default {default_rate:.2f}): ").strip()
+            rate = float(r_in) if r_in else default_rate
+
             queue.append(OrderItem(item_counter, p_side, client, symbol, qty, rate, False))
             item_counter += 1
 
-        opp_client = real_sell_clients[0] if p_side == "BUY" else real_buy_clients[0]
-        opp_rate = round(ref_price + spread_delta, 2) if opp_side == "SELL" else max(0.10, round(ref_price - spread_delta, 2))
+        default_opp = "08096" if opp_side == "BUY" else "11310"
+        opp_in = input(f"Enter Opposite {opp_side} Client [{default_opp}]: ").strip()
+        opp_client = opp_in or default_opp
+
+        default_opp_rate = round(ref_price + spread_delta, 2) if opp_side == "SELL" else max(0.10, round(ref_price - spread_delta, 2))
+        or_in = input(f"Enter Opposite {opp_side} Rate (default {default_opp_rate:.2f}): ").strip()
+        opp_rate = float(or_in) if or_in else default_opp_rate
+
         queue.append(OrderItem(item_counter, opp_side, opp_client, symbol, total_qty, opp_rate, True))
+
+        set_trade_page_client_code(driver, first_client)
 
     return queue
 

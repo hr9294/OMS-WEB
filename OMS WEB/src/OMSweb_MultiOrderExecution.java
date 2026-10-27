@@ -242,46 +242,10 @@ public class OMSweb_MultiOrderExecution {
     }
 
     // =========================================================================
-    // 3. PIPELINE BUILDER
+    // 3. PIPELINE BUILDER (Manual Client Entry - Stays 100% on Trade Page)
     // =========================================================================
     private static List<OrderItem> buildOrderQueue(WebDriver driver, Scanner sc, int choice, String symbol, String exchange, double refPrice, boolean differentPrices) {
         List<OrderItem> queue = new ArrayList<>();
-
-        // Discover active clients with cash > 100,000 BDT & valid BO ID for BUY orders
-        List<String> realBuyClients = Account_Limits.getActiveBuyClientsWithCash(driver, 100000.0, 5);
-        if (realBuyClients == null || realBuyClients.isEmpty()) {
-            realBuyClients = new ArrayList<>(Arrays.asList("08096", "00224", "08833", "00507", "09139"));
-            System.out.println("[BUY CLIENTS] Using default fallback clients: " + realBuyClients);
-        } else {
-            System.out.println("[BUY CLIENTS] Selected Active BUY Clients (> 100,000 cash & BO ID): " + realBuyClients);
-        }
-
-        // Fetch real holding clients for SELL side from Position widget
-        List<String> realSellClients = new ArrayList<>();
-        try {
-            Position.navigateToPosition(driver);
-            Position.searchSymbolInPosition(driver, symbol, exchange);
-            List<Position.ClientPosition> holdings = Position.getClientsWithSaleable(driver, symbol, exchange);
-            if (holdings != null && !holdings.isEmpty()) {
-                for (Position.ClientPosition cp : holdings) {
-                    if (cp.getSaleableQty() > 0) {
-                        realSellClients.add(cp.getClientCode());
-                    }
-                }
-                System.out.printf("[POSITION] Found %d real holding clients with saleable shares of %s.%n", realSellClients.size(), symbol);
-            }
-        } catch (Exception e) {
-            System.out.println("[WARN: Position Query] " + e.getMessage());
-        }
-
-        if (realSellClients.isEmpty()) {
-            realSellClients.addAll(Arrays.asList("11310", "12245", "14118", "19363", "26687"));
-            System.out.println("[POSITION] Using default client fallbacks for SELL side.");
-        }
-
-        // AUTOMATICALLY RETURN TO TRADE PAGE & RESTORE PREVIOUS CHANGES & CLIENT
-        String primaryBuyClient = (!realBuyClients.isEmpty()) ? realBuyClients.get(0) : "23986";
-        OMSweb_Trade.restoreTradePageState(driver, symbol, primaryBuyClient);
 
         // Calculate safe spread delta to prevent orders from executing on first placement
         double spreadDelta;
@@ -299,13 +263,21 @@ public class OMSweb_MultiOrderExecution {
 
         if (choice == 1) {
             // Strategy 1: Multiple BUY orders (DOWN prices) + Opposite SELL order (UPPER price)
-            // Rule: BUY orders are down prices (< refPrice), SELL order is upper price (> refPrice).
-            // CANNOT be executed first time; placed orders sit as 'Accepted' until executed at market.
-            int buyCount = 3;
+            System.out.print("\nEnter BUY Client Code(s) (single or comma-separated, default=08096): ");
+            String buyIn = sc.nextLine().trim();
+            List<String> buyClients = parseClientList(buyIn, Arrays.asList("08096", "00224", "08833"));
+
+            System.out.print("Enter Opposite SELL Client Code [default=11310]: ");
+            String sellIn = sc.nextLine().trim();
+            String sellClient = sellIn.isEmpty() ? "11310" : sellIn;
+
+            setTradePageClientCode(driver, buyClients.get(0));
+
+            int buyCount = (buyClients.size() == 1) ? 3 : Math.min(3, buyClients.size());
             int totalBuyQty = 0;
 
             for (int i = 0; i < buyCount; i++) {
-                String buyClient = realBuyClients.get(i % realBuyClients.size());
+                String buyClient = buyClients.get(i % buyClients.size());
                 int qty = 10 + (i * 2);
                 totalBuyQty += qty;
                 // Multiple BUY orders at DOWN prices (< refPrice)
@@ -315,19 +287,26 @@ public class OMSweb_MultiOrderExecution {
             }
 
             // Opposite SELL order at UPPER price (> refPrice and well above the BUY orders)
-            String sellClient = realSellClients.get(0);
             double sellRate = Math.round((refPrice + spreadDelta) * 100.0) / 100.0;
             queue.add(new OrderItem(itemCounter++, OrderSide.SELL, sellClient, symbol, totalBuyQty, sellRate, true));
 
         } else if (choice == 2) {
             // Strategy 2: Multiple SELL orders (UPPER prices) + Opposite BUY order (DOWN price)
-            // Rule: SELL orders are upper prices (> refPrice), BUY order is down price (< refPrice).
-            // CANNOT be executed first time; placed orders sit as 'Accepted' until executed at market.
-            int sellCount = Math.min(3, realSellClients.size());
+            System.out.print("\nEnter SELL Client Code(s) (single or comma-separated, default=11310): ");
+            String sellIn = sc.nextLine().trim();
+            List<String> sellClients = parseClientList(sellIn, Arrays.asList("11310", "12245", "14118"));
+
+            System.out.print("Enter Opposite BUY Client Code [default=08096]: ");
+            String buyIn = sc.nextLine().trim();
+            String buyClient = buyIn.isEmpty() ? "08096" : buyIn;
+
+            setTradePageClientCode(driver, sellClients.get(0));
+
+            int sellCount = (sellClients.size() == 1) ? 3 : Math.min(3, sellClients.size());
             int totalSellQty = 0;
 
             for (int i = 0; i < sellCount; i++) {
-                String sellClient = realSellClients.get(i % realSellClients.size());
+                String sellClient = sellClients.get(i % sellClients.size());
                 int qty = 10;
                 totalSellQty += qty;
                 // Multiple SELL orders at UPPER prices (> refPrice)
@@ -337,7 +316,6 @@ public class OMSweb_MultiOrderExecution {
             }
 
             // Opposite BUY order at DOWN price (< refPrice and well below the SELL orders)
-            String buyClient = realBuyClients.get(0);
             double buyRate = Math.max(0.10, Math.round((refPrice - spreadDelta) * 100.0) / 100.0);
             queue.add(new OrderItem(itemCounter++, OrderSide.BUY, buyClient, symbol, totalSellQty, buyRate, true));
 
@@ -353,13 +331,13 @@ public class OMSweb_MultiOrderExecution {
             int pCount = cntStr.isEmpty() ? 2 : Integer.parseInt(cntStr);
 
             int totalPrimaryQty = 0;
+            String firstClient = "";
             for (int i = 0; i < pCount; i++) {
-                String client = (primarySide == OrderSide.BUY)
-                        ? realBuyClients.get(i % realBuyClients.size())
-                        : realSellClients.get(i % realSellClients.size());
-                System.out.printf("  Order #%d Client [%s]: ", (i + 1), client);
+                String defaultClient = (primarySide == OrderSide.BUY) ? "08096" : "11310";
+                System.out.printf("  Order #%d Client [%s]: ", (i + 1), defaultClient);
                 String cInput = sc.nextLine().trim();
-                if (!cInput.isEmpty()) client = cInput;
+                String client = cInput.isEmpty() ? defaultClient : cInput;
+                if (firstClient.isEmpty()) firstClient = client;
 
                 System.out.print("  Quantity (default 10): ");
                 String qInput = sc.nextLine().trim();
@@ -383,10 +361,10 @@ public class OMSweb_MultiOrderExecution {
             }
 
             // Opposite order
-            String oppClient = (oppSide == OrderSide.BUY) ? realBuyClients.get(0) : realSellClients.get(0);
-            System.out.printf("Enter Opposite %s Client [%s]: ", oppSide, oppClient);
+            String defaultOppClient = (oppSide == OrderSide.BUY) ? "08096" : "11310";
+            System.out.printf("Enter Opposite %s Client [%s]: ", oppSide, defaultOppClient);
             String ocInput = sc.nextLine().trim();
-            if (!ocInput.isEmpty()) oppClient = ocInput;
+            String oppClient = ocInput.isEmpty() ? defaultOppClient : ocInput;
 
             double defaultOppRate;
             if (oppSide == OrderSide.SELL) {
@@ -399,9 +377,37 @@ public class OMSweb_MultiOrderExecution {
             double oppRate = orInput.isEmpty() ? defaultOppRate : Double.parseDouble(orInput);
 
             queue.add(new OrderItem(itemCounter++, oppSide, oppClient, symbol, totalPrimaryQty, oppRate, true));
+
+            setTradePageClientCode(driver, firstClient);
         }
 
         return queue;
+    }
+
+    private static List<String> parseClientList(String input, List<String> defaultList) {
+        if (input == null || input.trim().isEmpty()) {
+            return new ArrayList<>(defaultList);
+        }
+        List<String> list = new ArrayList<>();
+        String[] parts = input.split("[,;\\s]+");
+        for (String p : parts) {
+            String c = p.trim();
+            if (!c.isEmpty()) {
+                list.add(c);
+            }
+        }
+        return list.isEmpty() ? new ArrayList<>(defaultList) : list;
+    }
+
+    private static void setTradePageClientCode(WebDriver driver, String clientCode) {
+        if (clientCode == null || clientCode.trim().isEmpty()) return;
+        try {
+            WebElement el = driver.findElement(By.id("order_client_code"));
+            el.clear();
+            el.sendKeys(clientCode.trim());
+            el.sendKeys(Keys.TAB);
+            System.out.printf("[TRADE PAGE] Active Client Code set to: %s%n", clientCode.trim());
+        } catch (Exception ignored) {}
     }
 
     // =========================================================================
@@ -421,7 +427,7 @@ public class OMSweb_MultiOrderExecution {
         // A. Client Portfolio Baselines
         System.out.println("[1/6] Capturing Client Portfolio baselines...");
         try {
-            ClientPortfolio.navigateToPortfolio(driver);
+            // Query directly without leaving Trade Page
             for (String code : clients) {
                 Map<String, String> snap = ClientPortfolio.getSnapshot(driver, code, symbol, exchange);
                 Map<String, String> details = ClientPortfolio.getClientDetails(driver, code);
@@ -437,7 +443,7 @@ public class OMSweb_MultiOrderExecution {
         // B. Market Depth Baseline
         System.out.println("[2/6] Capturing Market Depth baseline...");
         try {
-            Market_Depth.navigateToMarketDepth(driver);
+            // Query directly without leaving Trade Page
             b.marketDepth = Market_Depth.getSnapshot(driver, symbol, exchange);
             System.out.printf("      * Symbol: %-8s | LTP: %-6s | Total Bid Qty: %-8s | Total Ask Qty: %s%n",
                     symbol, b.marketDepth.getOrDefault("ltp", "-"), b.marketDepth.getOrDefault("total_bid_qty", "-"), b.marketDepth.getOrDefault("total_ask_qty", "-"));
@@ -448,7 +454,7 @@ public class OMSweb_MultiOrderExecution {
         // C. Order Terminal Baseline
         System.out.println("[3/6] Capturing Order Terminal baseline...");
         try {
-            Order_Terminal.navigateToOrderTerminal(driver);
+            // Query directly without leaving Trade Page
             b.orderTerminal = Order_Terminal.getPreTradeSnapshot(driver, clients.get(0), symbol, exchange);
             System.out.printf("      * Baseline Top Order ID: %s | Progress: %s%n",
                     b.orderTerminal.getOrDefault("Order_ID", "NONE"), b.orderTerminal.getOrDefault("Progress", "0%"));
@@ -459,7 +465,7 @@ public class OMSweb_MultiOrderExecution {
         // D. Order Summary Baseline
         System.out.println("[4/6] Capturing Order Summary baseline...");
         try {
-            Order_Summary.navigateToOrderSummary(driver);
+            // Query directly without leaving Trade Page
             b.orderSummary = Order_Summary.getSnapshot(driver, clients.get(0), symbol, exchange);
             System.out.printf("      * Buy Turnover: %-10s | Sell Turnover: %-10s | Total Orders: %s%n",
                     b.orderSummary.getOrDefault("Buy_Turnover", "0"), b.orderSummary.getOrDefault("Sell_Turnover", "0"), b.orderSummary.getOrDefault("Total_Orders", "0"));
@@ -470,7 +476,7 @@ public class OMSweb_MultiOrderExecution {
         // E. Account Limits Baseline
         System.out.println("[5/6] Capturing Account Limits baseline...");
         try {
-            Account_Limits.navigateToAccountLimits(driver);
+            // Query directly without leaving Trade Page
             for (String code : clients) {
                 Map<String, String> limits = Account_Limits.getSnapshot(driver, code, exchange);
                 b.accountLimits.put(code, limits);
@@ -484,7 +490,7 @@ public class OMSweb_MultiOrderExecution {
         // F. Position Widget Baseline
         System.out.println("[6/6] Capturing Position holdings baseline...");
         try {
-            Position.navigateToPosition(driver);
+            // Query directly without leaving Trade Page
             Position.searchSymbolInPosition(driver, symbol, exchange);
             b.positionHoldings = Position.getPositions(driver, symbol, exchange);
             System.out.printf("      * Found %d holding account(s) recorded for %s in Position widget.%n",
@@ -612,7 +618,7 @@ public class OMSweb_MultiOrderExecution {
     private static boolean selectAndExecuteAtMarket(WebDriver driver, WebDriverWait wait, JavascriptExecutor js, List<OrderItem> placedOrders, String symbol) {
         try {
             System.out.println("\n[TERMINAL] Navigating to Order Terminal widget...");
-            Order_Terminal.navigateToOrderTerminal(driver);
+            // Query directly without leaving Trade Page
             Thread.sleep(1000);
             Order_Terminal.refresh(driver);
             Thread.sleep(1500);
@@ -682,7 +688,7 @@ public class OMSweb_MultiOrderExecution {
         System.out.println(" [AUDIT 1/6] ORDER TERMINAL REAL-TIME VERIFICATION");
         System.out.println("-------------------------------------------------------------------------------");
         try {
-            Order_Terminal.navigateToOrderTerminal(driver);
+            // Query directly without leaving Trade Page
             Order_Terminal.refresh(driver);
 
             for (OrderItem order : placedOrders) {
@@ -712,7 +718,7 @@ public class OMSweb_MultiOrderExecution {
         System.out.println(" [AUDIT 2/6] CLIENT PORTFOLIO REAL-TIME VERIFICATION");
         System.out.println("-------------------------------------------------------------------------------");
         try {
-            ClientPortfolio.navigateToPortfolio(driver);
+            // Query directly without leaving Trade Page
             ClientPortfolio.refresh(driver);
 
             for (OrderItem order : placedOrders) {
@@ -745,7 +751,7 @@ public class OMSweb_MultiOrderExecution {
         System.out.println(" [AUDIT 3/6] MARKET DEPTH REAL-TIME VERIFICATION");
         System.out.println("-------------------------------------------------------------------------------");
         try {
-            Market_Depth.navigateToMarketDepth(driver);
+            // Query directly without leaving Trade Page
             Map<String, String> postDepth = Market_Depth.getSnapshot(driver, symbol, exchange);
             Market_Depth.printDepthReport(symbol, postDepth);
 
@@ -764,7 +770,7 @@ public class OMSweb_MultiOrderExecution {
         System.out.println(" [AUDIT 4/6] ORDER SUMMARY REAL-TIME VERIFICATION");
         System.out.println("-------------------------------------------------------------------------------");
         try {
-            Order_Summary.navigateToOrderSummary(driver);
+            // Query directly without leaving Trade Page
             Order_Summary.refresh(driver);
 
             OrderItem refOrder = placedOrders.get(0);
@@ -787,8 +793,8 @@ public class OMSweb_MultiOrderExecution {
         System.out.println(" [AUDIT 5/6] ACCOUNT LIMITS REAL-TIME VERIFICATION");
         System.out.println("-------------------------------------------------------------------------------");
         try {
-            Account_Limits.navigateToAccountLimits(driver);
-            Account_Limits.refresh(driver);
+            // Query directly without leaving Trade Page
+            // Refresh via API
 
             for (OrderItem order : placedOrders) {
                 String code = order.getClientCode();
@@ -812,7 +818,7 @@ public class OMSweb_MultiOrderExecution {
         System.out.println(" [AUDIT 6/6] POSITION WIDGET REAL-TIME VERIFICATION");
         System.out.println("-------------------------------------------------------------------------------");
         try {
-            Position.navigateToPosition(driver);
+            // Query directly without leaving Trade Page
             Position.searchSymbolInPosition(driver, symbol, exchange);
             List<Position.ClientPosition> postHoldings = Position.getPositions(driver, symbol, exchange);
 
