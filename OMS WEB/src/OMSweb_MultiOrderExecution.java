@@ -277,6 +277,10 @@ public class OMSweb_MultiOrderExecution {
             System.out.println("[POSITION] Using default client fallbacks for SELL side.");
         }
 
+        // AUTOMATICALLY RETURN TO TRADE PAGE & RESTORE PREVIOUS CHANGES & CLIENT
+        String primaryBuyClient = (!realBuyClients.isEmpty()) ? realBuyClients.get(0) : "23986";
+        OMSweb_Trade.restoreTradePageState(driver, symbol, primaryBuyClient);
+
         // Calculate safe spread delta to prevent orders from executing on first placement
         double spreadDelta;
         if (refPrice <= 20.0) {

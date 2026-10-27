@@ -264,6 +264,12 @@ public class Account_Limits {
         }
         System.out.println("+=================================================================================================================+\n");
 
+        // Automatically return to Trade Page and restore state
+        try {
+            String returnClient = !chosen.isEmpty() ? chosen.get(0).getClientCode() : "23986";
+            OMSweb_Trade.restoreTradePageState(driver, "GP", returnClient);
+        } catch (Exception ignored) {}
+
         return chosen.stream().map(ClientCashInfo::getClientCode).collect(Collectors.toList());
     }
 

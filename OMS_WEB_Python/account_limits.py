@@ -11,6 +11,7 @@ from selenium import webdriver
 
 from config import SEED_CLIENT_CODES, DEFAULT_MIN_CASH_BDT
 import client_portfolio
+import oms_trade
 
 
 class ClientCashInfo:
@@ -212,6 +213,13 @@ def get_active_buy_clients_with_cash(
     print(f"\n✔ [ACCOUNT LIMITS] Randomly selected {len(chosen_codes)} verified BUY clients with top cash:")
     for c in chosen:
         print(f"   -> {c}")
+    # Automatically navigate back to Trade page and restore state
+    try:
+        return_client = chosen_codes[0] if chosen_codes else "23986"
+        oms_trade.restore_trade_page_state(driver, "GP", return_client)
+    except Exception:
+        pass
+
     return chosen_codes
 
 

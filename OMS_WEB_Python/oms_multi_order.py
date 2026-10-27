@@ -78,6 +78,10 @@ def build_order_queue(
     if not real_sell_clients:
         real_sell_clients = ["11310", "12245", "14118", "19363", "26687"]
 
+    # AUTOMATICALLY RETURN TO TRADE PAGE & RESTORE PREVIOUS CHANGES & CLIENT
+    primary_buy_client = real_buy_clients[0] if real_buy_clients else "23986"
+    oms_trade.restore_trade_page_state(driver, symbol, primary_buy_client)
+
     # 3. Calculate safe spread delta to prevent orders from executing upon initial placement
     if ref_price <= 20.0:
         spread_delta = 0.50

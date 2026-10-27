@@ -303,7 +303,7 @@ public class OMSweb_Trade {
 				// Return back to Trade Page if needed
 				if (!isAlreadyOnTradePage(driver)) {
 					System.out.println("[TRADE] Returning to Trade Page...");
-					navigateToTradePage(driver, wait);
+					restoreTradePageState(driver, instrument, clientCode);
 				}
 
 				// Open BUY or SELL modal
@@ -492,6 +492,59 @@ public class OMSweb_Trade {
         }
         return s.trim();
     }
+
+	public static void restoreTradePageState(WebDriver driver, String symbol, String clientCode) {
+		try {
+			WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(6));
+			navigateToTradePage(driver, wait);
+
+			// 1. Populate Target Symbol into Search & Marketwatch & Order Entry
+			if (symbol != null && !symbol.trim().isEmpty()) {
+				String sym = cleanSymbol(symbol);
+				try {
+					WebElement searchSym = driver.findElement(By.id("instrument"));
+					searchSym.clear();
+					searchSym.sendKeys(sym);
+					searchSym.sendKeys(Keys.ARROW_DOWN);
+					searchSym.sendKeys(Keys.ENTER);
+					Thread.sleep(200);
+				} catch (Exception ignored) {}
+
+				try {
+					WebElement mwInput = driver.findElement(By.id("marketwatch_symbol"));
+					mwInput.clear();
+					mwInput.sendKeys(sym);
+					mwInput.sendKeys(Keys.ARROW_DOWN);
+					mwInput.sendKeys(Keys.ENTER);
+					Thread.sleep(200);
+				} catch (Exception ignored) {}
+
+				try {
+					WebElement orderInst = driver.findElement(By.id("order_instrument"));
+					orderInst.clear();
+					orderInst.sendKeys(sym);
+					orderInst.sendKeys(Keys.ARROW_DOWN);
+					orderInst.sendKeys(Keys.ENTER);
+				} catch (Exception ignored) {}
+			}
+
+			// 2. Populate Client Code into Order Entry
+			if (clientCode != null && !clientCode.trim().isEmpty()) {
+				try {
+					WebElement clientInp = driver.findElement(By.id("order_client_code"));
+					clientInp.clear();
+					clientInp.sendKeys(clientCode.trim());
+					clientInp.sendKeys(Keys.ARROW_DOWN);
+					clientInp.sendKeys(Keys.ENTER);
+					Thread.sleep(200);
+				} catch (Exception ignored) {}
+			}
+
+			System.out.printf("[TRADE PAGE RESTORED] Symbol: %s | Client Code: %s%n", symbol, clientCode);
+		} catch (Exception e) {
+			System.out.println("[WARN: Restore Trade Page] " + e.getMessage());
+		}
+	}
 
 	public static void navigateToTradePage(WebDriver driver, WebDriverWait wait) {
 		try {

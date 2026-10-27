@@ -67,6 +67,37 @@ def enter_instrument(driver: webdriver.Chrome, symbol: str) -> None:
         pass
 
 
+def restore_trade_page_state(
+    driver: webdriver.Chrome,
+    symbol: Optional[str] = None,
+    client_code: Optional[str] = None
+) -> None:
+    """Navigates back to the Trade page and restores the symbol, marketwatch, and client code."""
+    navigate_to_trade_page(driver)
+    if symbol:
+        enter_instrument(driver, symbol)
+        try:
+            order_inst = driver.find_element(By.ID, "order_instrument")
+            order_inst.clear()
+            order_inst.send_keys(oms_price.clean_symbol(symbol))
+            order_inst.send_keys(Keys.ARROW_DOWN)
+            order_inst.send_keys(Keys.ENTER)
+        except Exception:
+            pass
+
+    if client_code:
+        try:
+            client_inp = driver.find_element(By.ID, "order_client_code")
+            client_inp.clear()
+            client_inp.send_keys(str(client_code).strip())
+            client_inp.send_keys(Keys.ARROW_DOWN)
+            client_inp.send_keys(Keys.ENTER)
+        except Exception:
+            pass
+
+    print(f"[TRADE PAGE RESTORED] Symbol: {symbol} | Client Code: {client_code}")
+
+
 def place_order(
     driver: webdriver.Chrome,
     side: str,
