@@ -63,7 +63,7 @@ def build_order_queue(
     # 1. Discover Active BUY Clients with Cash >= 100,000 BDT & Valid BO ID
     real_buy_clients = account_limits.get_active_buy_clients_with_cash(driver, 100000.0, 5)
     if not real_buy_clients:
-        real_buy_clients = ["10009", "10004", "10102"]
+        real_buy_clients = ["08096", "00224", "08833", "00507", "09139"]
 
     # 2. Query Real Holding Clients for SELL side from Position widget
     real_sell_clients: List[str] = []

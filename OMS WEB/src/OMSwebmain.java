@@ -73,6 +73,8 @@ public class OMSwebmain {
         System.out.println("[UFTFAST OMS] 2. Configuring Widget Color Link...");
         OMSweb_Trade.runWidgetColorSelection(driver, sc);
 
+        
+        
         // 3. THEN TRADE EXECUTION OPTION
         System.out.println("\n[UFTFAST OMS] 3. Select Trading Execution Option:");
         System.out.println("  1. Standard Trade & 6-Widget Verification [Default]");

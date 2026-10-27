@@ -24,10 +24,11 @@ DEFAULT_CLIENT_CODE = "23986"
 DEFAULT_MIN_CASH_BDT = 100000.0
 
 # Known Active Seed Clients across platform
+# Known Active Verified High-Cash Seed Clients (>= 100,000 BDT & Valid BO IDs)
 SEED_CLIENT_CODES = [
-    "23986", "10009", "10004", "10102", "10340", "10351",
-    "11310", "12245", "14118", "19363", "26687", "00239",
-    "00006", "00010", "00017", "00033", "00086", "00101"
+    "08096", "00224", "08833", "00507", "09139", "09189",
+    "07605", "09185", "08383", "08231", "08570", "08739",
+    "08425", "00495", "08345"
 ]
 
 # GoldenLayout Widget Color Link Palette

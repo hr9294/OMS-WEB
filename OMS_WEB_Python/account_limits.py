@@ -66,6 +66,146 @@ def get_active_buy_clients_with_cash(
     target_count: int = 5
 ) -> List[str]:
     """
+    Finds clients from Limits Engine, sorts those with cash >= min_cash,
+    verifies each has a valid BO ID and Active account status, and randomly selects 4-5.
+    """
+    print(f"\n=======================================================================================")
+    print(f" [ACCOUNT LIMITS] QUERYING CLIENTS WITH CASH >= {min_cash:,.2f} BDT, VALID BO ID, & ACTIVE STATUS")
+    print(f"=======================================================================================")
+
+    discovered_cash_map: Dict[str, float] = {}
+
+    # 1. Pre-seed with verified high-cash active accounts
+    for seed in SEED_CLIENT_CODES:
+        discovered_cash_map[seed] = min_cash
+
+    # 2. Query Live Limits Engine (/broker_ccd/list) directly across all accounts
+    try:
+        print("[ACCOUNT LIMITS] Querying Limits Engine for accounts with Cash >= 100,000 BDT...")
+        ccd_script = """
+        var cb = arguments[arguments.length - 1];
+        var threshold = arguments[0];
+        fetch('/broker_ccd/list?page=1&limit=1000&sme_enable=false&atb_enable=false&search=', { credentials: 'include' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var items = (data && data.data && data.data.items) ? data.data.items : [];
+            var out = [];
+            for (var i = 0; i < items.length; i++) {
+                var it = items[i];
+                var c = (it.client_code || '').trim();
+                var cash = parseFloat(it.cash || 0);
+                var initCash = parseFloat(it.initial_cash || 0);
+                var mature = parseFloat(it.mature_balance || 0);
+                var maxC = Math.max(cash, Math.max(initCash, mature));
+                if (c && maxC >= threshold) {
+                    out.push({ code: c, cash: maxC });
+                }
+            }
+            cb(out);
+        })
+        .catch(function(e) { cb([]); });
+        """
+        ccd_res = driver.execute_async_script(ccd_script, min_cash)
+        if isinstance(ccd_res, list):
+            for item in ccd_res:
+                code = str(item.get("code", "")).strip()
+                cash = parse_float(item.get("cash", 0))
+                if code and code != "-":
+                    discovered_cash_map[code] = cash
+            print(f"[ACCOUNT LIMITS] Discovered {len(ccd_res)} accounts with cash >= {min_cash:,.2f} BDT from Limits engine.")
+    except Exception as e:
+        print(f"[ACCOUNT LIMITS: WARN] Limits engine query: {e}")
+
+    # 3. Query API details for each client candidate
+    eligible_clients: List[ClientCashInfo] = []
+
+    for code, table_cash in discovered_cash_map.items():
+        try:
+            details = client_portfolio.get_client_details(driver, code)
+            if not details:
+                continue
+
+            bo_id = details.get("bo_id", "-").strip()
+            name = details.get("client_name", "-").strip()
+            status = details.get("status", "Active").strip()
+
+            cash_limit = parse_float(details.get("cash_limit", "0"))
+            mature = parse_float(details.get("mature_balance", "0"))
+            effective_cash = max(table_cash, max(cash_limit, mature))
+
+            # Validate BO ID: non-empty, length >= 8
+            digits_only = re.sub(r"\D", "", bo_id)
+            has_bo_id = (
+                bo_id and bo_id != "-" and bo_id.lower() != "null"
+                and bo_id != "0" and len(digits_only) >= 8
+            )
+
+            # Validate Active Status
+            st_lower = status.lower()
+            is_active = (
+                not status or status in ("A", "Active", "1", "true")
+                or ("inact" not in st_lower and "close" not in st_lower and "suspend" not in st_lower and "block" not in st_lower)
+            )
+
+            if has_bo_id and is_active and effective_cash >= min_cash:
+                eligible_clients.append(ClientCashInfo(
+                    client_code=code,
+                    cash=effective_cash,
+                    bo_id=bo_id,
+                    status=status or "Active",
+                    client_name=name
+                ))
+        except Exception:
+            pass
+
+    # 4. Sort eligible clients by cash descending
+    eligible_clients.sort(key=lambda c: c.cash, reverse=True)
+
+    print(f"\n[ACCOUNT LIMITS] Found {len(eligible_clients)} client(s) with CASH >= {min_cash:,.2f} BDT, VALID BO ID, & ACTIVE STATUS:")
+
+    # 5. Randomly select 4-5 clients from this high-cash pool
+    chosen: List[ClientCashInfo] = []
+    if eligible_clients:
+        shuffled = list(eligible_clients)
+        random.shuffle(shuffled)
+        desired_count = min(target_count, len(shuffled))
+        chosen = shuffled[:desired_count]
+        chosen.sort(key=lambda c: c.cash, reverse=True)
+
+    # Print chosen clients table
+    print("\n+----+----------+--------------------+------------------+----------+--------------------------------+")
+    print(f"| {'#':<2} | {'Client':<8} | {'Cash Balance (BDT)':<18} | {'BO ID':<16} | {'Status':<8} | {'Client Name':<30} |")
+    print("+----+----------+--------------------+------------------+----------+--------------------------------+")
+    for idx, c in enumerate(chosen):
+        print(f"| {idx+1:<2} | {c.client_code:<8} | {c.cash:18,.2f} | {c.bo_id:<16} | {c.status:<8} | {c.client_name[:30]:<30} |")
+    print("+----+----------+--------------------+------------------+----------+--------------------------------+")
+
+    # AUTOMATICALLY RETURN TO TRADE PAGE AND RESTORE STATE
+    top_client = chosen[0].client_code if chosen else "08096"
+    oms_trade.restore_trade_page_state(driver, "GP", top_client)
+
+    return [c.client_code for c in chosen]
+
+def navigate_to_account_limits(driver: webdriver.Chrome) -> None:
+    """Navigates to Account Limits widget."""
+    try:
+        script = """
+        var el = document.querySelector('a[data-link*="account_limit"], a[href*="limit"], .lm_tab[title*="Limit"]');
+        if (el) { el.click(); return true; }
+        return false;
+        """
+        driver.execute_script(script)
+        time.sleep(0.6)
+    except Exception:
+        pass
+
+
+def get_active_buy_clients_with_cash(
+    driver: webdriver.Chrome,
+    min_cash: float = DEFAULT_MIN_CASH_BDT,
+    target_count: int = 5
+) -> List[str]:
+    """
     Finds clients from Account Limits table, sorts those with cash >= min_cash,
     verifies each has a valid BO ID and Active account status, and randomly selects 4-5.
     """

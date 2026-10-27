@@ -250,7 +250,7 @@ public class OMSweb_MultiOrderExecution {
         // Discover active clients with cash > 100,000 BDT & valid BO ID for BUY orders
         List<String> realBuyClients = Account_Limits.getActiveBuyClientsWithCash(driver, 100000.0, 5);
         if (realBuyClients == null || realBuyClients.isEmpty()) {
-            realBuyClients = new ArrayList<>(Arrays.asList("10009", "10004", "10102"));
+            realBuyClients = new ArrayList<>(Arrays.asList("08096", "00224", "08833", "00507", "09139"));
             System.out.println("[BUY CLIENTS] Using default fallback clients: " + realBuyClients);
         } else {
             System.out.println("[BUY CLIENTS] Selected Active BUY Clients (> 100,000 cash & BO ID): " + realBuyClients);

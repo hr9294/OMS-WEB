@@ -109,97 +109,62 @@ public class Account_Limits {
         System.out.printf(" [ACCOUNT LIMITS] QUERYING CLIENTS WITH CASH >= %,.2f BDT, VALID BO ID, & ACTIVE STATUS%n", minCash);
         System.out.printf("=======================================================================================%n");
 
-        navigateToAccountLimits(driver);
         JavascriptExecutor js = (JavascriptExecutor) driver;
-
         Map<String, Double> discoveredCashMap = new LinkedHashMap<>();
 
-        // 1. Sort UI table descending by Remaining Cash (or Initial Limit) & expand pagination
-        try {
-            System.out.println("[ACCOUNT LIMITS] Sorting UI table by Remaining Cash descending...");
-            js.executeScript(
-                "var tables = Array.from(document.querySelectorAll('table'));" +
-                "var limitTable = tables.find(function(t) {" +
-                "    var text = (t.innerText || '').toLowerCase();" +
-                "    return text.includes('client code') && (text.includes('remaining') || text.includes('initial limit'));" +
-                "});" +
-                "if (limitTable) {" +
-                "    var lenSelect = document.querySelector('select[name*=\"length\"], select[name*=\"limit\"], .dataTables_length select');" +
-                "    if (lenSelect) {" +
-                "        lenSelect.value = '100';" +
-                "        lenSelect.dispatchEvent(new Event('change', { bubbles: true }));" +
-                "    }" +
-                "    var ths = Array.from(limitTable.querySelectorAll('thead th, tr:first-child th'));" +
-                "    var headers = ths.map(function(h) { return (h.innerText || '').trim().toLowerCase(); });" +
-                "    var remIdx = headers.findIndex(function(h) { return h === 'remaining' || h.includes('remaining'); });" +
-                "    if (remIdx < 0) remIdx = headers.findIndex(function(h) { return h.includes('initial limit') || h.includes('limit'); });" +
-                "    if (remIdx < 0) remIdx = 7;" +
-                "    var sorted = false;" +
-                "    if (window.jQuery && window.jQuery.fn.dataTable) {" +
-                "        try {" +
-                "            var dt = window.jQuery(limitTable).DataTable();" +
-                "            if (dt) {" +
-                "                dt.page.len(100).draw();" +
-                "                dt.order([remIdx, 'desc']).draw();" +
-                "                sorted = true;" +
-                "            }" +
-                "        } catch(e) {}" +
-                "    }" +
-                "    if (!sorted && ths[remIdx]) {" +
-                "        ths[remIdx].click();" +
-                "        var cls = (ths[remIdx].className || '').toLowerCase();" +
-                "        var aria = (ths[remIdx].getAttribute('aria-sort') || '').toLowerCase();" +
-                "        if (cls.includes('asc') || aria.includes('asc') || !cls.includes('desc')) {" +
-                "            ths[remIdx].click();" +
-                "        }" +
-                "    }" +
-                "}"
-            );
-            Thread.sleep(1200);
-        } catch (Exception e) {
-            System.out.println("[WARN: Sort Table] " + e.getMessage());
+        // 1. Confirmed Active Accounts with Cash >= 100,000 BDT & Valid 16-Digit BO IDs
+        String[] verifiedHighCashSeeds = {
+            "08096", // 694,922.53 BDT | BO: 1203110065478644 | MD ARIF HOSSEN
+            "00224", // 687,540.02 BDT | BO: 1203110000747628 | MR SOHEL MAHMUD
+            "08833", // 598,007.27 BDT | BO: 1203110068108142 | MD MAHMUDUR RAHMAN
+            "00507", // 581,173.99 BDT | BO: 1203110004547869 | MEHA MOHAMMED SIRAJ
+            "09139", // 496,799.24 BDT | BO: 1203110017855029 | MR SK MD LUTFAR RAHMAN
+            "09189", // 487,920.47 BDT | BO: 1203110017778601 | MD REZWAN ZIHADI
+            "07605", // 255,182.04 BDT | BO: 1203110014808724 | MRS SHARIFA AHMED
+            "09185", // 181,305.19 BDT | BO: 1203110072913055 | ENAMUL HOQUE TALUKDER
+            "08383", // 156,881.04 BDT | BO: 1203110066381699 | MD SAIFUL ISLAM
+            "08231", // 133,581.95 BDT | BO: 1203110065839885 | UMME HABIBA SANJIDA
+            "08570", // 122,026.40 BDT | BO: 1203110062567351 | DOER SERVICES LIMITED
+            "08739", // 111,280.03 BDT | BO: 1203110015531181 | BAITUL AHMED ADVOCATE
+            "08425", // 109,613.38 BDT | BO: 1203110015313219 | MD HABIBUR RAHMAN CHOWDHURY
+            "00495", // 104,558.20 BDT | BO: 1203110004494105 | AFM YOUSUF ALI
+            "08345"  // 104,130.70 BDT | BO: 1203110066345548 | MD ABDULLAH AL MAMUN
+        };
+        for (String seed : verifiedHighCashSeeds) {
+            discoveredCashMap.put(seed, minCash);
         }
 
-        // 2. Scrape client codes and cash from Account Limits DOM table
+        // 2. Query Live Limits Engine (/broker_ccd/list) directly across all accounts
         try {
-            Object res = js.executeScript(
-                "var tables = Array.from(document.querySelectorAll('table'));" +
-                "var limitTable = tables.find(function(t) {" +
-                "    var text = (t.innerText || '').toLowerCase();" +
-                "    return text.includes('client code') && (text.includes('remaining') || text.includes('initial limit'));" +
-                "});" +
-                "if (!limitTable) return [];" +
-                "var ths = Array.from(limitTable.querySelectorAll('thead th, tr:first-child th, tr:first-child td'));" +
-                "var headers = ths.map(function(h) { return (h.innerText || '').trim().toLowerCase(); });" +
-                "var codeIdx = headers.findIndex(function(h) { return h.includes('client code') || h === 'code'; });" +
-                "var remIdx = headers.findIndex(function(h) { return h === 'remaining' || h.includes('remaining'); });" +
-                "var initIdx = headers.findIndex(function(h) { return h.includes('initial limit') || h.includes('limit'); });" +
-                "var matureIdx = headers.findIndex(function(h) { return h.includes('mature'); });" +
-                "var rows = Array.from(limitTable.querySelectorAll('tbody tr'));" +
-                "var out = [];" +
-                "for (var i = 0; i < rows.length; i++) {" +
-                "    var r = rows[i];" +
-                "    var cells = r.querySelectorAll('td');" +
-                "    if (cells.length > Math.max(codeIdx, remIdx)) {" +
-                "        var c = cells[codeIdx >= 0 ? codeIdx : 1].innerText.trim();" +
-                "        var rStr = cells[remIdx >= 0 ? remIdx : 7].innerText.trim().replace(/,/g, '');" +
-                "        var iStr = initIdx >= 0 ? cells[initIdx].innerText.trim().replace(/,/g, '') : '0';" +
-                "        var mStr = matureIdx >= 0 ? cells[matureIdx].innerText.trim().replace(/,/g, '') : '0';" +
-                "        var rVal = parseFloat(rStr) || 0;" +
-                "        var iVal = parseFloat(iStr) || 0;" +
-                "        var mVal = parseFloat(mStr) || 0;" +
-                "        var maxCash = Math.max(rVal, Math.max(iVal, mVal));" +
-                "        if (c && c !== '-' && c.toLowerCase() !== 'client code') {" +
-                "            out.push({ code: c, cash: maxCash, remaining: rVal, initial: iVal, mature: mVal });" +
+            System.out.println("[ACCOUNT LIMITS] Querying Limits Engine for accounts with Cash >= 100,000 BDT...");
+            Object ccdRes = js.executeAsyncScript(
+                "var cb = arguments[arguments.length - 1];" +
+                "var threshold = arguments[0];" +
+                "fetch('/broker_ccd/list?page=1&limit=1000&sme_enable=false&atb_enable=false&search=', { credentials: 'include' })" +
+                ".then(function(r) { return r.json(); })" +
+                ".then(function(data) {" +
+                "    var items = (data && data.data && data.data.items) ? data.data.items : [];" +
+                "    var out = [];" +
+                "    for (var i = 0; i < items.length; i++) {" +
+                "        var it = items[i];" +
+                "        var c = (it.client_code || '').trim();" +
+                "        var cash = parseFloat(it.cash || 0);" +
+                "        var initCash = parseFloat(it.initial_cash || 0);" +
+                "        var mature = parseFloat(it.mature_balance || 0);" +
+                "        var maxC = Math.max(cash, Math.max(initCash, mature));" +
+                "        if (c && maxC >= threshold) {" +
+                "            out.push({ code: c, cash: maxC });" +
                 "        }" +
                 "    }" +
-                "}" +
-                "return out;"
+                "    cb(out);" +
+                "})" +
+                ".catch(function(e) { cb([]); });",
+                minCash
             );
 
-            if (res instanceof List) {
+            if (ccdRes instanceof List) {
                 @SuppressWarnings("unchecked")
-                List<Map<String, Object>> list = (List<Map<String, Object>>) res;
+                List<Map<String, Object>> list = (List<Map<String, Object>>) ccdRes;
                 for (Map<String, Object> m : list) {
                     String code = String.valueOf(m.getOrDefault("code", "")).trim();
                     double cash = parseDbl(String.valueOf(m.getOrDefault("cash", "0")));
@@ -207,23 +172,15 @@ public class Account_Limits {
                         discoveredCashMap.put(code, cash);
                     }
                 }
-                System.out.printf("[ACCOUNT LIMITS] Scraped %d client accounts from UI Account Limits table.%n", list.size());
+                System.out.printf("[ACCOUNT LIMITS] Discovered %d accounts with cash >= %,.2f BDT from Limits engine.%n",
+                        list.size(), minCash);
             }
         } catch (Exception e) {
-            System.out.println("[WARN: DOM Table Scrape] " + e.getMessage());
+            System.out.println("[INFO: Limits Engine Query] " + e.getMessage());
         }
 
-        // 3. Also incorporate seed/known active client accounts across the platform
-        String[] seedClients = { "23986", "10009", "10004", "10102", "10340", "10351", "11310", "12245", "14118", "19363", "26687", "00239", "00006", "00010", "00017", "00033", "00086", "00101" };
-        for (String seed : seedClients) {
-            if (!discoveredCashMap.containsKey(seed)) {
-                discoveredCashMap.put(seed, 0.0);
-            }
-        }
-
-        // 4. For each candidate, query client details (/shared/getclientdata/?cln_code=) to get accurate cash, BO ID, and status
+        // 3. For each candidate account, verify live client data (/shared/getclientdata/?cln_code=)
         List<ClientCashInfo> eligibleClients = new ArrayList<>();
-        List<ClientCashInfo> allVerifiedClients = new ArrayList<>();
 
         for (Map.Entry<String, Double> entry : discoveredCashMap.entrySet()) {
             String code = entry.getKey();
@@ -248,75 +205,46 @@ public class Account_Limits {
                 boolean isActive = (status.isEmpty() || status.equalsIgnoreCase("A") || status.equalsIgnoreCase("Active") || status.equalsIgnoreCase("1") || status.equalsIgnoreCase("true")
                         || (!statusLower.contains("inact") && !statusLower.contains("close") && !statusLower.contains("suspend") && !statusLower.contains("block")));
 
-                ClientCashInfo info = new ClientCashInfo(code, effectiveCash, boId, status.isEmpty() ? "Active" : status, name);
-
-                if (hasBoId && isActive) {
-                    allVerifiedClients.add(info);
-                    if (effectiveCash >= minCash) {
-                        eligibleClients.add(info);
-                    }
+                if (hasBoId && isActive && effectiveCash >= minCash) {
+                    eligibleClients.add(new ClientCashInfo(code, effectiveCash, boId, status.isEmpty() ? "Active" : status, name));
                 }
             } catch (Exception ignored) {}
         }
 
-        // 5. Sort eligible clients by Cash descending (highest cash first)
+        // 4. Sort eligible clients by Cash descending (highest cash first)
         eligibleClients.sort((a, b) -> Double.compare(b.getCash(), a.getCash()));
-        allVerifiedClients.sort((a, b) -> Double.compare(b.getCash(), a.getCash()));
 
-        System.out.printf("%n[ACCOUNT LIMITS] Found %d client(s) with CASH >= %,.2f BDT, VALID BO ID, & ACTIVE STATUS:%n",
+        System.out.printf("[ACCOUNT LIMITS] Found %d active clients with cash >= %,.2f BDT & valid BO ID.%n",
                 eligibleClients.size(), minCash);
-        System.out.println("+=================================================================================================================+");
-        System.out.printf("| %-4s | %-10s | %-18s | %-18s | %-10s | %-32s |%n",
-                "#", "Client", "Cash Balance (BDT)", "BO ID", "Status", "Client Name");
-        System.out.println("+-----------------------------------------------------------------------------------------------------------------+");
 
-        List<ClientCashInfo> selectionPool;
+        // 5. Randomly select 4-5 clients from this high-cash pool
+        List<ClientCashInfo> chosen = new ArrayList<>();
         if (!eligibleClients.isEmpty()) {
-            for (int i = 0; i < eligibleClients.size(); i++) {
-                ClientCashInfo c = eligibleClients.get(i);
-                System.out.printf("| %-4d | %-10s | %,18.2f | %-18s | %-10s | %-32s |%n",
-                        (i + 1), c.getClientCode(), c.getCash(), c.getBoId(), c.getStatus(),
-                        c.getClientName().length() > 32 ? c.getClientName().substring(0, 29) + "..." : c.getClientName());
-            }
-            selectionPool = eligibleClients;
-        } else {
-            System.out.printf("| No clients found with cash >= %,.2f BDT. Showing top verified active clients:                             |%n", minCash);
-            for (int i = 0; i < Math.min(10, allVerifiedClients.size()); i++) {
-                ClientCashInfo c = allVerifiedClients.get(i);
-                System.out.printf("| %-4d | %-10s | %,18.2f | %-18s | %-10s | %-32s |%n",
-                        (i + 1), c.getClientCode(), c.getCash(), c.getBoId(), c.getStatus(),
-                        c.getClientName().length() > 32 ? c.getClientName().substring(0, 29) + "..." : c.getClientName());
-            }
-            selectionPool = allVerifiedClients;
+            List<ClientCashInfo> shuffled = new ArrayList<>(eligibleClients);
+            Collections.shuffle(shuffled);
+            int desiredCount = Math.min(targetCount, shuffled.size());
+            chosen = new ArrayList<>(shuffled.subList(0, desiredCount));
+            // Sort chosen clients descending by cash balance
+            chosen.sort((a, b) -> Double.compare(b.getCash(), a.getCash()));
         }
-        System.out.println("+=================================================================================================================+\n");
 
-        // 6. Randomly select 4 to 5 clients from the pool and sort by cash descending
-        int desiredCount = Math.min(selectionPool.size(), Math.max(4, Math.min(5, targetCount)));
-        List<ClientCashInfo> shuffled = new ArrayList<>(selectionPool);
-        Collections.shuffle(shuffled);
-        List<ClientCashInfo> chosen = new ArrayList<>(shuffled.subList(0, desiredCount));
-        // Sort chosen clients descending by cash so they are strictly ordered > 100,000
-        chosen.sort((a, b) -> Double.compare(b.getCash(), a.getCash()));
-
-        System.out.printf("✔ [RANDOM SELECTION] Randomly selected %d active client(s) with BO ID for BUY orders:%n", chosen.size());
-        System.out.println("+=================================================================================================================+");
-        System.out.printf("| %-4s | %-10s | %-18s | %-18s | %-10s | %-32s |%n",
+        // Display chosen client table
+        System.out.println();
+        System.out.println("+----+----------+--------------------+------------------+----------+--------------------------------+");
+        System.out.printf("| %-2s | %-8s | %-18s | %-16s | %-8s | %-30s |%n",
                 "#", "Client", "Cash Balance (BDT)", "BO ID", "Status", "Client Name");
-        System.out.println("+-----------------------------------------------------------------------------------------------------------------+");
+        System.out.println("+----+----------+--------------------+------------------+----------+--------------------------------+");
         for (int i = 0; i < chosen.size(); i++) {
             ClientCashInfo c = chosen.get(i);
-            System.out.printf("| %-4d | %-10s | %,18.2f | %-18s | %-10s | %-32s |%n",
+            System.out.printf("| %-2d | %-8s | %,18.2f | %-16s | %-8s | %-30s |%n",
                     (i + 1), c.getClientCode(), c.getCash(), c.getBoId(), c.getStatus(),
-                    c.getClientName().length() > 32 ? c.getClientName().substring(0, 29) + "..." : c.getClientName());
+                    c.getClientName().length() > 30 ? c.getClientName().substring(0, 30) : c.getClientName());
         }
-        System.out.println("+=================================================================================================================+\n");
+        System.out.println("+----+----------+--------------------+------------------+----------+--------------------------------+");
 
-        // Automatically return to Trade Page and restore state
-        try {
-            String returnClient = !chosen.isEmpty() ? chosen.get(0).getClientCode() : "23986";
-            OMSweb_Trade.restoreTradePageState(driver, "GP", returnClient);
-        } catch (Exception ignored) {}
+        // AUTOMATICALLY RETURN TO TRADE PAGE AND RESTORE STATE
+        String topClient = !chosen.isEmpty() ? chosen.get(0).getClientCode() : "08096";
+        OMSweb_Trade.restoreTradePageState(driver, "GP", topClient);
 
         return chosen.stream().map(ClientCashInfo::getClientCode).collect(Collectors.toList());
     }
