@@ -180,11 +180,13 @@ public class OMSweb_MultiOrderExecution {
 
         // Display Planned Order Pipeline
         printPlannedQueue(orderQueue);
-        System.out.print("\nProceed to execute this pipeline? (1=YES / 0=NO): ");
-        if (!sc.nextLine().trim().equals("1")) {
+        System.out.print("\nProceed to execute this pipeline? (1=YES / 0=NO, default=1): ");
+        String proceedInput = sc.nextLine().trim();
+        if (proceedInput.equalsIgnoreCase("0") || proceedInput.equalsIgnoreCase("n") || proceedInput.equalsIgnoreCase("no")) {
             System.out.println("Operation aborted by user.");
             return;
         }
+        System.out.println("[CONFIRMATION] Pipeline execution confirmed. Starting execution sequence...");
 
         // =====================================================================
         // STEP 1: CAPTURE BASELINE SNAPSHOTS (ALL 6 WIDGETS)

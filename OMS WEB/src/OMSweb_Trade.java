@@ -470,8 +470,9 @@ public class OMSweb_Trade {
 			}
 
 			// ---------- Ask if user wants to trade again ----------
-			System.out.print("Do you want to trade again? (1=YES / 0=NO): ");
-			if (Integer.parseInt(sc.nextLine()) != 1) {
+			System.out.print("Do you want to trade again? (1=YES / 0=NO, default=0): ");
+			String tradeAgainInput = sc.nextLine().trim();
+			if (!tradeAgainInput.equals("1") && !tradeAgainInput.equalsIgnoreCase("y") && !tradeAgainInput.equalsIgnoreCase("yes")) {
 				keepTrading = false;
 				System.out.println("Exiting trade.");
 			} else {
@@ -805,8 +806,9 @@ public class OMSweb_Trade {
 			return;
 		}
 
-		System.out.print("Confirm cancellation? (1=YES / 0=NO): ");
-		if (Integer.parseInt(sc.nextLine()) == 1) {
+		System.out.print("Confirm cancellation? (1=YES / 0=NO, default=1): ");
+		String cancelAns = sc.nextLine().trim();
+		if (!cancelAns.equals("0") && !cancelAns.equalsIgnoreCase("n") && !cancelAns.equalsIgnoreCase("no")) {
 			try {
 				WebElement yesCancel = wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//button[normalize-space()='YES']")));
 				yesCancel.click();
@@ -1363,8 +1365,9 @@ public class OMSweb_Trade {
 	}
 
 	private static boolean confirmOrder(WebDriver driver, WebDriverWait wait, Scanner sc) throws InterruptedException {
-		System.out.print("Confirm order? (1=YES / 0=NO): ");
-		if (Integer.parseInt(sc.nextLine()) == 1) {
+		System.out.print("Confirm order? (1=YES / 0=NO, default=1): ");
+		String confirmAns = sc.nextLine().trim();
+		if (!confirmAns.equals("0") && !confirmAns.equalsIgnoreCase("n") && !confirmAns.equalsIgnoreCase("no")) {
 			WebElement yes = wait
 					.until(ExpectedConditions.elementToBeClickable(By.xpath("//button[@id='cnfirmConfirmBtn']")));
 			yes.click();

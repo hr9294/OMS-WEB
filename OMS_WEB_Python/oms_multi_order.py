@@ -221,10 +221,11 @@ def run_multi_order_pipeline(driver: webdriver.Chrome) -> None:
         return
 
     print_planned_queue(order_queue)
-    proceed = input("\nProceed to execute this pipeline? (1=YES / 0=NO, default 1): ").strip()
-    if proceed == "0":
-        print("Operation cancelled by user.")
+    proceed = input("\nProceed to execute this pipeline? (1=YES / 0=NO, default=1): ").strip()
+    if proceed.lower() in ("0", "n", "no"):
+        print("Operation aborted by user.")
         return
+    print("[CONFIRMATION] Pipeline execution confirmed. Starting execution sequence...")
 
     # STEP 3: CAPTURE BASELINE 6-WIDGET SNAPSHOTS
     print("\n>>> CAPTURING BASELINE 6-WIDGET SNAPSHOTS BEFORE PLACEMENT... <<<")
