@@ -330,12 +330,30 @@ def run_multi_order_pipeline(driver: webdriver.Chrome) -> None:
 
     print(f"\n✔ Successfully submitted {placed_count}/{len(order_queue)} orders into the order book.")
 
-    # STEP 5: ORDER TERMINAL SELECTION & 'EXECUTE AT MARKET' CONTEXT CLICK
+    # STEP 5: ORDER TERMINAL SELECTION & 'EXECUTE AT MARKET' CONTEXT CLICK (Selective Strategy)
     print("\n+=============================================================================+")
     print("| STEP 3: ORDER TERMINAL SELECTION & 'EXECUTE AT MARKET' CONTEXT CLICK        |")
     print("+=============================================================================+")
     time.sleep(1.0)
-    exec_success = order_terminal.select_and_execute_at_market(driver, symbol=symbol, count=len(order_queue))
+    placed_clients = list(set(o["client_code"] for o in placed_orders))
+    buy_orders_count = sum(1 for o in placed_orders if o["side"].upper() == "BUY")
+    sell_orders_count = sum(1 for o in placed_orders if o["side"].upper() == "SELL")
+
+    if choice == 1 or (buy_orders_count > 1 and sell_orders_count <= 1):
+        print(f"\n[TERMINAL] Strategy 1: Selecting ONLY placed Multiple BUY Orders and its ONLY ONE SELL Order...")
+        exec_success = order_terminal.select_multiple_buy_and_one_sell_at_market(driver, symbol=symbol, client_codes=placed_clients)
+        if not exec_success:
+            print("[TERMINAL] Retrying without client code filter...")
+            exec_success = order_terminal.select_multiple_buy_and_one_sell_at_market(driver, symbol=symbol, client_codes=None)
+    elif choice == 2 or (sell_orders_count > 1 and buy_orders_count <= 1):
+        print(f"\n[TERMINAL] Strategy 2: Selecting ONLY placed Multiple SELL Orders and its ONLY ONE BUY Order...")
+        exec_success = order_terminal.select_multiple_sell_and_one_buy_at_market(driver, symbol=symbol, client_codes=placed_clients)
+        if not exec_success:
+            print("[TERMINAL] Retrying without client code filter...")
+            exec_success = order_terminal.select_multiple_sell_and_one_buy_at_market(driver, symbol=symbol, client_codes=None)
+    else:
+        exec_success = order_terminal.execute_separated_buy_and_sell_at_market(driver, symbol=symbol)
+
     if exec_success:
         print("✔ 'Execute at Market' context trigger completed successfully.")
     else:

@@ -15,10 +15,14 @@ public class OMSwebmain {
 
     public static void main(String[] args) throws InterruptedException, IOException {
 
-        //System.setProperty("webdriver.chrome.driver",
-           // "D:\\Automation & Load Testing\\Selenium\\Software\\152.0.7977.64 chromedriver-win64\\chromedriver-win64\\chromedriver.exe");
+        // Suppress ChromeDriver and Selenium CDP version fallback warnings
+        System.setProperty("webdriver.chrome.silentOutput", "true");
+        java.util.logging.Logger.getLogger("org.openqa.selenium").setLevel(java.util.logging.Level.SEVERE);
 
         ChromeOptions options = new ChromeOptions();
+        options.addArguments("--remote-allow-origins=*");
+        options.addArguments("--log-level=3");
+        options.addArguments("--silent");
 
         // Hide automation flags
         options.setExperimentalOption("excludeSwitches", new String[]{"enable-automation"});

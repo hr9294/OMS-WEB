@@ -16,6 +16,7 @@ import position
 import client_portfolio
 import market_depth
 import order_terminal
+import widget_color
 
 
 def print_banner() -> None:

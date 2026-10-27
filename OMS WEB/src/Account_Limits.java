@@ -357,6 +357,25 @@ public class Account_Limits {
     // =========================================================================
     // 5. UI TABLE SCRAPING (Top Cash Table + Bottom Capital Table)
     // =========================================================================
+    public static Map<String, String> getApiSnapshot(WebDriver driver, String clientCode, String preferredExchange) {
+        try {
+            String adminUrl = String.format("/shared/get_account_limit/?client_code=%s", clientCode);
+            String json = executeBrowserFetch(driver, adminUrl);
+            Map<String, String> adminData = parseAccountLimitsJson(json);
+            if (!adminData.isEmpty()) {
+                adminData.put("DATA_SOURCE", "API (Admin Shared)");
+                return adminData;
+            }
+        } catch (Exception ignored) {}
+        return Collections.emptyMap();
+    }
+
+    public static Map<String, String> getUiSnapshot(WebDriver driver, String clientCode) {
+        Map<String, String> uiData = fetchFromUiTables(driver);
+        uiData.put("DATA_SOURCE", "UI Tables DOM");
+        return uiData;
+    }
+
     private static Map<String, String> fetchFromUiTables(WebDriver driver) {
         Map<String, String> data = new LinkedHashMap<>();
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(6));

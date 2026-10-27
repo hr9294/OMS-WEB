@@ -180,6 +180,27 @@ public class Market_Depth {
     // =========================================================================
     // 5. UI DOM SCRAPER (Extracts All 20 Quote Metrics + Order Flow + 5 Levels)
     // =========================================================================
+    public static Map<String, String> getApiSnapshot(WebDriver driver, String symbol, String preferredExchange) {
+        String cleanSymbol = cleanSymbol(symbol);
+        String ex = (preferredExchange != null && !preferredExchange.isEmpty()) ? preferredExchange : "DSE";
+        try {
+            String adminUrl = String.format("/shared/getmktdepth/?symbol=%s&exchange=%s", cleanSymbol, ex);
+            String json = executeBrowserFetch(driver, adminUrl);
+            Map<String, String> adminData = parseMarketDepthJson(json, cleanSymbol, ex);
+            if (!adminData.isEmpty()) {
+                adminData.put("DATA_SOURCE", "API (" + ex + ")");
+                return adminData;
+            }
+        } catch (Exception ignored) {}
+        return Collections.emptyMap();
+    }
+
+    public static Map<String, String> getUiSnapshot(WebDriver driver) {
+        Map<String, String> uiData = fetchFromUiDOM(driver);
+        uiData.put("DATA_SOURCE", "UI DOM");
+        return uiData;
+    }
+
     private static Map<String, String> fetchFromUiDOM(WebDriver driver) {
         Map<String, String> data = new LinkedHashMap<>();
         try {

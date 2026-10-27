@@ -188,6 +188,26 @@ public class Order_Summary {
     // =========================================================================
     // 5. UI TABLE SCRAPING (Top Summary + Bottom Detailed Rows)
     // =========================================================================
+    public static Map<String, String> getApiSnapshot(WebDriver driver, String clientCode, String symbol, String preferredExchange) {
+        String cleanSymbol = cleanSymbol(symbol);
+        try {
+            String adminUrl = String.format("/live_orders/order_summary_view/?page=1&per_page=50&client_code=%s&symbol_code=%s", clientCode, cleanSymbol);
+            String json = executeBrowserFetch(driver, adminUrl);
+            Map<String, String> adminData = parseOrderSummaryJson(json, cleanSymbol);
+            if (!adminData.isEmpty()) {
+                adminData.put("DATA_SOURCE", "API (Admin Live)");
+                return adminData;
+            }
+        } catch (Exception ignored) {}
+        return Collections.emptyMap();
+    }
+
+    public static Map<String, String> getUiSnapshot(WebDriver driver, String symbol) {
+        Map<String, String> uiData = fetchFromUiTables(driver, cleanSymbol(symbol));
+        uiData.put("DATA_SOURCE", "UI Tables DOM");
+        return uiData;
+    }
+
     private static Map<String, String> fetchFromUiTables(WebDriver driver, String symbol) {
         Map<String, String> data = new LinkedHashMap<>();
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(6));

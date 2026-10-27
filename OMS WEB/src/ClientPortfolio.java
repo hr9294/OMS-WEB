@@ -124,6 +124,27 @@ public class ClientPortfolio {
     // =========================================================================
     // 3. NAVIGATION HELPERS
     // =========================================================================
+    public static Map<String, String> getApiSnapshot(WebDriver driver, String clientCode, String symbol, String preferredExchange) {
+        String cleanSymbol = cleanSymbol(symbol);
+        String ex = (preferredExchange != null && !preferredExchange.isEmpty()) ? preferredExchange : "DSE";
+        try {
+            Map<String, String> adminData = fetchFromAdminSharedApi(driver, clientCode, cleanSymbol, ex);
+            if (!adminData.isEmpty()) {
+                adminData.put("DATA_SOURCE", "API (" + ex + ")");
+                return adminData;
+            }
+        } catch (Exception ignored) {}
+        return Collections.emptyMap();
+    }
+
+    public static Map<String, String> getUiSnapshot(WebDriver driver, String clientCode, String symbol) {
+        String cleanSymbol = cleanSymbol(symbol);
+        ensureClientLoadedInUi(driver, clientCode);
+        Map<String, String> uiData = fetchFromUiTable(driver, cleanSymbol);
+        uiData.put("DATA_SOURCE", "UI Table DOM");
+        return uiData;
+    }
+
     public static void navigateToPortfolio(WebDriver driver) {
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;

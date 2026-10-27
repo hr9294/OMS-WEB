@@ -529,6 +529,21 @@ public class Position {
         return list;
     }
 
+    /**
+     * Extracts Position holdings directly from the backend REST API.
+     */
+    public static List<ClientPosition> getApiSnapshot(WebDriver driver, String symbol, String exchange) {
+        return fetchPositionsFromApi(driver, symbol, exchange);
+    }
+
+    /**
+     * Extracts Position holdings directly from the visible UI table DOM.
+     */
+    public static List<ClientPosition> getUiSnapshot(WebDriver driver, String symbol, String exchange) {
+        String cleanSym = cleanSymbol(symbol);
+        return extractFromDomTable(driver, cleanSym);
+    }
+
     @SuppressWarnings("unchecked")
     public static List<ClientPosition> fetchPositionsFromApi(WebDriver driver, String symbol, String exchange) {
         String cleanSym = cleanSymbol(symbol);

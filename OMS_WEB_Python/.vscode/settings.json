@@ -1,5 +1,5 @@
 {
-    "python.defaultInterpreterPath": "python",
+    "python.defaultInterpreterPath": "C:\\Users\\hrrah\\AppData\\Local\\Python\\pythoncore-3.15-64\\python.exe",
     "python.terminal.activateEnvironment": true,
     "files.exclude": {
         "**/__pycache__": true,
