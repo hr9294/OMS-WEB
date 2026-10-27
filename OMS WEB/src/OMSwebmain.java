@@ -65,9 +65,12 @@ public class OMSwebmain {
         System.out.println("\nSelect Trading Execution Engine:");
         System.out.println("  1. Standard Trade & 6-Widget Verification [Default]");
         System.out.println("  2. Multi-Order Execution, Right-Click 'Execute at Market' & Real-time 6-Widget Audit");
-        System.out.print("Enter Choice (1 or 2, default=1): ");
+        System.out.println("  3. High-Speed Multi-Trade & Load Testing Engine (Throughput / TPS)");
+        System.out.print("Enter Choice (1, 2, or 3, default=1): ");
         String engChoice = sc.nextLine().trim();
-        if ("2".equals(engChoice)) {
+        if ("3".equals(engChoice)) {
+            OMSweb_MultipleTrade.main(driver, sc);
+        } else if ("2".equals(engChoice)) {
             OMSweb_MultiOrderExecution.main(driver, sc);
         } else {
             // Standard Trade Page
@@ -82,6 +85,7 @@ public class OMSwebmain {
         // Account_Limits.main(driver, sc);
         // Market_Depth.main(driver, sc);
         // Order_Terminal.main(driver, sc);
+        //OMSweb_MultiOrderExecution.main()driver,sc;
 
         System.out.println("\n[UFTFAST OMS] Trade session completed. Exiting application.");
         sc.close();

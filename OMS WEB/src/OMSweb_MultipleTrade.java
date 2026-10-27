@@ -71,16 +71,36 @@ public class OMSweb_MultipleTrade {
         // 1. Navigate & Setup
         waitAndClick(wait, TRADE_PAGE_NAV);
 
-        System.out.print("Search Symbol: ");
+        System.out.println("\n=======================================================");
+        System.out.println("       HIGH-SPEED MULTI-TRADE & LOAD TESTING ENGINE    ");
+        System.out.println("=======================================================");
+
+        System.out.print("Search Symbol (default GP): ");
         String instrument = sc.nextLine().trim();
+        if (instrument.isEmpty()) instrument = "GP";
 
         fillAndSelectAutocomplete(driver, wait, js, SEARCH_INSTRUMENT_INP, instrument);
         fillAndSelectAutocomplete(driver, wait, js, MARKETWATCH_INPUT, instrument);
 
-        // 2. Pre-generate Trade Pipeline
+        // 2. Load Testing Configuration & Pipeline Generation
+        System.out.print("Enter Total Trades to Execute (default 500): ");
+        String tradesInput = sc.nextLine().trim();
         int totalTrades = 500;
+        try {
+            if (!tradesInput.isEmpty()) totalTrades = Integer.parseInt(tradesInput);
+        } catch (Exception ignored) {}
+
+        System.out.print("Enter Max Duration budget in seconds (default 60s): ");
+        String durInput = sc.nextLine().trim();
+        int durationSecs = 60;
+        try {
+            if (!durInput.isEmpty()) durationSecs = Integer.parseInt(durInput);
+        } catch (Exception ignored) {}
+        Duration maxDuration = Duration.ofSeconds(durationSecs);
+
         double baseOffset = 0.1;
-        Duration maxDuration = Duration.ofSeconds(60);
+        System.out.printf("[LOAD TEST ENGINE] Configuring pipeline for %d trades of %s (Max Duration: %ds)...%n",
+                totalTrades, instrument, durationSecs);
 
         List<TradeOrder> tradeQueue = buildTradePipeline(driver, instrument, totalTrades, baseOffset);
 
