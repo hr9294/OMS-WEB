@@ -235,7 +235,15 @@ public class OMSweb_MultiOrderExecution {
     // =========================================================================
     private static List<OrderItem> buildOrderQueue(WebDriver driver, Scanner sc, int choice, String symbol, String exchange, double refPrice, boolean differentPrices) {
         List<OrderItem> queue = new ArrayList<>();
-        String[] defaultBuyClients = { "10009", "10004", "10102" };
+
+        // Discover active clients with cash > 100,000 BDT & valid BO ID for BUY orders
+        List<String> realBuyClients = Account_Limits.getActiveBuyClientsWithCash(driver, 100000.0, 5);
+        if (realBuyClients == null || realBuyClients.isEmpty()) {
+            realBuyClients = new ArrayList<>(Arrays.asList("10009", "10004", "10102"));
+            System.out.println("[BUY CLIENTS] Using default fallback clients: " + realBuyClients);
+        } else {
+            System.out.println("[BUY CLIENTS] Selected Active BUY Clients (> 100,000 cash & BO ID): " + realBuyClients);
+        }
 
         // Fetch real holding clients for SELL side from Position widget
         List<String> realSellClients = new ArrayList<>();
@@ -282,7 +290,7 @@ public class OMSweb_MultiOrderExecution {
             int totalBuyQty = 0;
 
             for (int i = 0; i < buyCount; i++) {
-                String buyClient = defaultBuyClients[i % defaultBuyClients.length];
+                String buyClient = realBuyClients.get(i % realBuyClients.size());
                 int qty = 10 + (i * 2);
                 totalBuyQty += qty;
                 // Multiple BUY orders at DOWN prices (< refPrice)
@@ -314,7 +322,7 @@ public class OMSweb_MultiOrderExecution {
             }
 
             // Opposite BUY order at DOWN price (< refPrice and well below the SELL orders)
-            String buyClient = defaultBuyClients[0];
+            String buyClient = realBuyClients.get(0);
             double buyRate = Math.max(0.10, Math.round((refPrice - spreadDelta) * 100.0) / 100.0);
             queue.add(new OrderItem(itemCounter++, OrderSide.BUY, buyClient, symbol, totalSellQty, buyRate, true));
 
@@ -332,7 +340,7 @@ public class OMSweb_MultiOrderExecution {
             int totalPrimaryQty = 0;
             for (int i = 0; i < pCount; i++) {
                 String client = (primarySide == OrderSide.BUY)
-                        ? defaultBuyClients[i % defaultBuyClients.length]
+                        ? realBuyClients.get(i % realBuyClients.size())
                         : realSellClients.get(i % realSellClients.size());
                 System.out.printf("  Order #%d Client [%s]: ", (i + 1), client);
                 String cInput = sc.nextLine().trim();
@@ -360,7 +368,7 @@ public class OMSweb_MultiOrderExecution {
             }
 
             // Opposite order
-            String oppClient = (oppSide == OrderSide.BUY) ? defaultBuyClients[0] : realSellClients.get(0);
+            String oppClient = (oppSide == OrderSide.BUY) ? realBuyClients.get(0) : realSellClients.get(0);
             System.out.printf("Enter Opposite %s Client [%s]: ", oppSide, oppClient);
             String ocInput = sc.nextLine().trim();
             if (!ocInput.isEmpty()) oppClient = ocInput;

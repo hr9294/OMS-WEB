@@ -237,6 +237,7 @@ public class ClientPortfolio {
                 details.put("mature_balance", getJsonVal(json, "rem_mature_balance", "mature_balance"));
                 details.put("margin", getJsonVal(json, "margin"));
                 details.put("commission", getJsonVal(json, "commission"));
+                details.put("status", getJsonVal(json, "cln_status", "status", "trade_status", "account_status", "active"));
             }
         } catch (Exception e) {
             System.out.println("[WARN: ClientDetails] " + e.getMessage());

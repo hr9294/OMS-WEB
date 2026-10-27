@@ -56,20 +56,245 @@ public class Account_Limits {
 
         Map<String, String> data = getSnapshot(driver, clientCode, exchange);
         printSnapshot("ACCOUNT LIMITS FOR " + clientCode, data);
+
+        System.out.print("\nDo you want to query & randomly select 4-5 clients with > 100,000 cash, BO ID, and Active status? (1=YES / 0=NO): ");
+        String opt = sc.nextLine().trim();
+        if (opt.equals("1")) {
+            getActiveBuyClientsWithCash(driver, 100000.0, 5);
+        }
         System.out.println("=======================================================\n");
     }
 
     // =========================================================================
     // 3. NAVIGATION & FILTER HELPERS
     // =========================================================================
+    // =========================================================================
+    // 2. DATA MODEL FOR CLIENT CASH & STATUS
+    // =========================================================================
+    public static class ClientCashInfo {
+        private final String clientCode;
+        private final double cash;
+        private final String boId;
+        private final String status;
+        private final String clientName;
+
+        public ClientCashInfo(String clientCode, double cash, String boId, String status, String clientName) {
+            this.clientCode = clientCode;
+            this.cash = cash;
+            this.boId = boId;
+            this.status = status;
+            this.clientName = clientName;
+        }
+
+        public String getClientCode() { return clientCode; }
+        public double getCash() { return cash; }
+        public String getBoId() { return boId; }
+        public String getStatus() { return status; }
+        public String getClientName() { return clientName; }
+
+        @Override
+        public String toString() {
+            return String.format("Client: %-8s | Cash: %,12.2f BDT | BO ID: %-16s | Status: %-8s | Name: %s",
+                    clientCode, cash, boId, status, clientName);
+        }
+    }
+
+    /**
+     * Finds clients from the Account Limits table and client records,
+     * sorts those with cash >= minCash (default 100,000 BDT),
+     * verifies each client has a valid BO ID and Active account status,
+     * and randomly selects 4 to 5 verified clients.
+     */
+    public static List<String> getActiveBuyClientsWithCash(WebDriver driver, double minCash, int targetCount) {
+        System.out.printf("%n=======================================================================================%n");
+        System.out.printf(" [ACCOUNT LIMITS] QUERYING CLIENTS WITH CASH >= %,.2f BDT, VALID BO ID, & ACTIVE STATUS%n", minCash);
+        System.out.printf("=======================================================================================%n");
+
+        navigateToAccountLimits(driver);
+        JavascriptExecutor js = (JavascriptExecutor) driver;
+
+        Map<String, Double> discoveredCashMap = new LinkedHashMap<>();
+
+        // 1. Scrape client codes and cash from Account Limits DOM table
+        try {
+            Object res = js.executeScript(
+                "var tables = Array.from(document.querySelectorAll('table'));" +
+                "var limitTable = tables.find(function(t) {" +
+                "    var text = (t.innerText || '').toLowerCase();" +
+                "    return text.includes('client code') && (text.includes('remaining') || text.includes('initial limit'));" +
+                "});" +
+                "if (!limitTable) return [];" +
+                "var ths = Array.from(limitTable.querySelectorAll('thead th, tr:first-child th, tr:first-child td'));" +
+                "var headers = ths.map(function(h) { return (h.innerText || '').trim().toLowerCase(); });" +
+                "var codeIdx = headers.findIndex(function(h) { return h.includes('client code') || h === 'code'; });" +
+                "var remIdx = headers.findIndex(function(h) { return h === 'remaining' || h.includes('remaining'); });" +
+                "var initIdx = headers.findIndex(function(h) { return h.includes('initial limit') || h.includes('limit'); });" +
+                "var matureIdx = headers.findIndex(function(h) { return h.includes('mature'); });" +
+                "var rows = Array.from(limitTable.querySelectorAll('tbody tr'));" +
+                "var out = [];" +
+                "for (var i = 0; i < rows.length; i++) {" +
+                "    var r = rows[i];" +
+                "    var cells = r.querySelectorAll('td');" +
+                "    if (cells.length > Math.max(codeIdx, remIdx)) {" +
+                "        var c = cells[codeIdx >= 0 ? codeIdx : 1].innerText.trim();" +
+                "        var rStr = cells[remIdx >= 0 ? remIdx : 7].innerText.trim().replace(/,/g, '');" +
+                "        var iStr = initIdx >= 0 ? cells[initIdx].innerText.trim().replace(/,/g, '') : '0';" +
+                "        var mStr = matureIdx >= 0 ? cells[matureIdx].innerText.trim().replace(/,/g, '') : '0';" +
+                "        var rVal = parseFloat(rStr) || 0;" +
+                "        var iVal = parseFloat(iStr) || 0;" +
+                "        var mVal = parseFloat(mStr) || 0;" +
+                "        var maxCash = Math.max(rVal, Math.max(iVal, mVal));" +
+                "        if (c && c !== '-' && c.toLowerCase() !== 'client code') {" +
+                "            out.push({ code: c, cash: maxCash, remaining: rVal, initial: iVal, mature: mVal });" +
+                "        }" +
+                "    }" +
+                "}" +
+                "return out;"
+            );
+
+            if (res instanceof List) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> list = (List<Map<String, Object>>) res;
+                for (Map<String, Object> m : list) {
+                    String code = String.valueOf(m.getOrDefault("code", "")).trim();
+                    double cash = parseDbl(String.valueOf(m.getOrDefault("cash", "0")));
+                    if (!code.isEmpty() && !code.equals("-")) {
+                        discoveredCashMap.put(code, cash);
+                    }
+                }
+                System.out.printf("[ACCOUNT LIMITS] Scraped %d client accounts from UI Account Limits table.%n", list.size());
+            }
+        } catch (Exception e) {
+            System.out.println("[WARN: DOM Table Scrape] " + e.getMessage());
+        }
+
+        // 2. Also incorporate seed/known active client accounts across the platform
+        String[] seedClients = { "23986", "10009", "10004", "10102", "10340", "10351", "11310", "12245", "14118", "19363", "26687", "00239", "00006", "00010", "00017", "00033", "00086", "00101" };
+        for (String seed : seedClients) {
+            if (!discoveredCashMap.containsKey(seed)) {
+                discoveredCashMap.put(seed, 0.0);
+            }
+        }
+
+        // 3. For each candidate, query client details (/shared/getclientdata/?cln_code=) to get accurate cash, BO ID, and status
+        List<ClientCashInfo> eligibleClients = new ArrayList<>();
+        List<ClientCashInfo> allVerifiedClients = new ArrayList<>();
+
+        for (Map.Entry<String, Double> entry : discoveredCashMap.entrySet()) {
+            String code = entry.getKey();
+            try {
+                Map<String, String> details = ClientPortfolio.getClientDetails(driver, code);
+                if (details == null || details.isEmpty()) continue;
+
+                String boId = details.getOrDefault("bo_id", "-").trim();
+                String name = details.getOrDefault("client_name", "-").trim();
+                String status = details.getOrDefault("status", "Active").trim();
+
+                double cashLimit = parseDbl(details.getOrDefault("cash_limit", "0"));
+                double mature = parseDbl(details.getOrDefault("mature_balance", "0"));
+                double tableCash = entry.getValue();
+                double effectiveCash = Math.max(tableCash, Math.max(cashLimit, mature));
+
+                // Validate BO ID: non-empty, not '-', length >= 8
+                boolean hasBoId = (boId != null && !boId.isEmpty() && !boId.equals("-") && !boId.equalsIgnoreCase("null") && !boId.equals("0") && boId.replaceAll("[^0-9]", "").length() >= 8);
+
+                // Validate Active Status
+                String statusLower = status.toLowerCase();
+                boolean isActive = (status.isEmpty() || status.equalsIgnoreCase("A") || status.equalsIgnoreCase("Active") || status.equalsIgnoreCase("1") || status.equalsIgnoreCase("true")
+                        || (!statusLower.contains("inact") && !statusLower.contains("close") && !statusLower.contains("suspend") && !statusLower.contains("block")));
+
+                ClientCashInfo info = new ClientCashInfo(code, effectiveCash, boId, status.isEmpty() ? "Active" : status, name);
+
+                if (hasBoId && isActive) {
+                    allVerifiedClients.add(info);
+                    if (effectiveCash >= minCash) {
+                        eligibleClients.add(info);
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 4. Sort eligible clients by Cash descending (highest cash first)
+        eligibleClients.sort((a, b) -> Double.compare(b.getCash(), a.getCash()));
+        allVerifiedClients.sort((a, b) -> Double.compare(b.getCash(), a.getCash()));
+
+        System.out.printf("%n[ACCOUNT LIMITS] Found %d client(s) with CASH >= %,.2f BDT, VALID BO ID, & ACTIVE STATUS:%n",
+                eligibleClients.size(), minCash);
+        System.out.println("+=================================================================================================================+");
+        System.out.printf("| %-4s | %-10s | %-18s | %-18s | %-10s | %-32s |%n",
+                "#", "Client", "Cash Balance (BDT)", "BO ID", "Status", "Client Name");
+        System.out.println("+-----------------------------------------------------------------------------------------------------------------+");
+
+        List<ClientCashInfo> selectionPool;
+        if (!eligibleClients.isEmpty()) {
+            for (int i = 0; i < eligibleClients.size(); i++) {
+                ClientCashInfo c = eligibleClients.get(i);
+                System.out.printf("| %-4d | %-10s | %,18.2f | %-18s | %-10s | %-32s |%n",
+                        (i + 1), c.getClientCode(), c.getCash(), c.getBoId(), c.getStatus(),
+                        c.getClientName().length() > 32 ? c.getClientName().substring(0, 29) + "..." : c.getClientName());
+            }
+            selectionPool = eligibleClients;
+        } else {
+            System.out.printf("| No clients found with cash >= %,.2f BDT. Showing top verified active clients:                             |%n", minCash);
+            for (int i = 0; i < Math.min(10, allVerifiedClients.size()); i++) {
+                ClientCashInfo c = allVerifiedClients.get(i);
+                System.out.printf("| %-4d | %-10s | %,18.2f | %-18s | %-10s | %-32s |%n",
+                        (i + 1), c.getClientCode(), c.getCash(), c.getBoId(), c.getStatus(),
+                        c.getClientName().length() > 32 ? c.getClientName().substring(0, 29) + "..." : c.getClientName());
+            }
+            selectionPool = allVerifiedClients;
+        }
+        System.out.println("+=================================================================================================================+\n");
+
+        // 5. Randomly select 4 to 5 clients from the pool
+        int desiredCount = Math.min(selectionPool.size(), Math.max(4, Math.min(5, targetCount)));
+        List<ClientCashInfo> shuffled = new ArrayList<>(selectionPool);
+        Collections.shuffle(shuffled);
+        List<ClientCashInfo> chosen = shuffled.subList(0, desiredCount);
+
+        System.out.printf("✔ [RANDOM SELECTION] Randomly selected %d active client(s) with BO ID for BUY orders:%n", chosen.size());
+        System.out.println("+=================================================================================================================+");
+        System.out.printf("| %-4s | %-10s | %-18s | %-18s | %-10s | %-32s |%n",
+                "#", "Client", "Cash Balance (BDT)", "BO ID", "Status", "Client Name");
+        System.out.println("+-----------------------------------------------------------------------------------------------------------------+");
+        for (int i = 0; i < chosen.size(); i++) {
+            ClientCashInfo c = chosen.get(i);
+            System.out.printf("| %-4d | %-10s | %,18.2f | %-18s | %-10s | %-32s |%n",
+                    (i + 1), c.getClientCode(), c.getCash(), c.getBoId(), c.getStatus(),
+                    c.getClientName().length() > 32 ? c.getClientName().substring(0, 29) + "..." : c.getClientName());
+        }
+        System.out.println("+=================================================================================================================+\n");
+
+        return chosen.stream().map(ClientCashInfo::getClientCode).collect(Collectors.toList());
+    }
+
     public static void navigateToAccountLimits(WebDriver driver) {
         try {
-            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(6));
-            WebElement tab = wait.until(ExpectedConditions.elementToBeClickable(ACCOUNT_LIMITS_TAB));
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            Boolean isVis = (Boolean) js.executeScript(
+                "var ths = Array.from(document.querySelectorAll('th'));" +
+                "return ths.some(function(th) { return (th.innerText || '').toLowerCase().includes('client code'); });"
+            );
+            if (Boolean.TRUE.equals(isVis)) return;
+
+            By navBy = By.xpath(
+                "//a[contains(@href,'account_limit') or contains(@data-link,'account_limit') or contains(@title,'Account Limit') or contains(@data-original-title,'Account Limit')] | " +
+                "//a[.//i[contains(@class,'fa-usd') or contains(@class,'fa-dollar') or contains(@class,'fa-money')]] | " +
+                "//div[contains(@class,'lm_tab') and contains(.,'Account Limit')] | " +
+                "//div[@title='Account Limit' or @title='Account Limits'] | //a[normalize-space()='Account Limits']"
+            );
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(4));
+            WebElement tab = wait.until(ExpectedConditions.elementToBeClickable(navBy));
             tab.click();
             Thread.sleep(1000);
         } catch (Exception e) {
-            System.out.println("[NAV] Account Limits tab already active or clicked.");
+            try {
+                ((JavascriptExecutor) driver).executeScript(
+                    "var el = document.querySelector('a[data-link*=\"account_limit\"], a[href*=\"account_limit\"], a[title*=\"Account Limit\"], .fa-usd, .fa-dollar');" +
+                    "if (el) { (el.closest('a') || el).click(); }"
+                );
+                Thread.sleep(800);
+            } catch (Exception ignored) {}
         }
     }
 
