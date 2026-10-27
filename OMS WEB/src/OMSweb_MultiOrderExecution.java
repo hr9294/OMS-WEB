@@ -125,15 +125,14 @@ public class OMSweb_MultiOrderExecution {
 
         System.out.printf("[SETUP] Target Symbol: %s on Exchange: %s%n", symbol, exchange);
 
-        // Fetch current Market LTP for dynamic pricing
-        double currentLtp = fetchLtpSafe(driver, wait, symbol);
-        if (currentLtp <= 0) currentLtp = 100.0;
-        System.out.printf("[MARKET] Current LTP for %s is %.2f%n", symbol, currentLtp);
+        // Fetch current Market reference price (LTP or YCP) for dynamic non-crossing pricing
+        double refPrice = fetchPriceLtpOrYcp(driver, wait, symbol, exchange);
+        System.out.printf("[MARKET] Reference Price for %s is %.2f BDT (Base for Limit Pricing)%n", symbol, refPrice);
 
         // Configure Strategy
         System.out.println("\nSelect Multi-Order Execution Strategy:");
-        System.out.println("  1. Multiple BUY orders + Opposite SELL order(s) [Default]");
-        System.out.println("  2. Multiple SELL orders + Opposite BUY order(s)");
+        System.out.println("  1. Multiple BUY orders (Down Prices) + Opposite SELL order (Upper Price) [Default]");
+        System.out.println("  2. Multiple SELL orders (Upper Prices) + Opposite BUY order (Down Price)");
         System.out.println("  3. Custom Interactive Order Queue");
         System.out.print("Enter Choice (1, 2, or 3, default=1): ");
         String choiceStr = sc.nextLine().trim();
@@ -144,7 +143,7 @@ public class OMSweb_MultiOrderExecution {
         boolean differentPrices = !priceVarStr.equals("1");
 
         // Build the Order Queue
-        List<OrderItem> orderQueue = buildOrderQueue(driver, sc, choice, symbol, exchange, currentLtp, differentPrices);
+        List<OrderItem> orderQueue = buildOrderQueue(driver, sc, choice, symbol, exchange, refPrice, differentPrices);
 
         if (orderQueue.isEmpty()) {
             System.out.println("[WARN] Order queue is empty. Aborting execution.");
@@ -215,7 +214,7 @@ public class OMSweb_MultiOrderExecution {
     // =========================================================================
     // 3. PIPELINE BUILDER
     // =========================================================================
-    private static List<OrderItem> buildOrderQueue(WebDriver driver, Scanner sc, int choice, String symbol, String exchange, double ltp, boolean differentPrices) {
+    private static List<OrderItem> buildOrderQueue(WebDriver driver, Scanner sc, int choice, String symbol, String exchange, double refPrice, boolean differentPrices) {
         List<OrderItem> queue = new ArrayList<>();
         String[] defaultBuyClients = { "10009", "10004", "10102" };
 
@@ -242,10 +241,24 @@ public class OMSweb_MultiOrderExecution {
             System.out.println("[POSITION] Using default client fallbacks for SELL side.");
         }
 
+        // Calculate safe spread delta to prevent orders from executing on first placement
+        double spreadDelta;
+        if (refPrice <= 20.0) {
+            spreadDelta = 0.50;
+        } else if (refPrice <= 100.0) {
+            spreadDelta = 1.00;
+        } else if (refPrice <= 500.0) {
+            spreadDelta = 2.00;
+        } else {
+            spreadDelta = Math.max(2.0, Math.round(refPrice * 0.005 * 10.0) / 10.0);
+        }
+
         int itemCounter = 1;
 
         if (choice == 1) {
-            // Strategy 1: Multiple BUY orders with same or different prices + Opposite SELL order(s)
+            // Strategy 1: Multiple BUY orders (DOWN prices) + Opposite SELL order (UPPER price)
+            // Rule: BUY orders are down prices (< refPrice), SELL order is upper price (> refPrice).
+            // CANNOT be executed first time; placed orders sit as 'Accepted' until executed at market.
             int buyCount = 3;
             int totalBuyQty = 0;
 
@@ -253,17 +266,21 @@ public class OMSweb_MultiOrderExecution {
                 String buyClient = defaultBuyClients[i % defaultBuyClients.length];
                 int qty = 10 + (i * 2);
                 totalBuyQty += qty;
-                double rate = differentPrices ? Math.round((ltp - (i * 0.10)) * 100.0) / 100.0 : ltp;
+                // Multiple BUY orders at DOWN prices (< refPrice)
+                double step = differentPrices ? (i * 0.50) : 0.0;
+                double rate = Math.max(0.10, Math.round((refPrice - spreadDelta - step) * 100.0) / 100.0);
                 queue.add(new OrderItem(itemCounter++, OrderSide.BUY, buyClient, symbol, qty, rate, false));
             }
 
-            // Opposite SELL order to match the BUY side
+            // Opposite SELL order at UPPER price (> refPrice and well above the BUY orders)
             String sellClient = realSellClients.get(0);
-            double sellRate = differentPrices ? Math.round((ltp - 0.10) * 100.0) / 100.0 : ltp;
+            double sellRate = Math.round((refPrice + spreadDelta) * 100.0) / 100.0;
             queue.add(new OrderItem(itemCounter++, OrderSide.SELL, sellClient, symbol, totalBuyQty, sellRate, true));
 
         } else if (choice == 2) {
-            // Strategy 2: Multiple SELL orders + Opposite BUY order(s)
+            // Strategy 2: Multiple SELL orders (UPPER prices) + Opposite BUY order (DOWN price)
+            // Rule: SELL orders are upper prices (> refPrice), BUY order is down price (< refPrice).
+            // CANNOT be executed first time; placed orders sit as 'Accepted' until executed at market.
             int sellCount = Math.min(3, realSellClients.size());
             int totalSellQty = 0;
 
@@ -271,17 +288,19 @@ public class OMSweb_MultiOrderExecution {
                 String sellClient = realSellClients.get(i % realSellClients.size());
                 int qty = 10;
                 totalSellQty += qty;
-                double rate = differentPrices ? Math.round((ltp + (i * 0.10)) * 100.0) / 100.0 : ltp;
+                // Multiple SELL orders at UPPER prices (> refPrice)
+                double step = differentPrices ? (i * 0.50) : 0.0;
+                double rate = Math.round((refPrice + spreadDelta + step) * 100.0) / 100.0;
                 queue.add(new OrderItem(itemCounter++, OrderSide.SELL, sellClient, symbol, qty, rate, false));
             }
 
-            // Opposite BUY order
+            // Opposite BUY order at DOWN price (< refPrice and well below the SELL orders)
             String buyClient = defaultBuyClients[0];
-            double buyRate = differentPrices ? Math.round((ltp + 0.10) * 100.0) / 100.0 : ltp;
+            double buyRate = Math.max(0.10, Math.round((refPrice - spreadDelta) * 100.0) / 100.0);
             queue.add(new OrderItem(itemCounter++, OrderSide.BUY, buyClient, symbol, totalSellQty, buyRate, true));
 
         } else {
-            // Custom Pipeline Interactive Setup
+            // Strategy 3: Custom Interactive Order Queue with Non-Crossing Spread Defaults
             System.out.print("Enter Primary Order Side (BUY / SELL, default=BUY): ");
             String sideInput = sc.nextLine().trim().toUpperCase();
             OrderSide primarySide = sideInput.equals("SELL") ? OrderSide.SELL : OrderSide.BUY;
@@ -305,8 +324,16 @@ public class OMSweb_MultiOrderExecution {
                 int q = qInput.isEmpty() ? 10 : Integer.parseInt(qInput);
                 totalPrimaryQty += q;
 
-                double defaultRate = differentPrices ? (ltp - (i * 0.10)) : ltp;
-                System.out.printf("  Price Rate (default %.2f): ", defaultRate);
+                double defaultRate;
+                if (primarySide == OrderSide.BUY) {
+                    double step = differentPrices ? (i * 0.50) : 0.0;
+                    defaultRate = Math.max(0.10, Math.round((refPrice - spreadDelta - step) * 100.0) / 100.0);
+                } else {
+                    double step = differentPrices ? (i * 0.50) : 0.0;
+                    defaultRate = Math.round((refPrice + spreadDelta + step) * 100.0) / 100.0;
+                }
+
+                System.out.printf("  Price Rate (default %.2f %s): ", defaultRate, (primarySide == OrderSide.BUY ? "DOWN" : "UPPER"));
                 String rInput = sc.nextLine().trim();
                 double r = rInput.isEmpty() ? defaultRate : Double.parseDouble(rInput);
 
@@ -319,7 +346,17 @@ public class OMSweb_MultiOrderExecution {
             String ocInput = sc.nextLine().trim();
             if (!ocInput.isEmpty()) oppClient = ocInput;
 
-            queue.add(new OrderItem(itemCounter++, oppSide, oppClient, symbol, totalPrimaryQty, ltp, true));
+            double defaultOppRate;
+            if (oppSide == OrderSide.SELL) {
+                defaultOppRate = Math.round((refPrice + spreadDelta) * 100.0) / 100.0;
+            } else {
+                defaultOppRate = Math.max(0.10, Math.round((refPrice - spreadDelta) * 100.0) / 100.0);
+            }
+            System.out.printf("Enter Opposite %s Rate (default %.2f %s): ", oppSide, defaultOppRate, (oppSide == OrderSide.SELL ? "UPPER" : "DOWN"));
+            String orInput = sc.nextLine().trim();
+            double oppRate = orInput.isEmpty() ? defaultOppRate : Double.parseDouble(orInput);
+
+            queue.add(new OrderItem(itemCounter++, oppSide, oppClient, symbol, totalPrimaryQty, oppRate, true));
         }
 
         return queue;
@@ -484,10 +521,10 @@ public class OMSweb_MultiOrderExecution {
                         WebElement rateInput = driver.findElement(By.id("limit_order_rate"));
                         if (rateInput.isDisplayed()) {
                             rateInput.clear();
-                            rateInput.sendKeys(String.format("%.2f", item.getRate()));
+                            rateInput.sendKeys(String.format(java.util.Locale.US, "%.2f", item.getRate()));
                         } else {
                             js.executeScript("arguments[0].value = arguments[1]; try { $(arguments[0]).trigger('input').trigger('change'); } catch(e){}",
-                                    rateInput, String.format("%.2f", item.getRate()));
+                                    rateInput, String.format(java.util.Locale.US, "%.2f", item.getRate()));
                         }
                         js.executeScript("$('#limit_order_rate').trigger('input').trigger('change');");
                     } catch (Exception ignored) {}
@@ -534,8 +571,9 @@ public class OMSweb_MultiOrderExecution {
         try {
             System.out.println("\n[TERMINAL] Navigating to Order Terminal widget...");
             Order_Terminal.navigateToOrderTerminal(driver);
-            Order_Terminal.refresh(driver);
             Thread.sleep(1000);
+            Order_Terminal.refresh(driver);
+            Thread.sleep(1500);
 
             // 1. Filter table by symbol to ensure target orders are in view
             try {
@@ -546,10 +584,20 @@ public class OMSweb_MultiOrderExecution {
             // 2. Filter by Status: All Accepted and Partially Filled orders
             System.out.println("[TERMINAL] Filtering by Status: ALL ACCEPTED and PARTIALLY FILLED orders...");
             Order_Terminal.filterByStatus(driver, "ACTIVE");
+            Thread.sleep(500);
 
             // 3. Multi-select all Accepted and Partially Filled orders
             System.out.println("[TERMINAL] Selecting all Accepted and Partially Filled order rows...");
             List<WebElement> selectedRows = Order_Terminal.selectOrdersByStatus(driver, "ACCEPTED", "PARTIALLY FILLED");
+
+            // Fallback retry: if no rows found with filter, clear filter and try scanning again
+            if (selectedRows.isEmpty()) {
+                System.out.println("[TERMINAL] Retrying selection without symbol filter...");
+                Order_Terminal.clearFilter(driver);
+                Order_Terminal.refresh(driver);
+                Thread.sleep(1500);
+                selectedRows = Order_Terminal.selectOrdersByStatus(driver, "ACCEPTED", "PARTIALLY FILLED");
+            }
 
             // Attach Order IDs to placed orders from the selected rows
             for (OrderItem order : placedOrders) {
@@ -814,16 +862,119 @@ public class OMSweb_MultiOrderExecution {
         System.out.println("+---------------------------------------------------------------------------------------+");
     }
 
-    private static double fetchLtpSafe(WebDriver driver, WebDriverWait wait, String symbol) {
+    /**
+     * Fetches reference price from LTP (Last Traded Price). If LTP is 0, empty, or unavailable,
+     * falls back to YCP (Yesterday's Closing Price) or Close Price.
+     * Tiers:
+     *   1. Market Depth Snapshot API (Queries Admin Shared API / QuantBD / DOM)
+     *   2. Marketwatch UI Search + Table extraction (LTP -> YCP -> Close)
+     *   3. Direct /shared/getmktdepth/ browser fetch fallback
+     *   4. Default fallback: 100.00 BDT
+     */
+    public static double fetchPriceLtpOrYcp(WebDriver driver, WebDriverWait wait, String symbol, String exchange) {
+        String cleanSym = cleanSymbol(symbol);
+        String ex = (exchange != null && !exchange.isEmpty()) ? exchange : "DSE";
+
+        // Tier 1: Market Depth Snapshot API (Queries Admin Shared API / QuantBD / DOM)
         try {
-            String cleanSym = symbol.replace(".", "").toUpperCase();
-            By rowXPath = By.xpath("//tr[contains(@class, '" + cleanSym + "')]");
+            Map<String, String> depth = Market_Depth.getSnapshot(driver, cleanSym, ex);
+            if (depth != null && !depth.isEmpty()) {
+                double ltp = parseNum(depth.get("Last"));
+                if (ltp > 0) {
+                    System.out.printf("[MARKET PRICE] Fetched LTP for %s: %.2f BDT (Source: %s)%n",
+                            cleanSym, ltp, depth.getOrDefault("DATA_SOURCE", "Market Depth API"));
+                    return ltp;
+                }
+                double ycp = parseNum(depth.get("YCP"));
+                if (ycp > 0) {
+                    System.out.printf("[MARKET PRICE] LTP is 0/unavailable. Fallback to YCP for %s: %.2f BDT (Source: %s)%n",
+                            cleanSym, ycp, depth.getOrDefault("DATA_SOURCE", "Market Depth API"));
+                    return ycp;
+                }
+                double close = parseNum(depth.get("Close"));
+                if (close > 0) {
+                    System.out.printf("[MARKET PRICE] LTP/YCP unavailable. Fallback to Close price for %s: %.2f BDT (Source: %s)%n",
+                            cleanSym, close, depth.getOrDefault("DATA_SOURCE", "Market Depth API"));
+                    return close;
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("[WARN: Depth Price Query] " + e.getMessage());
+        }
+
+        // Tier 2: Search in Marketwatch on UI & Scrape Table
+        try {
+            WebElement mwInput = null;
+            try {
+                mwInput = driver.findElement(By.id("marketwatch_symbol"));
+            } catch (Exception ignored) {
+                try {
+                    mwInput = driver.findElement(By.id("instrument"));
+                } catch (Exception ignored2) {}
+            }
+            if (mwInput != null && mwInput.isDisplayed()) {
+                mwInput.clear();
+                mwInput.sendKeys(cleanSym);
+                mwInput.sendKeys(Keys.ARROW_DOWN);
+                mwInput.sendKeys(Keys.ENTER);
+                Thread.sleep(600);
+            }
+
+            By rowXPath = By.xpath("//tr[contains(@class, '" + cleanSym.replace(".", "").toUpperCase() + "')]");
             WebElement row = wait.until(ExpectedConditions.visibilityOfElementLocated(rowXPath));
-            WebElement ltpCell = row.findElement(By.cssSelector("td.mw_table_ltp div"));
-            String raw = ltpCell.getText().replaceAll("[^0-9.]", "").trim();
-            if (!raw.isEmpty()) return Double.parseDouble(raw);
+
+            // Check LTP cell
+            try {
+                WebElement ltpCell = row.findElement(By.cssSelector("td.mw_table_ltp div, td.mw_table_ltp, td[class*='ltp']"));
+                double ltp = parseNum(ltpCell.getText());
+                if (ltp > 0) {
+                    System.out.printf("[MARKET PRICE] Fetched LTP from Marketwatch table for %s: %.2f BDT%n", cleanSym, ltp);
+                    return ltp;
+                }
+            } catch (Exception ignored) {}
+
+            // Check YCP / Close cell
+            try {
+                WebElement ycpCell = row.findElement(By.cssSelector("td.mw_table_ycp div, td.mw_table_ycp, td[class*='ycp'], td.mw_table_close div, td.mw_table_close, td[class*='close']"));
+                double ycp = parseNum(ycpCell.getText());
+                if (ycp > 0) {
+                    System.out.printf("[MARKET PRICE] LTP is 0. Fallback to YCP from Marketwatch table for %s: %.2f BDT%n", cleanSym, ycp);
+                    return ycp;
+                }
+            } catch (Exception ignored) {}
         } catch (Exception ignored) {}
-        return 0.0;
+
+        // Tier 3: Direct API fetch fallback
+        try {
+            String adminUrl = String.format("/shared/getmktdepth/?mkt_group=PUBLIC&mkt_symbol=%s&exchange=%s", cleanSym, ex);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            Object res = js.executeAsyncScript(
+                "var callback = arguments[arguments.length - 1];" +
+                "fetch('" + adminUrl + "').then(function(r){ return r.json(); }).then(function(d){ callback(JSON.stringify(d)); }).catch(function(e){ callback(''); });"
+            );
+            if (res != null) {
+                String json = res.toString();
+                Map<String, String> parsed = Market_Depth.parseMarketDepthJson(json, cleanSym, ex);
+                double ltp = parseNum(parsed.get("Last"));
+                if (ltp > 0) {
+                    System.out.printf("[MARKET PRICE] Fetched LTP from Direct API for %s: %.2f BDT%n", cleanSym, ltp);
+                    return ltp;
+                }
+                double ycp = parseNum(parsed.get("YCP"));
+                if (ycp > 0) {
+                    System.out.printf("[MARKET PRICE] Fetched YCP from Direct API for %s: %.2f BDT%n", cleanSym, ycp);
+                    return ycp;
+                }
+            }
+        } catch (Exception ignored) {}
+
+        // Tier 4: Fallback
+        System.out.println("[WARN: Price Fetch] Could not fetch LTP or YCP from market. Defaulting reference price to 100.00 BDT.");
+        return 100.0;
+    }
+
+    private static double fetchLtpSafe(WebDriver driver, WebDriverWait wait, String symbol) {
+        return fetchPriceLtpOrYcp(driver, wait, symbol, "DSE");
     }
 
     public static String cleanSymbol(String sym) {

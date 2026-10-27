@@ -186,14 +186,31 @@ public class OMSweb_MultipleTrade {
         String cleanSymbol = symbol.replace(".", "").toUpperCase();
         By rowXPath = By.xpath("//tr[contains(@class, '" + cleanSymbol + "')]");
         WebElement row = wait.until(ExpectedConditions.visibilityOfElementLocated(rowXPath));
-        WebElement ltpCell = row.findElement(By.cssSelector("td.mw_table_ltp div"));
+        try {
+            WebElement ltpCell = row.findElement(By.cssSelector("td.mw_table_ltp div, td.mw_table_ltp"));
+            String rawText = ltpCell.getText();
+            Matcher matcher = Pattern.compile("(\\d+(\\.\\d+)?)").matcher(rawText.replace(",", ""));
+            if (matcher.find()) {
+                double val = Double.parseDouble(matcher.group(1));
+                if (val > 0) return val;
+            }
+        } catch (Exception ignored) {}
 
-        String rawText = ltpCell.getText();
-        Matcher matcher = Pattern.compile("(\\d+(\\.\\d+)?)").matcher(rawText.replace(",", ""));
-        if (matcher.find()) {
-            return Double.parseDouble(matcher.group(1));
-        }
-        throw new IllegalStateException("Failed to parse numeric LTP from string: '" + rawText + "'");
+        // Fallback to YCP / Close cell
+        try {
+            WebElement ycpCell = row.findElement(By.cssSelector("td.mw_table_ycp div, td.mw_table_ycp, td.mw_table_close div, td.mw_table_close"));
+            String rawText = ycpCell.getText();
+            Matcher matcher = Pattern.compile("(\\d+(\\.\\d+)?)").matcher(rawText.replace(",", ""));
+            if (matcher.find()) {
+                double val = Double.parseDouble(matcher.group(1));
+                if (val > 0) {
+                    System.out.println("[MULTIPLE TRADE] LTP is 0. Fallback to YCP: " + val);
+                    return val;
+                }
+            }
+        } catch (Exception ignored) {}
+
+        throw new IllegalStateException("Failed to parse numeric LTP or YCP for symbol: '" + cleanSymbol + "'");
     }
 
     private static void fillAndSelectAutocomplete(WebDriver driver, WebDriverWait wait, JavascriptExecutor js, By locator, String text) {

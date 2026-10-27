@@ -1161,12 +1161,49 @@ public class OMSweb_Trade {
 		try {
 			WebElement symbolRow = wait.until(ExpectedConditions.visibilityOfElementLocated(
 					By.xpath("//tr[contains(@class, '" + instrument.replace(".", "").toUpperCase() + "')]")));
-			WebElement ltpCell = symbolRow.findElement(By.cssSelector("td.mw_table_ltp div"));
-			return Double.parseDouble(ltpCell.getText().replace(",", "").trim());
+			try {
+				WebElement ltpCell = symbolRow.findElement(By.cssSelector("td.mw_table_ltp div, td.mw_table_ltp"));
+				String raw = ltpCell.getText().replace(",", "").replaceAll("[^0-9.]", "").trim();
+				if (!raw.isEmpty()) {
+					double val = Double.parseDouble(raw);
+					if (val > 0) return val;
+				}
+			} catch (Exception ignored) {}
+
+			try {
+				WebElement ycpCell = symbolRow.findElement(By.cssSelector("td.mw_table_ycp div, td.mw_table_ycp, td.mw_table_close div, td.mw_table_close"));
+				String raw = ycpCell.getText().replace(",", "").replaceAll("[^0-9.]", "").trim();
+				if (!raw.isEmpty()) {
+					double val = Double.parseDouble(raw);
+					if (val > 0) {
+						System.out.println("[TRADE] LTP is 0. Fallback to YCP: " + val);
+						return val;
+					}
+				}
+			} catch (Exception ignored) {}
+		} catch (Exception ignored) {}
+
+		try {
+			Map<String, String> depth = Market_Depth.getSnapshot(driver, instrument, "DSE");
+			if (depth != null && !depth.isEmpty()) {
+				String last = depth.get("Last");
+				if (last != null && !last.isEmpty() && !last.equals("-")) {
+					double ltp = Double.parseDouble(last.replaceAll("[^0-9.]", ""));
+					if (ltp > 0) return ltp;
+				}
+				String ycp = depth.get("YCP");
+				if (ycp != null && !ycp.isEmpty() && !ycp.equals("-")) {
+					double ycpVal = Double.parseDouble(ycp.replaceAll("[^0-9.]", ""));
+					if (ycpVal > 0) {
+						System.out.println("[TRADE] LTP is 0. Fallback to YCP (Market Depth): " + ycpVal);
+						return ycpVal;
+					}
+				}
+			}
 		} catch (Exception e) {
-			System.out.println("Could not fetch LTP: " + e.getMessage());
-			return 0.0;
+			System.out.println("Could not fetch LTP/YCP: " + e.getMessage());
 		}
+		return 0.0;
 	}
 
 	private static void submitOrder(WebDriver driver, String side) throws InterruptedException {
