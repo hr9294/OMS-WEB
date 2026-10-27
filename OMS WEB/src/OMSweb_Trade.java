@@ -1324,15 +1324,14 @@ public class OMSweb_Trade {
 	// ============================================================
 	// WIDGET COLOR SELECTION
 	// ============================================================
-	private static final String[] COLOR_NAMES = { "Turquoise", "Yellow", "Orange", "Green", "Red", "Pink" };
-	private static final String[] COLOR_HEXES = { "#42EADDFF", "#FEE715FF", "#F95700ff", "#06d001", "#EB0506", "#FF3EA5FF" };
+	public static final String[] COLOR_NAMES = { "Turquoise", "Yellow", "Orange", "Green", "Red", "Pink" };
+	public static final String[] COLOR_HEXES = { "#42EADDFF", "#FEE715FF", "#F95700ff", "#06d001", "#EB0506", "#FF3EA5FF" };
 
-	private static void runWidgetColorSelection(WebDriver driver, Scanner sc) throws InterruptedException {
-		JavascriptExecutor js = (JavascriptExecutor) driver;
-		System.out.println("\n=== Widget Color ===");
+	public static void runWidgetColorSelection(WebDriver driver, Scanner sc) throws InterruptedException {
+		System.out.println("\n=== Widget Color Link ===");
 		System.out.println("1.Turquoise 2.Yellow 3.Orange");
 		System.out.println("4.Green 5.Red 6.Pink");
-		System.out.print("Enter choice (1-6): ");
+		System.out.print("Enter choice (1-6, or Enter to skip): ");
 		String input = sc.nextLine().trim();
 		if (input.isEmpty()) return;
 		int colorChoice;
@@ -1347,7 +1346,17 @@ public class OMSweb_Trade {
 		String targetHex = COLOR_HEXES[colorChoice - 1];
 
 		System.out.println("\n[WIDGET COLOR] Applying " + chosenColorName + " (" + targetHex + ") to all widgets...");
+		applyColorToAllWidgets(driver, chosenColorName, targetHex);
+		Thread.sleep(500);
+	}
 
+	public static boolean applyColorToAllWidgets(WebDriver driver, int colorChoice) {
+		if (colorChoice < 1 || colorChoice > 6) return false;
+		return applyColorToAllWidgets(driver, COLOR_NAMES[colorChoice - 1], COLOR_HEXES[colorChoice - 1]);
+	}
+
+	public static boolean applyColorToAllWidgets(WebDriver driver, String chosenColorName, String targetHex) {
+		JavascriptExecutor js = (JavascriptExecutor) driver;
 		String script =
 			"var targetHex = arguments[0];" +
 			"var chooseColors = Array.from(document.querySelectorAll('.chooseColor'));" +
@@ -1392,9 +1401,10 @@ public class OMSweb_Trade {
 				}
 			}
 			System.out.printf("[WIDGET COLOR] Done: %d/%d widgets colored with %s.%n", successCount, results.size(), chosenColorName);
+			return successCount > 0;
 		} else {
 			System.out.println("[WIDGET COLOR] No widgets found on page.");
+			return false;
 		}
-		Thread.sleep(500);
 	}
 }

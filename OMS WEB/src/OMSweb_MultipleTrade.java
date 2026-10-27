@@ -75,7 +75,10 @@ public class OMSweb_MultipleTrade {
         System.out.println("       HIGH-SPEED MULTI-TRADE & LOAD TESTING ENGINE    ");
         System.out.println("=======================================================");
 
-        System.out.print("Search Symbol (default GP): ");
+        // Widget Color Linking FIRST
+        OMSweb_Trade.runWidgetColorSelection(driver, sc);
+
+        System.out.print("\nSearch Symbol (default GP): ");
         String instrument = sc.nextLine().trim();
         if (instrument.isEmpty()) instrument = "GP";
 

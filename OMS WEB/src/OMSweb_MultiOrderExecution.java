@@ -114,8 +114,11 @@ public class OMSweb_MultiOrderExecution {
         // Ensure we start on Trade Page
         OMSweb_Trade.navigateToTradePage(driver, wait);
 
+        // STEP 0: Widget Color Linking FIRST (Trade, Marketwatch, Market Depth, Order Terminal, Position, Portfolio)
+        OMSweb_Trade.runWidgetColorSelection(driver, sc);
+
         // Manual input of target symbol
-        System.out.print("Enter Target Symbol (e.g. GP, ACFL, SQURPHARMA) [default=GP]: ");
+        System.out.print("\nEnter Target Symbol (e.g. GP, ACFL, SQURPHARMA) [default=GP]: ");
         String symInput = sc.nextLine().trim();
         String symbol = symInput.isEmpty() ? "GP" : cleanSymbol(symInput);
 
