@@ -68,19 +68,21 @@ public class OMSweb_MultipleTrade {
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(2));
         JavascriptExecutor js = (JavascriptExecutor) driver;
 
-        // 1. Navigate & Setup
-        waitAndClick(wait, TRADE_PAGE_NAV);
+        // 1. Navigate & Setup if not already on Trade page
+        if (!OMSweb_Trade.isAlreadyOnTradePage(driver)) {
+            waitAndClick(wait, TRADE_PAGE_NAV);
+            OMSweb_Trade.runWidgetColorSelection(driver, sc);
+        }
 
         System.out.println("\n=======================================================");
         System.out.println("       HIGH-SPEED MULTI-TRADE & LOAD TESTING ENGINE    ");
         System.out.println("=======================================================");
 
-        // Widget Color Linking FIRST
-        OMSweb_Trade.runWidgetColorSelection(driver, sc);
-
         System.out.print("\nSearch Symbol (default GP): ");
         String instrument = sc.nextLine().trim();
-        if (instrument.isEmpty()) instrument = "GP";
+        if (instrument.isEmpty() || instrument.matches("\\d+")) {
+            instrument = "GP";
+        }
 
         fillAndSelectAutocomplete(driver, wait, js, SEARCH_INSTRUMENT_INP, instrument);
         fillAndSelectAutocomplete(driver, wait, js, MARKETWATCH_INPUT, instrument);

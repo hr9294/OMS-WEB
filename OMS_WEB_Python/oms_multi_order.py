@@ -179,9 +179,15 @@ def run_multi_order_pipeline(driver: webdriver.Chrome) -> None:
     # STEP 1: Widget Color Linking FIRST (link all 6 widgets before symbol & order placement)
     widget_color.run_widget_color_selection(driver)
 
-    # STEP 2: Manual input of target symbol
+    # STEP 2: Manual input of target symbol (with numeric guardrail)
     sym_input = input(f"\nEnter Target Symbol (e.g. GP, ACFL, SQURPHARMA) [default={DEFAULT_SYMBOL}]: ").strip()
-    symbol = oms_price.clean_symbol(sym_input or DEFAULT_SYMBOL)
+    sym_clean = oms_price.clean_symbol(sym_input or DEFAULT_SYMBOL)
+    if not sym_clean or sym_clean.isdigit():
+        if sym_clean and sym_clean.isdigit():
+            print(f"[WARN] Entered '{sym_clean}' is numeric, not a stock symbol. Defaulting to {DEFAULT_SYMBOL}.")
+        symbol = DEFAULT_SYMBOL
+    else:
+        symbol = sym_clean
 
     ex_input = input(f"Enter Exchange (DSE / CSE, default={DEFAULT_EXCHANGE}): ").strip().upper()
     exchange = "CSE" if ex_input == "CSE" else "DSE"

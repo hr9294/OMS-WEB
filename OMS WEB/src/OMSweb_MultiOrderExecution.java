@@ -111,16 +111,22 @@ public class OMSweb_MultiOrderExecution {
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(6));
         JavascriptExecutor js = (JavascriptExecutor) driver;
 
-        // Ensure we start on Trade Page
-        OMSweb_Trade.navigateToTradePage(driver, wait);
+        // Ensure Trade Page is active & color-linked if not already done by master runner
+        if (!OMSweb_Trade.isAlreadyOnTradePage(driver)) {
+            OMSweb_Trade.navigateToTradePage(driver, wait);
+            OMSweb_Trade.runWidgetColorSelection(driver, sc);
+        }
 
-        // STEP 0: Widget Color Linking FIRST (Trade, Marketwatch, Market Depth, Order Terminal, Position, Portfolio)
-        OMSweb_Trade.runWidgetColorSelection(driver, sc);
-
-        // Manual input of target symbol
+        // Manual input of target symbol (with numeric guardrail)
         System.out.print("\nEnter Target Symbol (e.g. GP, ACFL, SQURPHARMA) [default=GP]: ");
         String symInput = sc.nextLine().trim();
-        String symbol = symInput.isEmpty() ? "GP" : cleanSymbol(symInput);
+        String symbol = cleanSymbol(symInput);
+        if (symbol.isEmpty() || symbol.matches("\\d+")) {
+            if (symbol.matches("\\d+")) {
+                System.out.println("[WARN] Entered '" + symbol + "' is numeric, not a stock symbol. Defaulting to GP.");
+            }
+            symbol = "GP";
+        }
 
         System.out.print("Enter Exchange (DSE / CSE, default=DSE): ");
         String exInput = sc.nextLine().trim().toUpperCase();

@@ -21,14 +21,21 @@ public class OMSweb_Trade {
 		JavascriptExecutor js = (JavascriptExecutor) driver;
 		WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
 
-		// Navigate to Trade Page initially
-		navigateToTradePage(driver, wait);
-		runWidgetColorSelection(driver, sc);
+		// Navigate to Trade Page initially if not already on it
+		if (!isAlreadyOnTradePage(driver)) {
+			navigateToTradePage(driver, wait);
+			runWidgetColorSelection(driver, sc);
+		}
 
 		// ---------- Manual input symbol into search + marketwatch ----------
-		System.out.print("Enter Symbol (default GP): ");
+		System.out.print("\nEnter Symbol (default GP): ");
 		String instrument = sc.nextLine().trim();
-		if (instrument.isEmpty()) instrument = "GP";
+		if (instrument.isEmpty() || instrument.matches("\\d+")) {
+			if (instrument.matches("\\d+")) {
+				System.out.println("[WARN] Entered '" + instrument + "' is numeric. Defaulting to GP.");
+			}
+			instrument = "GP";
+		}
 
 		WebElement searchSymbol = driver.findElement(By.id("instrument"));
 		searchSymbol.clear();

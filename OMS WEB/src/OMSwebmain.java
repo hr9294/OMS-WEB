@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Scanner;
 
 import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.support.ui.WebDriverWait;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 
@@ -62,12 +63,25 @@ public class OMSwebmain {
         // Login
         OMSweb_Login.main(driver, sc);
 
-        System.out.println("\nSelect Trading Execution Engine:");
+        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+
+        // 1. FIRST OPEN THE TRADE PAGE
+        System.out.println("\n[UFTFAST OMS] 1. Opening Trade Page...");
+        OMSweb_Trade.navigateToTradePage(driver, wait);
+
+        // 2. THEN SELECT WIDGET COLOR LINK
+        System.out.println("[UFTFAST OMS] 2. Configuring Widget Color Link...");
+        OMSweb_Trade.runWidgetColorSelection(driver, sc);
+
+        // 3. THEN TRADE EXECUTION OPTION
+        System.out.println("\n[UFTFAST OMS] 3. Select Trading Execution Option:");
         System.out.println("  1. Standard Trade & 6-Widget Verification [Default]");
         System.out.println("  2. Multi-Order Execution, Right-Click 'Execute at Market' & Real-time 6-Widget Audit");
         System.out.println("  3. High-Speed Multi-Trade & Load Testing Engine (Throughput / TPS)");
         System.out.print("Enter Choice (1, 2, or 3, default=1): ");
         String engChoice = sc.nextLine().trim();
+
+        // 4. THEN OTHERS
         if ("3".equals(engChoice)) {
             OMSweb_MultipleTrade.main(driver, sc);
         } else if ("2".equals(engChoice)) {
@@ -81,6 +95,7 @@ public class OMSwebmain {
         // OMSweb_MultipleTrade.main(driver, sc);
         // Position.main(driver, sc);
         // ClientPortfolio.main(driver, sc);
+       
         // Order_Summary.main(driver, sc);
         // Account_Limits.main(driver, sc);
         // Market_Depth.main(driver, sc);

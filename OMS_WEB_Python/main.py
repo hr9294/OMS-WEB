@@ -52,7 +52,16 @@ def main() -> None:
 
         mode = args.mode
         if not mode:
-            print("\nSelect Trading Execution Engine:")
+            # 1. FIRST OPEN THE TRADE PAGE
+            print("\n[UFTFAST OMS] 1. Opening Trade Page...")
+            oms_trade.navigate_to_trade_page(driver)
+
+            # 2. THEN SELECT WIDGET COLOR LINK
+            print("[UFTFAST OMS] 2. Configuring Widget Color Link...")
+            widget_color.run_widget_color_selection(driver)
+
+            # 3. THEN TRADE EXECUTION OPTION
+            print("\n[UFTFAST OMS] 3. Select Trading Execution Option:")
             print("  1. Standard Trade & 6-Widget Verification [Default]")
             print("  2. Multi-Order Execution, Right-Click 'Execute at Market' & Real-time 6-Widget Audit")
             print("  3. High-Speed Multi-Trade & Load Testing Engine (Throughput / TPS)")
