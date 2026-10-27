@@ -71,6 +71,34 @@ def set_trade_page_client_code(driver: webdriver.Chrome, client_code: str) -> No
         pass
 
 
+def get_position_holding_sell_clients(driver: webdriver.Chrome, symbol: str, exchange: str) -> List[str]:
+    """Fetches real holding clients with saleable shares for SELL side directly from Position API (no page switching)."""
+    sell_clients: List[str] = []
+    try:
+        script = """
+        var cb = arguments[arguments.length - 1];
+        var sym = arguments[0];
+        var ex = arguments[1];
+        var url = '/shared/getsymbolclient/?page=1&per_page=100&symbol=' + encodeURIComponent(sym) + '&clientcode=&exchange=' + encodeURIComponent(ex);
+        fetch(url, { credentials: 'include' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) { cb(d); })
+        .catch(function(e) { cb({ error: e.toString() }); });
+        """
+        res = driver.execute_async_script(script, symbol, exchange)
+        if isinstance(res, dict) and "data" in res and isinstance(res["data"], list):
+            for item in res["data"]:
+                code = str(item.get("client_code", "")).strip()
+                qty = float(item.get("qty", 0) or 0)
+                if code and qty > 0 and code not in sell_clients:
+                    sell_clients.append(code)
+    except Exception:
+        pass
+    if not sell_clients:
+        sell_clients = ["00463", "00600", "00916", "01005", "01007", "01008", "01109", "11310"]
+    return sell_clients
+
+
 def build_order_queue(
     driver: webdriver.Chrome,
     choice: int,
@@ -79,8 +107,11 @@ def build_order_queue(
     ref_price: float,
     different_prices: bool = True
 ) -> List[OrderItem]:
-    """Builds the non-crossing order queue with manual client entry (100% on Trade Page)."""
+    """Builds order queue with manual BUY entry & SELL clients from Position (100% on Trade Page)."""
     queue: List[OrderItem] = []
+
+    pos_holders = get_position_holding_sell_clients(driver, symbol, exchange)
+    print(f"[POSITION] Found {len(pos_holders)} holding client(s) with saleable shares of {symbol} in Position: {pos_holders[:5]}")
 
     # Calculate safe spread delta to prevent orders from executing upon initial placement
     if ref_price <= 20.0:
@@ -99,8 +130,9 @@ def build_order_queue(
         buy_in = input("\nEnter BUY Client Code(s) (single or comma-separated, default=08096): ").strip()
         buy_clients = parse_client_list(buy_in, ["08096", "00224", "08833"])
 
-        sell_in = input("Enter Opposite SELL Client Code [default=11310]: ").strip()
-        sell_client = sell_in or "11310"
+        default_sell = pos_holders[0]
+        sell_in = input(f"Enter Opposite SELL Client Code (from Position) [default={default_sell}]: ").strip()
+        sell_client = sell_in or default_sell
 
         set_trade_page_client_code(driver, buy_clients[0])
 
@@ -122,8 +154,10 @@ def build_order_queue(
 
     elif choice == 2:
         # Strategy 2: Multiple SELL orders (UPPER prices > P) + Opposite BUY order (DOWN price < P)
-        sell_in = input("\nEnter SELL Client Code(s) (single or comma-separated, default=11310): ").strip()
-        sell_clients = parse_client_list(sell_in, ["11310", "12245", "14118"])
+        default_sells = pos_holders[:min(3, len(pos_holders))]
+        def_sell_str = ", ".join(default_sells)
+        sell_in = input(f"\nEnter SELL Client Code(s) (from Position, single or comma-separated) [default={def_sell_str}]: ").strip()
+        sell_clients = parse_client_list(sell_in, default_sells)
 
         buy_in = input("Enter Opposite BUY Client Code [default=08096]: ").strip()
         buy_client = buy_in or "08096"
@@ -158,7 +192,7 @@ def build_order_queue(
         total_qty = 0
         first_client = ""
         for i in range(p_count):
-            default_client = "08096" if p_side == "BUY" else "11310"
+            default_client = "08096" if p_side == "BUY" else pos_holders[i % len(pos_holders)]
             c_in = input(f"  Order #{i+1} Client [{default_client}]: ").strip()
             client = c_in or default_client
             if not first_client:
@@ -176,7 +210,7 @@ def build_order_queue(
             queue.append(OrderItem(item_counter, p_side, client, symbol, qty, rate, False))
             item_counter += 1
 
-        default_opp = "08096" if opp_side == "BUY" else "11310"
+        default_opp = "08096" if opp_side == "BUY" else pos_holders[0]
         opp_in = input(f"Enter Opposite {opp_side} Client [{default_opp}]: ").strip()
         opp_client = opp_in or default_opp
 

@@ -242,10 +242,33 @@ public class OMSweb_MultiOrderExecution {
     }
 
     // =========================================================================
-    // 3. PIPELINE BUILDER (Manual Client Entry - Stays 100% on Trade Page)
+    // 3. PIPELINE BUILDER (Manual BUY Entry + SELL from Position, 100% on Trade Page)
     // =========================================================================
+    private static List<String> getPositionHoldingSellClients(WebDriver driver, String symbol, String exchange) {
+        List<String> sellClients = new ArrayList<>();
+        try {
+            List<Position.ClientPosition> positions = Position.fetchPositionsFromApi(driver, symbol, exchange);
+            if (positions != null && !positions.isEmpty()) {
+                for (Position.ClientPosition cp : positions) {
+                    if (cp.getSaleableQty() > 0 && !sellClients.contains(cp.getClientCode())) {
+                        sellClients.add(cp.getClientCode());
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        if (sellClients.isEmpty()) {
+            sellClients.addAll(Arrays.asList("00463", "00600", "00916", "01005", "01007", "01008", "01109", "11310"));
+        }
+        return sellClients;
+    }
+
     private static List<OrderItem> buildOrderQueue(WebDriver driver, Scanner sc, int choice, String symbol, String exchange, double refPrice, boolean differentPrices) {
         List<OrderItem> queue = new ArrayList<>();
+
+        // Fetch holding clients with saleable shares for SELL side directly from Position API (no page switching)
+        List<String> posHolders = getPositionHoldingSellClients(driver, symbol, exchange);
+        System.out.printf("[POSITION] Found %d holding client(s) with saleable shares of %s in Position: %s%n",
+                posHolders.size(), symbol, posHolders.subList(0, Math.min(5, posHolders.size())));
 
         // Calculate safe spread delta to prevent orders from executing on first placement
         double spreadDelta;
@@ -267,9 +290,10 @@ public class OMSweb_MultiOrderExecution {
             String buyIn = sc.nextLine().trim();
             List<String> buyClients = parseClientList(buyIn, Arrays.asList("08096", "00224", "08833"));
 
-            System.out.print("Enter Opposite SELL Client Code [default=11310]: ");
+            String defaultSell = posHolders.get(0);
+            System.out.printf("Enter Opposite SELL Client Code (from Position) [default=%s]: ", defaultSell);
             String sellIn = sc.nextLine().trim();
-            String sellClient = sellIn.isEmpty() ? "11310" : sellIn;
+            String sellClient = sellIn.isEmpty() ? defaultSell : sellIn;
 
             setTradePageClientCode(driver, buyClients.get(0));
 
@@ -292,9 +316,11 @@ public class OMSweb_MultiOrderExecution {
 
         } else if (choice == 2) {
             // Strategy 2: Multiple SELL orders (UPPER prices) + Opposite BUY order (DOWN price)
-            System.out.print("\nEnter SELL Client Code(s) (single or comma-separated, default=11310): ");
+            List<String> defaultSells = posHolders.subList(0, Math.min(3, posHolders.size()));
+            String defSellStr = String.join(", ", defaultSells);
+            System.out.printf("\nEnter SELL Client Code(s) (from Position, single or comma-separated) [default=%s]: ", defSellStr);
             String sellIn = sc.nextLine().trim();
-            List<String> sellClients = parseClientList(sellIn, Arrays.asList("11310", "12245", "14118"));
+            List<String> sellClients = parseClientList(sellIn, defaultSells);
 
             System.out.print("Enter Opposite BUY Client Code [default=08096]: ");
             String buyIn = sc.nextLine().trim();
@@ -333,7 +359,7 @@ public class OMSweb_MultiOrderExecution {
             int totalPrimaryQty = 0;
             String firstClient = "";
             for (int i = 0; i < pCount; i++) {
-                String defaultClient = (primarySide == OrderSide.BUY) ? "08096" : "11310";
+                String defaultClient = (primarySide == OrderSide.BUY) ? "08096" : posHolders.get(i % posHolders.size());
                 System.out.printf("  Order #%d Client [%s]: ", (i + 1), defaultClient);
                 String cInput = sc.nextLine().trim();
                 String client = cInput.isEmpty() ? defaultClient : cInput;
@@ -361,7 +387,7 @@ public class OMSweb_MultiOrderExecution {
             }
 
             // Opposite order
-            String defaultOppClient = (oppSide == OrderSide.BUY) ? "08096" : "11310";
+            String defaultOppClient = (oppSide == OrderSide.BUY) ? "08096" : posHolders.get(0);
             System.out.printf("Enter Opposite %s Client [%s]: ", oppSide, defaultOppClient);
             String ocInput = sc.nextLine().trim();
             String oppClient = ocInput.isEmpty() ? defaultOppClient : ocInput;
