@@ -77,7 +77,53 @@ def get_active_buy_clients_with_cash(
 
     discovered_cash_map: Dict[str, float] = {}
 
-    # 1. Scrape client codes and cash from Account Limits DOM table
+    # 1. Sort UI table descending by Remaining Cash & expand pagination
+    try:
+        print("[ACCOUNT LIMITS] Sorting UI table by Remaining Cash descending...")
+        sort_script = """
+        var tables = Array.from(document.querySelectorAll('table'));
+        var limitTable = tables.find(function(t) {
+            var text = (t.innerText || '').toLowerCase();
+            return text.includes('client code') && (text.includes('remaining') || text.includes('initial limit'));
+        });
+        if (limitTable) {
+            var lenSelect = document.querySelector('select[name*="length"], select[name*="limit"], .dataTables_length select');
+            if (lenSelect) {
+                lenSelect.value = '100';
+                lenSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            var ths = Array.from(limitTable.querySelectorAll('thead th, tr:first-child th'));
+            var headers = ths.map(function(h) { return (h.innerText || '').trim().toLowerCase(); });
+            var remIdx = headers.findIndex(function(h) { return h === 'remaining' || h.includes('remaining'); });
+            if (remIdx < 0) remIdx = headers.findIndex(function(h) { return h.includes('initial limit') || h.includes('limit'); });
+            if (remIdx < 0) remIdx = 7;
+            var sorted = false;
+            if (window.jQuery && window.jQuery.fn.dataTable) {
+                try {
+                    var dt = window.jQuery(limitTable).DataTable();
+                    if (dt) {
+                        dt.page.len(100).draw();
+                        dt.order([remIdx, 'desc']).draw();
+                        sorted = true;
+                    }
+                } catch(e) {}
+            }
+            if (!sorted && ths[remIdx]) {
+                ths[remIdx].click();
+                var cls = (ths[remIdx].className || '').toLowerCase();
+                var aria = (ths[remIdx].getAttribute('aria-sort') || '').toLowerCase();
+                if (cls.includes('asc') || aria.includes('asc') || !cls.includes('desc')) {
+                    ths[remIdx].click();
+                }
+            }
+        }
+        """
+        driver.execute_script(sort_script)
+        time.sleep(1.2)
+    except Exception as e:
+        print(f"[ACCOUNT LIMITS: WARN] Table sort warning: {e}")
+
+    # 2. Scrape client codes and cash from Account Limits DOM table
     try:
         table_script = """
         var tables = Array.from(document.querySelectorAll('table'));
@@ -208,6 +254,8 @@ def get_active_buy_clients_with_cash(
     # Pick randomly from the top verified clients
     top_candidates = selection_pool[:max(final_count * 2, 8)]
     chosen = random.sample(top_candidates, final_count)
+    # Sort chosen clients descending by cash so they are strictly ordered > 100,000
+    chosen.sort(key=lambda c: c.cash, reverse=True)
     chosen_codes = [c.client_code for c in chosen]
 
     print(f"\n✔ [ACCOUNT LIMITS] Randomly selected {len(chosen_codes)} verified BUY clients with top cash:")

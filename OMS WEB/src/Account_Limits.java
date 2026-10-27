@@ -114,7 +114,53 @@ public class Account_Limits {
 
         Map<String, Double> discoveredCashMap = new LinkedHashMap<>();
 
-        // 1. Scrape client codes and cash from Account Limits DOM table
+        // 1. Sort UI table descending by Remaining Cash (or Initial Limit) & expand pagination
+        try {
+            System.out.println("[ACCOUNT LIMITS] Sorting UI table by Remaining Cash descending...");
+            js.executeScript(
+                "var tables = Array.from(document.querySelectorAll('table'));" +
+                "var limitTable = tables.find(function(t) {" +
+                "    var text = (t.innerText || '').toLowerCase();" +
+                "    return text.includes('client code') && (text.includes('remaining') || text.includes('initial limit'));" +
+                "});" +
+                "if (limitTable) {" +
+                "    var lenSelect = document.querySelector('select[name*=\"length\"], select[name*=\"limit\"], .dataTables_length select');" +
+                "    if (lenSelect) {" +
+                "        lenSelect.value = '100';" +
+                "        lenSelect.dispatchEvent(new Event('change', { bubbles: true }));" +
+                "    }" +
+                "    var ths = Array.from(limitTable.querySelectorAll('thead th, tr:first-child th'));" +
+                "    var headers = ths.map(function(h) { return (h.innerText || '').trim().toLowerCase(); });" +
+                "    var remIdx = headers.findIndex(function(h) { return h === 'remaining' || h.includes('remaining'); });" +
+                "    if (remIdx < 0) remIdx = headers.findIndex(function(h) { return h.includes('initial limit') || h.includes('limit'); });" +
+                "    if (remIdx < 0) remIdx = 7;" +
+                "    var sorted = false;" +
+                "    if (window.jQuery && window.jQuery.fn.dataTable) {" +
+                "        try {" +
+                "            var dt = window.jQuery(limitTable).DataTable();" +
+                "            if (dt) {" +
+                "                dt.page.len(100).draw();" +
+                "                dt.order([remIdx, 'desc']).draw();" +
+                "                sorted = true;" +
+                "            }" +
+                "        } catch(e) {}" +
+                "    }" +
+                "    if (!sorted && ths[remIdx]) {" +
+                "        ths[remIdx].click();" +
+                "        var cls = (ths[remIdx].className || '').toLowerCase();" +
+                "        var aria = (ths[remIdx].getAttribute('aria-sort') || '').toLowerCase();" +
+                "        if (cls.includes('asc') || aria.includes('asc') || !cls.includes('desc')) {" +
+                "            ths[remIdx].click();" +
+                "        }" +
+                "    }" +
+                "}"
+            );
+            Thread.sleep(1200);
+        } catch (Exception e) {
+            System.out.println("[WARN: Sort Table] " + e.getMessage());
+        }
+
+        // 2. Scrape client codes and cash from Account Limits DOM table
         try {
             Object res = js.executeScript(
                 "var tables = Array.from(document.querySelectorAll('table'));" +
@@ -167,7 +213,7 @@ public class Account_Limits {
             System.out.println("[WARN: DOM Table Scrape] " + e.getMessage());
         }
 
-        // 2. Also incorporate seed/known active client accounts across the platform
+        // 3. Also incorporate seed/known active client accounts across the platform
         String[] seedClients = { "23986", "10009", "10004", "10102", "10340", "10351", "11310", "12245", "14118", "19363", "26687", "00239", "00006", "00010", "00017", "00033", "00086", "00101" };
         for (String seed : seedClients) {
             if (!discoveredCashMap.containsKey(seed)) {
@@ -175,7 +221,7 @@ public class Account_Limits {
             }
         }
 
-        // 3. For each candidate, query client details (/shared/getclientdata/?cln_code=) to get accurate cash, BO ID, and status
+        // 4. For each candidate, query client details (/shared/getclientdata/?cln_code=) to get accurate cash, BO ID, and status
         List<ClientCashInfo> eligibleClients = new ArrayList<>();
         List<ClientCashInfo> allVerifiedClients = new ArrayList<>();
 
@@ -213,7 +259,7 @@ public class Account_Limits {
             } catch (Exception ignored) {}
         }
 
-        // 4. Sort eligible clients by Cash descending (highest cash first)
+        // 5. Sort eligible clients by Cash descending (highest cash first)
         eligibleClients.sort((a, b) -> Double.compare(b.getCash(), a.getCash()));
         allVerifiedClients.sort((a, b) -> Double.compare(b.getCash(), a.getCash()));
 
@@ -245,11 +291,13 @@ public class Account_Limits {
         }
         System.out.println("+=================================================================================================================+\n");
 
-        // 5. Randomly select 4 to 5 clients from the pool
+        // 6. Randomly select 4 to 5 clients from the pool and sort by cash descending
         int desiredCount = Math.min(selectionPool.size(), Math.max(4, Math.min(5, targetCount)));
         List<ClientCashInfo> shuffled = new ArrayList<>(selectionPool);
         Collections.shuffle(shuffled);
-        List<ClientCashInfo> chosen = shuffled.subList(0, desiredCount);
+        List<ClientCashInfo> chosen = new ArrayList<>(shuffled.subList(0, desiredCount));
+        // Sort chosen clients descending by cash so they are strictly ordered > 100,000
+        chosen.sort((a, b) -> Double.compare(b.getCash(), a.getCash()));
 
         System.out.printf("✔ [RANDOM SELECTION] Randomly selected %d active client(s) with BO ID for BUY orders:%n", chosen.size());
         System.out.println("+=================================================================================================================+");
