@@ -1157,53 +1157,134 @@ public class OMSweb_Trade {
 		System.out.println("Submitted " + side + " order.");
 	}
 
-	private static double fetchLTP(WebDriver driver, WebDriverWait wait, String instrument) {
+	private static double parseNumSafe(String val) {
+		if (val == null) return 0.0;
+		String clean = val.replaceAll("[^0-9.-]", "").trim();
+		if (clean.isEmpty() || clean.equals("-") || clean.equals("--") || clean.equals(".") || clean.equals("-.")) return 0.0;
 		try {
-			WebElement symbolRow = wait.until(ExpectedConditions.visibilityOfElementLocated(
-					By.xpath("//tr[contains(@class, '" + instrument.replace(".", "").toUpperCase() + "')]")));
+			return Double.parseDouble(clean);
+		} catch (Exception e) {
+			return 0.0;
+		}
+	}
+
+	/**
+	 * Centralized market reference price fetcher:
+	 * Fetches LTP (Last Traded Price) with automatic fallback to YCP (Yesterday's Closing Price)
+	 * or Close Price. Queries Market Depth API (Admin Live / QuantBD token / DOM) and Marketwatch table.
+	 */
+	public static double fetchPriceLtpOrYcp(WebDriver driver, WebDriverWait wait, String instrument, String exchange) {
+		String cleanSym = cleanSymbol(instrument);
+		String ex = (exchange != null && !exchange.isEmpty()) ? exchange : "DSE";
+
+		// Tier 1: Market Depth Snapshot API (Queries Admin Shared API / QuantBD Token API / DOM)
+		try {
+			Map<String, String> depth = Market_Depth.getSnapshot(driver, cleanSym, ex);
+			if (depth != null && !depth.isEmpty()) {
+				double ltp = parseNumSafe(depth.get("Last"));
+				if (ltp > 0) {
+					System.out.printf("[MARKET PRICE] Fetched LTP for %s: %.2f BDT (Source: %s)%n",
+							cleanSym, ltp, depth.getOrDefault("DATA_SOURCE", "Market Depth API"));
+					return ltp;
+				}
+				double ycp = parseNumSafe(depth.get("YCP"));
+				if (ycp > 0) {
+					System.out.printf("[MARKET PRICE] LTP is 0/unavailable. Fallback to YCP for %s: %.2f BDT (Source: %s)%n",
+							cleanSym, ycp, depth.getOrDefault("DATA_SOURCE", "Market Depth API"));
+					return ycp;
+				}
+				double close = parseNumSafe(depth.get("Close"));
+				if (close > 0) {
+					System.out.printf("[MARKET PRICE] LTP/YCP unavailable. Fallback to Close price for %s: %.2f BDT (Source: %s)%n",
+							cleanSym, close, depth.getOrDefault("DATA_SOURCE", "Market Depth API"));
+					return close;
+				}
+			}
+		} catch (Exception e) {
+			System.out.println("[WARN: Depth Price Query] " + e.getMessage());
+		}
+
+		// Tier 2: Search in Marketwatch on UI & Scrape Table
+		try {
+			WebElement mwInput = null;
 			try {
-				WebElement ltpCell = symbolRow.findElement(By.cssSelector("td.mw_table_ltp div, td.mw_table_ltp"));
-				String raw = ltpCell.getText().replace(",", "").replaceAll("[^0-9.]", "").trim();
-				if (!raw.isEmpty()) {
-					double val = Double.parseDouble(raw);
-					if (val > 0) return val;
+				mwInput = driver.findElement(By.id("marketwatch_symbol"));
+			} catch (Exception ignored) {
+				try {
+					mwInput = driver.findElement(By.id("instrument"));
+				} catch (Exception ignored2) {}
+			}
+			if (mwInput != null && mwInput.isDisplayed()) {
+				mwInput.clear();
+				mwInput.sendKeys(cleanSym);
+				mwInput.sendKeys(Keys.ARROW_DOWN);
+				mwInput.sendKeys(Keys.ENTER);
+				Thread.sleep(600);
+			}
+
+			By rowXPath = By.xpath("//tr[contains(@class, '" + cleanSym.replace(".", "").toUpperCase() + "')]");
+			WebElement row = wait.until(ExpectedConditions.visibilityOfElementLocated(rowXPath));
+
+			// Check LTP cell
+			try {
+				WebElement ltpCell = row.findElement(By.cssSelector("td.mw_table_ltp div, td.mw_table_ltp, td[class*='ltp']"));
+				double ltp = parseNumSafe(ltpCell.getText());
+				if (ltp > 0) {
+					System.out.printf("[MARKET PRICE] Fetched LTP from Marketwatch table for %s: %.2f BDT%n", cleanSym, ltp);
+					return ltp;
 				}
 			} catch (Exception ignored) {}
 
+			// Check YCP / Close cell
 			try {
-				WebElement ycpCell = symbolRow.findElement(By.cssSelector("td.mw_table_ycp div, td.mw_table_ycp, td.mw_table_close div, td.mw_table_close"));
-				String raw = ycpCell.getText().replace(",", "").replaceAll("[^0-9.]", "").trim();
-				if (!raw.isEmpty()) {
-					double val = Double.parseDouble(raw);
-					if (val > 0) {
-						System.out.println("[TRADE] LTP is 0. Fallback to YCP: " + val);
-						return val;
-					}
+				WebElement ycpCell = row.findElement(By.cssSelector("td.mw_table_ycp div, td.mw_table_ycp, td[class*='ycp'], td.mw_table_close div, td.mw_table_close, td[class*='close']"));
+				double ycp = parseNumSafe(ycpCell.getText());
+				if (ycp > 0) {
+					System.out.printf("[MARKET PRICE] LTP is 0. Fallback to YCP from Marketwatch table for %s: %.2f BDT%n", cleanSym, ycp);
+					return ycp;
 				}
 			} catch (Exception ignored) {}
 		} catch (Exception ignored) {}
 
+		// Tier 3: Direct API fetch fallback
 		try {
-			Map<String, String> depth = Market_Depth.getSnapshot(driver, instrument, "DSE");
-			if (depth != null && !depth.isEmpty()) {
-				String last = depth.get("Last");
-				if (last != null && !last.isEmpty() && !last.equals("-")) {
-					double ltp = Double.parseDouble(last.replaceAll("[^0-9.]", ""));
-					if (ltp > 0) return ltp;
+			String adminUrl = String.format("/shared/getmktdepth/?mkt_group=PUBLIC&mkt_symbol=%s&exchange=%s", cleanSym, ex);
+			JavascriptExecutor js = (JavascriptExecutor) driver;
+			Object res = js.executeAsyncScript(
+				"var callback = arguments[arguments.length - 1];" +
+				"fetch('" + adminUrl + "').then(function(r){ return r.json(); }).then(function(d){ callback(JSON.stringify(d)); }).catch(function(e){ callback(''); });"
+			);
+			if (res != null) {
+				String json = res.toString();
+				Map<String, String> parsed = Market_Depth.parseMarketDepthJson(json, cleanSym, ex);
+				double ltp = parseNumSafe(parsed.get("Last"));
+				if (ltp > 0) {
+					System.out.printf("[MARKET PRICE] Fetched LTP from Direct API for %s: %.2f BDT%n", cleanSym, ltp);
+					return ltp;
 				}
-				String ycp = depth.get("YCP");
-				if (ycp != null && !ycp.isEmpty() && !ycp.equals("-")) {
-					double ycpVal = Double.parseDouble(ycp.replaceAll("[^0-9.]", ""));
-					if (ycpVal > 0) {
-						System.out.println("[TRADE] LTP is 0. Fallback to YCP (Market Depth): " + ycpVal);
-						return ycpVal;
-					}
+				double ycp = parseNumSafe(parsed.get("YCP"));
+				if (ycp > 0) {
+					System.out.printf("[MARKET PRICE] Fetched YCP from Direct API for %s: %.2f BDT%n", cleanSym, ycp);
+					return ycp;
 				}
 			}
-		} catch (Exception e) {
-			System.out.println("Could not fetch LTP/YCP: " + e.getMessage());
-		}
-		return 0.0;
+		} catch (Exception ignored) {}
+
+		// Tier 4: Fallback
+		System.out.println("[WARN: Price Fetch] Could not fetch LTP or YCP from market. Defaulting reference price to 100.00 BDT.");
+		return 100.0;
+	}
+
+	public static double fetchPriceLtpOrYcp(WebDriver driver, WebDriverWait wait, String instrument) {
+		return fetchPriceLtpOrYcp(driver, wait, instrument, "DSE");
+	}
+
+	public static double fetchLTP(WebDriver driver, WebDriverWait wait, String instrument, String exchange) {
+		return fetchPriceLtpOrYcp(driver, wait, instrument, exchange);
+	}
+
+	public static double fetchLTP(WebDriver driver, WebDriverWait wait, String instrument) {
+		return fetchPriceLtpOrYcp(driver, wait, instrument, "DSE");
 	}
 
 	private static void submitOrder(WebDriver driver, String side) throws InterruptedException {
