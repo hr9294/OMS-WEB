@@ -25,9 +25,10 @@ public class OMSweb_Trade {
 		navigateToTradePage(driver, wait);
 		runWidgetColorSelection(driver, sc);
 
-		// ---------- Auto input symbol into search + marketwatch ----------
-		System.out.print("Enter Symbol: ");
+		// ---------- Manual input symbol into search + marketwatch ----------
+		System.out.print("Enter Symbol (default GP): ");
 		String instrument = sc.nextLine().trim();
+		if (instrument.isEmpty()) instrument = "GP";
 
 		WebElement searchSymbol = driver.findElement(By.id("instrument"));
 		searchSymbol.clear();

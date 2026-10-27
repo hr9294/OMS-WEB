@@ -114,14 +114,33 @@ public class OMSweb_MultiOrderExecution {
         // Ensure we start on Trade Page
         OMSweb_Trade.navigateToTradePage(driver, wait);
 
-        // Auto-detect or input symbol
-        String symbol = cleanSymbol(readInputSafe(driver, By.id("order_instrument"), By.id("instrument"), By.id("marketwatch_symbol")));
-        if (symbol.isEmpty()) {
-            System.out.print("Enter Target Symbol (e.g. GP, ACFL, SQURPHARMA): ");
-            symbol = cleanSymbol(sc.nextLine());
-        }
-        if (symbol.isEmpty()) symbol = "GP";
-        String exchange = "DSE";
+        // Manual input of target symbol
+        System.out.print("Enter Target Symbol (e.g. GP, ACFL, SQURPHARMA) [default=GP]: ");
+        String symInput = sc.nextLine().trim();
+        String symbol = symInput.isEmpty() ? "GP" : cleanSymbol(symInput);
+
+        System.out.print("Enter Exchange (DSE / CSE, default=DSE): ");
+        String exInput = sc.nextLine().trim().toUpperCase();
+        String exchange = exInput.equalsIgnoreCase("CSE") ? "CSE" : "DSE";
+
+        // Auto-populate manually input symbol into Trade search and Marketwatch
+        try {
+            WebElement searchSym = driver.findElement(By.id("instrument"));
+            searchSym.clear();
+            searchSym.sendKeys(symbol);
+            searchSym.sendKeys(Keys.ARROW_DOWN);
+            searchSym.sendKeys(Keys.ENTER);
+            Thread.sleep(400);
+        } catch (Exception ignored) {}
+
+        try {
+            WebElement mwInput = driver.findElement(By.id("marketwatch_symbol"));
+            mwInput.clear();
+            mwInput.sendKeys(symbol);
+            mwInput.sendKeys(Keys.ARROW_DOWN);
+            mwInput.sendKeys(Keys.ENTER);
+            Thread.sleep(500);
+        } catch (Exception ignored) {}
 
         System.out.printf("[SETUP] Target Symbol: %s on Exchange: %s%n", symbol, exchange);
 
