@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Scanner;
-import java.util.stream.Collectors;
 
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
@@ -40,10 +39,6 @@ public class OMSweb_MultipleTrade {
     // ==========================================
     // 1. DOM LOCATORS
     // ==========================================
-    private static final By TRADE_PAGE_NAV        = By.xpath("//i[contains(@class, 'fa-exchange')]");
-    private static final By SEARCH_INSTRUMENT_INP = By.id("instrument");
-    private static final By MARKETWATCH_INPUT     = By.id("marketwatch_symbol");
-    private static final By ORDER_WINDOW          = By.id("order-window");
     private static final By CLIENT_CODE_INPUT     = By.id("order_client_code");
     private static final By ORDER_INSTRUMENT_INP  = By.id("order_instrument");
     private static final By ORDER_QTY_INPUT       = By.id("order_qty");
