@@ -101,18 +101,18 @@ def fetch_price_ltp_or_ycp(
     except Exception as e:
         print(f"[MARKET PRICE: Tier 2 DOM Warn] {e}")
 
-    # Tier 3: DOM Input Element or JavaScript globals
+    # Tier 3: DOM Input Element or JavaScript globals (guarded against stale/invalid rates)
     try:
         dom_script = """
         var rateInp = document.getElementById('order_rate') || document.getElementById('limit_order_rate');
         if (rateInp && rateInp.value) {
             var v = parseFloat(rateInp.value.replace(/,/g, ''));
-            if (!isNaN(v) && v > 0) return v;
+            if (!isNaN(v) && v > 5.0) return v;
         }
         return null;
         """
         dom_price = driver.execute_script(dom_script)
-        if dom_price and dom_price > 0:
+        if dom_price and dom_price > 5.0:
             print(f"[MARKET PRICE] Resolved price from Trade DOM inputs: {float(dom_price):.2f} BDT for {sym}")
             return float(dom_price)
     except Exception:

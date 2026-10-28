@@ -311,12 +311,23 @@ public class OMSweb_MultipleTrade {
             if (interOrderDelayMs > 0 && i < pipeline.size() - 1) {
                 Thread.sleep(interOrderDelayMs);
             }
+
+            // Periodic background refresh every 5 orders so frontend tables stay live
+            if ((i + 1) % 5 == 0 || i == pipeline.size() - 1) {
+                try {
+                    js.executeScript("if (typeof get_order_history === 'function') { get_order_history(); }");
+                    js.executeScript("if (typeof get_order_summary === 'function') { get_order_summary(); }");
+                } catch (Exception ignored) {}
+            }
         }
 
         Duration totalDuration = Duration.between(sessionStart, Instant.now());
 
         // 10. Performance Telemetry & Detailed Reporting
         printHftExecutionSummary(pipeline, totalDuration, successCount, failedCount, symbols, buyClients);
+
+        // 11. Synchronize & Present Orders in Frontend Order Terminal
+        syncAndPresentOrdersInFrontend(driver, wait, js, symbols, sc);
     }
 
     // ==========================================
@@ -342,7 +353,7 @@ public class OMSweb_MultipleTrade {
             Thread.sleep(150);
 
             // 3. Client Code
-            WebElement clientInput = wait.until(ExpectedConditions.elementToBeClickable(CLIENT_CODE_INPUT));
+            WebElement clientInput = wait.until(ExpectedConditions.visibilityOfElementLocated(CLIENT_CODE_INPUT));
             clientInput.click();
             clearFieldForcefully(driver, js, CLIENT_CODE_INPUT);
             clientInput.sendKeys(order.clientCode);
@@ -394,11 +405,11 @@ public class OMSweb_MultipleTrade {
             submitBtn.click();
 
             // 9. Confirm YES
-            confirmOrderWithRetry(driver, wait, js);
+            boolean confirmed = confirmOrderWithRetry(driver, wait, js);
 
-            // Wait brief moment for modal to disappear
-            Thread.sleep(300);
-            return true;
+            // Allow modal transition to complete cleanly
+            Thread.sleep(450);
+            return confirmed;
 
         } catch (Exception e) {
             // Dismiss modal if open on error
@@ -499,24 +510,40 @@ public class OMSweb_MultipleTrade {
         return clients;
     }
 
-    private static double fetchPriceSafely(WebDriver driver, WebDriverWait wait, String symbol) {
+    public static final Map<String, Double> REALISTIC_PRICES = new LinkedHashMap<>();
+    static {
+        REALISTIC_PRICES.put("GP", 315.50);
+        REALISTIC_PRICES.put("BEXIMCO", 115.60);
+        REALISTIC_PRICES.put("BATBC", 518.70);
+        REALISTIC_PRICES.put("LHBL", 72.40);
+        REALISTIC_PRICES.put("SQURPHARMA", 234.20);
+        REALISTIC_PRICES.put("ROBI", 30.50);
+        REALISTIC_PRICES.put("RENATA", 780.00);
+        REALISTIC_PRICES.put("BRACBANK", 44.50);
+    }
+
+    public static double fetchPriceSafely(WebDriver driver, WebDriverWait wait, String symbol) {
+        String cleanSym = (symbol != null) ? symbol.trim().toUpperCase() : "";
+        double realisticFallback = REALISTIC_PRICES.getOrDefault(cleanSym, 100.00);
         try {
-            double price = OMSweb_Trade.fetchPriceLtpOrYcp(driver, wait, symbol, "DSE");
-            if (price > 0) return price;
+            double price = OMSweb_Trade.fetchPriceLtpOrYcp(driver, wait, cleanSym, "DSE");
+            // Circuit filter safety guard: if scraped price is suspiciously low (< 10.0 BDT or < 40% of known base),
+            // override with calibrated market baseline to prevent exchange circuit breaker rejection.
+            if (price > 0) {
+                if (REALISTIC_PRICES.containsKey(cleanSym)) {
+                    if (price >= (realisticFallback * 0.40) && price <= (realisticFallback * 2.50)) {
+                        return price;
+                    } else {
+                        System.out.printf("  [PRICE GUARD] Scraped price %.2f BDT for %s violates realistic circuit band. Overriding with calibrated market price %.2f BDT.%n",
+                                price, cleanSym, realisticFallback);
+                        return realisticFallback;
+                    }
+                }
+                if (price >= 1.0) return price;
+            }
         } catch (Exception ignored) {}
 
-        // Safe realistic fallbacks for major securities
-        switch (symbol.toUpperCase()) {
-            case "GP": return 315.50;
-            case "BEXIMCO": return 115.60;
-            case "BATBC": return 518.70;
-            case "LHBL": return 72.40;
-            case "SQURPHARMA": return 234.20;
-            case "ROBI": return 30.50;
-            case "RENATA": return 780.00;
-            case "BRACBANK": return 44.50;
-            default: return 100.00;
-        }
+        return realisticFallback;
     }
 
     public static void fillAndSelectAutocomplete(WebDriver driver, WebDriverWait wait, JavascriptExecutor js, By locator, String text) {
@@ -564,23 +591,32 @@ public class OMSweb_MultipleTrade {
         wait.until(ExpectedConditions.elementToBeClickable(locator)).click();
     }
 
-    public static void confirmOrderWithRetry(WebDriver driver, WebDriverWait wait, JavascriptExecutor js) {
+    public static boolean confirmOrderWithRetry(WebDriver driver, WebDriverWait wait, JavascriptExecutor js) {
         int maxAttempts = 3;
         for (int attempt = 0; attempt < maxAttempts; attempt++) {
             try {
                 WebElement btn = wait.until(ExpectedConditions.elementToBeClickable(CONFIRM_YES_BUTTON));
                 btn.click();
-                return;
+                try {
+                    wait.until(ExpectedConditions.invisibilityOfElementLocated(CONFIRM_YES_BUTTON));
+                } catch (Exception ignored) {}
+                return true;
             } catch (Exception e) {
                 if (attempt == maxAttempts - 1) {
                     try {
-                        js.executeScript("var btn = document.querySelector('#cnfirmConfirmBtn, button.confirm-btn'); if (btn) btn.click();");
+                        Boolean res = (Boolean) js.executeScript(
+                            "var btn = document.querySelector('#cnfirmConfirmBtn, button.confirm-btn');" +
+                            "if (btn && btn.offsetParent !== null) { btn.click(); return true; }" +
+                            "return false;"
+                        );
+                        return Boolean.TRUE.equals(res);
                     } catch (Exception ignored) {}
-                    return;
+                    return false;
                 }
-                try { Thread.sleep(100); } catch (InterruptedException ignored) {}
+                try { Thread.sleep(150); } catch (InterruptedException ignored) {}
             }
         }
+        return false;
     }
 
     public static void resetOrderForm(WebDriver driver, JavascriptExecutor js) {
@@ -608,6 +644,79 @@ public class OMSweb_MultipleTrade {
     // ==========================================
     // 8. METRICS & TELEMETRY REPORTING
     // ==========================================
+    public static void syncAndPresentOrdersInFrontend(WebDriver driver, WebDriverWait wait, JavascriptExecutor js, List<String> symbols, Scanner sc) {
+        System.out.println("\n+=============================================================================+");
+        System.out.println("|      SYNCHRONIZING FRONTEND: ORDER TERMINAL & ORDER SUMMARY WIDGETS        |");
+        System.out.println("+=============================================================================+");
+        try {
+            // 1. Clear any active filter in Order Terminal
+            System.out.println("[FRONTEND] Clearing Order Terminal search filters (Client Code, Symbol, Status)...");
+            Order_Terminal.clearFilter(driver);
+            Thread.sleep(400);
+
+            // 2. Trigger Order Terminal & Order Summary data refresh
+            System.out.println("[FRONTEND] Triggering live get_order_history() & get_order_summary()...");
+            Order_Terminal.refresh(driver);
+            Order_Summary.refresh(driver);
+            Thread.sleep(800);
+
+            // 3. Navigate directly to Order Terminal tab to make orders immediately visible
+            System.out.println("[FRONTEND] Switching active tab to Order Terminal widget...");
+            Order_Terminal.navigateToOrderTerminal(driver);
+            Thread.sleep(600);
+            Order_Terminal.refresh(driver);
+            Thread.sleep(600);
+
+            // 4. Inspect visible rows in Order Terminal table to verify
+            List<WebElement> rows = driver.findElements(By.xpath("//table[contains(@id,'market_table') or contains(@class,'order_terminal_table')]//tbody//tr"));
+            System.out.printf("✔ [FRONTEND VERIFIED] Order Terminal visible order rows: %d%n", rows.size());
+
+            int displayCount = Math.min(10, rows.size());
+            if (displayCount > 0) {
+                System.out.println("\n[RECENT ORDERS DISPLAYED IN FRONTEND ORDER TERMINAL]:");
+                System.out.println("+------+--------------+------------+------------+-------+-----------+---------+--------------------+");
+                System.out.printf("| %-4s | %-12s | %-10s | %-10s | %-5s | %-9s | %-7s | %-18s |%n",
+                        "#", "Order ID", "Client", "Symbol", "Side", "Price", "Qty", "Status");
+                System.out.println("+------+--------------+------------+------------+-------+-----------+---------+--------------------+");
+                for (int r = 0; r < displayCount; r++) {
+                    try {
+                        WebElement row = rows.get(r);
+                        List<WebElement> cells = row.findElements(By.xpath("./td"));
+                        if (cells.size() >= 12) {
+                            String oid = cells.get(1).getText().trim();
+                            String client = cells.get(4).getText().trim();
+                            String sym = cells.get(5).getText().trim();
+                            String side = cells.get(7).getText().trim();
+                            String price = cells.get(9).getText().trim();
+                            String qty = cells.get(11).getText().trim();
+                            String status = (cells.size() > 13) ? cells.get(13).getText().trim() : "-";
+                            System.out.printf("| %-4d | %-12s | %-10s | %-10s | %-5s | %-9s | %-7s | %-18s |%n",
+                                    (r + 1), oid, client, sym, side, price, qty, status);
+                        } else {
+                            System.out.printf("| %-4d | %-78s |%n", (r + 1), row.getText().replaceAll("\\s+", " "));
+                        }
+                    } catch (Exception ignored) {}
+                }
+                System.out.println("+------+--------------+------------+------------+-------+-----------+---------+--------------------+");
+            } else {
+                System.out.println("[INFO] Table rendered. If rows are empty, check if exchange gateway is connected.");
+            }
+
+            if (sc != null) {
+                System.out.print("\nSwitch view back to Trade widget? (1=YES / 0=Stay on Order Terminal, default=0): ");
+                String viewChoice = sc.nextLine().trim();
+                if ("1".equals(viewChoice)) {
+                    Order_Terminal.navigateToTrade(driver);
+                    System.out.println("[NAV] Switched back to Trade view.");
+                } else {
+                    System.out.println("[NAV] Remaining on Order Terminal view.");
+                }
+            }
+        } catch (Exception e) {
+            System.out.printf("[WARN: Frontend Sync] %s%n", e.getMessage());
+        }
+    }
+
     private static void printHftExecutionSummary(
             List<TradeOrder> queue,
             Duration totalDuration,

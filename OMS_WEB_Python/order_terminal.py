@@ -30,10 +30,33 @@ def navigate_to_order_terminal(driver: webdriver.Chrome) -> None:
         pass
 
 
-def refresh(driver: webdriver.Chrome) -> None:
-    """Clicks the refresh button inside the Order Terminal widget."""
+def clear_filter(driver: webdriver.Chrome) -> None:
+    """Clears and resets search filters in Order Terminal."""
     try:
         script = """
+        var clearBtn = document.querySelector('#clear_filter, button[title*="Clear" i], #reset_filter, button[title*="Reset" i]');
+        if (clearBtn) { clearBtn.click(); }
+        var inputs = document.querySelectorAll('#order_terminal_code, #order_terminal_symbol');
+        inputs.forEach(function(inp) {
+            inp.value = '';
+            inp.dispatchEvent(new Event('input', { bubbles: true }));
+            inp.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        var statusSel = document.querySelector('#order_status_filter, select[name*="status"]');
+        if (statusSel) { statusSel.selectedIndex = 0; $(statusSel).trigger('change'); }
+        if (typeof get_order_history === 'function') { get_order_history(); }
+        """
+        driver.execute_script(script)
+        time.sleep(0.4)
+    except Exception:
+        pass
+
+
+def refresh(driver: webdriver.Chrome) -> None:
+    """Clicks the refresh button inside the Order Terminal widget and invokes get_order_history."""
+    try:
+        script = """
+        if (typeof get_order_history === 'function') { get_order_history(); }
         var btn = document.querySelector('#order_terminal_refresh, button[title*="Refresh" i], .fa-refresh, .fa-sync');
         if (btn) { btn.click(); return true; }
         return false;

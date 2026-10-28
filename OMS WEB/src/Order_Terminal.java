@@ -176,6 +176,15 @@ public class Order_Terminal {
 
     public static void clearFilter(WebDriver driver) {
         try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            js.executeScript(
+                "var cInp = document.querySelector('#order_terminal_code, input[placeholder*=\"Code\"], input[placeholder*=\"code\"]');" +
+                "if (cInp) { cInp.value = ''; try { $(cInp).trigger('input').trigger('change'); } catch(e){} }" +
+                "var sInp = document.querySelector('#order_terminal_symbol, input[placeholder*=\"Symbol\"], input[placeholder*=\"symbol\"]');" +
+                "if (sInp) { sInp.value = ''; try { $(sInp).trigger('input').trigger('change'); } catch(e){} }" +
+                "var statusSel = document.querySelector('#order_status_filter, select[name*=\"status\"]');" +
+                "if (statusSel) { statusSel.selectedIndex = 0; try { $(statusSel).trigger('change'); } catch(e){} }"
+            );
             try { driver.findElement(BTN_CLEAR).click(); } catch (Exception ignored) {}
             try { driver.findElement(BTN_RESET).click(); } catch (Exception ignored) {}
             Thread.sleep(400);

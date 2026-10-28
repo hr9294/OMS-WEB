@@ -1333,9 +1333,21 @@ public class OMSweb_Trade {
 			}
 		} catch (Exception ignored) {}
 
-		// Tier 4: Fallback
-		System.out.println("[WARN: Price Fetch] Could not fetch LTP or YCP from market. Defaulting reference price to 100.00 BDT.");
-		return 100.0;
+		// Tier 4: Fallback to realistic calibrated market price
+		double realisticFallback = 100.0;
+		switch (cleanSym.toUpperCase()) {
+			case "GP": realisticFallback = 315.50; break;
+			case "BEXIMCO": realisticFallback = 115.60; break;
+			case "BATBC": realisticFallback = 518.70; break;
+			case "LHBL": realisticFallback = 72.40; break;
+			case "SQURPHARMA": realisticFallback = 234.20; break;
+			case "ROBI": realisticFallback = 30.50; break;
+			case "RENATA": realisticFallback = 780.00; break;
+			case "BRACBANK": realisticFallback = 44.50; break;
+			default: realisticFallback = 100.0; break;
+		}
+		System.out.printf("[WARN: Price Fetch] Could not fetch LTP or YCP from market. Defaulting reference price for %s to %.2f BDT.%n", cleanSym, realisticFallback);
+		return realisticFallback;
 	}
 
 	public static double fetchPriceLtpOrYcp(WebDriver driver, WebDriverWait wait, String instrument) {

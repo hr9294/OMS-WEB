@@ -118,14 +118,42 @@ def place_order(
     print(f"\n[ORDER ENTRY] Placing {side_clean} order: Client={client_code} | {sym_clean} x {qty} @ {rate:.2f} ({exchange})")
 
     try:
+        # 0. Open BUY or SELL Modal / activate window
+        action_xpath = (
+            "//div[@title='Place BUY Order']"
+            if side_clean == "BUY"
+            else "//div[@title='Place SELL Order']"
+        )
+        try:
+            action_btn = wait.until(EC.element_to_be_clickable((By.XPATH, action_xpath)))
+            action_btn.click()
+            time.sleep(0.25)
+        except Exception:
+            pass
+
+        # Select exchange in modal (xcg2 for DSE)
+        try:
+            xcg_id = "xcg3" if exchange.upper() == "CSE" else "xcg2"
+            driver.execute_script(f"""
+                var r = document.getElementById('{xcg_id}');
+                if (r) {{ r.checked = true; $(r).trigger('change'); }}
+            """)
+            time.sleep(0.15)
+        except Exception:
+            pass
+
         # 1. Fill Client Code
-        code_input = wait.until(EC.presence_of_element_located((By.ID, "order_client_code")))
+        code_input = wait.until(EC.visibility_of_element_located((By.ID, "order_client_code")))
         code_input.clear()
         code_input.send_keys(client_code)
-        time.sleep(0.2)
+        time.sleep(0.1)
+        try:
+            driver.execute_script("$('#order_client_code').trigger('input').trigger('change');")
+        except Exception:
+            pass
         code_input.send_keys(Keys.ARROW_DOWN)
         code_input.send_keys(Keys.ENTER)
-        time.sleep(0.3)
+        time.sleep(0.15)
     except Exception as e:
         print(f"[ORDER ENTRY: ERROR] Client code input failed: {e}")
         return False

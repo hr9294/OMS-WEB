@@ -99,14 +99,8 @@ def fetch_holding_clients_for_symbol(driver: webdriver.Chrome, symbol: str, exch
 
 
 def fetch_price_safely(driver: webdriver.Chrome, symbol: str) -> float:
-    """Fetches reference price (LTP or YCP) with safe fallback."""
-    try:
-        price = oms_price.fetch_price_ltp_or_ycp(driver, symbol)
-        if price > 0:
-            return price
-    except Exception:
-        pass
-
+    """Fetches reference price (LTP or YCP) with safe fallback and circuit band guard."""
+    clean_sym = oms_price.clean_symbol(symbol).upper()
     defaults = {
         "GP": 315.50,
         "BEXIMCO": 115.60,
@@ -117,7 +111,22 @@ def fetch_price_safely(driver: webdriver.Chrome, symbol: str) -> float:
         "RENATA": 780.00,
         "BRACBANK": 44.50,
     }
-    return defaults.get(symbol.upper(), 100.00)
+    fallback = defaults.get(clean_sym, 100.00)
+    try:
+        price = oms_price.fetch_price_ltp_or_ycp(driver, clean_sym)
+        if price > 0:
+            if clean_sym in defaults:
+                if price >= (fallback * 0.40) and price <= (fallback * 2.50):
+                    return price
+                else:
+                    print(f"  [PRICE GUARD] Scraped price {price:.2f} BDT for {clean_sym} violates realistic circuit band. Overriding with calibrated market price {fallback:.2f} BDT.")
+                    return fallback
+            if price >= 1.0:
+                return price
+    except Exception:
+        pass
+
+    return fallback
 
 
 def build_hft_pipeline(
@@ -315,10 +324,21 @@ def run_load_test(driver: webdriver.Chrome) -> None:
         if inter_order_delay_ms > 0 and i < len(pipeline) - 1:
             time.sleep(inter_order_delay_ms / 1000.0)
 
+        # Periodic background refresh every 5 orders so frontend tables stay live
+        if (i + 1) % 5 == 0 or i == len(pipeline) - 1:
+            try:
+                driver.execute_script("if (typeof get_order_history === 'function') { get_order_history(); }")
+                driver.execute_script("if (typeof get_order_summary === 'function') { get_order_summary(); }")
+            except Exception:
+                pass
+
     total_time = max(0.001, time.time() - start_time)
 
     # 10. Performance Telemetry & Detailed Reporting
     print_hft_execution_summary(pipeline, total_time, success_count, failed_count, symbols)
+
+    # 11. Synchronize & Present Orders in Frontend Order Terminal
+    sync_and_present_orders_in_frontend(driver, symbols)
 
 
 def print_hft_execution_summary(
@@ -388,3 +408,72 @@ def print_hft_execution_summary(
     for client, st in client_stats.items():
         print(f"| {client:<12} | {st['orders']:<15d} | {st['value']:42,.2f} |")
     print("+=============================================================================+\n")
+
+
+def sync_and_present_orders_in_frontend(driver: webdriver.Chrome, symbols: List[str]) -> None:
+    """Clears filters, refreshes Order Terminal/Summary, and switches view so user sees placed orders."""
+    print("\n+=============================================================================+")
+    print("|      SYNCHRONIZING FRONTEND: ORDER TERMINAL & ORDER SUMMARY WIDGETS        |")
+    print("+=============================================================================+")
+    try:
+        from selenium.webdriver.common.by import By
+        import order_terminal
+        # 1. Clear any active filter in Order Terminal
+        print("[FRONTEND] Clearing Order Terminal search filters (Client Code, Symbol)...")
+        order_terminal.clear_filter(driver)
+        time.sleep(0.4)
+
+        # 2. Trigger Order Terminal & Order Summary data refresh
+        print("[FRONTEND] Triggering live get_order_history() & get_order_summary()...")
+        order_terminal.refresh(driver)
+        driver.execute_script("if (typeof get_order_summary === 'function') { get_order_summary(); }")
+        time.sleep(0.8)
+
+        # 3. Navigate directly to Order Terminal tab to make orders immediately visible
+        print("[FRONTEND] Switching active tab to Order Terminal widget...")
+        order_terminal.navigate_to_order_terminal(driver)
+        time.sleep(0.6)
+        order_terminal.refresh(driver)
+        time.sleep(0.6)
+
+        # 4. Inspect visible rows in Order Terminal table to verify
+        rows = driver.find_elements(By.XPATH, "//table[contains(@id,'market_table') or contains(@class,'order_terminal_table')]//tbody//tr")
+        print(f"✔ [FRONTEND VERIFIED] Order Terminal visible order rows: {len(rows)}")
+
+        display_count = min(10, len(rows))
+        if display_count > 0:
+            print("\n[RECENT ORDERS DISPLAYED IN FRONTEND ORDER TERMINAL]:")
+            print("+------+--------------+------------+------------+-------+-----------+---------+--------------------+")
+            print(f"| {'#':<4} | {'Order ID':<12} | {'Client':<10} | {'Symbol':<10} | {'Side':<5} | {'Price':<9} | {'Qty':<7} | {'Status':<18} |")
+            print("+------+--------------+------------+------------+-------+-----------+---------+--------------------+")
+            for r in range(display_count):
+                try:
+                    row = rows[r]
+                    cells = row.find_elements(By.XPATH, "./td")
+                    if len(cells) >= 12:
+                        oid = cells[1].text.strip()
+                        client = cells[4].text.strip()
+                        sym = cells[5].text.strip()
+                        side = cells[7].text.strip()
+                        price = cells[9].text.strip()
+                        qty = cells[11].text.strip()
+                        status = cells[13].text.strip() if len(cells) > 13 else "-"
+                        print(f"| {(r + 1):<4d} | {oid:<12} | {client:<10} | {sym:<10} | {side:<5} | {price:<9} | {qty:<7} | {status:<18} |")
+                    else:
+                        print(f"| {(r + 1):<4d} | {row.text.strip():<78} |")
+                except Exception:
+                    pass
+            print("+------+--------------+------------+------------+-------+-----------+---------+--------------------+")
+        else:
+            print("[INFO] Table rendered. If rows are empty, check if exchange gateway is connected.")
+
+        resp = input("\nSwitch view back to Trade widget? (1=YES / 0=Stay on Order Terminal, default=0): ").strip()
+        if resp == "1":
+            oms_trade.navigate_to_trade_page(driver)
+            print("[NAV] Switched back to Trade view.")
+        else:
+            print("[NAV] Remaining on Order Terminal view.")
+    except Exception as e:
+        print(f"[WARN: Frontend Sync] {e}")
+
+
