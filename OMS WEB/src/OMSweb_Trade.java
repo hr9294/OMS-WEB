@@ -1082,7 +1082,7 @@ public class OMSweb_Trade {
 					"}" +
 					"if (sv && orderVal > 0) {" +
 					"    var totalVal = (!isZero && commRate > 0) ? (orderVal + commAmount) : orderVal;" +
-					"    sv.innerHTML = '<span style=\'color: #00DB86;\'><b>' + Number(totalVal).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + '</b></span>';" +
+					"    sv.innerHTML = \"<span style='color: #00DB86;'><b>\" + Number(totalVal).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + \"</b></span>\";" +
 					"}" +
 					"if (ov && orderVal > 0) {" +
 					"    ov.value = ((!isZero && commRate > 0) ? (orderVal + commAmount) : orderVal).toFixed(2);" +

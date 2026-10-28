@@ -308,14 +308,14 @@ public class OMSweb_MultipleTrade {
                     : By.xpath("//div[@title='Place SELL Order']");
             WebElement btn = wait.until(ExpectedConditions.elementToBeClickable(actionBtn));
             btn.click();
-            Thread.sleep(150);
+            Thread.sleep(300);
 
             // 2. Select Exchange in Modal
             OMSweb_Trade.selectExchangeInModal(driver, "DSE");
-            Thread.sleep(100);
+            Thread.sleep(150);
 
             // 3. Client Code
-            WebElement clientInput = wait.until(ExpectedConditions.visibilityOfElementLocated(CLIENT_CODE_INPUT));
+            WebElement clientInput = wait.until(ExpectedConditions.elementToBeClickable(CLIENT_CODE_INPUT));
             clientInput.click();
             clearFieldForcefully(driver, js, CLIENT_CODE_INPUT);
             clientInput.sendKeys(order.clientCode);
@@ -369,12 +369,18 @@ public class OMSweb_MultipleTrade {
             // 9. Confirm YES
             confirmOrderWithRetry(driver, wait, js);
 
-            // Form reset
-            resetOrderForm(driver, js);
+            // Wait brief moment for modal to disappear
+            Thread.sleep(300);
             return true;
 
         } catch (Exception e) {
-            resetOrderForm(driver, js);
+            // Dismiss modal if open on error
+            try {
+                js.executeScript(
+                    "var btn = document.querySelector('#cnfirmCancelBtn, button.btn-secondary, .modal.show button.close');" +
+                    "if (btn) btn.click();"
+                );
+            } catch (Exception ignored) {}
             return false;
         }
     }
@@ -506,17 +512,25 @@ public class OMSweb_MultipleTrade {
 
     public static void clearFieldForcefully(WebDriver driver, JavascriptExecutor js, By locator) {
         try {
-            WebElement elem = driver.findElement(locator);
-            elem.sendKeys(Keys.chord(Keys.CONTROL, "a"), Keys.BACK_SPACE);
-            elem.clear();
+            List<WebElement> elems = driver.findElements(locator);
+            if (elems.isEmpty()) return;
+            WebElement elem = elems.get(0);
+            if (elem.isDisplayed() && elem.isEnabled()) {
+                try {
+                    elem.sendKeys(Keys.chord(Keys.CONTROL, "a"), Keys.BACK_SPACE);
+                    elem.clear();
+                } catch (Exception ignored) {}
+            }
 
-            js.executeScript(
-                "arguments[0].value = '';" +
-                "arguments[0].dispatchEvent(new Event('input', { bubbles: true }));" +
-                "arguments[0].dispatchEvent(new Event('change', { bubbles: true }));",
-                elem
-            );
-        } catch (NoSuchElementException ignored) {}
+            try {
+                js.executeScript(
+                    "arguments[0].value = '';" +
+                    "arguments[0].dispatchEvent(new Event('input', { bubbles: true }));" +
+                    "arguments[0].dispatchEvent(new Event('change', { bubbles: true }));",
+                    elem
+                );
+            } catch (Exception ignored) {}
+        } catch (Exception ignored) {}
     }
 
     public static void waitAndClick(WebDriverWait wait, By locator) {
@@ -543,10 +557,12 @@ public class OMSweb_MultipleTrade {
     }
 
     public static void resetOrderForm(WebDriver driver, JavascriptExecutor js) {
-        clearFieldForcefully(driver, js, CLIENT_CODE_INPUT);
-        clearFieldForcefully(driver, js, ORDER_INSTRUMENT_INP);
-        clearFieldForcefully(driver, js, ORDER_QTY_INPUT);
-        clearFieldForcefully(driver, js, LIMIT_RATE_INPUT);
+        try {
+            clearFieldForcefully(driver, js, CLIENT_CODE_INPUT);
+            clearFieldForcefully(driver, js, ORDER_INSTRUMENT_INP);
+            clearFieldForcefully(driver, js, ORDER_QTY_INPUT);
+            clearFieldForcefully(driver, js, LIMIT_RATE_INPUT);
+        } catch (Exception ignored) {}
     }
 
     // ==========================================
