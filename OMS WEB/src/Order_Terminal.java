@@ -1210,7 +1210,6 @@ public class Order_Terminal {
         try {
             Actions actions = new Actions(driver);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(4));
 
             WebElement anchor = selectedRows.get(selectedRows.size() - 1);
             System.out.printf("[TERMINAL] Right-clicking on selected order row (%s) to trigger 'Execute at Market'...%n",
