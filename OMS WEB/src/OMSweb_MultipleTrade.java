@@ -16,6 +16,8 @@ import org.openqa.selenium.Keys;
 import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
+import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
@@ -111,8 +113,33 @@ public class OMSweb_MultipleTrade {
     }
 
     // ==========================================
-    // 3. MAIN ENTRY POINT
+    // 3. MAIN ENTRY POINTS (STANDALONE & RUNNER)
     // ==========================================
+    public static void main(String[] args) {
+        ChromeOptions options = new ChromeOptions();
+        options.addArguments("--remote-allow-origins=*");
+        options.addArguments("--disable-blink-features=AutomationControlled");
+        options.addArguments("--disable-infobars");
+        options.setAcceptInsecureCerts(true);
+        Map<String, Object> prefs = new HashMap<>();
+        prefs.put("credentials_enable_service", false);
+        prefs.put("profile.password_manager_enabled", false);
+        options.setExperimentalOption("prefs", prefs);
+
+        WebDriver driver = new ChromeDriver(options);
+        driver.manage().window().maximize();
+        driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
+
+        try (Scanner sc = new Scanner(System.in)) {
+            driver.get("https://devoms.quantbd.com");
+            Thread.sleep(1000);
+            OMSweb_Login.main(driver, sc);
+            main(driver, sc);
+        } catch (Exception e) {
+            System.err.println("[HFT ENGINE ERROR] " + e.getMessage());
+        }
+    }
+
     public static void main(WebDriver driver, Scanner sc) throws InterruptedException {
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(3));
         JavascriptExecutor js = (JavascriptExecutor) driver;
