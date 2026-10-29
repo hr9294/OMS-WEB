@@ -3,12 +3,18 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.InputStreamReader;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * OMSweb_DBMarketData
  * -------------------
- * Collects Symbols, LTP, YCP, and Circuit Limits directly from the PostgreSQL
- * database table (marketdb -> dse_md_ltp / cse_md_ltp).
+ * Collects Market Data directly from PostgreSQL database tables (marketdb)
+ * for the PUBLIC Board (board = 'PUBLIC'):
+ *
+ *   1. LTP & Statistics   -> dse_md_ltp / cse_md_ltp
+ *   2. Bid/Ask Price(BBO) -> dse_md_bbo / cse_md_bbo
+ *   3. Market Depth       -> dse_md_mktdepth / cse_md_mktdepth
  *
  * STRICT FILTERING:
  *   - ONLY Public Board: board = 'PUBLIC'
@@ -29,7 +35,9 @@ public class OMSweb_DBMarketData {
     public static final String DB_USER     = "marketdata";
     public static final String DB_PASSWORD = "pass4321";
 
-    // Public Board Symbol & LTP Data Model
+    // ==========================================
+    // 1. DATA MODELS
+    // ==========================================
     public static class PublicSymbolLtp {
         public String symbol;
         public String companyName;
@@ -73,24 +81,75 @@ public class OMSweb_DBMarketData {
         }
     }
 
-    // In-memory cache
-    private static final Map<String, PublicSymbolLtp> DSE_CACHE = new LinkedHashMap<>();
-    private static final Map<String, PublicSymbolLtp> CSE_CACHE = new LinkedHashMap<>();
+    public static class BboRecord {
+        public String symbol;
+        public double bidPrice;
+        public long   bidQty;
+        public double askPrice;
+        public long   askQty;
+        public int    priceDecimals;
+        public String lastUpdate;
 
-    /**
-     * Validates that a security is strictly a Public Board equity or mutual fund,
-     * filtering out any debt, bond, treasury, option contract, or futures.
-     */
+        public BboRecord(String symbol, double bidPrice, long bidQty, double askPrice, long askQty, int priceDecimals, String lastUpdate) {
+            this.symbol = symbol;
+            this.bidPrice = bidPrice;
+            this.bidQty = bidQty;
+            this.askPrice = askPrice;
+            this.askQty = askQty;
+            this.priceDecimals = priceDecimals;
+            this.lastUpdate = lastUpdate;
+        }
+    }
+
+    public static class DepthLevel {
+        public int    level;
+        public double price;
+        public long   qty;
+        public int    orders;
+
+        public DepthLevel(int level, double price, long qty, int orders) {
+            this.level = level;
+            this.price = price;
+            this.qty = qty;
+            this.orders = orders;
+        }
+    }
+
+    public static class DepthRecord {
+        public String symbol;
+        public List<DepthLevel> bidLevels = new ArrayList<>();
+        public List<DepthLevel> askLevels = new ArrayList<>();
+        public int priceDecimals = 2;
+        public String lastUpdate = "";
+
+        public DepthRecord(String symbol, int priceDecimals, String lastUpdate) {
+            this.symbol = symbol;
+            this.priceDecimals = priceDecimals;
+            this.lastUpdate = lastUpdate;
+        }
+    }
+
+    // In-memory caches
+    private static final Map<String, PublicSymbolLtp> DSE_LTP_CACHE = new LinkedHashMap<>();
+    private static final Map<String, PublicSymbolLtp> CSE_LTP_CACHE = new LinkedHashMap<>();
+
+    private static final Map<String, BboRecord> DSE_BBO_CACHE = new LinkedHashMap<>();
+    private static final Map<String, BboRecord> CSE_BBO_CACHE = new LinkedHashMap<>();
+
+    private static final Map<String, DepthRecord> DSE_DEPTH_CACHE = new LinkedHashMap<>();
+    private static final Map<String, DepthRecord> CSE_DEPTH_CACHE = new LinkedHashMap<>();
+
+    // ==========================================
+    // 2. STRICT PUBLIC EQUITY VALIDATOR
+    // ==========================================
     public static boolean isStrictlyPublicEquity(String symbol, String companyName, String sector, String symbolInstr) {
         if (symbol == null || symbol.trim().isEmpty()) return false;
         String sUpper = symbol.trim().toUpperCase();
 
-        // Reject derivatives / options / futures suffixes
         if (sUpper.endsWith("-CE") || sUpper.endsWith("-PE") || sUpper.endsWith("-XX") || sUpper.endsWith("-SPD")) {
             return false;
         }
 
-        // Reject Treasury bonds / bills and Sukuks
         if (sUpper.startsWith("TB") && sUpper.length() >= 6) {
             boolean hasDigit = false;
             for (char c : sUpper.toCharArray()) {
@@ -102,13 +161,11 @@ public class OMSweb_DBMarketData {
             return false;
         }
 
-        // Reject debt/bond sectors
         String secUpper = (sector == null) ? "" : sector.toUpperCase();
         if (secUpper.contains("BOND") || secUpper.contains("DEBT") || secUpper.contains("DEBENTURE")) {
             return false;
         }
 
-        // Reject non-equity instrument types
         String instrUpper = (symbolInstr == null) ? "" : symbolInstr.toUpperCase();
         if (instrUpper.equals("OPT") || instrUpper.equals("FUT") || instrUpper.equals("MLEG") ||
             instrUpper.equals("TBILL") || instrUpper.equals("TBOND") || instrUpper.equals("CORP") ||
@@ -120,13 +177,12 @@ public class OMSweb_DBMarketData {
         return true;
     }
 
-    /**
-     * Collects all Public Board symbols & LTPs from the DB table.
-     * Enforces ONLY board = 'PUBLIC' and excludes DEBT, BUYIN, YIELDDBT, etc.
-     */
+    // ==========================================
+    // 3. LTP & STATS: dse_md_ltp / cse_md_ltp
+    // ==========================================
     public static synchronized Map<String, PublicSymbolLtp> fetchPublicBoardLtp(String exchange) {
         String exClean = (exchange == null || exchange.trim().isEmpty()) ? "DSE" : exchange.trim().toUpperCase();
-        Map<String, PublicSymbolLtp> targetCache = exClean.equals("CSE") ? CSE_CACHE : DSE_CACHE;
+        Map<String, PublicSymbolLtp> targetCache = exClean.equals("CSE") ? CSE_LTP_CACHE : DSE_LTP_CACHE;
         if (!targetCache.isEmpty()) {
             return Collections.unmodifiableMap(targetCache);
         }
@@ -134,7 +190,6 @@ public class OMSweb_DBMarketData {
         String tableLtp = exClean.equals("CSE") ? "cse_md_ltp" : "dse_md_ltp";
         String tableSym = exClean.equals("CSE") ? "cse_md_symbols" : "dse_md_symbols";
 
-        // 1. Try querying via PostgreSQL psql CLI with strict WHERE filters
         try {
             String psqlExe = findPsqlExecutable();
             if (psqlExe != null) {
@@ -182,9 +237,7 @@ public class OMSweb_DBMarketData {
                             String sec = p.length > 13 ? p[13].trim() : "";
                             String sinstr = p.length > 14 ? p[14].trim() : "";
 
-                            if (!isStrictlyPublicEquity(sym, name, sec, sinstr)) {
-                                continue;
-                            }
+                            if (!isStrictlyPublicEquity(sym, name, sec, sinstr)) continue;
 
                             if (!sym.isEmpty()) {
                                 double ltp = parseDouble(p[2]);
@@ -207,10 +260,9 @@ public class OMSweb_DBMarketData {
                 proc.waitFor();
             }
         } catch (Exception e) {
-            System.err.println("[WARN: OMSweb_DBMarketData psql query] " + e.getMessage());
+            System.err.println("[WARN: OMSweb_DBMarketData LTP psql] " + e.getMessage());
         }
 
-        // 2. Fallback: Parse public_board_ltp.json if generated by Python module
         if (targetCache.isEmpty()) {
             loadFromJsonCache(targetCache);
         }
@@ -218,9 +270,239 @@ public class OMSweb_DBMarketData {
         return Collections.unmodifiableMap(targetCache);
     }
 
-    /**
-     * Returns a sorted List of all Public Board symbols collected from the DB table.
-     */
+    // ==========================================
+    // 4. BID/ASK PRICE (BBO): dse_md_bbo / cse_md_bbo
+    // ==========================================
+    public static synchronized Map<String, BboRecord> fetchPublicBoardBbo(String exchange) {
+        String exClean = (exchange == null || exchange.trim().isEmpty()) ? "DSE" : exchange.trim().toUpperCase();
+        Map<String, BboRecord> targetCache = exClean.equals("CSE") ? CSE_BBO_CACHE : DSE_BBO_CACHE;
+        if (!targetCache.isEmpty()) {
+            return Collections.unmodifiableMap(targetCache);
+        }
+
+        String tableBbo = exClean.equals("CSE") ? "cse_md_bbo" : "dse_md_bbo";
+        String tableSym = exClean.equals("CSE") ? "cse_md_symbols" : "dse_md_symbols";
+
+        try {
+            String psqlExe = findPsqlExecutable();
+            if (psqlExe != null) {
+                String query = String.format(
+                        "SELECT b.symbol, COALESCE(b.bid_price, 0.0), COALESCE(b.bid_qty, 0), " +
+                        "COALESCE(b.ask_price, 0.0), COALESCE(b.ask_qty, 0), COALESCE(b.price_decimals, 2), b.last_update, " +
+                        "COALESCE(s.company_name, b.symbol), COALESCE(s.sector, ''), COALESCE(s.symbol_instr, '') " +
+                        "FROM %s b LEFT JOIN %s s ON b.symbol = s.symbol AND b.board = s.board " +
+                        "WHERE b.board = 'PUBLIC' " +
+                        "  AND (s.symbol_instr IS NULL OR s.symbol_instr IN ('EQ', 'MF', 'CS')) " +
+                        "  AND COALESCE(s.sector, '') NOT ILIKE '%%Bond%%' " +
+                        "  AND COALESCE(s.sector, '') NOT ILIKE '%%Debt%%' " +
+                        "  AND COALESCE(s.sector, '') NOT ILIKE '%%Debenture%%' " +
+                        "  AND b.symbol NOT LIKE '%%-CE' " +
+                        "  AND b.symbol NOT LIKE '%%-PE' " +
+                        "  AND b.symbol NOT LIKE '%%-XX' " +
+                        "  AND b.symbol NOT LIKE '%%-SPD' " +
+                        "  AND b.symbol NOT LIKE '%%BOND%%' " +
+                        "  AND b.symbol NOT LIKE 'TB%%' " +
+                        "  AND b.symbol NOT LIKE '%%SUKUK%%' " +
+                        "ORDER BY b.symbol ASC;",
+                        tableBbo, tableSym);
+
+                ProcessBuilder pb = new ProcessBuilder(
+                        psqlExe,
+                        "-h", DB_HOST,
+                        "-p", String.valueOf(DB_PORT),
+                        "-U", DB_USER,
+                        "-d", DB_NAME,
+                        "-t", "-A", "-F", "\t",
+                        "-c", query
+                );
+                pb.environment().put("PGPASSWORD", DB_PASSWORD);
+                pb.redirectErrorStream(true);
+                Process proc = pb.start();
+
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        String[] p = line.split("\t", -1);
+                        if (p.length >= 5) {
+                            String sym = p[0].trim().toUpperCase();
+                            String name = p.length > 7 ? p[7].trim() : sym;
+                            String sec = p.length > 8 ? p[8].trim() : "";
+                            String sinstr = p.length > 9 ? p[9].trim() : "";
+
+                            if (!isStrictlyPublicEquity(sym, name, sec, sinstr)) continue;
+
+                            double bPrice = parseDouble(p[1]);
+                            long bQty = parseLong(p[2]);
+                            double aPrice = parseDouble(p[3]);
+                            long aQty = parseLong(p[4]);
+                            int dec = p.length > 5 ? (int) parseLong(p[5]) : 2;
+                            String lup = p.length > 6 ? p[6].trim() : "";
+
+                            targetCache.put(sym, new BboRecord(sym, bPrice, bQty, aPrice, aQty, dec, lup));
+                        }
+                    }
+                }
+                proc.waitFor();
+            }
+        } catch (Exception e) {
+            System.err.println("[WARN: OMSweb_DBMarketData BBO psql] " + e.getMessage());
+        }
+
+        return Collections.unmodifiableMap(targetCache);
+    }
+
+    // ==========================================
+    // 5. MARKET DEPTH: dse_md_mktdepth / cse_md_mktdepth
+    // ==========================================
+    public static synchronized DepthRecord fetchSymbolDepth(String exchange, String symbol) {
+        if (symbol == null || symbol.trim().isEmpty()) return null;
+        String symClean = symbol.trim().toUpperCase();
+        String exClean = (exchange == null || exchange.trim().isEmpty()) ? "DSE" : exchange.trim().toUpperCase();
+
+        Map<String, DepthRecord> targetCache = exClean.equals("CSE") ? CSE_DEPTH_CACHE : DSE_DEPTH_CACHE;
+        if (targetCache.containsKey(symClean)) {
+            return targetCache.get(symClean);
+        }
+
+        String tableDepth = exClean.equals("CSE") ? "cse_md_mktdepth" : "dse_md_mktdepth";
+        String tableSym = exClean.equals("CSE") ? "cse_md_symbols" : "dse_md_symbols";
+
+        try {
+            String psqlExe = findPsqlExecutable();
+            if (psqlExe != null) {
+                String query = String.format(
+                        "SELECT m.symbol, m.bid_levels, m.ask_levels, COALESCE(m.price_decimals, 2), m.last_update " +
+                        "FROM %s m LEFT JOIN %s s ON m.symbol = s.symbol AND m.board = s.board " +
+                        "WHERE m.board = 'PUBLIC' AND m.symbol = '%s' LIMIT 1;",
+                        tableDepth, tableSym, symClean);
+
+                ProcessBuilder pb = new ProcessBuilder(
+                        psqlExe,
+                        "-h", DB_HOST,
+                        "-p", String.valueOf(DB_PORT),
+                        "-U", DB_USER,
+                        "-d", DB_NAME,
+                        "-t", "-A", "-F", "\t",
+                        "-c", query
+                );
+                pb.environment().put("PGPASSWORD", DB_PASSWORD);
+                pb.redirectErrorStream(true);
+                Process proc = pb.start();
+
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
+                    String line = reader.readLine();
+                    if (line != null) {
+                        String[] p = line.split("\t", -1);
+                        if (p.length >= 3) {
+                            String bRaw = p[1].trim();
+                            String aRaw = p[2].trim();
+                            int dec = p.length > 3 ? (int) parseLong(p[3]) : 2;
+                            String lup = p.length > 4 ? p[4].trim() : "";
+
+                            DepthRecord rec = new DepthRecord(symClean, dec, lup);
+                            double factor = Math.pow(10, dec);
+
+                            parseDepthJsonArray(bRaw, rec.bidLevels, factor);
+                            parseDepthJsonArray(aRaw, rec.askLevels, factor);
+
+                            targetCache.put(symClean, rec);
+                            return rec;
+                        }
+                    }
+                }
+                proc.waitFor();
+            }
+        } catch (Exception e) {
+            System.err.println("[WARN: OMSweb_DBMarketData Depth psql] " + e.getMessage());
+        }
+        return null;
+    }
+
+    private static void parseDepthJsonArray(String raw, List<DepthLevel> list, double factor) {
+        if (raw == null || raw.isEmpty() || raw.equals("[]")) return;
+        Pattern lvlPat = Pattern.compile("\\[([0-9]+)\\s*,\\s*([0-9]+)\\s*,\\s*\\[[^\\]]*\\]\\s*,\\s*([0-9]+)\\]");
+        Matcher m = lvlPat.matcher(raw);
+        int lvlIdx = 1;
+        while (m.find()) {
+            double rate = parseDouble(m.group(1)) / factor;
+            long qty = parseLong(m.group(2));
+            int orders = (int) parseLong(m.group(3));
+            list.add(new DepthLevel(lvlIdx++, rate, qty, orders));
+        }
+    }
+
+    // ==========================================
+    // 6. UNIFIED COMPLETE MARKET SNAPSHOT
+    // ==========================================
+    public static Map<String, String> getCompleteMarketSnapshot(String symbol, String exchange) {
+        Map<String, String> data = new LinkedHashMap<>();
+        if (symbol == null || symbol.trim().isEmpty()) return data;
+
+        String symClean = symbol.trim().toUpperCase();
+        String exClean = (exchange == null || exchange.trim().isEmpty()) ? "DSE" : exchange.trim().toUpperCase();
+
+        data.put("Symbol", symClean);
+        data.put("Exchange", exClean);
+        data.put("DATA_SOURCE", String.format("DB Tables (%s PUBLIC: ltp, bbo, mktdepth)", exClean));
+
+        // 1. LTP & Limits from dse_md_ltp / cse_md_ltp
+        Map<String, PublicSymbolLtp> ltpMap = fetchPublicBoardLtp(exClean);
+        PublicSymbolLtp ltpRec = ltpMap.get(symClean);
+        if (ltpRec != null) {
+            data.put("LTP", String.format(Locale.US, "%.2f", ltpRec.ltp));
+            data.put("YCP", String.format(Locale.US, "%.2f", ltpRec.ycp));
+            data.put("High", String.format(Locale.US, "%.2f", ltpRec.high));
+            data.put("Low", String.format(Locale.US, "%.2f", ltpRec.low));
+            data.put("Open", String.format(Locale.US, "%.2f", ltpRec.open));
+            data.put("Close", String.format(Locale.US, "%.2f", ltpRec.close));
+            data.put("Total_Volume", String.valueOf(ltpRec.totalQty));
+            data.put("SH", String.format(Locale.US, "%.2f", ltpRec.circuitUp));
+            data.put("SL", String.format(Locale.US, "%.2f", ltpRec.circuitDown));
+            data.put("CH", String.format(Locale.US, "%.2f", ltpRec.circuitUp));
+            data.put("CL", String.format(Locale.US, "%.2f", ltpRec.circuitDown));
+        }
+
+        // 2. Bid/Ask Price (BBO) from dse_md_bbo / cse_md_bbo
+        Map<String, BboRecord> bboMap = fetchPublicBoardBbo(exClean);
+        BboRecord bboRec = bboMap.get(symClean);
+        if (bboRec != null) {
+            data.put("Best_Bid_Price", String.format(Locale.US, "%.2f", bboRec.bidPrice));
+            data.put("Best_Bid_Qty", String.valueOf(bboRec.bidQty));
+            data.put("Best_Ask_Price", String.format(Locale.US, "%.2f", bboRec.askPrice));
+            data.put("Best_Ask_Qty", String.valueOf(bboRec.askQty));
+        }
+
+        // 3. Multi-level Market Depth from dse_md_mktdepth / cse_md_mktdepth
+        DepthRecord depthRec = fetchSymbolDepth(exClean, symClean);
+        if (depthRec != null) {
+            for (int i = 1; i <= 5; i++) {
+                if (i <= depthRec.bidLevels.size()) {
+                    DepthLevel bl = depthRec.bidLevels.get(i - 1);
+                    data.put("Bid_L" + i + "_Price", String.format(Locale.US, "%.2f", bl.price));
+                    data.put("Bid_L" + i + "_Qty", String.valueOf(bl.qty));
+                    data.put("Bid_L" + i + "_Ordr", String.valueOf(bl.orders));
+                } else {
+                    data.put("Bid_L" + i + "_Price", "-");
+                    data.put("Bid_L" + i + "_Qty", "-");
+                    data.put("Bid_L" + i + "_Ordr", "-");
+                }
+
+                if (i <= depthRec.askLevels.size()) {
+                    DepthLevel al = depthRec.askLevels.get(i - 1);
+                    data.put("Ask_L" + i + "_Price", String.format(Locale.US, "%.2f", al.price));
+                    data.put("Ask_L" + i + "_Qty", String.valueOf(al.qty));
+                    data.put("Ask_L" + i + "_Ordr", String.valueOf(al.orders));
+                } else {
+                    data.put("Ask_L" + i + "_Price", "-");
+                    data.put("Ask_L" + i + "_Qty", "-");
+                    data.put("Ask_L" + i + "_Ordr", "-");
+                }
+            }
+        }
+
+        return data;
+    }
+
     public static List<String> getPublicSymbols(String exchange) {
         Map<String, PublicSymbolLtp> data = fetchPublicBoardLtp(exchange);
         List<String> symbols = new ArrayList<>(data.keySet());
@@ -228,9 +510,6 @@ public class OMSweb_DBMarketData {
         return symbols;
     }
 
-    /**
-     * Gets the live LTP for a symbol from the collected DB table data.
-     */
     public static double getSymbolLtp(String symbol, String exchange, double fallback) {
         if (symbol == null) return fallback;
         Map<String, PublicSymbolLtp> data = fetchPublicBoardLtp(exchange);
@@ -238,45 +517,51 @@ public class OMSweb_DBMarketData {
         return (record != null && record.ltp > 0) ? record.ltp : fallback;
     }
 
-    /**
-     * Checks if a symbol belongs to the Public Board in the database table.
-     */
     public static boolean isPublicBoardSymbol(String symbol, String exchange) {
         if (symbol == null) return false;
         Map<String, PublicSymbolLtp> data = fetchPublicBoardLtp(exchange);
         return data.containsKey(symbol.trim().toUpperCase());
     }
 
-    /**
-     * Prints a clean formatted summary of Public Board symbols & LTPs collected from DB table.
-     */
     public static void printPublicBoardSummary(String exchange, int limit) {
-        Map<String, PublicSymbolLtp> data = fetchPublicBoardLtp(exchange);
+        Map<String, PublicSymbolLtp> ltpMap = fetchPublicBoardLtp(exchange);
+        Map<String, BboRecord> bboMap = fetchPublicBoardBbo(exchange);
         String ex = (exchange == null) ? "DSE" : exchange.toUpperCase();
-        System.out.println("\n" + "=".repeat(95));
-        System.out.printf("  DATABASE TABLE: %s ONLY PUBLIC BOARD MARKET DATA (dse_md_ltp WHERE board = 'PUBLIC')%n", ex);
-        System.out.println("  [EXCLUDED BOARDS: DEBT, BUYIN, YIELDDBT, BUYDBT, BLOCK, SDEBT, ATBDEBT, ALTDBT, ETC.]");
-        System.out.printf("  Target: %s:%d/%s | Total Public Symbols: %d%n", DB_HOST, DB_PORT, DB_NAME, data.size());
-        System.out.println("=".repeat(95));
-        System.out.printf("%-4s | %-12s | %-28s | %10s | %8s | %9s | %9s%n",
-                "#", "Symbol", "Company Name", "LTP (BDT)", "YCP", "SH/CH", "SL/CL");
-        System.out.println("-".repeat(95));
 
-        List<String> keys = new ArrayList<>(data.keySet());
+        System.out.println("\n" + "=".repeat(115));
+        System.out.printf("  DATABASE TABLES: %s ONLY PUBLIC BOARD MARKET DATA (board = 'PUBLIC')%n", ex);
+        System.out.printf("    - LTP:        %s_md_ltp%n", ex.toLowerCase());
+        System.out.printf("    - Bid/Ask:    %s_md_bbo%n", ex.toLowerCase());
+        System.out.printf("    - MktDepth:   %s_md_mktdepth%n", ex.toLowerCase());
+        System.out.printf("  Target: %s:%d/%s | Total Public Symbols: %d%n", DB_HOST, DB_PORT, DB_NAME, ltpMap.size());
+        System.out.println("=".repeat(115));
+        System.out.printf("%-4s | %-12s | %-26s | %10s | %18s | %18s | %15s%n",
+                "#", "Symbol", "Company Name", "LTP (BDT)", "Best Bid (Qty)", "Best Ask (Qty)", "SH/SL Bounds");
+        System.out.println("-".repeat(115));
+
+        List<String> keys = new ArrayList<>(ltpMap.keySet());
         Collections.sort(keys);
         int max = Math.min(limit, keys.size());
         for (int i = 0; i < max; i++) {
-            PublicSymbolLtp r = data.get(keys.get(i));
-            String name = (r.companyName != null && r.companyName.length() > 28)
-                    ? r.companyName.substring(0, 25) + "..."
+            String sym = keys.get(i);
+            PublicSymbolLtp r = ltpMap.get(sym);
+            BboRecord b = bboMap.get(sym);
+
+            String name = (r.companyName != null && r.companyName.length() > 26)
+                    ? r.companyName.substring(0, 23) + "..."
                     : (r.companyName != null ? r.companyName : r.symbol);
-            System.out.printf("%-4d | %-12s | %-28s | %10.2f | %8.2f | %9.2f | %9.2f%n",
-                    (i + 1), r.symbol, name, r.ltp, r.ycp, r.circuitUp, r.circuitDown);
+
+            String bidStr = (b != null && b.bidPrice > 0) ? String.format(Locale.US, "%.2f (%d)", b.bidPrice, b.bidQty) : "-";
+            String askStr = (b != null && b.askPrice > 0) ? String.format(Locale.US, "%.2f (%d)", b.askPrice, b.askQty) : "-";
+            String boundsStr = String.format(Locale.US, "%.1f / %.1f", r.circuitUp, r.circuitDown);
+
+            System.out.printf("%-4d | %-12s | %-26s | %10.2f | %18s | %18s | %15s%n",
+                    (i + 1), r.symbol, name, r.ltp, bidStr, askStr, boundsStr);
         }
         if (keys.size() > limit) {
-            System.out.printf("... and %d more Public Board symbols collected from DB table.%n", keys.size() - limit);
+            System.out.printf("... and %d more Public Board symbols collected from DB tables.%n", keys.size() - limit);
         }
-        System.out.println("=".repeat(95) + "\n");
+        System.out.println("=".repeat(115) + "\n");
     }
 
     private static String findPsqlExecutable() {
@@ -388,6 +673,15 @@ public class OMSweb_DBMarketData {
 
     public static void main(String[] args) {
         String ex = args.length > 0 ? args[0] : "DSE";
-        printPublicBoardSummary(ex, 35);
+        if (args.length > 1) {
+            String sym = args[1];
+            Map<String, String> snap = getCompleteMarketSnapshot(sym, ex);
+            System.out.printf("%n--- Complete Market Depth for %s (%s) from DB Tables ---%n", sym, ex);
+            for (Map.Entry<String, String> entry : snap.entrySet()) {
+                System.out.printf("  %-20s: %s%n", entry.getKey(), entry.getValue());
+            }
+        } else {
+            printPublicBoardSummary(ex, 25);
+        }
     }
 }

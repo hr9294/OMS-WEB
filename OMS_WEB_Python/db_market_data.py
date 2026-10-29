@@ -1,8 +1,12 @@
 """
 db_market_data.py
 -----------------
-Collects Market Data (Symbols, LTP, YCP, Circuit Limits) directly from the
-PostgreSQL database table (marketdb -> dse_md_ltp / cse_md_ltp).
+Collects Market Data directly from PostgreSQL database tables (marketdb)
+for the PUBLIC Board (board = 'PUBLIC'):
+
+  1. LTP & Statistics   -> dse_md_ltp / cse_md_ltp
+  2. Bid/Ask Price(BBO) -> dse_md_bbo / cse_md_bbo
+  3. Market Depth       -> dse_md_mktdepth / cse_md_mktdepth
 
 STRICT FILTERING:
   - ONLY Public Board: board = 'PUBLIC'
@@ -33,13 +37,6 @@ DB_CONFIG = {
     "user": os.environ.get("MKT_DB_USER", "marketdata"),
     "password": os.environ.get("MKT_DB_PASS", "pass4321"),
     "timeout": 5,
-}
-
-# Non-public / excluded boards to explicitly reject
-EXCLUDED_BOARDS = {
-    "DEBT", "BUYIN", "YIELDDBT", "BUYDBT", "ALTDBT", "ATBDEBT", "SDEBT",
-    "SBUYIN", "ATBBUYIN", "BLOCK", "SBLOCK", "ATBPUB", "ATBX", "SCPX",
-    "SPUBLIC", "BULK", "ODDLOT", "FOREIGN", "INDEX"
 }
 
 # Cache file location for fast offline/cross-process access
@@ -78,18 +75,21 @@ def is_strictly_public_equity(symbol: str, company_name: str = "", sector: str =
     return True
 
 
-def fetch_public_board_from_db(exchange: str = "DSE") -> Dict[str, Dict[str, Any]]:
+# =========================================================================
+# 1. LTP & STATISTICS: dse_md_ltp / cse_md_ltp
+# =========================================================================
+def fetch_ltp_from_db(exchange: str = "DSE", symbol: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
     """
-    Queries the database table (dse_md_ltp / cse_md_ltp) directly for ONLY
-    Public Board equity symbols where board = 'PUBLIC'.
-    Excludes all other boards like DEBT, BUYIN, YIELDDBT, BUYDBT, BLOCK, etc.
+    Queries dse_md_ltp / cse_md_ltp directly for Public Board LTP & statistics.
+    Table: dse_md_ltp / cse_md_ltp WHERE board = 'PUBLIC'
     """
     results: Dict[str, Dict[str, Any]] = {}
     ex_clean = (exchange or "DSE").strip().upper()
     table_ltp = "cse_md_ltp" if ex_clean == "CSE" else "dse_md_ltp"
     table_sym = "cse_md_symbols" if ex_clean == "CSE" else "dse_md_symbols"
 
-    # Strict SQL query enforcing ONLY board = 'PUBLIC' and excluding debt/derivatives
+    sym_filter = f"AND l.symbol = '{symbol.strip().upper()}'" if symbol else ""
+
     query = f"""
         SELECT
             l.symbol,
@@ -123,10 +123,10 @@ def fetch_public_board_from_db(exchange: str = "DSE") -> Dict[str, Dict[str, Any
           AND l.symbol NOT LIKE '%SUKUK%'
           AND l.ltp IS NOT NULL
           AND l.ltp > 0
+          {sym_filter}
         ORDER BY l.symbol ASC;
     """
 
-    # 1. Try direct psycopg2 connection first
     try:
         import psycopg2
 
@@ -140,13 +140,11 @@ def fetch_public_board_from_db(exchange: str = "DSE") -> Dict[str, Dict[str, Any
         )
         cur = conn.cursor()
         cur.execute(query)
-        rows = cur.fetchall()
-        for r in rows:
+        for r in cur.fetchall():
             sym = str(r[0] or "").strip().upper()
             cname = str(r[1] or sym).strip()
             sec = str(r[13] or "").strip()
             sinstr = str(r[14] or "").strip()
-
             if not is_strictly_public_equity(sym, cname, sec, sinstr):
                 continue
 
@@ -167,80 +165,329 @@ def fetch_public_board_from_db(exchange: str = "DSE") -> Dict[str, Dict[str, Any
                 "last_update": str(r[12] or "").strip(),
             }
         conn.close()
-        if results:
+        if results and not symbol:
             save_public_board_cache(results, CACHE_FILE)
-            return results
+        return results
     except Exception as e:
-        print(f"[WARN: DB MarketData psycopg2] {e}")
+        print(f"[WARN: DB LTP psycopg2] {e}")
 
-    # 2. Fallback: Try psql command-line client
-    try:
-        psql_paths = [
-            r"C:\Program Files\PostgreSQL\16\bin\psql.exe",
-            r"C:\Program Files\PostgreSQL\15\bin\psql.exe",
-            "psql",
-        ]
-        psql_exe = None
-        for p in psql_paths:
-            if os.path.exists(p) or p == "psql":
-                psql_exe = p
-                break
-
-        if psql_exe:
-            env = dict(os.environ)
-            env["PGPASSWORD"] = DB_CONFIG["password"]
-            cmd = [
-                psql_exe,
-                "-h", DB_CONFIG["host"],
-                "-p", str(DB_CONFIG["port"]),
-                "-U", DB_CONFIG["user"],
-                "-d", DB_CONFIG["dbname"],
-                "-t", "-A", "-F", "\t",
-                "-c", query,
-            ]
-            proc = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=10)
-            if proc.returncode == 0 and proc.stdout:
-                for line in proc.stdout.splitlines():
-                    parts = line.split("\t")
-                    if len(parts) >= 3:
-                        sym = parts[0].strip().upper()
-                        cname = parts[1].strip() if len(parts) > 1 else sym
-                        sec = parts[13].strip() if len(parts) > 13 else ""
-                        sinstr = parts[14].strip() if len(parts) > 14 else ""
-                        if not is_strictly_public_equity(sym, cname, sec, sinstr):
-                            continue
-                        results[sym] = {
-                            "symbol": sym,
-                            "company_name": cname,
-                            "board": "PUBLIC",
-                            "ltp": float(parts[2]) if parts[2] else 0.0,
-                            "ycp": float(parts[3]) if len(parts) > 3 and parts[3] else 0.0,
-                            "circuit_up": float(parts[4]) if len(parts) > 4 and parts[4] else 0.0,
-                            "circuit_down": float(parts[5]) if len(parts) > 5 and parts[5] else 0.0,
-                            "floor_price": float(parts[6]) if len(parts) > 6 and parts[6] else 0.0,
-                            "open": float(parts[7]) if len(parts) > 7 and parts[7] else 0.0,
-                            "high": float(parts[8]) if len(parts) > 8 and parts[8] else 0.0,
-                            "low": float(parts[9]) if len(parts) > 9 and parts[9] else 0.0,
-                            "close": float(parts[10]) if len(parts) > 10 and parts[10] else 0.0,
-                            "total_qty": int(parts[11]) if len(parts) > 11 and parts[11] else 0,
-                            "last_update": parts[12].strip() if len(parts) > 12 else "",
-                        }
-                if results:
-                    save_public_board_cache(results, CACHE_FILE)
-                    return results
-    except Exception as e:
-        print(f"[WARN: DB MarketData psql CLI] {e}")
-
-    # 3. Fallback: Load from local JSON cache if DB is temporarily unreachable
+    # Fallback to cache if offline
     cached = load_public_board_cache(CACHE_FILE)
     if cached:
-        filtered_cached = {
+        return {
             k: v for k, v in cached.items()
-            if is_strictly_public_equity(k, v.get("company_name", ""), v.get("sector", ""), v.get("symbol_instr", ""))
+            if (not symbol or k == symbol.strip().upper()) and is_strictly_public_equity(k, v.get("company_name", ""), v.get("sector", ""), v.get("symbol_instr", ""))
         }
-        return filtered_cached
-
     return results
+
+
+# =========================================================================
+# 2. BID/ASK PRICE (BBO): dse_md_bbo / cse_md_bbo
+# =========================================================================
+def fetch_bbo_from_db(exchange: str = "DSE", symbol: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
+    """
+    Queries dse_md_bbo / cse_md_bbo directly for Public Board Best Bid & Ask prices.
+    Table: dse_md_bbo / cse_md_bbo WHERE board = 'PUBLIC'
+    """
+    results: Dict[str, Dict[str, Any]] = {}
+    ex_clean = (exchange or "DSE").strip().upper()
+    table_bbo = "cse_md_bbo" if ex_clean == "CSE" else "dse_md_bbo"
+    table_sym = "cse_md_symbols" if ex_clean == "CSE" else "dse_md_symbols"
+
+    sym_filter = f"AND b.symbol = '{symbol.strip().upper()}'" if symbol else ""
+
+    query = f"""
+        SELECT
+            b.symbol,
+            COALESCE(b.bid_price, 0.0) as bid_price,
+            COALESCE(b.bid_qty, 0) as bid_qty,
+            COALESCE(b.ask_price, 0.0) as ask_price,
+            COALESCE(b.ask_qty, 0) as ask_qty,
+            COALESCE(b.price_decimals, 2) as price_decimals,
+            b.last_update,
+            COALESCE(s.company_name, b.symbol) as company_name,
+            COALESCE(s.sector, '') as sector,
+            COALESCE(s.symbol_instr, '') as symbol_instr
+        FROM {table_bbo} b
+        LEFT JOIN {table_sym} s ON b.symbol = s.symbol AND b.board = s.board
+        WHERE b.board = 'PUBLIC'
+          AND (s.symbol_instr IS NULL OR s.symbol_instr IN ('EQ', 'MF', 'CS'))
+          AND COALESCE(s.sector, '') NOT ILIKE '%Bond%'
+          AND COALESCE(s.sector, '') NOT ILIKE '%Debt%'
+          AND COALESCE(s.sector, '') NOT ILIKE '%Debenture%'
+          AND b.symbol NOT LIKE '%-CE'
+          AND b.symbol NOT LIKE '%-PE'
+          AND b.symbol NOT LIKE '%-XX'
+          AND b.symbol NOT LIKE '%-SPD'
+          AND b.symbol NOT LIKE '%BOND%'
+          AND b.symbol NOT LIKE 'TB%'
+          AND b.symbol NOT LIKE '%SUKUK%'
+          {sym_filter}
+        ORDER BY b.symbol ASC;
+    """
+
+    try:
+        import psycopg2
+
+        conn = psycopg2.connect(
+            host=DB_CONFIG["host"],
+            port=DB_CONFIG["port"],
+            dbname=DB_CONFIG["dbname"],
+            user=DB_CONFIG["user"],
+            password=DB_CONFIG["password"],
+            connect_timeout=DB_CONFIG["timeout"],
+        )
+        cur = conn.cursor()
+        cur.execute(query)
+        for r in cur.fetchall():
+            sym = str(r[0] or "").strip().upper()
+            cname = str(r[7] or sym).strip()
+            sec = str(r[8] or "").strip()
+            sinstr = str(r[9] or "").strip()
+            if not is_strictly_public_equity(sym, cname, sec, sinstr):
+                continue
+
+            results[sym] = {
+                "symbol": sym,
+                "board": "PUBLIC",
+                "bid_price": float(r[1]) if r[1] is not None else 0.0,
+                "bid_qty": int(r[2]) if r[2] is not None else 0,
+                "ask_price": float(r[3]) if r[3] is not None else 0.0,
+                "ask_qty": int(r[4]) if r[4] is not None else 0,
+                "price_decimals": int(r[5]) if r[5] is not None else 2,
+                "last_update": str(r[6] or "").strip(),
+            }
+        conn.close()
+        return results
+    except Exception as e:
+        print(f"[WARN: DB BBO psycopg2] {e}")
+        return results
+
+
+# =========================================================================
+# 3. MARKET DEPTH: dse_md_mktdepth / cse_md_mktdepth
+# =========================================================================
+def fetch_mktdepth_from_db(exchange: str = "DSE", symbol: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
+    """
+    Queries dse_md_mktdepth / cse_md_mktdepth directly for Public Board Order Book Queues.
+    Table: dse_md_mktdepth / cse_md_mktdepth WHERE board = 'PUBLIC'
+    """
+    results: Dict[str, Dict[str, Any]] = {}
+    ex_clean = (exchange or "DSE").strip().upper()
+    table_depth = "cse_md_mktdepth" if ex_clean == "CSE" else "dse_md_mktdepth"
+    table_sym = "cse_md_symbols" if ex_clean == "CSE" else "dse_md_symbols"
+
+    sym_filter = f"AND m.symbol = '{symbol.strip().upper()}'" if symbol else ""
+
+    query = f"""
+        SELECT
+            m.symbol,
+            m.bid_levels,
+            m.ask_levels,
+            COALESCE(m.price_decimals, 2) as price_decimals,
+            m.last_update,
+            COALESCE(s.company_name, m.symbol) as company_name,
+            COALESCE(s.sector, '') as sector,
+            COALESCE(s.symbol_instr, '') as symbol_instr
+        FROM {table_depth} m
+        LEFT JOIN {table_sym} s ON m.symbol = s.symbol AND m.board = s.board
+        WHERE m.board = 'PUBLIC'
+          AND (s.symbol_instr IS NULL OR s.symbol_instr IN ('EQ', 'MF', 'CS'))
+          AND COALESCE(s.sector, '') NOT ILIKE '%Bond%'
+          AND COALESCE(s.sector, '') NOT ILIKE '%Debt%'
+          AND COALESCE(s.sector, '') NOT ILIKE '%Debenture%'
+          AND m.symbol NOT LIKE '%-CE'
+          AND m.symbol NOT LIKE '%-PE'
+          AND m.symbol NOT LIKE '%-XX'
+          AND m.symbol NOT LIKE '%-SPD'
+          AND m.symbol NOT LIKE '%BOND%'
+          AND m.symbol NOT LIKE 'TB%'
+          AND m.symbol NOT LIKE '%SUKUK%'
+          {sym_filter}
+        ORDER BY m.symbol ASC;
+    """
+
+    try:
+        import psycopg2
+
+        conn = psycopg2.connect(
+            host=DB_CONFIG["host"],
+            port=DB_CONFIG["port"],
+            dbname=DB_CONFIG["dbname"],
+            user=DB_CONFIG["user"],
+            password=DB_CONFIG["password"],
+            connect_timeout=DB_CONFIG["timeout"],
+        )
+        cur = conn.cursor()
+        cur.execute(query)
+        for r in cur.fetchall():
+            sym = str(r[0] or "").strip().upper()
+            b_raw = str(r[1] or "").strip()
+            a_raw = str(r[2] or "").strip()
+            dec = int(r[3]) if r[3] is not None else 2
+            lup = str(r[4] or "").strip()
+            cname = str(r[5] or sym).strip()
+            sec = str(r[6] or "").strip()
+            sinstr = str(r[7] or "").strip()
+
+            if not is_strictly_public_equity(sym, cname, sec, sinstr):
+                continue
+
+            factor = 10.0 ** dec
+            bid_parsed = []
+            ask_parsed = []
+
+            # Parse Bid Levels
+            if b_raw:
+                try:
+                    b_obj = json.loads(b_raw)
+                    raw_levels = b_obj.get("bid_level", [])
+                    for idx, lvl in enumerate(raw_levels, 1):
+                        rate = float(lvl[0]) / factor if lvl[0] else 0.0
+                        qty = int(lvl[1]) if len(lvl) > 1 and lvl[1] else 0
+                        ord_cnt = int(lvl[3]) if len(lvl) > 3 and lvl[3] else 1
+                        bid_parsed.append({
+                            "level": idx,
+                            "price": rate,
+                            "qty": qty,
+                            "orders": ord_cnt,
+                        })
+                except Exception:
+                    pass
+
+            # Parse Ask Levels
+            if a_raw:
+                try:
+                    a_obj = json.loads(a_raw)
+                    raw_levels = a_obj.get("ask_level", [])
+                    for idx, lvl in enumerate(raw_levels, 1):
+                        rate = float(lvl[0]) / factor if lvl[0] else 0.0
+                        qty = int(lvl[1]) if len(lvl) > 1 and lvl[1] else 0
+                        ord_cnt = int(lvl[3]) if len(lvl) > 3 and lvl[3] else 1
+                        ask_parsed.append({
+                            "level": idx,
+                            "price": rate,
+                            "qty": qty,
+                            "orders": ord_cnt,
+                        })
+                except Exception:
+                    pass
+
+            results[sym] = {
+                "symbol": sym,
+                "board": "PUBLIC",
+                "price_decimals": dec,
+                "last_update": lup,
+                "bid_levels": bid_parsed,
+                "ask_levels": ask_parsed,
+            }
+        conn.close()
+        return results
+    except Exception as e:
+        print(f"[WARN: DB Depth psycopg2] {e}")
+        return results
+
+
+# =========================================================================
+# 4. UNIFIED COMPLETE MARKET SNAPSHOT
+# =========================================================================
+def fetch_complete_market_depth(symbol: str, exchange: str = "DSE") -> Dict[str, str]:
+    """
+    Combines LTP (dse_md_ltp), BBO (dse_md_bbo), and Market Depth (dse_md_mktdepth)
+    into a unified dictionary matching the Market Depth audit structure.
+    """
+    sym = symbol.strip().upper()
+    ex = (exchange or "DSE").strip().upper()
+    data: Dict[str, str] = {
+        "Symbol": sym,
+        "Exchange": ex,
+        "DATA_SOURCE": f"DB Tables ({ex} PUBLIC: ltp, bbo, mktdepth)",
+    }
+
+    # 1. Fetch LTP & limits
+    ltp_data = fetch_ltp_from_db(exchange=ex, symbol=sym).get(sym, {})
+    if ltp_data:
+        data["LTP"] = f"{ltp_data.get('ltp', 0.0):.2f}"
+        data["YCP"] = f"{ltp_data.get('ycp', 0.0):.2f}"
+        data["High"] = f"{ltp_data.get('high', 0.0):.2f}"
+        data["Low"] = f"{ltp_data.get('low', 0.0):.2f}"
+        data["Open"] = f"{ltp_data.get('open', 0.0):.2f}"
+        data["Close"] = f"{ltp_data.get('close', 0.0):.2f}"
+        data["Total_Volume"] = str(ltp_data.get("total_qty", 0))
+        data["SH"] = f"{ltp_data.get('circuit_up', 0.0):.2f}"
+        data["SL"] = f"{ltp_data.get('circuit_down', 0.0):.2f}"
+        data["CH"] = f"{ltp_data.get('circuit_up', 0.0):.2f}"
+        data["CL"] = f"{ltp_data.get('circuit_down', 0.0):.2f}"
+
+    # 2. Fetch Bid/Ask Price (BBO)
+    bbo_data = fetch_bbo_from_db(exchange=ex, symbol=sym).get(sym, {})
+    if bbo_data:
+        data["Best_Bid_Price"] = f"{bbo_data.get('bid_price', 0.0):.2f}"
+        data["Best_Bid_Qty"] = str(bbo_data.get("bid_qty", 0))
+        data["Best_Ask_Price"] = f"{bbo_data.get('ask_price', 0.0):.2f}"
+        data["Best_Ask_Qty"] = str(bbo_data.get("ask_qty", 0))
+
+    # 3. Fetch Multi-level Market Depth
+    depth_data = fetch_mktdepth_from_db(exchange=ex, symbol=sym).get(sym, {})
+    if depth_data:
+        bid_lvls = depth_data.get("bid_levels", [])
+        ask_lvls = depth_data.get("ask_levels", [])
+
+        for i in range(1, 6):
+            if i <= len(bid_lvls):
+                bl = bid_lvls[i - 1]
+                data[f"Bid_L{i}_Price"] = f"{bl['price']:.2f}"
+                data[f"Bid_L{i}_Qty"] = str(bl["qty"])
+                data[f"Bid_L{i}_Ordr"] = str(bl["orders"])
+            else:
+                data[f"Bid_L{i}_Price"] = "-"
+                data[f"Bid_L{i}_Qty"] = "-"
+                data[f"Bid_L{i}_Ordr"] = "-"
+
+            if i <= len(ask_lvls):
+                al = ask_lvls[i - 1]
+                data[f"Ask_L{i}_Price"] = f"{al['price']:.2f}"
+                data[f"Ask_L{i}_Qty"] = str(al["qty"])
+                data[f"Ask_L{i}_Ordr"] = str(al["orders"])
+            else:
+                data[f"Ask_L{i}_Price"] = "-"
+                data[f"Ask_L{i}_Qty"] = "-"
+                data[f"Ask_L{i}_Ordr"] = "-"
+
+    return data
+
+
+# Backward-compatible helper aliases
+fetch_public_board_from_db = fetch_ltp_from_db
+
+
+def get_public_symbols_list(exchange: str = "DSE") -> List[str]:
+    """Returns sorted list of all public board symbols available in the database."""
+    data = fetch_ltp_from_db(exchange)
+    return sorted(list(data.keys()))
+
+
+def get_public_symbol_ltp(symbol: str, exchange: str = "DSE") -> Optional[float]:
+    """Returns the live LTP for a given public board symbol, or None if not found."""
+    if not symbol:
+        return None
+    sym_clean = symbol.strip().upper()
+    data = fetch_ltp_from_db(exchange, symbol=sym_clean)
+    if sym_clean in data:
+        return data[sym_clean].get("ltp")
+    return None
+
+
+def get_public_symbol_bbo(symbol: str, exchange: str = "DSE") -> Dict[str, float]:
+    """Returns Best Bid & Ask prices for a given public board symbol."""
+    sym_clean = symbol.strip().upper()
+    bbo = fetch_bbo_from_db(exchange, symbol=sym_clean).get(sym_clean, {})
+    return {
+        "bid_price": bbo.get("bid_price", 0.0),
+        "bid_qty": bbo.get("bid_qty", 0),
+        "ask_price": bbo.get("ask_price", 0.0),
+        "ask_qty": bbo.get("ask_qty", 0),
+    }
 
 
 def save_public_board_cache(data: Dict[str, Dict[str, Any]], path: str) -> None:
@@ -264,52 +511,53 @@ def load_public_board_cache(path: str) -> Dict[str, Dict[str, Any]]:
     return {}
 
 
-def get_public_symbols_list(exchange: str = "DSE") -> List[str]:
-    """Returns sorted list of all public board symbols available in the database."""
-    data = fetch_public_board_from_db(exchange)
-    return sorted(list(data.keys()))
-
-
-def get_public_symbol_ltp(symbol: str, exchange: str = "DSE") -> Optional[float]:
-    """Returns the live LTP for a given public board symbol, or None if not found."""
-    if not symbol:
-        return None
-    sym_clean = symbol.strip().upper()
-    data = fetch_public_board_from_db(exchange)
-    if sym_clean in data:
-        return data[sym_clean].get("ltp")
-    return None
-
-
 def print_public_board_summary(exchange: str = "DSE", limit: int = 30) -> None:
-    """Prints a formatted summary table of collected public board symbols & LTPs."""
-    data = fetch_public_board_from_db(exchange)
-    print("\n" + "=" * 95)
-    print(f"  DATABASE TABLE: {exchange.upper()} ONLY PUBLIC BOARD MARKET DATA (dse_md_ltp WHERE board = 'PUBLIC')")
-    print(f"  [EXCLUDED BOARDS: DEBT, BUYIN, YIELDDBT, BUYDBT, BLOCK, SDEBT, ATBDEBT, ALTDBT, ETC.]")
-    print(f"  Target: {DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['dbname']} | Total Public Symbols: {len(data)}")
-    print("=" * 95)
-    header = f"{'#':<4} | {'Symbol':<12} | {'Company Name':<28} | {'LTP (BDT)':>10} | {'YCP':>8} | {'SH/CH':>9} | {'SL/CL':>9}"
-    print(header)
-    print("-" * 95)
+    """Prints a comprehensive summary table combining LTP (ltp), BBO (bbo), and Depth queues (mktdepth)."""
+    ex = exchange.upper()
+    ltp_map = fetch_ltp_from_db(ex)
+    bbo_map = fetch_bbo_from_db(ex)
 
-    symbols = sorted(list(data.keys()))
+    print("\n" + "=" * 115)
+    print(f"  DATABASE TABLES: {ex} ONLY PUBLIC BOARD MARKET DATA (board = 'PUBLIC')")
+    print(f"    - LTP:        {ex.lower()}_md_ltp")
+    print(f"    - Bid/Ask:    {ex.lower()}_md_bbo")
+    print(f"    - MktDepth:   {ex.lower()}_md_mktdepth")
+    print(f"  Target: {DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['dbname']} | Total Public Symbols: {len(ltp_map)}")
+    print("=" * 115)
+    header = f"{'#':<4} | {'Symbol':<12} | {'Company Name':<26} | {'LTP (BDT)':>10} | {'Best Bid (Qty)':>18} | {'Best Ask (Qty)':>18} | {'SH/SL Bounds':>15}"
+    print(header)
+    print("-" * 115)
+
+    symbols = sorted(list(ltp_map.keys()))
     for idx, sym in enumerate(symbols[:limit], 1):
-        item = data[sym]
-        cname = item.get("company_name", sym)
-        if len(cname) > 28:
-            cname = cname[:25] + "..."
-        ltp_val = item.get("ltp", 0.0)
-        ycp_val = item.get("ycp", 0.0)
-        up_val = item.get("circuit_up", 0.0)
-        down_val = item.get("circuit_down", 0.0)
-        print(f"{idx:<4} | {sym:<12} | {cname:<28} | {ltp_val:>10.2f} | {ycp_val:>8.2f} | {up_val:>9.2f} | {down_val:>9.2f}")
+        l_item = ltp_map[sym]
+        b_item = bbo_map.get(sym, {})
+        cname = l_item.get("company_name", sym)
+        if len(cname) > 26:
+            cname = cname[:23] + "..."
+        ltp_val = l_item.get("ltp", 0.0)
+        up_val = l_item.get("circuit_up", 0.0)
+        down_val = l_item.get("circuit_down", 0.0)
+
+        bid_str = f"{b_item.get('bid_price', 0.0):.2f} ({b_item.get('bid_qty', 0)})" if b_item.get("bid_price", 0.0) > 0 else "-"
+        ask_str = f"{b_item.get('ask_price', 0.0):.2f} ({b_item.get('ask_qty', 0)})" if b_item.get("ask_price", 0.0) > 0 else "-"
+        bounds_str = f"{up_val:.1f} / {down_val:.1f}"
+
+        print(f"{idx:<4} | {sym:<12} | {cname:<26} | {ltp_val:>10.2f} | {bid_str:>18} | {ask_str:>18} | {bounds_str:>15}")
 
     if len(symbols) > limit:
-        print(f"... and {len(symbols) - limit} more Public Board symbols collected from DB table.")
-    print("=" * 95 + "\n")
+        print(f"... and {len(symbols) - limit} more Public Board symbols collected from DB tables.")
+    print("=" * 115 + "\n")
 
 
 if __name__ == "__main__":
     ex = sys.argv[1] if len(sys.argv) > 1 else "DSE"
-    print_public_board_summary(ex, limit=35)
+    if len(sys.argv) > 2:
+        # If symbol specified, print full depth
+        test_sym = sys.argv[2]
+        snap = fetch_complete_market_depth(test_sym, ex)
+        print(f"\n--- Complete Market Depth for {test_sym} ({ex}) from DB Tables ---")
+        for k, v in snap.items():
+            print(f"  {k:<20}: {v}")
+    else:
+        print_public_board_summary(ex, limit=25)

@@ -49,6 +49,15 @@ def get_snapshot(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -
     sym = oms_price.clean_symbol(symbol)
     ex = (exchange or "DSE").upper()
 
+    # Tier 0: Direct DB Tables (dse_md_ltp, dse_md_bbo, dse_md_mktdepth)
+    try:
+        from db_market_data import fetch_complete_market_depth
+        db_depth = fetch_complete_market_depth(sym, ex)
+        if db_depth and (db_depth.get("LTP") or db_depth.get("Best_Bid_Price")):
+            return db_depth
+    except Exception:
+        pass
+
     script = """
     var sym = arguments[0];
     var ex = arguments[1];

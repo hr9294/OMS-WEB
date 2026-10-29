@@ -137,6 +137,15 @@ public class Market_Depth {
         String cleanSymbol = cleanSymbol(symbol);
         String ex = (preferredExchange != null && !preferredExchange.isEmpty()) ? preferredExchange : "DSE";
 
+        // Tier 0: Direct DB Tables (dse_md_ltp, dse_md_bbo, dse_md_mktdepth)
+        try {
+            Map<String, String> dbSnap = OMSweb_DBMarketData.getCompleteMarketSnapshot(cleanSymbol, ex);
+            if (dbSnap != null && (dbSnap.containsKey("LTP") || dbSnap.containsKey("Best_Bid_Price"))) {
+                System.out.printf("[SUCCESS: DB Tables] Captured complete Market Depth for %s from %s Public DB Tables (ltp, bbo, mktdepth).%n", cleanSymbol, ex);
+                return dbSnap;
+            }
+        } catch (Exception ignored) {}
+
         // Tier 1: Admin Shared Market Depth API (/shared/getmktdepth/)
         try {
             String adminUrl = String.format("/shared/getmktdepth/?mkt_group=PUBLIC&mkt_symbol=%s&exchange=%s", cleanSymbol, ex);
