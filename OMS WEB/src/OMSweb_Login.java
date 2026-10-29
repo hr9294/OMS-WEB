@@ -14,7 +14,7 @@ public class OMSweb_Login {
 		
 		String username = System.getenv("OMS_USERNAME");
 		if (username == null || username.trim().isEmpty()) {
-			username = "UFTTRDR020";
+			username = "Testadmin";
 		}
 		WebElement userNameInput = driver.findElement(By.xpath("//input[@id='username']"));
 		userNameInput.clear();
