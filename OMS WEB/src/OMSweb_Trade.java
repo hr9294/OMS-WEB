@@ -558,8 +558,18 @@ public class OMSweb_Trade {
 				return;
 			}
 
-			System.out.println("[NAV] Admin user detected on Dashboard. Navigating to Trade Portal...");
 			JavascriptExecutor js = (JavascriptExecutor) driver;
+			String userLabel = "User";
+			try {
+				Object uname = js.executeScript(
+					"var el = document.querySelector('.user-name, .username, #username_display, .user-profile span, .profile-name, .user-info');" +
+					"return el ? (el.innerText || el.textContent).trim() : null;"
+				);
+				if (uname != null && !uname.toString().trim().isEmpty()) {
+					userLabel = uname.toString().trim();
+				}
+			} catch (Exception ignored) {}
+			System.out.printf("[NAV] %s detected on Dashboard. Navigating to Trade Portal...%n", userLabel);
 			js.executeScript(
 				"var tradeLink = document.querySelector('a[data-link=\"live_orders/trade_portal\"]');" +
 				"if (tradeLink) {" +
