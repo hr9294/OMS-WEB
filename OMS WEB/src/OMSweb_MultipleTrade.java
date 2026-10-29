@@ -18,6 +18,7 @@ import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
+import org.openqa.selenium.interactions.Actions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
@@ -91,11 +92,12 @@ public class OMSweb_MultipleTrade {
         final int quantity;
         final double rate;
         final double refLtp;
+        final String expectedStatus; // "ACCEPTED", "FILLED", "PARTIALLY_FILLED", "CANCELLED"
         long latencyMs = 0;
         boolean executed = false;
         String errorMessage = null;
 
-        public TradeOrder(int seq, OrderSide side, String clientCode, String symbol, int quantity, double rate, double refLtp) {
+        public TradeOrder(int seq, OrderSide side, String clientCode, String symbol, int quantity, double rate, double refLtp, String expectedStatus) {
             this.seq = seq;
             this.side = side;
             this.clientCode = clientCode;
@@ -103,11 +105,16 @@ public class OMSweb_MultipleTrade {
             this.quantity = quantity;
             this.rate = rate;
             this.refLtp = refLtp;
+            this.expectedStatus = (expectedStatus != null) ? expectedStatus : "ACCEPTED";
+        }
+
+        public TradeOrder(int seq, OrderSide side, String clientCode, String symbol, int quantity, double rate, double refLtp) {
+            this(seq, side, clientCode, symbol, quantity, rate, refLtp, "ACCEPTED");
         }
 
         // Backward compatibility constructor
         public TradeOrder(OrderSide side, String clientCode, String symbol, int quantity, double priceOffset) {
-            this(0, side, clientCode, symbol, quantity, priceOffset, priceOffset);
+            this(0, side, clientCode, symbol, quantity, priceOffset, priceOffset, "ACCEPTED");
         }
 
         public void markSuccess(long latency) {
@@ -127,14 +134,15 @@ public class OMSweb_MultipleTrade {
         public int getQuantity() { return quantity; }
         public double getRate() { return rate; }
         public double getRefLtp() { return refLtp; }
+        public String getExpectedStatus() { return expectedStatus; }
         public long getLatencyMs() { return latencyMs; }
         public boolean isExecuted() { return executed; }
         public String getErrorMessage() { return errorMessage; }
 
         @Override
         public String toString() {
-            return String.format("[%s] Client: %-6s | %-10s x %3d @ %7.2f (Ref: %.2f)", 
-                side, clientCode, symbol, quantity, rate, refLtp);
+            return String.format("[%s] Client: %-6s | %-10s x %3d @ %7.2f (Ref: %.2f) [%s]", 
+                side, clientCode, symbol, quantity, rate, refLtp, expectedStatus);
         }
     }
 
@@ -305,21 +313,23 @@ public class OMSweb_MultipleTrade {
 
         // 4. HFT Simulation Strategy
         System.out.println("\n[HFT CONFIG: 4. TRADING ALGORITHM / STRATEGY]");
-        System.out.println("  1. Spread Market Maker (BUY @ LTP - spread, SELL @ LTP + spread) [Default]");
+        System.out.println("  1. Spread Market Maker (BUY @ LTP - spread, SELL @ LTP + spread)");
         System.out.println("  2. Aggressive Market Taker (BUY & SELL directly at LTP for immediate matching)");
         System.out.println("  3. Dynamic Micro-Burst / Volatility (Randomized tight spreads simulating order flow)");
-        System.out.print("Select Strategy (1-3, default=1): ");
+        System.out.println("  4. Full Simultaneous Lifecycle Engine: Accepted, Filled, Partially Filled & Cancelled [15-Min Continuous] (Recommended)");
+        System.out.print("Select Strategy (1-4, default=4): ");
         String stratInput = sc.nextLine().trim();
-        int strategyChoice = 1;
+        int strategyChoice = 4;
         try {
             if (!stratInput.isEmpty()) strategyChoice = Integer.parseInt(stratInput);
         } catch (Exception ignored) {}
 
         // 5. Execution Volume & Pacing
         System.out.println("\n[HFT CONFIG: 5. ORDER VOLUME & PACING]");
-        System.out.print("Enter Total Orders to Execute (default 50): ");
+        int defaultTotalOrders = (strategyChoice == 4) ? 300 : 50;
+        System.out.printf("Enter Total Orders to Execute (default %d, or 0 for continuous 15-min run): ", defaultTotalOrders);
         String countInput = sc.nextLine().trim();
-        int totalOrders = 50;
+        int totalOrders = defaultTotalOrders;
         try {
             if (!countInput.isEmpty()) totalOrders = Integer.parseInt(countInput);
         } catch (Exception ignored) {}
@@ -331,9 +341,10 @@ public class OMSweb_MultipleTrade {
             if (!delayInput.isEmpty()) interOrderDelayMs = Integer.parseInt(delayInput);
         } catch (Exception ignored) {}
 
-        System.out.print("Enter Max Duration budget in seconds (default 60s): ");
+        int defaultDurationSec = 900; // 15 minutes default
+        System.out.printf("Enter Max Duration budget in seconds (default %ds = 15 minutes): ", defaultDurationSec);
         String durInput = sc.nextLine().trim();
-        int maxDurationSec = 60;
+        int maxDurationSec = defaultDurationSec;
         try {
             if (!durInput.isEmpty()) maxDurationSec = Integer.parseInt(durInput);
         } catch (Exception ignored) {}
@@ -377,22 +388,24 @@ public class OMSweb_MultipleTrade {
                 totalSyms, dbHitCount, totalSyms - dbHitCount);
 
         // 7. Generate Interleaved HFT Pipeline (Guarded by Circuit Limits)
+        int initialQueueSize = (totalOrders > 0) ? totalOrders : 300;
         List<TradeOrder> pipeline = buildHftPipeline(
                 symbols, buyClients, sellClientsBySymbol, symbolPrices, symbolCircuits,
-                totalOrders, strategyChoice, 0.10
+                initialQueueSize, strategyChoice, 0.10
         );
 
         // 8. Display Simulation Plan & Guardrail Proceed Prompt
+        String stratDisplay = (strategyChoice == 4) ? "Full Simultaneous Lifecycle (Accepted, Filled, Partial, Cancel) [15 Min]"
+                : (strategyChoice == 2 ? "Aggressive Market Taker (LTP)" : (strategyChoice == 3 ? "Dynamic Volatility Jitter" : "Spread Market Maker"));
         System.out.println("\n+=============================================================================+");
         System.out.println("|              HFT MULTI-SYMBOL MULTI-CLIENT SIMULATION PLAN                  |");
         System.out.println("+=============================================================================+");
         System.out.printf("| Basket Symbols       : %-52s |%n", symbols);
         System.out.printf("| BUY Client Pool      : %-52s |%n", buyClients);
         System.out.printf("| SELL Client Routing  : %-52s |%n", "Mapped dynamically to verified holding accounts");
-        System.out.printf("| Total Planned Orders : %-52d |%n", pipeline.size());
-        System.out.printf("| Trading Strategy     : %-52s |%n", 
-                (strategyChoice == 2 ? "Aggressive Market Taker (LTP)" : (strategyChoice == 3 ? "Dynamic Volatility Jitter" : "Spread Market Maker")));
-        System.out.printf("| Interleave Pacing    : %d ms delay | Max Duration Budget: %ds                |%n", interOrderDelayMs, maxDurationSec);
+        System.out.printf("| Total Planned Orders : %-52s |%n", (totalOrders > 0 ? String.valueOf(totalOrders) : "Continuous 15-Minute Run"));
+        System.out.printf("| Trading Strategy     : %-52s |%n", stratDisplay);
+        System.out.printf("| Interleave Pacing    : %d ms delay | Max Duration Budget: %ds (15m)       |%n", interOrderDelayMs, maxDurationSec);
         System.out.println("+=============================================================================+");
 
         System.out.print("\nProceed to execute HFT Simulation? (1=YES / 0=NO, default=1): ");
@@ -404,18 +417,29 @@ public class OMSweb_MultipleTrade {
 
         // 9. High-Speed Execution Loop
         System.out.println("\n>>> STARTING HIGH-FREQUENCY MULTI-SYMBOL EXECUTION ENGINE <<<");
+        System.out.printf("[HFT ENGINE] Duration Budget: %d seconds (15 minutes) | Target: Accepted, Filled, Partially Filled, Cancelled Orders%n", maxDurationSec);
         Instant sessionStart = Instant.now();
         Duration maxBudget = Duration.ofSeconds(maxDurationSec);
         int successCount = 0;
         int failedCount = 0;
+        int acceptedCount = 0;
+        int filledCount = 0;
+        int partialFillCount = 0;
+        int cancelledCount = 0;
 
-        for (int i = 0; i < pipeline.size(); i++) {
-            if (Duration.between(sessionStart, Instant.now()).compareTo(maxBudget) >= 0) {
-                System.out.println("\n⏱ Max execution time budget reached. Halting HFT engine gracefully.");
-                break;
-            }
+        List<TradeOrder> executedOrders = new ArrayList<>();
+        int cycleIndex = 0;
 
-            TradeOrder order = pipeline.get(i);
+        while (Duration.between(sessionStart, Instant.now()).compareTo(maxBudget) < 0 && (totalOrders <= 0 || (successCount + failedCount) < totalOrders)) {
+            TradeOrder templateOrder = pipeline.get(cycleIndex % pipeline.size());
+            cycleIndex++;
+            int currentOrderNum = successCount + failedCount + 1;
+            TradeOrder order = new TradeOrder(
+                    currentOrderNum, templateOrder.side, templateOrder.clientCode,
+                    templateOrder.symbol, templateOrder.quantity, templateOrder.rate,
+                    templateOrder.refLtp, templateOrder.expectedStatus
+            );
+            executedOrders.add(order);
             Instant orderStart = Instant.now();
 
             try {
@@ -426,33 +450,54 @@ public class OMSweb_MultipleTrade {
                 if (ok) {
                     order.markSuccess(latency);
                     successCount++;
-                    System.out.printf("[HFT #%03d/%03d] ✔ %-4s | Client: %-6s | %-10s x %2d @ %7.2f (Ref: %7.2f) [%4d ms]%n",
-                            order.seq, pipeline.size(), order.side, order.clientCode, order.symbol, order.quantity, order.rate, order.refLtp, latency);
+
+                    String statusLabel = order.expectedStatus;
+                    if ("CANCELLED".equalsIgnoreCase(order.expectedStatus)) {
+                        boolean cancelOk = cancelLatestOrder(driver, wait, js, order.clientCode, order.symbol);
+                        if (cancelOk) {
+                            cancelledCount++;
+                            statusLabel = "CANCELLED (Confirmed)";
+                        } else {
+                            acceptedCount++;
+                            statusLabel = "CANCEL_SUBMITTED (Accepted)";
+                        }
+                    } else if (order.expectedStatus.startsWith("FILLED")) {
+                        filledCount++;
+                    } else if (order.expectedStatus.startsWith("PARTIALLY_FILLED")) {
+                        partialFillCount++;
+                    } else {
+                        acceptedCount++;
+                    }
+
+                    long remainingSecs = Math.max(0, maxDurationSec - Duration.between(sessionStart, Instant.now()).toSeconds());
+                    System.out.printf("[HFT #%03d | ⏱ %02dm %02ds left] ✔ %-4s | Client: %-6s | %-10s x %2d @ %7.2f (Ref: %7.2f) [%s] [%4d ms]%n",
+                            currentOrderNum, (remainingSecs / 60), (remainingSecs % 60),
+                            order.side, order.clientCode, order.symbol, order.quantity, order.rate, order.refLtp, statusLabel, latency);
                 } else {
                     order.markFailed("Submission rejected or intercepted");
                     failedCount++;
-                    System.err.printf("[HFT #%03d/%03d] ✖ %-4s | Client: %-6s | %-10s x %2d @ %7.2f [%4d ms] -> REJECTED (Proceeding to next)%n",
-                            order.seq, pipeline.size(), order.side, order.clientCode, order.symbol, order.quantity, order.rate, latency);
-                    // If first order or any order is rejected, dismiss modal/alerts and move to next
+                    long remainingSecs = Math.max(0, maxDurationSec - Duration.between(sessionStart, Instant.now()).toSeconds());
+                    System.err.printf("[HFT #%03d | ⏱ %02dm %02ds left] ✖ %-4s | Client: %-6s | %-10s x %2d @ %7.2f [%s] [%4d ms] -> REJECTED (Proceeding to next)%n",
+                            currentOrderNum, (remainingSecs / 60), (remainingSecs % 60),
+                            order.side, order.clientCode, order.symbol, order.quantity, order.rate, order.expectedStatus, latency);
                     dismissAnyOpenModal(driver, js);
                 }
             } catch (Exception ex) {
                 long latency = Duration.between(orderStart, Instant.now()).toMillis();
                 order.markFailed(ex.getMessage());
                 failedCount++;
-                System.err.printf("[HFT #%03d/%03d] ✖ %-4s | Client: %-6s | %-10s x %2d @ %7.2f [%4d ms] -> ERROR: %s (Continuing to next)%n",
-                        order.seq, pipeline.size(), order.side, order.clientCode, order.symbol, order.quantity, order.rate, latency, ex.getMessage());
-                // Clean up any stray error popup or modal and proceed to next order
+                System.err.printf("[HFT #%03d] ✖ %-4s | Client: %-6s | %-10s x %2d @ %7.2f [%4d ms] -> ERROR: %s (Continuing to next)%n",
+                        currentOrderNum, order.side, order.clientCode, order.symbol, order.quantity, order.rate, latency, ex.getMessage());
                 dismissAnyOpenModal(driver, js);
             }
 
             // Pacing control
-            if (interOrderDelayMs > 0 && i < pipeline.size() - 1) {
+            if (interOrderDelayMs > 0) {
                 Thread.sleep(interOrderDelayMs);
             }
 
-            // Periodic background refresh every 5 orders so frontend tables stay live
-            if ((i + 1) % 5 == 0 || i == pipeline.size() - 1) {
+            // Periodic background refresh every 6 orders (1 full lifecycle cycle) so frontend tables stay live
+            if (currentOrderNum % 6 == 0) {
                 try {
                     js.executeScript("if (typeof get_order_history === 'function') { get_order_history(); }");
                     js.executeScript("if (typeof get_order_summary === 'function') { get_order_summary(); }");
@@ -460,10 +505,15 @@ public class OMSweb_MultipleTrade {
             }
         }
 
+        if (Duration.between(sessionStart, Instant.now()).compareTo(maxBudget) >= 0) {
+            System.out.printf("%n⏱ 15-Minute execution budget reached (%d seconds). Halting HFT engine gracefully.%n", maxDurationSec);
+        }
+
         Duration totalDuration = Duration.between(sessionStart, Instant.now());
 
         // 10. Performance Telemetry & Detailed Reporting
-        printHftExecutionSummary(pipeline, totalDuration, successCount, failedCount, symbols, buyClients);
+        printHftExecutionSummary(executedOrders, totalDuration, successCount, failedCount,
+                acceptedCount, filledCount, partialFillCount, cancelledCount, symbols, buyClients);
 
         // 11. Synchronize & Present Orders in Frontend Order Terminal
         syncAndPresentOrdersInFrontend(driver, wait, js, symbols, sc);
@@ -641,6 +691,71 @@ public class OMSweb_MultipleTrade {
         int symbolCount = Math.max(1, symbols.size());
         int buyClientCount = Math.max(1, buyClients.size());
 
+        if (strategyChoice == 4) {
+            // Strategy 4: Full Simultaneous Lifecycle Engine
+            // Interleaves 4 core order patterns in cycles of 6 orders:
+            // 1. ACCEPTED (Single limit order below LTP that sits in book)
+            // 2. FILLED (BUY 10 @ LTP + matching SELL 10 @ LTP -> exact fill)
+            // 3. PARTIALLY FILLED (BUY 20 @ LTP + SELL 10 @ LTP -> 10 executed, 10 open)
+            // 4. CANCELLED (Limit BUY @ LTP - 0.30 -> placed then cancelled in Terminal)
+            int symIdx = 0;
+            int buyIdx = 0;
+            int orderNum = 1;
+
+            while (queue.size() < totalTrades) {
+                String sym = symbols.get(symIdx % symbolCount);
+                symIdx++;
+                double ltp = symbolLtpMap.getOrDefault(sym, 100.0);
+                CircuitLimits limits = (symbolCircuits != null) ? symbolCircuits.get(sym) : null;
+                double high = (limits != null && limits.high > 0) ? limits.high : Math.round(ltp * 1.10 * 100.0) / 100.0;
+                double low = (limits != null && limits.low > 0) ? limits.low : Math.round(ltp * 0.90 * 100.0) / 100.0;
+
+                String buyer1 = buyClients.get(buyIdx % buyClientCount);
+                String buyer2 = buyClients.get((buyIdx + 1) % buyClientCount);
+                String buyer3 = buyClients.get((buyIdx + 2) % buyClientCount);
+                buyIdx += 3;
+
+                List<String> sellers = sellClientsBySymbol.getOrDefault(sym, Collections.emptyList());
+                String seller1 = (sellers != null && !sellers.isEmpty()) ? sellers.get(0) : "00463";
+                String seller2 = (sellers != null && sellers.size() > 1) ? sellers.get(1) : (seller1.equals("00463") ? "00600" : "00463");
+
+                // 1. ACCEPTED ORDER (BUY @ LTP - 0.20, sits in book)
+                if (queue.size() < totalTrades) {
+                    double accRate = Math.max(low, Math.round((ltp - 0.20) * 100.0) / 100.0);
+                    if (accRate >= ltp) accRate = Math.max(1.0, Math.round((ltp - 0.10) * 100.0) / 100.0);
+                    queue.add(new TradeOrder(orderNum++, OrderSide.BUY, buyer1, sym, 10, accRate, ltp, "ACCEPTED"));
+                }
+
+                // 2. FILLED ORDER PAIR (BUY @ LTP + SELL @ LTP with matching qty 10)
+                if (queue.size() < totalTrades) {
+                    double fillRate = Math.min(high, Math.max(low, ltp));
+                    queue.add(new TradeOrder(orderNum++, OrderSide.BUY, buyer1, sym, 10, fillRate, ltp, "FILLED (BUY Leg)"));
+                }
+                if (queue.size() < totalTrades) {
+                    double fillRate = Math.min(high, Math.max(low, ltp));
+                    queue.add(new TradeOrder(orderNum++, OrderSide.SELL, seller1, sym, 10, fillRate, ltp, "FILLED (SELL Leg)"));
+                }
+
+                // 3. PARTIALLY FILLED ORDER PAIR (BUY 20 @ LTP + SELL 10 @ LTP)
+                if (queue.size() < totalTrades) {
+                    double partRate = Math.min(high, Math.max(low, ltp));
+                    queue.add(new TradeOrder(orderNum++, OrderSide.BUY, buyer2, sym, 20, partRate, ltp, "PARTIALLY_FILLED (BUY Leg 20)"));
+                }
+                if (queue.size() < totalTrades) {
+                    double partRate = Math.min(high, Math.max(low, ltp));
+                    queue.add(new TradeOrder(orderNum++, OrderSide.SELL, seller2, sym, 10, partRate, ltp, "PARTIALLY_FILLED (SELL Leg 10)"));
+                }
+
+                // 4. CANCELLED ORDER (Limit BUY @ LTP - 0.30 -> placed then cancelled)
+                if (queue.size() < totalTrades) {
+                    double cancelRate = Math.max(low, Math.round((ltp - 0.30) * 100.0) / 100.0);
+                    if (cancelRate >= ltp) cancelRate = Math.max(1.0, Math.round((ltp - 0.10) * 100.0) / 100.0);
+                    queue.add(new TradeOrder(orderNum++, OrderSide.BUY, buyer3, sym, 10, cancelRate, ltp, "CANCELLED"));
+                }
+            }
+            return queue;
+        }
+
         for (int i = 0; i < totalTrades; i++) {
             int seq = i + 1;
             OrderSide side = (i % 2 == 0) ? OrderSide.BUY : OrderSide.SELL;
@@ -691,7 +806,8 @@ public class OMSweb_MultipleTrade {
             }
 
             rate = Math.round(rate * 100.0) / 100.0;
-            queue.add(new TradeOrder(seq, side, clientCode, symbol, qty, rate, ltp));
+            String expected = (strategyChoice == 2) ? "FILLED" : "ACCEPTED";
+            queue.add(new TradeOrder(seq, side, clientCode, symbol, qty, rate, ltp, expected));
         }
 
         return queue;
@@ -1049,6 +1165,124 @@ public class OMSweb_MultipleTrade {
         } catch (Exception ignored) {}
     }
 
+    public static boolean cancelLatestOrder(WebDriver driver, WebDriverWait wait, JavascriptExecutor js, String clientCode, String symbol) {
+        try {
+            // 1. Switch to Order Terminal tab to locate the order row
+            Order_Terminal.navigateToOrderTerminal(driver);
+            Thread.sleep(350);
+            Order_Terminal.refresh(driver);
+            Thread.sleep(350);
+
+            // 2. Find row for this clientCode and symbol
+            WebElement row = Order_Terminal.findOrderRow(driver, null, clientCode, symbol);
+            if (row == null) {
+                List<WebElement> rows = driver.findElements(By.xpath("//table[contains(@id,'market_table') or contains(@class,'order_terminal_table')]//tbody//tr"));
+                if (!rows.isEmpty()) {
+                    row = rows.get(0);
+                }
+            }
+
+            if (row != null) {
+                // 3. Right-click row to open context menu
+                Actions actions = new Actions(driver);
+                try {
+                    actions.contextClick(row).perform();
+                } catch (Exception ignored) {}
+
+                js.executeScript(
+                    "var row = arguments[0];" +
+                    "var rect = row.getBoundingClientRect();" +
+                    "var evt = new MouseEvent('contextmenu', {" +
+                    "    bubbles: true, cancelable: true, view: window," +
+                    "    clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2," +
+                    "    button: 2, buttons: 2" +
+                    "});" +
+                    "row.dispatchEvent(evt);" +
+                    "if (window.jQuery) { window.jQuery(row).trigger('contextmenu'); }",
+                    row
+                );
+                Thread.sleep(400);
+
+                // 4. Click Cancel Order in context menu
+                boolean clicked = clickCancelOrderInContextMenu(driver, js);
+                if (!clicked) {
+                    try {
+                        actions.contextClick(row).perform();
+                    } catch (Exception ignored) {}
+                    Thread.sleep(400);
+                    clicked = clickCancelOrderInContextMenu(driver, js);
+                }
+
+                if (clicked) {
+                    Thread.sleep(400);
+                    // 5. Confirm cancellation
+                    boolean confirmed = confirmOrderWithRetry(driver, wait, js);
+                    System.out.printf("  ✔ [ORDER CANCELLED] Successfully cancelled active order for %s (%s)%n", clientCode, symbol);
+                    Thread.sleep(400);
+                    Order_Terminal.navigateToTrade(driver);
+                    Thread.sleep(300);
+                    return true;
+                }
+            }
+            Order_Terminal.navigateToTrade(driver);
+        } catch (Exception e) {
+            dismissAnyOpenModal(driver, js);
+            try { Order_Terminal.navigateToTrade(driver); } catch (Exception ignored) {}
+        }
+        return false;
+    }
+
+    public static boolean clickCancelOrderInContextMenu(WebDriver driver, JavascriptExecutor js) {
+        String[] candidateXpaths = {
+            "//li[contains(translate(normalize-space(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'cancel order')]",
+            "//li[contains(translate(normalize-space(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'cancel') and not(contains(., 'Execute'))]",
+            "//a[contains(translate(normalize-space(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'cancel')]",
+            "//*[(self::li or self::a or self::span or self::div) and contains(translate(normalize-space(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'cancel order')]",
+            "//*[contains(@class,'cancel') and (self::li or self::a or self::span or self::div)]"
+        };
+
+        for (String xp : candidateXpaths) {
+            try {
+                List<WebElement> matches = driver.findElements(By.xpath(xp));
+                for (WebElement el : matches) {
+                    if (el.isDisplayed()) {
+                        try {
+                            new Actions(driver).moveToElement(el).click().perform();
+                            return true;
+                        } catch (Exception ignored) {}
+                        try {
+                            el.click();
+                            return true;
+                        } catch (Exception ignored) {}
+                        try {
+                            js.executeScript("arguments[0].click();", el);
+                            return true;
+                        } catch (Exception ignored) {}
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        try {
+            Object res = js.executeScript(
+                "var all = Array.from(document.querySelectorAll('li, a, span, div.menu-item'));" +
+                "for (var i = 0; i < all.length; i++) {" +
+                "    var el = all[i];" +
+                "    if (el.offsetParent === null) continue;" +
+                "    var txt = (el.innerText || el.textContent || '').trim().toLowerCase();" +
+                "    if (txt === 'cancel order' || (txt.indexOf('cancel') !== -1 && txt.indexOf('execute') === -1 && txt.length < 25)) {" +
+                "        el.click();" +
+                "        return true;" +
+                "    }" +
+                "}" +
+                "return false;"
+            );
+            return Boolean.TRUE.equals(res);
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     // ==========================================
     // 7. BACKWARD COMPATIBILITY
     // ==========================================
@@ -1138,11 +1372,15 @@ public class OMSweb_MultipleTrade {
         }
     }
 
-    private static void printHftExecutionSummary(
+    public static void printHftExecutionSummary(
             List<TradeOrder> queue,
             Duration totalDuration,
             int successCount,
             int failedCount,
+            int acceptedCount,
+            int filledCount,
+            int partialFillCount,
+            int cancelledCount,
             List<String> symbols,
             List<String> buyClients) {
 
@@ -1189,12 +1427,19 @@ public class OMSweb_MultipleTrade {
         long avgLat = measuredCount > 0 ? (sumLat / measuredCount) : 0;
         if (minLat == Long.MAX_VALUE) minLat = 0;
 
+        long totalSecsInt = totalDuration.toSeconds();
         System.out.println("\n+=============================================================================+");
         System.out.println("|            HIGH FREQUENCY TRADING (HFT) SIMULATION PERFORMANCE REPORT       |");
         System.out.println("+=============================================================================+");
-        System.out.printf("| Total Duration       : %6.2f seconds%n", totalSecs);
+        System.out.printf("| Total Duration       : %02dm %02ds (%.2f seconds)%n", totalSecsInt / 60, totalSecsInt % 60, totalSecs);
         System.out.printf("| Orders Attempted     : %-6d%n", (successCount + failedCount));
         System.out.printf("| Successful Orders    : %-6d (%.1f%%)%n", successCount, (successCount * 100.0 / Math.max(1, successCount + failedCount)));
+        if (acceptedCount > 0 || filledCount > 0 || partialFillCount > 0 || cancelledCount > 0) {
+            System.out.printf("|   - Accepted Orders  : %-6d%n", acceptedCount);
+            System.out.printf("|   - Filled Orders    : %-6d (Matched Crossing Pairs)%n", filledCount);
+            System.out.printf("|   - Partially Filled : %-6d (Partial Matching Pairs)%n", partialFillCount);
+            System.out.printf("|   - Cancelled Orders : %-6d (Placed & Cancelled in Terminal)%n", cancelledCount);
+        }
         System.out.printf("| Failed / Rejected    : %-6d (%.1f%%)%n", failedCount, (failedCount * 100.0 / Math.max(1, successCount + failedCount)));
         System.out.printf("| Throughput (TPS)     : %6.2f Trades / Second%n", tps);
         System.out.printf("| Latency (Min/Avg/Max): %d ms / %d ms / %d ms%n", minLat, avgLat, maxLat);
@@ -1217,6 +1462,16 @@ public class OMSweb_MultipleTrade {
                     e.getKey(), e.getValue()[0], e.getValue()[1]);
         }
         System.out.println("+=============================================================================+\n");
+    }
+
+    public static void printHftExecutionSummary(
+            List<TradeOrder> queue,
+            Duration totalDuration,
+            int successCount,
+            int failedCount,
+            List<String> symbols,
+            List<String> buyClients) {
+        printHftExecutionSummary(queue, totalDuration, successCount, failedCount, 0, 0, 0, 0, symbols, buyClients);
     }
 
     public static void printExecutionSummary(int success, int failed, Duration totalDuration) {

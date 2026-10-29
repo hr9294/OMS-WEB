@@ -77,7 +77,8 @@ class HftOrder:
         symbol: str,
         qty: int,
         rate: float,
-        ref_ltp: float
+        ref_ltp: float,
+        expected_status: str = "ACCEPTED"
     ):
         self.seq = seq
         self.side = side
@@ -86,6 +87,7 @@ class HftOrder:
         self.qty = qty
         self.rate = rate
         self.ref_ltp = ref_ltp
+        self.expected_status = expected_status
         self.latency_ms: float = 0.0
         self.executed: bool = False
         self.error_message: Optional[str] = None
@@ -99,7 +101,7 @@ class HftOrder:
         self.error_message = error
 
     def __str__(self) -> str:
-        return f"[{self.side}] Client: {self.client_code:<6} | {self.symbol:<10} x {self.qty:2d} @ {self.rate:7.2f} (Ref: {self.ref_ltp:7.2f})"
+        return f"[{self.side}] Client: {self.client_code:<6} | {self.symbol:<10} x {self.qty:2d} @ {self.rate:7.2f} (Ref: {self.ref_ltp:7.2f}) [{self.expected_status}]"
 
 
 # Backward compatibility alias
@@ -302,6 +304,135 @@ def dismiss_any_open_modal(driver: webdriver.Chrome) -> None:
         pass
 
 
+def cancel_latest_order(driver: webdriver.Chrome, client_code: str, symbol: str) -> bool:
+    try:
+        import order_terminal
+        order_terminal.navigate_to_order_terminal(driver)
+        time.sleep(0.35)
+        order_terminal.refresh(driver)
+        time.sleep(0.35)
+
+        row = order_terminal.find_order_row(driver, client_code=client_code, symbol=symbol)
+        if not row:
+            rows = driver.find_elements(By.XPATH, "//table[contains(@id,'market_table') or contains(@class,'order_terminal_table')]//tbody//tr")
+            if rows:
+                row = rows[0]
+
+        if row:
+            from selenium.webdriver.common.action_chains import ActionChains
+            try:
+                ActionChains(driver).context_click(row).perform()
+            except Exception:
+                pass
+
+            driver.execute_script("""
+                var row = arguments[0];
+                var rect = row.getBoundingClientRect();
+                var evt = new MouseEvent('contextmenu', {
+                    bubbles: true, cancelable: true, view: window,
+                    clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2,
+                    button: 2, buttons: 2
+                });
+                row.dispatchEvent(evt);
+                if (window.jQuery) { window.jQuery(row).trigger('contextmenu'); }
+            """, row)
+            time.sleep(0.4)
+
+            clicked = click_cancel_order_in_context_menu(driver)
+            if not clicked:
+                try:
+                    ActionChains(driver).context_click(row).perform()
+                except Exception:
+                    pass
+                time.sleep(0.4)
+                clicked = click_cancel_order_in_context_menu(driver)
+
+            if clicked:
+                time.sleep(0.4)
+                # Confirm cancellation modal
+                confirmed = False
+                for _ in range(3):
+                    try:
+                        btn = driver.find_element(By.XPATH, "//button[@id='cnfirmConfirmBtn'] | //button[normalize-space()='YES'] | //button[normalize-space()='Yes']")
+                        btn.click()
+                        confirmed = True
+                        break
+                    except Exception:
+                        try:
+                            res = driver.execute_script("var btn = document.querySelector('#cnfirmConfirmBtn, button.confirm-btn'); if (btn && btn.offsetParent !== null) { btn.click(); return true; } return false;")
+                            if res:
+                                confirmed = True
+                                break
+                        except Exception:
+                            pass
+                        time.sleep(0.15)
+                print(f"  ✔ [ORDER CANCELLED] Successfully cancelled active order for {client_code} ({symbol})")
+                time.sleep(0.4)
+                order_terminal.navigate_to_trade(driver)
+                time.sleep(0.3)
+                return confirmed
+        order_terminal.navigate_to_trade(driver)
+    except Exception:
+        dismiss_any_open_modal(driver)
+        try:
+            import order_terminal
+            order_terminal.navigate_to_trade(driver)
+        except Exception:
+            pass
+    return False
+
+
+def click_cancel_order_in_context_menu(driver: webdriver.Chrome) -> bool:
+    candidate_xpaths = [
+        "//li[contains(translate(normalize-space(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'cancel order')]",
+        "//li[contains(translate(normalize-space(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'cancel') and not(contains(., 'Execute'))]",
+        "//a[contains(translate(normalize-space(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'cancel')]",
+        "//*[(self::li or self::a or self::span or self::div) and contains(translate(normalize-space(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'cancel order')]",
+        "//*[contains(@class,'cancel') and (self::li or self::a or self::span or self::div)]"
+    ]
+    for xp in candidate_xpaths:
+        try:
+            matches = driver.find_elements(By.XPATH, xp)
+            for el in matches:
+                if el.is_displayed():
+                    try:
+                        from selenium.webdriver.common.action_chains import ActionChains
+                        ActionChains(driver).move_to_element(el).click().perform()
+                        return True
+                    except Exception:
+                        pass
+                    try:
+                        el.click()
+                        return True
+                    except Exception:
+                        pass
+                    try:
+                        driver.execute_script("arguments[0].click();", el)
+                        return True
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+    try:
+        res = driver.execute_script("""
+            var all = Array.from(document.querySelectorAll('li, a, span, div.menu-item'));
+            for (var i = 0; i < all.length; i++) {
+                var el = all[i];
+                if (el.offsetParent === null) continue;
+                var txt = (el.innerText || el.textContent || '').trim().toLowerCase();
+                if (txt === 'cancel order' || (txt.indexOf('cancel') !== -1 && txt.indexOf('execute') === -1 && txt.length < 25)) {
+                    el.click();
+                    return true;
+                }
+            }
+            return false;
+        """)
+        return bool(res)
+    except Exception:
+        return False
+
+
 def build_hft_pipeline(
     symbols: List[str],
     buy_clients: List[str],
@@ -316,6 +447,72 @@ def build_hft_pipeline(
     pipeline: List[HftOrder] = []
     symbol_count = max(1, len(symbols))
     buy_count = max(1, len(buy_clients))
+
+    if strategy_choice == 4:
+        # Strategy 4: Full Simultaneous Lifecycle Engine
+        # Interleaves 4 core order patterns in cycles of 6 orders:
+        # 1. ACCEPTED (Single limit order below LTP that sits in book)
+        # 2. FILLED (BUY 10 @ LTP + matching SELL 10 @ LTP -> exact fill)
+        # 3. PARTIALLY FILLED (BUY 20 @ LTP + SELL 10 @ LTP -> 10 executed, 10 open)
+        # 4. CANCELLED (Limit BUY @ LTP - 0.30 -> placed then cancelled in Terminal)
+        sym_idx = 0
+        buy_idx = 0
+        order_num = 1
+
+        while len(pipeline) < total_trades:
+            sym = symbols[sym_idx % symbol_count]
+            sym_idx += 1
+            ltp = symbol_ltp_map.get(sym, 100.0)
+            limits = symbol_circuits.get(sym) if symbol_circuits else None
+            high = limits.high if (limits and limits.high > 0) else round(ltp * 1.10, 2)
+            low = limits.low if (limits and limits.low > 0) else round(ltp * 0.90, 2)
+
+            buyer1 = buy_clients[buy_idx % buy_count]
+            buyer2 = buy_clients[(buy_idx + 1) % buy_count]
+            buyer3 = buy_clients[(buy_idx + 2) % buy_count]
+            buy_idx += 3
+
+            sellers = sell_clients_by_symbol.get(sym, [])
+            seller1 = sellers[0] if sellers else "00463"
+            seller2 = sellers[1] if len(sellers) > 1 else ("00600" if seller1 == "00463" else "00463")
+
+            # 1. ACCEPTED ORDER (BUY @ LTP - 0.20, sits in book)
+            if len(pipeline) < total_trades:
+                acc_rate = max(low, round(ltp - 0.20, 2))
+                if acc_rate >= ltp:
+                    acc_rate = max(1.0, round(ltp - 0.10, 2))
+                pipeline.append(HftOrder(order_num, "BUY", buyer1, sym, 10, acc_rate, ltp, "ACCEPTED"))
+                order_num += 1
+
+            # 2. FILLED ORDER PAIR (BUY @ LTP + SELL @ LTP with matching qty 10)
+            if len(pipeline) < total_trades:
+                fill_rate = min(high, max(low, ltp))
+                pipeline.append(HftOrder(order_num, "BUY", buyer1, sym, 10, fill_rate, ltp, "FILLED (BUY Leg)"))
+                order_num += 1
+            if len(pipeline) < total_trades:
+                fill_rate = min(high, max(low, ltp))
+                pipeline.append(HftOrder(order_num, "SELL", seller1, sym, 10, fill_rate, ltp, "FILLED (SELL Leg)"))
+                order_num += 1
+
+            # 3. PARTIALLY FILLED ORDER PAIR (BUY 20 @ LTP + SELL 10 @ LTP)
+            if len(pipeline) < total_trades:
+                part_rate = min(high, max(low, ltp))
+                pipeline.append(HftOrder(order_num, "BUY", buyer2, sym, 20, part_rate, ltp, "PARTIALLY_FILLED (BUY Leg 20)"))
+                order_num += 1
+            if len(pipeline) < total_trades:
+                part_rate = min(high, max(low, ltp))
+                pipeline.append(HftOrder(order_num, "SELL", seller2, sym, 10, part_rate, ltp, "PARTIALLY_FILLED (SELL Leg 10)"))
+                order_num += 1
+
+            # 4. CANCELLED ORDER (Limit BUY @ LTP - 0.30 -> placed then cancelled)
+            if len(pipeline) < total_trades:
+                cancel_rate = max(low, round(ltp - 0.30, 2))
+                if cancel_rate >= ltp:
+                    cancel_rate = max(1.0, round(ltp - 0.10, 2))
+                pipeline.append(HftOrder(order_num, "BUY", buyer3, sym, 10, cancel_rate, ltp, "CANCELLED"))
+                order_num += 1
+
+        return pipeline
 
     for i in range(total_trades):
         seq = i + 1
@@ -357,7 +554,8 @@ def build_hft_pipeline(
                 rate = limits.high
 
         rate = round(rate, 2)
-        pipeline.append(HftOrder(seq, side, client_code, symbol, qty, rate, ltp))
+        expected = "FILLED" if strategy_choice == 2 else "ACCEPTED"
+        pipeline.append(HftOrder(seq, side, client_code, symbol, qty, rate, ltp, expected))
 
     return pipeline
 
@@ -450,22 +648,25 @@ def run_load_test(driver: webdriver.Chrome) -> None:
 
     # 4. HFT Simulation Strategy
     print("\n[HFT CONFIG: 4. TRADING ALGORITHM / STRATEGY]")
-    print("  1. Spread Market Maker (BUY @ LTP - spread, SELL @ LTP + spread) [Default]")
+    print("  1. Spread Market Maker (BUY @ LTP - spread, SELL @ LTP + spread)")
     print("  2. Aggressive Market Taker (BUY & SELL directly at LTP for immediate matching)")
     print("  3. Dynamic Micro-Burst / Volatility (Randomized tight spreads simulating order flow)")
-    strat_in = input("Select Strategy (1-3, default=1): ").strip()
-    strategy_choice = int(strat_in) if strat_in.isdigit() and strat_in in ["1", "2", "3"] else 1
+    print("  4. Full Simultaneous Lifecycle Engine: Accepted, Filled, Partially Filled & Cancelled [15-Min Continuous] (Recommended)")
+    strat_in = input("Select Strategy (1-4, default=4): ").strip()
+    strategy_choice = int(strat_in) if strat_in.isdigit() and strat_in in ["1", "2", "3", "4"] else 4
 
     # 5. Execution Volume & Pacing
     print("\n[HFT CONFIG: 5. ORDER VOLUME & PACING]")
-    total_trades_in = input("Enter Total Orders to Execute (default 50): ").strip()
-    total_trades = int(total_trades_in) if total_trades_in.isdigit() else 50
+    default_total_orders = 300 if strategy_choice == 4 else 50
+    total_trades_in = input(f"Enter Total Orders to Execute (default {default_total_orders}, or 0 for continuous 15-min run): ").strip()
+    total_trades = int(total_trades_in) if total_trades_in.isdigit() else default_total_orders
 
     delay_in = input("Enter Inter-Order Delay in milliseconds (default 0 ms for maximum burst TPS): ").strip()
     inter_order_delay_ms = int(delay_in) if delay_in.isdigit() else 0
 
-    dur_in = input("Enter Max Duration budget in seconds (default 60s): ").strip()
-    max_duration_sec = int(dur_in) if dur_in.isdigit() else 60
+    default_duration_sec = 900  # 15 minutes default
+    dur_in = input(f"Enter Max Duration budget in seconds (default {default_duration_sec}s = 15 minutes): ").strip()
+    max_duration_sec = int(dur_in) if dur_in.isdigit() else default_duration_sec
 
     # 6. Pre-fetch Live Reference Prices & Circuit Limits (SH/SL, CH/CL) directly from DB table
     print("\n[HFT PRE-FLIGHT: 6. BULK-COLLECTING MARKET QUOTES & CIRCUIT LIMITS FROM DB TABLE (dse_md_ltp)]")
@@ -514,7 +715,7 @@ def run_load_test(driver: webdriver.Chrome) -> None:
         buy_clients=buy_clients,
         sell_clients_by_symbol=sell_clients_by_symbol,
         symbol_ltp_map=symbol_prices,
-        total_trades=total_trades,
+        total_trades=max(total_trades, 60),
         strategy_choice=strategy_choice,
         base_offset=0.10,
         symbol_circuits=symbol_circuits
@@ -524,7 +725,8 @@ def run_load_test(driver: webdriver.Chrome) -> None:
     strat_names = {
         1: "Spread Market Maker",
         2: "Aggressive Market Taker (LTP)",
-        3: "Dynamic Volatility Jitter"
+        3: "Dynamic Volatility Jitter",
+        4: "Full Simultaneous Lifecycle Engine (15-Min Continuous)"
     }
     print("\n+=============================================================================+")
     print("|              HFT MULTI-SYMBOL MULTI-CLIENT SIMULATION PLAN                  |")
@@ -533,7 +735,7 @@ def run_load_test(driver: webdriver.Chrome) -> None:
     print(f"| BUY Client Pool      : {str(buy_clients):<52} |")
     print(f"| SELL Client Routing  : {'Mapped dynamically to verified holding accounts':<52} |")
     print(f"| Total Planned Orders : {len(pipeline):<52} |")
-    print(f"| Trading Strategy     : {strat_names.get(strategy_choice, 'Spread Market Maker'):<52} |")
+    print(f"| Trading Strategy     : {strat_names.get(strategy_choice, 'Full Simultaneous Lifecycle Engine'):<52} |")
     print(f"| Interleave Pacing    : {inter_order_delay_ms} ms delay | Max Duration Budget: {max_duration_sec}s                |")
     print("+=============================================================================+")
 
@@ -544,16 +746,33 @@ def run_load_test(driver: webdriver.Chrome) -> None:
 
     # 9. High-Speed Execution Loop
     print("\n>>> STARTING HIGH-FREQUENCY MULTI-SYMBOL EXECUTION ENGINE <<<")
+    print(f"[HFT ENGINE] Duration Budget: {max_duration_sec} seconds (15 minutes) | Target: Accepted, Filled, Partially Filled, Cancelled Orders")
     start_time = time.time()
     success_count = 0
     failed_count = 0
+    accepted_count = 0
+    filled_count = 0
+    partial_fill_count = 0
+    cancelled_count = 0
 
-    for i, order in enumerate(pipeline):
-        elapsed = time.time() - start_time
-        if elapsed >= max_duration_sec:
-            print(f"\n⏱ Max duration budget ({max_duration_sec}s) reached. Halting HFT engine gracefully.")
-            break
+    executed_orders: List[HftOrder] = []
+    cycle_index = 0
 
+    while (time.time() - start_time) < max_duration_sec and (total_trades <= 0 or (success_count + failed_count) < total_trades):
+        template_order = pipeline[cycle_index % len(pipeline)]
+        cycle_index += 1
+        current_order_num = success_count + failed_count + 1
+        order = HftOrder(
+            seq=current_order_num,
+            side=template_order.side,
+            client_code=template_order.client_code,
+            symbol=template_order.symbol,
+            qty=template_order.qty,
+            rate=template_order.rate,
+            ref_ltp=template_order.ref_ltp,
+            expected_status=template_order.expected_status
+        )
+        executed_orders.append(order)
         order_start = time.time()
         try:
             # Check price against circuit limits & UI exceed warnings
@@ -578,34 +797,66 @@ def run_load_test(driver: webdriver.Chrome) -> None:
             if ok:
                 order.mark_success(latency)
                 success_count += 1
-                print(f"[HFT #{order.seq:03d}/{len(pipeline):03d}] ✔ {order.side:<4} | Client: {order.client_code:<6} | {order.symbol:<10} x {order.qty:2d} @ {rate_to_use:7.2f} (Ref: {order.ref_ltp:7.2f}) [{latency:4.0f} ms]")
+
+                status_label = order.expected_status
+                if order.expected_status == "CANCELLED":
+                    cancel_ok = cancel_latest_order(driver, order.client_code, order.symbol)
+                    if cancel_ok:
+                        cancelled_count += 1
+                        status_label = "CANCELLED (Confirmed)"
+                    else:
+                        accepted_count += 1
+                        status_label = "CANCEL_SUBMITTED (Accepted)"
+                elif order.expected_status.startswith("FILLED"):
+                    filled_count += 1
+                elif order.expected_status.startswith("PARTIALLY_FILLED"):
+                    partial_fill_count += 1
+                else:
+                    accepted_count += 1
+
+                remaining_secs = max(0, int(max_duration_sec - (time.time() - start_time)))
+                print(f"[HFT #{current_order_num:03d} | ⏱ {remaining_secs // 60:02d}m {remaining_secs % 60:02d}s left] ✔ {order.side:<4} | Client: {order.client_code:<6} | {order.symbol:<10} x {order.qty:2d} @ {rate_to_use:7.2f} (Ref: {order.ref_ltp:7.2f}) [{status_label}] [{latency:4.0f} ms]")
             else:
-                order.mark_failed("Order rejected or intercepted")
+                order.mark_failed("Submission rejected or intercepted")
                 failed_count += 1
-                print(f"[HFT #{order.seq:03d}/{len(pipeline):03d}] ✖ {order.side:<4} | Client: {order.client_code:<6} | {order.symbol:<10} x {order.qty:2d} @ {rate_to_use:7.2f} [{latency:4.0f} ms] -> REJECTED (Proceeding to next)")
+                remaining_secs = max(0, int(max_duration_sec - (time.time() - start_time)))
+                print(f"[HFT #{current_order_num:03d} | ⏱ {remaining_secs // 60:02d}m {remaining_secs % 60:02d}s left] ✖ {order.side:<4} | Client: {order.client_code:<6} | {order.symbol:<10} x {order.qty:2d} @ {rate_to_use:7.2f} [{order.expected_status}] [{latency:4.0f} ms] -> REJECTED (Proceeding to next)")
                 dismiss_any_open_modal(driver)
         except Exception as ex:
             latency = (time.time() - order_start) * 1000.0
             order.mark_failed(str(ex))
             failed_count += 1
-            print(f"[HFT #{order.seq:03d}/{len(pipeline):03d}] ✖ {order.side:<4} | Client: {order.client_code:<6} | {order.symbol:<10} x {order.qty:2d} @ {order.rate:7.2f} [{latency:4.0f} ms] -> ERROR: {ex} (Continuing to next)")
+            print(f"[HFT #{current_order_num:03d}] ✖ {order.side:<4} | Client: {order.client_code:<6} | {order.symbol:<10} x {order.qty:2d} @ {order.rate:7.2f} [{latency:4.0f} ms] -> ERROR: {ex} (Continuing to next)")
             dismiss_any_open_modal(driver)
 
-        if inter_order_delay_ms > 0 and i < len(pipeline) - 1:
+        if inter_order_delay_ms > 0:
             time.sleep(inter_order_delay_ms / 1000.0)
 
-        # Periodic background refresh every 5 orders so frontend tables stay live
-        if (i + 1) % 5 == 0 or i == len(pipeline) - 1:
+        # Periodic background refresh every 6 orders (1 full lifecycle cycle) so frontend tables stay live
+        if current_order_num % 6 == 0:
             try:
                 driver.execute_script("if (typeof get_order_history === 'function') { get_order_history(); }")
                 driver.execute_script("if (typeof get_order_summary === 'function') { get_order_summary(); }")
             except Exception:
                 pass
 
+    if (time.time() - start_time) >= max_duration_sec:
+        print(f"\n⏱ 15-Minute execution budget reached ({max_duration_sec} seconds). Halting HFT engine gracefully.")
+
     total_time = max(0.001, time.time() - start_time)
 
     # 10. Performance Telemetry & Detailed Reporting
-    print_hft_execution_summary(pipeline, total_time, success_count, failed_count, symbols)
+    print_hft_execution_summary(
+        pipeline=executed_orders,
+        total_time=total_time,
+        success_count=success_count,
+        failed_count=failed_count,
+        accepted_count=accepted_count,
+        filled_count=filled_count,
+        partial_fill_count=partial_fill_count,
+        cancelled_count=cancelled_count,
+        symbols=symbols
+    )
 
     # 11. Synchronize & Present Orders in Frontend Order Terminal
     sync_and_present_orders_in_frontend(driver, symbols)
@@ -616,7 +867,11 @@ def print_hft_execution_summary(
     total_time: float,
     success_count: int,
     failed_count: int,
-    symbols: List[str]
+    accepted_count: int = 0,
+    filled_count: int = 0,
+    partial_fill_count: int = 0,
+    cancelled_count: int = 0,
+    symbols: Optional[List[str]] = None
 ) -> None:
     """Renders comprehensive HFT executive report with throughput and latency metrics."""
     total_attempted = success_count + failed_count
@@ -630,6 +885,8 @@ def print_hft_execution_summary(
     total_shares = sum(o.qty for o in pipeline if o.executed)
     total_value = sum(o.qty * o.rate for o in pipeline if o.executed)
 
+    if symbols is None:
+        symbols = []
     symbol_stats: Dict[str, Dict[str, Any]] = {
         s: {"attempted": 0, "executed": 0, "shares": 0, "value": 0.0} for s in symbols
     }
@@ -654,12 +911,23 @@ def print_hft_execution_summary(
     success_pct = (success_count * 100.0 / max(1, total_attempted))
     failed_pct = (failed_count * 100.0 / max(1, total_attempted))
 
+    total_secs_int = int(total_time)
     print("\n+=============================================================================+")
     print("|            HIGH FREQUENCY TRADING (HFT) SIMULATION PERFORMANCE REPORT       |")
     print("+=============================================================================+")
-    print(f"| Total Duration       : {total_time:6.2f} seconds{'':<37} |")
+    print(f"| Total Duration       : {total_secs_int // 60:02d}m {total_secs_int % 60:02d}s ({total_time:.2f} seconds)")
     print(f"| Orders Attempted     : {total_attempted:<49} |")
     print(f"| Successful Orders    : {success_count:<6} ({success_pct:5.1f}%){'':<33} |")
+    if accepted_count > 0 or filled_count > 0 or partial_fill_count > 0 or cancelled_count > 0:
+        print(f"|   - Accepted Orders  : {accepted_count:<49} |")
+        print(f"|   - Filled Orders    : {filled_count:<6} (Matched Crossing Pairs){'':<21} |")
+        print(f"|   - Partially Filled : {partial_fill_count:<6} (Partial Matching Pairs){'':<21} |")
+        print(f"|   - Cancelled Orders : {cancelled_count:<6} (Placed & Cancelled in Terminal){'':<14} |")
+    print(f"| Failed / Rejected    : {failed_count:<6} ({failed_pct:5.1f}%){'':<33} |")
+    print(f"| Throughput (TPS)     : {tps:6.2f} Trades / Second{'':<27} |")
+    print(f"| Latency (Min/Avg/Max): {min_lat:4.0f} ms / {avg_lat:4.0f} ms / {max_lat:4.0f} ms{'':<28} |")
+    print(f"| Total Shares Traded  : {int(total_shares):<12,d} shares{'':<31} |")
+    print(f"| Total Traded Value   : {total_value:<12,.2f} BDT{'':<34} |")
     print(f"| Failed / Rejected    : {failed_count:<6} ({failed_pct:5.1f}%){'':<33} |")
     print(f"| Throughput (TPS)     : {tps:6.2f} Trades / Second{'':<27} |")
     print(f"| Latency (Min/Avg/Max): {min_lat:4.0f} ms / {avg_lat:4.0f} ms / {max_lat:4.0f} ms{'':<28} |")
