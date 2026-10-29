@@ -246,7 +246,7 @@ public class OMSweb_MultipleTrade {
         if (symInput.equalsIgnoreCase("TOP") || symInput.equals("10")) {
             symbols.addAll(Arrays.asList("GP", "BATBC", "BEXIMCO", "SQURPHARMA", "LHBL", "ROBI", "RENATA", "BRACBANK", "BXPHARMA", "WALTONHIL"));
         } else if (symInput.equalsIgnoreCase("ALL") || symInput.equalsIgnoreCase("PUBLIC") || symInput.isEmpty()) {
-            symbols.addAll(DEFAULT_SYMBOLS);
+            symbols.addAll(activePublicSymbols);
             List<String> liveDiscovered = discoverPublicSymbolsFromBrowser(driver);
             if (!liveDiscovered.isEmpty()) {
                 for (String ds : liveDiscovered) {
@@ -264,7 +264,7 @@ public class OMSweb_MultipleTrade {
                 }
             }
             if (symbols.isEmpty()) {
-                symbols.addAll(DEFAULT_SYMBOLS);
+                symbols.addAll(activePublicSymbols);
             }
         }
         System.out.printf(">> Active Trading Basket: %d Public Symbol(s) selected: %s%n", symbols.size(), symbols);
@@ -326,10 +326,10 @@ public class OMSweb_MultipleTrade {
 
         // 5. Execution Volume & Pacing
         System.out.println("\n[HFT CONFIG: 5. ORDER VOLUME & PACING]");
-        int defaultTotalOrders = (strategyChoice == 4) ? 300 : 50;
-        System.out.printf("Enter Total Orders to Execute (default %d, or 0 for continuous 15-min run): ", defaultTotalOrders);
+        System.out.printf("Active Trading Basket: %d Public Symbols (DB table dse_md_ltp).%n", symbols.size());
+        System.out.printf("Enter Total Orders to Execute (Press ENTER or 0 for continuous 15-min run across EVERY SINGLE SYMBOL): ");
         String countInput = sc.nextLine().trim();
-        int totalOrders = defaultTotalOrders;
+        int totalOrders = 0; // Default to 0 (continuous 15-min sweep across every single symbol)
         try {
             if (!countInput.isEmpty()) totalOrders = Integer.parseInt(countInput);
         } catch (Exception ignored) {}
@@ -387,23 +387,22 @@ public class OMSweb_MultipleTrade {
         System.out.printf("  ✔ Total %d public symbols bulk-loaded from DB table (Hits: %d, Fallbacks: %d). Zero Market Watch scraping!%n",
                 totalSyms, dbHitCount, totalSyms - dbHitCount);
 
-        // 7. Generate Interleaved HFT Pipeline (Guarded by Circuit Limits)
-        int initialQueueSize = (totalOrders > 0) ? totalOrders : 300;
+        // 7. Generate Interleaved HFT Pipeline Guaranteed Across EVERY SINGLE SYMBOL
         List<TradeOrder> pipeline = buildHftPipeline(
                 symbols, buyClients, sellClientsBySymbol, symbolPrices, symbolCircuits,
-                initialQueueSize, strategyChoice, 0.10
+                totalOrders, strategyChoice, 0.10
         );
 
         // 8. Display Simulation Plan & Guardrail Proceed Prompt
-        String stratDisplay = (strategyChoice == 4) ? "Full Simultaneous Lifecycle (Accepted, Filled, Partial, Cancel) [15 Min]"
-                : (strategyChoice == 2 ? "Aggressive Market Taker (LTP)" : (strategyChoice == 3 ? "Dynamic Volatility Jitter" : "Spread Market Maker"));
+        String stratDisplay = (strategyChoice == 4) ? "Full Simultaneous Lifecycle Sweeps Across EVERY SINGLE SYMBOL [15 Min]"
+                : (strategyChoice == 2 ? "Aggressive Market Taker (LTP) Across All Symbols" : (strategyChoice == 3 ? "Dynamic Volatility Jitter Across All Symbols" : "Spread Market Maker Across All Symbols"));
         System.out.println("\n+=============================================================================+");
         System.out.println("|              HFT MULTI-SYMBOL MULTI-CLIENT SIMULATION PLAN                  |");
         System.out.println("+=============================================================================+");
-        System.out.printf("| Basket Symbols       : %-52s |%n", symbols);
+        System.out.printf("| Basket Symbols       : %d Public Symbols (100%% Universe from dse_md_ltp)%n", symbols.size());
         System.out.printf("| BUY Client Pool      : %-52s |%n", buyClients);
         System.out.printf("| SELL Client Routing  : %-52s |%n", "Mapped dynamically to verified holding accounts");
-        System.out.printf("| Total Planned Orders : %-52s |%n", (totalOrders > 0 ? String.valueOf(totalOrders) : "Continuous 15-Minute Run"));
+        System.out.printf("| Total Planned Orders : %-52s |%n", (totalOrders > 0 ? (totalOrders + " orders") : (pipeline.size() + " orders (15-Minute Continuous Sweeps)")));
         System.out.printf("| Trading Strategy     : %-52s |%n", stratDisplay);
         System.out.printf("| Interleave Pacing    : %d ms delay | Max Duration Budget: %ds (15m)       |%n", interOrderDelayMs, maxDurationSec);
         System.out.println("+=============================================================================+");
@@ -687,79 +686,91 @@ public class OMSweb_MultipleTrade {
             int strategyChoice,
             double baseOffset) {
 
-        List<TradeOrder> queue = new ArrayList<>(totalTrades);
         int symbolCount = Math.max(1, symbols.size());
         int buyClientCount = Math.max(1, buyClients.size());
 
+        // Ensure pipeline contains at least enough orders to sweep across EVERY SINGLE SYMBOL
+        int minTradesToCoverAllSymbols = (strategyChoice == 4) ? (symbolCount * 6) : (symbolCount * 2);
+        int targetTrades = (totalTrades <= 0) ? minTradesToCoverAllSymbols : Math.max(totalTrades, minTradesToCoverAllSymbols);
+
+        List<TradeOrder> queue = new ArrayList<>(targetTrades);
+        int orderNum = 1;
+        int buyIdx = 0;
+
         if (strategyChoice == 4) {
-            // Strategy 4: Full Simultaneous Lifecycle Engine
-            // Interleaves 4 core order patterns in cycles of 6 orders:
-            // 1. ACCEPTED (Single limit order below LTP that sits in book)
-            // 2. FILLED (BUY 10 @ LTP + matching SELL 10 @ LTP -> exact fill)
-            // 3. PARTIALLY FILLED (BUY 20 @ LTP + SELL 10 @ LTP -> 10 executed, 10 open)
-            // 4. CANCELLED (Limit BUY @ LTP - 0.30 -> placed then cancelled in Terminal)
-            int symIdx = 0;
-            int buyIdx = 0;
-            int orderNum = 1;
+            // Strategy 4: Full Simultaneous Lifecycle Engine across EVERY SINGLE SYMBOL
+            // Sweeps across all symbols in the basket sequentially:
+            // Symbol 0 -> Symbol 1 -> Symbol 2 -> ... -> Symbol (N-1)
+            // Each symbol gets one of 4 lifecycle patterns, rotating with each sweep:
+            //   Pattern 0: ACCEPTED (Limit BUY @ LTP - 0.20, sits in order book)
+            //   Pattern 1: FILLED (BUY 10 @ LTP + matching SELL 10 @ LTP -> exact fill)
+            //   Pattern 2: PARTIALLY FILLED (BUY 20 @ LTP + SELL 10 @ LTP -> 10 executed, 10 open)
+            //   Pattern 3: CANCELLED (Limit BUY @ LTP - 0.30 -> placed then cancelled in Terminal)
+            int sweep = 0;
+            while (queue.size() < targetTrades) {
+                for (int s = 0; s < symbolCount && queue.size() < targetTrades; s++) {
+                    String sym = symbols.get(s);
+                    double ltp = symbolLtpMap.getOrDefault(sym, 100.0);
+                    CircuitLimits limits = (symbolCircuits != null) ? symbolCircuits.get(sym) : null;
+                    double high = (limits != null && limits.high > 0) ? limits.high : Math.round(ltp * 1.10 * 100.0) / 100.0;
+                    double low = (limits != null && limits.low > 0) ? limits.low : Math.round(ltp * 0.90 * 100.0) / 100.0;
 
-            while (queue.size() < totalTrades) {
-                String sym = symbols.get(symIdx % symbolCount);
-                symIdx++;
-                double ltp = symbolLtpMap.getOrDefault(sym, 100.0);
-                CircuitLimits limits = (symbolCircuits != null) ? symbolCircuits.get(sym) : null;
-                double high = (limits != null && limits.high > 0) ? limits.high : Math.round(ltp * 1.10 * 100.0) / 100.0;
-                double low = (limits != null && limits.low > 0) ? limits.low : Math.round(ltp * 0.90 * 100.0) / 100.0;
+                    String buyer1 = buyClients.get(buyIdx % buyClientCount);
+                    String buyer2 = buyClients.get((buyIdx + 1) % buyClientCount);
+                    String buyer3 = buyClients.get((buyIdx + 2) % buyClientCount);
+                    buyIdx += 3;
 
-                String buyer1 = buyClients.get(buyIdx % buyClientCount);
-                String buyer2 = buyClients.get((buyIdx + 1) % buyClientCount);
-                String buyer3 = buyClients.get((buyIdx + 2) % buyClientCount);
-                buyIdx += 3;
+                    List<String> sellers = sellClientsBySymbol.getOrDefault(sym, Collections.emptyList());
+                    String seller1 = (sellers != null && !sellers.isEmpty()) ? sellers.get(0) : "00463";
+                    String seller2 = (sellers != null && sellers.size() > 1) ? sellers.get(1) : (seller1.equals("00463") ? "00600" : "00463");
 
-                List<String> sellers = sellClientsBySymbol.getOrDefault(sym, Collections.emptyList());
-                String seller1 = (sellers != null && !sellers.isEmpty()) ? sellers.get(0) : "00463";
-                String seller2 = (sellers != null && sellers.size() > 1) ? sellers.get(1) : (seller1.equals("00463") ? "00600" : "00463");
+                    int pattern = (s + sweep) % 4;
 
-                // 1. ACCEPTED ORDER (BUY @ LTP - 0.20, sits in book)
-                if (queue.size() < totalTrades) {
-                    double accRate = Math.max(low, Math.round((ltp - 0.20) * 100.0) / 100.0);
-                    if (accRate >= ltp) accRate = Math.max(1.0, Math.round((ltp - 0.10) * 100.0) / 100.0);
-                    queue.add(new TradeOrder(orderNum++, OrderSide.BUY, buyer1, sym, 10, accRate, ltp, "ACCEPTED"));
+                    switch (pattern) {
+                        case 0:
+                            // 1. ACCEPTED ORDER (BUY @ LTP - 0.20, sits in book)
+                            double accRate = Math.max(low, Math.round((ltp - 0.20) * 100.0) / 100.0);
+                            if (accRate >= ltp) accRate = Math.max(1.0, Math.round((ltp - 0.10) * 100.0) / 100.0);
+                            queue.add(new TradeOrder(orderNum++, OrderSide.BUY, buyer1, sym, 10, accRate, ltp, "ACCEPTED"));
+                            break;
+
+                        case 1:
+                            // 2. FILLED ORDER PAIR (BUY @ LTP + SELL @ LTP with matching qty 10)
+                            double fillRate = Math.min(high, Math.max(low, ltp));
+                            queue.add(new TradeOrder(orderNum++, OrderSide.BUY, buyer1, sym, 10, fillRate, ltp, "FILLED (BUY Leg)"));
+                            if (queue.size() < targetTrades) {
+                                queue.add(new TradeOrder(orderNum++, OrderSide.SELL, seller1, sym, 10, fillRate, ltp, "FILLED (SELL Leg)"));
+                            }
+                            break;
+
+                        case 2:
+                            // 3. PARTIALLY FILLED ORDER PAIR (BUY 20 @ LTP + SELL 10 @ LTP)
+                            double partRate = Math.min(high, Math.max(low, ltp));
+                            queue.add(new TradeOrder(orderNum++, OrderSide.BUY, buyer2, sym, 20, partRate, ltp, "PARTIALLY_FILLED (BUY Leg 20)"));
+                            if (queue.size() < targetTrades) {
+                                queue.add(new TradeOrder(orderNum++, OrderSide.SELL, seller2, sym, 10, partRate, ltp, "PARTIALLY_FILLED (SELL Leg 10)"));
+                            }
+                            break;
+
+                        case 3:
+                        default:
+                            // 4. CANCELLED ORDER (Limit BUY @ LTP - 0.30 -> placed then cancelled)
+                            double cancelRate = Math.max(low, Math.round((ltp - 0.30) * 100.0) / 100.0);
+                            if (cancelRate >= ltp) cancelRate = Math.max(1.0, Math.round((ltp - 0.10) * 100.0) / 100.0);
+                            queue.add(new TradeOrder(orderNum++, OrderSide.BUY, buyer3, sym, 10, cancelRate, ltp, "CANCELLED"));
+                            break;
+                    }
                 }
-
-                // 2. FILLED ORDER PAIR (BUY @ LTP + SELL @ LTP with matching qty 10)
-                if (queue.size() < totalTrades) {
-                    double fillRate = Math.min(high, Math.max(low, ltp));
-                    queue.add(new TradeOrder(orderNum++, OrderSide.BUY, buyer1, sym, 10, fillRate, ltp, "FILLED (BUY Leg)"));
-                }
-                if (queue.size() < totalTrades) {
-                    double fillRate = Math.min(high, Math.max(low, ltp));
-                    queue.add(new TradeOrder(orderNum++, OrderSide.SELL, seller1, sym, 10, fillRate, ltp, "FILLED (SELL Leg)"));
-                }
-
-                // 3. PARTIALLY FILLED ORDER PAIR (BUY 20 @ LTP + SELL 10 @ LTP)
-                if (queue.size() < totalTrades) {
-                    double partRate = Math.min(high, Math.max(low, ltp));
-                    queue.add(new TradeOrder(orderNum++, OrderSide.BUY, buyer2, sym, 20, partRate, ltp, "PARTIALLY_FILLED (BUY Leg 20)"));
-                }
-                if (queue.size() < totalTrades) {
-                    double partRate = Math.min(high, Math.max(low, ltp));
-                    queue.add(new TradeOrder(orderNum++, OrderSide.SELL, seller2, sym, 10, partRate, ltp, "PARTIALLY_FILLED (SELL Leg 10)"));
-                }
-
-                // 4. CANCELLED ORDER (Limit BUY @ LTP - 0.30 -> placed then cancelled)
-                if (queue.size() < totalTrades) {
-                    double cancelRate = Math.max(low, Math.round((ltp - 0.30) * 100.0) / 100.0);
-                    if (cancelRate >= ltp) cancelRate = Math.max(1.0, Math.round((ltp - 0.10) * 100.0) / 100.0);
-                    queue.add(new TradeOrder(orderNum++, OrderSide.BUY, buyer3, sym, 10, cancelRate, ltp, "CANCELLED"));
-                }
+                sweep++;
             }
             return queue;
         }
 
-        for (int i = 0; i < totalTrades; i++) {
+        // For Strategies 1, 2, 3: Round-Robin across EVERY SINGLE SYMBOL
+        for (int i = 0; i < targetTrades; i++) {
             int seq = i + 1;
             OrderSide side = (i % 2 == 0) ? OrderSide.BUY : OrderSide.SELL;
-            String symbol = symbols.get((i / 2) % symbolCount);
+            String symbol = symbols.get(i % symbolCount);
             double ltp = symbolLtpMap.getOrDefault(symbol, 100.0);
 
             String clientCode;
@@ -767,11 +778,7 @@ public class OMSweb_MultipleTrade {
                 clientCode = buyClients.get((i / 2) % buyClientCount);
             } else {
                 List<String> sellers = sellClientsBySymbol.getOrDefault(symbol, Collections.emptyList());
-                if (sellers == null || sellers.isEmpty()) {
-                    clientCode = "00463";
-                } else {
-                    clientCode = sellers.get((i / 2) % sellers.size());
-                }
+                clientCode = (sellers != null && !sellers.isEmpty()) ? sellers.get(0) : "00463";
             }
 
             // Varied standard trading lot size (10, 15, 20 shares)
@@ -1431,11 +1438,21 @@ public class OMSweb_MultipleTrade {
         long avgLat = measuredCount > 0 ? (sumLat / measuredCount) : 0;
         if (minLat == Long.MAX_VALUE) minLat = 0;
 
+        long distinctAttempted = 0;
+        long distinctExecuted = 0;
+        for (int[] stat : symbolStats.values()) {
+            if (stat[0] > 0) distinctAttempted++;
+            if (stat[1] > 0) distinctExecuted++;
+        }
+
         long totalSecsInt = totalDuration.toSeconds();
         System.out.println("\n+=============================================================================+");
         System.out.println("|            HIGH FREQUENCY TRADING (HFT) SIMULATION PERFORMANCE REPORT       |");
         System.out.println("+=============================================================================+");
         System.out.printf("| Total Duration       : %02dm %02ds (%.2f seconds)%n", totalSecsInt / 60, totalSecsInt % 60, totalSecs);
+        System.out.printf("| Basket Symbols       : %-6d (Total in trading universe)%n", symbols.size());
+        System.out.printf("| Symbols Traded       : %-6d (%.1f%% Universe Coverage across all symbols)%n",
+                distinctAttempted, (distinctAttempted * 100.0 / Math.max(1, symbols.size())));
         System.out.printf("| Orders Attempted     : %-6d%n", (successCount + failedCount));
         System.out.printf("| Successful Orders    : %-6d (%.1f%%)%n", successCount, (successCount * 100.0 / Math.max(1, successCount + failedCount)));
         if (acceptedCount > 0 || filledCount > 0 || partialFillCount > 0 || cancelledCount > 0) {

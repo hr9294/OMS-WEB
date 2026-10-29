@@ -446,81 +446,88 @@ def build_hft_pipeline(
     base_offset: float = 0.10,
     symbol_circuits: Optional[Dict[str, CircuitLimits]] = None
 ) -> List[HftOrder]:
-    """Generates an interleaved HFT order pipeline cycling through symbols and client pools."""
+    """Generates an interleaved HFT order pipeline guaranteed across every single symbol."""
     pipeline: List[HftOrder] = []
     symbol_count = max(1, len(symbols))
     buy_count = max(1, len(buy_clients))
 
+    min_trades = (symbol_count * 6) if strategy_choice == 4 else (symbol_count * 2)
+    target_trades = min_trades if total_trades <= 0 else max(total_trades, min_trades)
+
     if strategy_choice == 4:
-        # Strategy 4: Full Simultaneous Lifecycle Engine
-        # Interleaves 4 core order patterns in cycles of 6 orders:
-        # 1. ACCEPTED (Single limit order below LTP that sits in book)
-        # 2. FILLED (BUY 10 @ LTP + matching SELL 10 @ LTP -> exact fill)
-        # 3. PARTIALLY FILLED (BUY 20 @ LTP + SELL 10 @ LTP -> 10 executed, 10 open)
-        # 4. CANCELLED (Limit BUY @ LTP - 0.30 -> placed then cancelled in Terminal)
-        sym_idx = 0
-        buy_idx = 0
+        # Strategy 4: Full Simultaneous Lifecycle Engine across EVERY SINGLE SYMBOL
+        # Sweeps across all symbols in the basket sequentially:
+        # Symbol 0 -> Symbol 1 -> Symbol 2 -> ... -> Symbol (N-1)
+        # Each symbol gets one of 4 lifecycle patterns, rotating with each sweep:
+        #   Pattern 0: ACCEPTED (Limit BUY @ LTP - 0.20, sits in order book)
+        #   Pattern 1: FILLED (BUY 10 @ LTP + matching SELL 10 @ LTP -> exact fill)
+        #   Pattern 2: PARTIALLY FILLED (BUY 20 @ LTP + SELL 10 @ LTP -> 10 executed, 10 open)
+        #   Pattern 3: CANCELLED (Limit BUY @ LTP - 0.30 -> placed then cancelled in Terminal)
+        sweep = 0
         order_num = 1
+        buy_idx = 0
 
-        while len(pipeline) < total_trades:
-            sym = symbols[sym_idx % symbol_count]
-            sym_idx += 1
-            ltp = symbol_ltp_map.get(sym, 100.0)
-            limits = symbol_circuits.get(sym) if symbol_circuits else None
-            high = limits.high if (limits and limits.high > 0) else round(ltp * 1.10, 2)
-            low = limits.low if (limits and limits.low > 0) else round(ltp * 0.90, 2)
+        while len(pipeline) < target_trades:
+            for s in range(symbol_count):
+                if len(pipeline) >= target_trades:
+                    break
+                sym = symbols[s]
+                ltp = symbol_ltp_map.get(sym, 100.0)
+                limits = symbol_circuits.get(sym) if symbol_circuits else None
+                high = limits.high if (limits and limits.high > 0) else round(ltp * 1.10, 2)
+                low = limits.low if (limits and limits.low > 0) else round(ltp * 0.90, 2)
 
-            buyer1 = buy_clients[buy_idx % buy_count]
-            buyer2 = buy_clients[(buy_idx + 1) % buy_count]
-            buyer3 = buy_clients[(buy_idx + 2) % buy_count]
-            buy_idx += 3
+                buyer1 = buy_clients[buy_idx % buy_count]
+                buyer2 = buy_clients[(buy_idx + 1) % buy_count]
+                buyer3 = buy_clients[(buy_idx + 2) % buy_count]
+                buy_idx += 3
 
-            sellers = sell_clients_by_symbol.get(sym, [])
-            seller1 = sellers[0] if sellers else "00463"
-            seller2 = sellers[1] if len(sellers) > 1 else ("00600" if seller1 == "00463" else "00463")
+                sellers = sell_clients_by_symbol.get(sym, [])
+                seller1 = sellers[0] if sellers else "00463"
+                seller2 = sellers[1] if len(sellers) > 1 else ("00600" if seller1 == "00463" else "00463")
 
-            # 1. ACCEPTED ORDER (BUY @ LTP - 0.20, sits in book)
-            if len(pipeline) < total_trades:
-                acc_rate = max(low, round(ltp - 0.20, 2))
-                if acc_rate >= ltp:
-                    acc_rate = max(1.0, round(ltp - 0.10, 2))
-                pipeline.append(HftOrder(order_num, "BUY", buyer1, sym, 10, acc_rate, ltp, "ACCEPTED"))
-                order_num += 1
+                pattern = (s + sweep) % 4
 
-            # 2. FILLED ORDER PAIR (BUY @ LTP + SELL @ LTP with matching qty 10)
-            if len(pipeline) < total_trades:
-                fill_rate = min(high, max(low, ltp))
-                pipeline.append(HftOrder(order_num, "BUY", buyer1, sym, 10, fill_rate, ltp, "FILLED (BUY Leg)"))
-                order_num += 1
-            if len(pipeline) < total_trades:
-                fill_rate = min(high, max(low, ltp))
-                pipeline.append(HftOrder(order_num, "SELL", seller1, sym, 10, fill_rate, ltp, "FILLED (SELL Leg)"))
-                order_num += 1
+                if pattern == 0:
+                    # 1. ACCEPTED ORDER
+                    acc_rate = max(low, round(ltp - 0.20, 2))
+                    if acc_rate >= ltp:
+                        acc_rate = max(1.0, round(ltp - 0.10, 2))
+                    pipeline.append(HftOrder(order_num, "BUY", buyer1, sym, 10, acc_rate, ltp, "ACCEPTED"))
+                    order_num += 1
+                elif pattern == 1:
+                    # 2. FILLED ORDER PAIR (BUY 10 @ LTP + matching SELL 10 @ LTP)
+                    fill_rate = min(high, max(low, ltp))
+                    pipeline.append(HftOrder(order_num, "BUY", buyer1, sym, 10, fill_rate, ltp, "FILLED (BUY Leg)"))
+                    order_num += 1
+                    if len(pipeline) < target_trades:
+                        pipeline.append(HftOrder(order_num, "SELL", seller1, sym, 10, fill_rate, ltp, "FILLED (SELL Leg)"))
+                        order_num += 1
+                elif pattern == 2:
+                    # 3. PARTIALLY FILLED ORDER PAIR (BUY 20 @ LTP + SELL 10 @ LTP)
+                    part_rate = min(high, max(low, ltp))
+                    pipeline.append(HftOrder(order_num, "BUY", buyer2, sym, 20, part_rate, ltp, "PARTIALLY_FILLED (BUY Leg 20)"))
+                    order_num += 1
+                    if len(pipeline) < target_trades:
+                        pipeline.append(HftOrder(order_num, "SELL", seller2, sym, 10, part_rate, ltp, "PARTIALLY_FILLED (SELL Leg 10)"))
+                        order_num += 1
+                else:
+                    # 4. CANCELLED ORDER
+                    cancel_rate = max(low, round(ltp - 0.30, 2))
+                    if cancel_rate >= ltp:
+                        cancel_rate = max(1.0, round(ltp - 0.10, 2))
+                    pipeline.append(HftOrder(order_num, "BUY", buyer3, sym, 10, cancel_rate, ltp, "CANCELLED"))
+                    order_num += 1
 
-            # 3. PARTIALLY FILLED ORDER PAIR (BUY 20 @ LTP + SELL 10 @ LTP)
-            if len(pipeline) < total_trades:
-                part_rate = min(high, max(low, ltp))
-                pipeline.append(HftOrder(order_num, "BUY", buyer2, sym, 20, part_rate, ltp, "PARTIALLY_FILLED (BUY Leg 20)"))
-                order_num += 1
-            if len(pipeline) < total_trades:
-                part_rate = min(high, max(low, ltp))
-                pipeline.append(HftOrder(order_num, "SELL", seller2, sym, 10, part_rate, ltp, "PARTIALLY_FILLED (SELL Leg 10)"))
-                order_num += 1
-
-            # 4. CANCELLED ORDER (Limit BUY @ LTP - 0.30 -> placed then cancelled)
-            if len(pipeline) < total_trades:
-                cancel_rate = max(low, round(ltp - 0.30, 2))
-                if cancel_rate >= ltp:
-                    cancel_rate = max(1.0, round(ltp - 0.10, 2))
-                pipeline.append(HftOrder(order_num, "BUY", buyer3, sym, 10, cancel_rate, ltp, "CANCELLED"))
-                order_num += 1
+            sweep += 1
 
         return pipeline
 
-    for i in range(total_trades):
+    # For Strategies 1, 2, 3: Round-Robin across EVERY SINGLE SYMBOL
+    for i in range(target_trades):
         seq = i + 1
         side = "BUY" if (i % 2 == 0) else "SELL"
-        symbol = symbols[(i // 2) % symbol_count]
+        symbol = symbols[i % symbol_count]
         ltp = symbol_ltp_map.get(symbol, 100.0)
 
         if side == "BUY":
@@ -533,18 +540,14 @@ def build_hft_pipeline(
         qty = 10 + ((i % 3) * 5)
 
         if strategy_choice == 2:
-            # Strategy 2: Aggressive Market Taker (Exact LTP for immediate cross)
             rate = ltp
         elif strategy_choice == 3:
-            # Strategy 3: Dynamic Micro-Burst / Volatility Jitter (+-0.10 to +-0.40 BDT)
             jitter = 0.10 * (1 + (i % 4))
             rate = max(1.0, round(ltp - jitter, 2)) if side == "BUY" else round(ltp + jitter, 2)
         else:
-            # Strategy 1: Spread Market Maker (BUY @ LTP - spread, SELL @ LTP + spread)
             offset = base_offset + ((i % 5) * 0.10)
             rate = max(1.0, round(ltp - offset, 2)) if side == "BUY" else round(ltp + offset, 2)
 
-        # Circuit range enforcement (SH/SL, CH/CL)
         limits = symbol_circuits.get(symbol) if symbol_circuits else None
         if limits and limits.is_valid():
             if side == "BUY" and rate > limits.high:
@@ -599,7 +602,7 @@ def run_load_test(driver: webdriver.Chrome) -> None:
     if sym_in.upper() in ["TOP", "10"]:
         symbols = ["GP", "BATBC", "BEXIMCO", "SQURPHARMA", "LHBL", "ROBI", "RENATA", "BRACBANK", "BXPHARMA", "WALTONHIL"]
     elif sym_in.upper() in ["ALL", "PUBLIC"] or not sym_in:
-        symbols = list(DEFAULT_SYMBOLS)
+        symbols = list(active_public_syms)
         live_disc = discover_public_symbols_from_browser(driver)
         if live_disc:
             for ds in live_disc:
@@ -612,7 +615,7 @@ def run_load_test(driver: webdriver.Chrome) -> None:
             if clean and clean not in symbols:
                 symbols.append(clean)
         if not symbols:
-            symbols = list(DEFAULT_SYMBOLS)
+            symbols = list(active_public_syms)
     print(f">> Active Trading Basket: {len(symbols)} Public Symbol(s) selected: {symbols}")
 
     # 3. Multi-Client Configuration
@@ -660,9 +663,9 @@ def run_load_test(driver: webdriver.Chrome) -> None:
 
     # 5. Execution Volume & Pacing
     print("\n[HFT CONFIG: 5. ORDER VOLUME & PACING]")
-    default_total_orders = 300 if strategy_choice == 4 else 50
-    total_trades_in = input(f"Enter Total Orders to Execute (default {default_total_orders}, or 0 for continuous 15-min run): ").strip()
-    total_trades = int(total_trades_in) if total_trades_in.isdigit() else default_total_orders
+    print(f"Active Trading Basket: {len(symbols)} Public Symbols (DB table dse_md_ltp).")
+    total_trades_in = input("Enter Total Orders to Execute (Press ENTER or 0 for continuous 15-min run across EVERY SINGLE SYMBOL): ").strip()
+    total_trades = int(total_trades_in) if total_trades_in.isdigit() else 0
 
     delay_in = input("Enter Inter-Order Delay in milliseconds (default 0 ms for maximum burst TPS): ").strip()
     inter_order_delay_ms = int(delay_in) if delay_in.isdigit() else 0
@@ -712,13 +715,13 @@ def run_load_test(driver: webdriver.Chrome) -> None:
 
     print(f"  ✔ Total {total_syms} public symbols bulk-loaded from DB table (Hits: {db_hit_count}, Fallbacks: {total_syms - db_hit_count}). Zero Market Watch scraping!")
 
-    # 7. Generate Interleaved HFT Pipeline (Guarded by Circuit Limits)
+    # 7. Generate Interleaved HFT Pipeline Guaranteed Across EVERY SINGLE SYMBOL
     pipeline = build_hft_pipeline(
         symbols=symbols,
         buy_clients=buy_clients,
         sell_clients_by_symbol=sell_clients_by_symbol,
         symbol_ltp_map=symbol_prices,
-        total_trades=max(total_trades, 60),
+        total_trades=total_trades,
         strategy_choice=strategy_choice,
         base_offset=0.10,
         symbol_circuits=symbol_circuits
@@ -726,15 +729,21 @@ def run_load_test(driver: webdriver.Chrome) -> None:
 
     # 8. Display Simulation Plan & Guardrail Proceed Prompt
     strat_names = {
-        1: "Spread Market Maker",
-        2: "Aggressive Market Taker (LTP)",
-        3: "Dynamic Volatility Jitter",
-        4: "Full Simultaneous Lifecycle Engine (15-Min Continuous)"
+        1: "Spread Market Maker Across All Symbols",
+        2: "Aggressive Market Taker (LTP) Across All Symbols",
+        3: "Dynamic Volatility Jitter Across All Symbols",
+        4: "Full Simultaneous Lifecycle Sweeps Across EVERY SINGLE SYMBOL [15 Min]"
     }
     print("\n+=============================================================================+")
     print("|              HFT MULTI-SYMBOL MULTI-CLIENT SIMULATION PLAN                  |")
     print("+=============================================================================+")
-    print(f"| Basket Symbols       : {str(symbols):<52} |")
+    print(f"| Basket Symbols       : {len(symbols)} Public Symbols (100% Universe from dse_md_ltp)")
+    print(f"| BUY Client Pool      : {str(buy_clients):<52} |")
+    print(f"| SELL Client Routing  : {'Mapped dynamically to verified holding accounts':<52} |")
+    print(f"| Total Planned Orders : {f'{total_trades} orders' if total_trades > 0 else f'{len(pipeline)} orders (15-Minute Continuous Sweeps)':<52} |")
+    print(f"| Trading Strategy     : {strat_names.get(strategy_choice, 'Full Simultaneous Lifecycle Engine'):<52} |")
+    print(f"| Interleave Pacing    : {inter_order_delay_ms} ms delay | Max Duration Budget: {max_duration_sec}s                |")
+    print("+=============================================================================+")
     print(f"| BUY Client Pool      : {str(buy_clients):<52} |")
     print(f"| SELL Client Routing  : {'Mapped dynamically to verified holding accounts':<52} |")
     print(f"| Total Planned Orders : {len(pipeline):<52} |")
@@ -914,11 +923,16 @@ def print_hft_execution_summary(
     success_pct = (success_count * 100.0 / max(1, total_attempted))
     failed_pct = (failed_count * 100.0 / max(1, total_attempted))
 
+    distinct_attempted = sum(1 for st in symbol_stats.values() if st["attempted"] > 0)
+    distinct_executed = sum(1 for st in symbol_stats.values() if st["executed"] > 0)
+
     total_secs_int = int(total_time)
     print("\n+=============================================================================+")
     print("|            HIGH FREQUENCY TRADING (HFT) SIMULATION PERFORMANCE REPORT       |")
     print("+=============================================================================+")
     print(f"| Total Duration       : {total_secs_int // 60:02d}m {total_secs_int % 60:02d}s ({total_time:.2f} seconds)")
+    print(f"| Basket Symbols       : {len(symbols):<6} (Total in trading universe){'':<20} |")
+    print(f"| Symbols Traded       : {distinct_attempted:<6} ({distinct_attempted * 100.0 / max(1, len(symbols)):.1f}% Universe Coverage across all symbols) |")
     print(f"| Orders Attempted     : {total_attempted:<49} |")
     print(f"| Successful Orders    : {success_count:<6} ({success_pct:5.1f}%){'':<33} |")
     if accepted_count > 0 or filled_count > 0 or partial_fill_count > 0 or cancelled_count > 0:
@@ -930,11 +944,6 @@ def print_hft_execution_summary(
     print(f"| Throughput (TPS)     : {tps:6.2f} Trades / Second{'':<27} |")
     print(f"| Latency (Min/Avg/Max): {min_lat:4.0f} ms / {avg_lat:4.0f} ms / {max_lat:4.0f} ms{'':<28} |")
     print(f"| Total Shares Traded  : {int(total_shares):<12,d} shares{'':<31} |")
-    print(f"| Total Traded Value   : {total_value:<12,.2f} BDT{'':<34} |")
-    print(f"| Failed / Rejected    : {failed_count:<6} ({failed_pct:5.1f}%){'':<33} |")
-    print(f"| Throughput (TPS)     : {tps:6.2f} Trades / Second{'':<27} |")
-    print(f"| Latency (Min/Avg/Max): {min_lat:4.0f} ms / {avg_lat:4.0f} ms / {max_lat:4.0f} ms{'':<28} |")
-    print(f"| Total Shares Traded  : {total_shares:<12,d} shares{'':<31} |")
     print(f"| Total Traded Value   : {total_value:<12,.2f} BDT{'':<34} |")
     print("+-----------------------------------------------------------------------------+")
     print("| PER-SYMBOL EXECUTION BREAKDOWN:                                             |")
