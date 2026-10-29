@@ -16,7 +16,8 @@ STRICT FILTERING:
   - STRICTLY EXCLUDES non-equity/derivative instruments: Bonds, Sukuk, Treasury
     Bills/Bonds (TB...), Debentures, Options (-CE, -PE), Futures, Multi-leg (-SPD, -XX).
 
-Configured for UFTFAST OMS / UFTCL UAT environment (192.168.155.22:5445).
+Configured for UFTFAST OMS / UFTCL UAT environment:
+  MARKETDATA_DB_URI = 'postgresql+psycopg2://marketdata:pass4321@10.20.8.29:5445/marketdb'
 """
 
 import os
@@ -30,8 +31,12 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 # Database Connection Settings
+MARKETDATA_DB_URI = os.environ.get(
+    "MARKETDATA_DB_URI",
+    "postgresql+psycopg2://marketdata:pass4321@10.20.8.29:5445/marketdb"
+)
 DB_CONFIG = {
-    "host": os.environ.get("MKT_DB_HOST", "192.168.155.22"),
+    "host": os.environ.get("MKT_DB_HOST", "10.20.8.29"),
     "port": int(os.environ.get("MKT_DB_PORT", "5445")),
     "dbname": os.environ.get("MKT_DB_NAME", "marketdb"),
     "user": os.environ.get("MKT_DB_USER", "marketdata"),
@@ -48,6 +53,31 @@ _CSE_LTP_CACHE: Dict[str, Dict[str, Any]] = {}
 
 _DSE_BBO_CACHE: Dict[str, Dict[str, Any]] = {}
 _CSE_BBO_CACHE: Dict[str, Dict[str, Any]] = {}
+
+
+def get_db_connection():
+    """
+    Creates and returns a PostgreSQL database connection using MARKETDATA_DB_URI or DB_CONFIG.
+    Strips '+psycopg2' scheme prefix if present so psycopg2 connects directly.
+    """
+    import psycopg2
+    if MARKETDATA_DB_URI:
+        uri = MARKETDATA_DB_URI
+        if uri.startswith("postgresql+psycopg2://"):
+            uri = "postgresql://" + uri[len("postgresql+psycopg2://"):]
+        try:
+            return psycopg2.connect(uri, connect_timeout=DB_CONFIG.get("timeout", 5))
+        except Exception:
+            pass
+
+    return psycopg2.connect(
+        host=DB_CONFIG["host"],
+        port=DB_CONFIG["port"],
+        dbname=DB_CONFIG["dbname"],
+        user=DB_CONFIG["user"],
+        password=DB_CONFIG["password"],
+        connect_timeout=DB_CONFIG.get("timeout", 5),
+    )
 
 
 def is_strictly_public_equity(symbol: str, company_name: str = "", sector: str = "", symbol_instr: str = "") -> bool:
@@ -145,16 +175,7 @@ def fetch_ltp_from_db(exchange: str = "DSE", symbol: Optional[str] = None) -> Di
     """
 
     try:
-        import psycopg2
-
-        conn = psycopg2.connect(
-            host=DB_CONFIG["host"],
-            port=DB_CONFIG["port"],
-            dbname=DB_CONFIG["dbname"],
-            user=DB_CONFIG["user"],
-            password=DB_CONFIG["password"],
-            connect_timeout=DB_CONFIG["timeout"],
-        )
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute(query)
         for r in cur.fetchall():
@@ -188,7 +209,7 @@ def fetch_ltp_from_db(exchange: str = "DSE", symbol: Optional[str] = None) -> Di
             save_public_board_cache(results, CACHE_FILE)
         return results
     except Exception as e:
-        print(f"[WARN: DB LTP psycopg2] {e}")
+        print(f"[WARN: DB LTP] {e}")
 
     # Fallback to cache if offline
     cached = load_public_board_cache(CACHE_FILE)
@@ -198,6 +219,22 @@ def fetch_ltp_from_db(exchange: str = "DSE", symbol: Optional[str] = None) -> Di
             if (not symbol or k == symbol.strip().upper()) and is_strictly_public_equity(k, v.get("company_name", ""), v.get("sector", ""), v.get("symbol_instr", ""))
         }
     return results
+
+
+def collect_ltp(exchange: str = "DSE") -> Dict[str, Dict[str, Any]]:
+    """
+    Explicitly triggers real-time LTP collection from PostgreSQL database (marketdb)
+    at MARKETDATA_DB_URI for all Public Board equity symbols, saves to JSON cache,
+    and returns the updated dictionary of symbols.
+    """
+    ex_clean = (exchange or "DSE").strip().upper()
+    if ex_clean == "CSE":
+        _CSE_LTP_CACHE.clear()
+    else:
+        _DSE_LTP_CACHE.clear()
+    ltp_map = fetch_ltp_from_db(exchange=ex_clean)
+    print(f"[SUCCESS: DB LTP] Collected {len(ltp_map)} Public Board symbols from {DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['dbname']} ({ex_clean})")
+    return ltp_map
 
 
 # =========================================================================
@@ -246,16 +283,7 @@ def fetch_bbo_from_db(exchange: str = "DSE", symbol: Optional[str] = None) -> Di
     """
 
     try:
-        import psycopg2
-
-        conn = psycopg2.connect(
-            host=DB_CONFIG["host"],
-            port=DB_CONFIG["port"],
-            dbname=DB_CONFIG["dbname"],
-            user=DB_CONFIG["user"],
-            password=DB_CONFIG["password"],
-            connect_timeout=DB_CONFIG["timeout"],
-        )
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute(query)
         for r in cur.fetchall():
@@ -279,7 +307,7 @@ def fetch_bbo_from_db(exchange: str = "DSE", symbol: Optional[str] = None) -> Di
         conn.close()
         return results
     except Exception as e:
-        print(f"[WARN: DB BBO psycopg2] {e}")
+        print(f"[WARN: DB BBO] {e}")
         return results
 
 
@@ -327,16 +355,7 @@ def fetch_mktdepth_from_db(exchange: str = "DSE", symbol: Optional[str] = None) 
     """
 
     try:
-        import psycopg2
-
-        conn = psycopg2.connect(
-            host=DB_CONFIG["host"],
-            port=DB_CONFIG["port"],
-            dbname=DB_CONFIG["dbname"],
-            user=DB_CONFIG["user"],
-            password=DB_CONFIG["password"],
-            connect_timeout=DB_CONFIG["timeout"],
-        )
+        conn = get_db_connection()
         cur = conn.cursor()
         cur.execute(query)
         for r in cur.fetchall():
@@ -403,7 +422,7 @@ def fetch_mktdepth_from_db(exchange: str = "DSE", symbol: Optional[str] = None) 
         conn.close()
         return results
     except Exception as e:
-        print(f"[WARN: DB Depth psycopg2] {e}")
+        print(f"[WARN: DB Depth] {e}")
         return results
 
 
@@ -547,6 +566,7 @@ def print_public_board_summary(exchange: str = "DSE", limit: int = 30) -> None:
     print(f"    - LTP:        {ex.lower()}_md_ltp")
     print(f"    - Bid/Ask:    {ex.lower()}_md_bbo")
     print(f"    - MktDepth:   {ex.lower()}_md_mktdepth")
+    print(f"  URI: {MARKETDATA_DB_URI}")
     print(f"  Target: {DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['dbname']} | Total Public Symbols: {len(ltp_map)}")
     print("=" * 115)
     header = f"{'#':<4} | {'Symbol':<12} | {'Company Name':<26} | {'LTP (BDT)':>10} | {'Best Bid (Qty)':>18} | {'Best Ask (Qty)':>18} | {'SH/SL Bounds':>15}"
@@ -576,13 +596,16 @@ def print_public_board_summary(exchange: str = "DSE", limit: int = 30) -> None:
 
 
 if __name__ == "__main__":
-    ex = sys.argv[1] if len(sys.argv) > 1 else "DSE"
-    if len(sys.argv) > 2:
+    first_arg = sys.argv[1].strip() if len(sys.argv) > 1 else "DSE"
+    if first_arg.upper() == "COLLECT":
+        target_ex = sys.argv[2] if len(sys.argv) > 2 else "DSE"
+        collect_ltp(target_ex)
+    elif len(sys.argv) > 2:
         # If symbol specified, print full depth
         test_sym = sys.argv[2]
-        snap = fetch_complete_market_depth(test_sym, ex)
-        print(f"\n--- Complete Market Depth for {test_sym} ({ex}) from DB Tables ---")
+        snap = fetch_complete_market_depth(test_sym, first_arg)
+        print(f"\n--- Complete Market Depth for {test_sym} ({first_arg}) from DB Tables ---")
         for k, v in snap.items():
             print(f"  {k:<20}: {v}")
     else:
-        print_public_board_summary(ex, limit=25)
+        print_public_board_summary(first_arg, limit=25)

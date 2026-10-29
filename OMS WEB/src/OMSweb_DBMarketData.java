@@ -24,16 +24,24 @@ import java.util.regex.Pattern;
  *   - STRICTLY EXCLUDES non-equity/derivative instruments: Bonds, Sukuk, Treasury
  *     Bills/Bonds (TB...), Debentures, Options (-CE, -PE), Futures, Multi-leg (-SPD, -XX).
  *
- * Configured for UFTFAST OMS / UFTCL UAT environment (192.168.155.22:5445).
+ * Configured for UFTFAST OMS / UFTCL UAT environment:
+ *   MARKETDATA_DB_URI = 'postgresql+psycopg2://marketdata:pass4321@10.20.8.29:5445/marketdb'
  */
 public class OMSweb_DBMarketData {
 
     // Database Connection Parameters
-    public static final String DB_HOST     = "192.168.155.22";
-    public static final int    DB_PORT     = 5445;
-    public static final String DB_NAME     = "marketdb";
-    public static final String DB_USER     = "marketdata";
-    public static final String DB_PASSWORD = "pass4321";
+    public static final String MARKETDATA_DB_URI = System.getenv("MARKETDATA_DB_URI") != null ?
+            System.getenv("MARKETDATA_DB_URI") : "postgresql+psycopg2://marketdata:pass4321@10.20.8.29:5445/marketdb";
+    public static final String DB_HOST           = System.getenv("MKT_DB_HOST") != null ?
+            System.getenv("MKT_DB_HOST") : "10.20.8.29";
+    public static final int    DB_PORT           = System.getenv("MKT_DB_PORT") != null ?
+            Integer.parseInt(System.getenv("MKT_DB_PORT")) : 5445;
+    public static final String DB_NAME           = System.getenv("MKT_DB_NAME") != null ?
+            System.getenv("MKT_DB_NAME") : "marketdb";
+    public static final String DB_USER           = System.getenv("MKT_DB_USER") != null ?
+            System.getenv("MKT_DB_USER") : "marketdata";
+    public static final String DB_PASSWORD       = System.getenv("MKT_DB_PASS") != null ?
+            System.getenv("MKT_DB_PASS") : "pass4321";
 
     // ==========================================
     // 1. DATA MODELS
@@ -258,6 +266,9 @@ public class OMSweb_DBMarketData {
                     }
                 }
                 proc.waitFor();
+                if (!targetCache.isEmpty()) {
+                    saveToJsonCache(targetCache);
+                }
             }
         } catch (Exception e) {
             System.err.println("[WARN: OMSweb_DBMarketData LTP psql] " + e.getMessage());
@@ -268,6 +279,19 @@ public class OMSweb_DBMarketData {
         }
 
         return Collections.unmodifiableMap(targetCache);
+    }
+
+    public static synchronized Map<String, PublicSymbolLtp> collectLtp(String exchange) {
+        String exClean = (exchange == null || exchange.trim().isEmpty()) ? "DSE" : exchange.trim().toUpperCase();
+        if (exClean.equals("CSE")) {
+            CSE_LTP_CACHE.clear();
+        } else {
+            DSE_LTP_CACHE.clear();
+        }
+        Map<String, PublicSymbolLtp> result = fetchPublicBoardLtp(exClean);
+        System.out.printf("[SUCCESS: DB LTP] Collected %d Public Board symbols from %s:%d/%s (%s)%n",
+                result.size(), DB_HOST, DB_PORT, DB_NAME, exClean);
+        return result;
     }
 
     // ==========================================
@@ -533,6 +557,7 @@ public class OMSweb_DBMarketData {
         System.out.printf("    - LTP:        %s_md_ltp%n", ex.toLowerCase());
         System.out.printf("    - Bid/Ask:    %s_md_bbo%n", ex.toLowerCase());
         System.out.printf("    - MktDepth:   %s_md_mktdepth%n", ex.toLowerCase());
+        System.out.printf("  URI: %s%n", MARKETDATA_DB_URI);
         System.out.printf("  Target: %s:%d/%s | Total Public Symbols: %d%n", DB_HOST, DB_PORT, DB_NAME, ltpMap.size());
         System.out.println("=".repeat(115));
         System.out.printf("%-4s | %-12s | %-26s | %10s | %18s | %18s | %15s%n",
@@ -564,10 +589,55 @@ public class OMSweb_DBMarketData {
         System.out.println("=".repeat(115) + "\n");
     }
 
+    private static void saveToJsonCache(Map<String, PublicSymbolLtp> cache) {
+        String[] jsonPaths = {
+            "OMS_WEB_Python/public_board_ltp.json",
+            "D:\\Anitgravity\\OMS-WEB\\OMS_WEB_Python\\public_board_ltp.json",
+            "C:\\Users\\Hasibur Rahman\\git\\OMS-WEB\\OMS_WEB_Python\\public_board_ltp.json"
+        };
+        for (String p : jsonPaths) {
+            File jf = new File(p);
+            File parent = jf.getParentFile();
+            if (parent != null && !parent.exists()) {
+                parent.mkdirs();
+            }
+            try (java.io.PrintWriter pw = new java.io.PrintWriter(new java.io.OutputStreamWriter(new java.io.FileOutputStream(jf), java.nio.charset.StandardCharsets.UTF_8))) {
+                pw.println("{");
+                int idx = 0;
+                int total = cache.size();
+                for (Map.Entry<String, PublicSymbolLtp> e : cache.entrySet()) {
+                    PublicSymbolLtp r = e.getValue();
+                    String cName = (r.companyName != null) ? r.companyName.replace("\"", "\\\"") : r.symbol;
+                    pw.printf(Locale.US, "  \"%s\": {%n", r.symbol);
+                    pw.printf(Locale.US, "    \"symbol\": \"%s\",%n", r.symbol);
+                    pw.printf(Locale.US, "    \"company_name\": \"%s\",%n", cName);
+                    pw.printf(Locale.US, "    \"board\": \"PUBLIC\",%n");
+                    pw.printf(Locale.US, "    \"ltp\": %.2f,%n", r.ltp);
+                    pw.printf(Locale.US, "    \"ycp\": %.2f,%n", r.ycp);
+                    pw.printf(Locale.US, "    \"circuit_up\": %.2f,%n", r.circuitUp);
+                    pw.printf(Locale.US, "    \"circuit_down\": %.2f,%n", r.circuitDown);
+                    pw.printf(Locale.US, "    \"floor_price\": %.2f,%n", r.floorPrice);
+                    pw.printf(Locale.US, "    \"open\": %.2f,%n", r.open);
+                    pw.printf(Locale.US, "    \"high\": %.2f,%n", r.high);
+                    pw.printf(Locale.US, "    \"low\": %.2f,%n", r.low);
+                    pw.printf(Locale.US, "    \"close\": %.2f,%n", r.close);
+                    pw.printf(Locale.US, "    \"total_qty\": %d,%n", r.totalQty);
+                    pw.printf(Locale.US, "    \"last_update\": \"%s\"%n", r.lastUpdate != null ? r.lastUpdate : "");
+                    pw.printf("  }%s%n", (idx == total - 1 ? "" : ","));
+                    idx++;
+                }
+                pw.println("}");
+                break;
+            } catch (Exception ignored) {}
+        }
+    }
+
     private static String findPsqlExecutable() {
         String[] candidates = {
             "C:\\Program Files\\PostgreSQL\\16\\bin\\psql.exe",
             "C:\\Program Files\\PostgreSQL\\15\\bin\\psql.exe",
+            "C:\\Program Files\\PostgreSQL\\14\\bin\\psql.exe",
+            "C:\\Program Files\\PostgreSQL\\17\\bin\\psql.exe",
             "psql"
         };
         for (String c : candidates) {
@@ -673,7 +743,10 @@ public class OMSweb_DBMarketData {
 
     public static void main(String[] args) {
         String ex = args.length > 0 ? args[0] : "DSE";
-        if (args.length > 1) {
+        if ("COLLECT".equalsIgnoreCase(ex)) {
+            String targetEx = args.length > 1 ? args[1] : "DSE";
+            collectLtp(targetEx);
+        } else if (args.length > 1) {
             String sym = args[1];
             Map<String, String> snap = getCompleteMarketSnapshot(sym, ex);
             System.out.printf("%n--- Complete Market Depth for %s (%s) from DB Tables ---%n", sym, ex);
