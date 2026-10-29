@@ -27,6 +27,24 @@ DEFAULT_SYMBOLS = ["GP", "BEXIMCO", "LHBL", "BATBC", "SQURPHARMA"]
 DEFAULT_BUY_CLIENTS = ["08096", "00224", "08833", "00507", "09139", "09189", "07605"]
 
 
+class CircuitLimits:
+    def __init__(self, sh: float, sl: float, ch: float, cl: float, ref_price: float):
+        self.sh = sh
+        self.sl = sl
+        self.ch = ch
+        self.cl = cl
+        h = sh if sh > 0 else (ch if ch > 0 else (ref_price * 1.10 if ref_price > 0 else 0))
+        l = sl if sl > 0 else (cl if cl > 0 else (ref_price * 0.90 if ref_price > 0 else 0))
+        self.high = round(h, 2)
+        self.low = round(l, 2)
+
+    def is_valid(self) -> bool:
+        return self.high > 0 and self.low > 0 and self.high >= self.low
+
+    def __str__(self) -> str:
+        return f"[SL/CL: {self.low:.2f} - SH/CH: {self.high:.2f}] (SH={self.sh:.2f}, SL={self.sl:.2f}, CH={self.ch:.2f}, CL={self.cl:.2f})"
+
+
 class HftOrder:
     def __init__(
         self,
@@ -129,6 +147,68 @@ def fetch_price_safely(driver: webdriver.Chrome, symbol: str) -> float:
     return fallback
 
 
+def fetch_circuit_limits(driver: webdriver.Chrome, symbol: str, ref_price: float) -> CircuitLimits:
+    sh, sl, ch, cl = 0.0, 0.0, 0.0, 0.0
+    clean_sym = oms_price.clean_symbol(symbol).upper()
+    try:
+        import market_depth
+        depth = market_depth.get_snapshot(driver, clean_sym, "DSE")
+        if depth:
+            sh = oms_price.parse_float(depth.get("SH"))
+            sl = oms_price.parse_float(depth.get("SL"))
+            ch = oms_price.parse_float(depth.get("CH"))
+            cl = oms_price.parse_float(depth.get("CL"))
+    except Exception:
+        pass
+
+    if sh <= 0 and ch <= 0 and ref_price > 0:
+        sh = round(ref_price * 1.10, 2)
+        ch = sh
+    if sl <= 0 and cl <= 0 and ref_price > 0:
+        sl = round(ref_price * 0.90, 2)
+        cl = sl
+
+    return CircuitLimits(sh, sl, ch, cl, ref_price)
+
+
+def check_price_exceed_warning(driver: webdriver.Chrome) -> Optional[str]:
+    try:
+        res = driver.execute_script("""
+            var selectors = ['.text-danger', '.field-validation-error', '#rate_error', '.order-error', '.toast-error', '.alert-danger', '[id*="error"]', '.tooltip-inner'];
+            for (var i = 0; i < selectors.length; i++) {
+                var els = document.querySelectorAll(selectors[i]);
+                for (var j = 0; j < els.length; j++) {
+                    var el = els[j];
+                    if (el && el.offsetParent !== null) {
+                        var t = (el.innerText || el.textContent || '').trim();
+                        var lower = t.toLowerCase();
+                        if (lower.includes('exceed') || lower.includes('circuit') || lower.includes('range') || lower.includes('limit') || lower.includes('high') || lower.includes('low')) {
+                            return t;
+                        }
+                    }
+                }
+            }
+            return null;
+        """)
+        return str(res).strip() if res else None
+    except Exception:
+        return None
+
+
+def dismiss_any_open_modal(driver: webdriver.Chrome) -> None:
+    try:
+        driver.execute_script("""
+            var btns = document.querySelectorAll('#cnfirmCancelBtn, button.btn-secondary, .modal.show button.close, button[data-dismiss="modal"], button.confirm-cancel');
+            for (var i = 0; i < btns.length; i++) { if (btns[i].offsetParent !== null) { btns[i].click(); } }
+            var modals = document.querySelectorAll('.modal.show, .modal-backdrop');
+            for (var m = 0; m < modals.length; m++) { modals[m].classList.remove('show'); modals[m].style.display = 'none'; }
+            document.body.classList.remove('modal-open');
+        """)
+        time.sleep(0.25)
+    except Exception:
+        pass
+
+
 def build_hft_pipeline(
     symbols: List[str],
     buy_clients: List[str],
@@ -136,7 +216,8 @@ def build_hft_pipeline(
     symbol_ltp_map: Dict[str, float],
     total_trades: int,
     strategy_choice: int,
-    base_offset: float = 0.10
+    base_offset: float = 0.10,
+    symbol_circuits: Optional[Dict[str, CircuitLimits]] = None
 ) -> List[HftOrder]:
     """Generates an interleaved HFT order pipeline cycling through symbols and client pools."""
     pipeline: List[HftOrder] = []
@@ -169,6 +250,18 @@ def build_hft_pipeline(
             # Strategy 1: Spread Market Maker (BUY @ LTP - spread, SELL @ LTP + spread)
             offset = base_offset + ((i % 5) * 0.10)
             rate = max(1.0, round(ltp - offset, 2)) if side == "BUY" else round(ltp + offset, 2)
+
+        # Circuit range enforcement (SH/SL, CH/CL)
+        limits = symbol_circuits.get(symbol) if symbol_circuits else None
+        if limits and limits.is_valid():
+            if side == "BUY" and rate > limits.high:
+                rate = limits.high
+            elif side == "BUY" and rate < limits.low:
+                rate = limits.low
+            elif side == "SELL" and rate < limits.low:
+                rate = limits.low
+            elif side == "SELL" and rate > limits.high:
+                rate = limits.high
 
         rate = round(rate, 2)
         pipeline.append(HftOrder(seq, side, client_code, symbol, qty, rate, ltp))
@@ -248,15 +341,18 @@ def run_load_test(driver: webdriver.Chrome) -> None:
     dur_in = input("Enter Max Duration budget in seconds (default 60s): ").strip()
     max_duration_sec = int(dur_in) if dur_in.isdigit() else 60
 
-    # 6. Pre-fetch Live Reference Prices (Zero Page Switch)
-    print("\n[HFT PRE-FLIGHT: 6. PRE-FETCHING MARKET QUOTES (LTP/YCP)]")
+    # 6. Pre-fetch Live Reference Prices & Circuit Limits (SH/SL, CH/CL)
+    print("\n[HFT PRE-FLIGHT: 6. PRE-FETCHING MARKET QUOTES & CIRCUIT LIMITS (SH/SL, CH/CL)]")
     symbol_prices: Dict[str, float] = {}
+    symbol_circuits: Dict[str, CircuitLimits] = {}
     for sym in symbols:
         price = fetch_price_safely(driver, sym)
         symbol_prices[sym] = price
-        print(f"  ✔ {sym:<10} Reference Price: {price:7.2f} BDT")
+        circuits = fetch_circuit_limits(driver, sym, price)
+        symbol_circuits[sym] = circuits
+        print(f"  ✔ {sym:<10} Ref: {price:7.2f} BDT | Circuit Bounds: [SL/CL: {circuits.low:7.2f} - SH/CH: {circuits.high:7.2f}]")
 
-    # 7. Generate Interleaved HFT Pipeline
+    # 7. Generate Interleaved HFT Pipeline (Guarded by Circuit Limits)
     pipeline = build_hft_pipeline(
         symbols=symbols,
         buy_clients=buy_clients,
@@ -264,7 +360,8 @@ def run_load_test(driver: webdriver.Chrome) -> None:
         symbol_ltp_map=symbol_prices,
         total_trades=total_trades,
         strategy_choice=strategy_choice,
-        base_offset=0.10
+        base_offset=0.10,
+        symbol_circuits=symbol_circuits
     )
 
     # 8. Display Simulation Plan & Guardrail Proceed Prompt
@@ -302,24 +399,41 @@ def run_load_test(driver: webdriver.Chrome) -> None:
             break
 
         order_start = time.time()
-        ok = oms_trade.place_order(
-            driver=driver,
-            side=order.side,
-            client_code=order.client_code,
-            symbol=order.symbol,
-            qty=order.qty,
-            rate=order.rate
-        )
-        latency = (time.time() - order_start) * 1000.0
+        try:
+            # Check price against circuit limits & UI exceed warnings
+            limits = symbol_circuits.get(order.symbol) if symbol_circuits else None
+            rate_to_use = order.rate
+            if limits and limits.is_valid():
+                if order.side == "BUY" and rate_to_use > limits.high:
+                    rate_to_use = limits.high
+                elif order.side == "SELL" and rate_to_use < limits.low:
+                    rate_to_use = limits.low
 
-        if ok:
-            order.mark_success(latency)
-            success_count += 1
-            print(f"[HFT #{order.seq:03d}/{len(pipeline):03d}] ✔ {order.side:<4} | Client: {order.client_code:<6} | {order.symbol:<10} x {order.qty:2d} @ {order.rate:7.2f} (Ref: {order.ref_ltp:7.2f}) [{latency:4.0f} ms]")
-        else:
-            order.mark_failed("Order placement failed or intercepted")
+            ok = oms_trade.place_order(
+                driver=driver,
+                side=order.side,
+                client_code=order.client_code,
+                symbol=order.symbol,
+                qty=order.qty,
+                rate=rate_to_use
+            )
+            latency = (time.time() - order_start) * 1000.0
+
+            if ok:
+                order.mark_success(latency)
+                success_count += 1
+                print(f"[HFT #{order.seq:03d}/{len(pipeline):03d}] ✔ {order.side:<4} | Client: {order.client_code:<6} | {order.symbol:<10} x {order.qty:2d} @ {rate_to_use:7.2f} (Ref: {order.ref_ltp:7.2f}) [{latency:4.0f} ms]")
+            else:
+                order.mark_failed("Order rejected or intercepted")
+                failed_count += 1
+                print(f"[HFT #{order.seq:03d}/{len(pipeline):03d}] ✖ {order.side:<4} | Client: {order.client_code:<6} | {order.symbol:<10} x {order.qty:2d} @ {rate_to_use:7.2f} [{latency:4.0f} ms] -> REJECTED (Proceeding to next)")
+                dismiss_any_open_modal(driver)
+        except Exception as ex:
+            latency = (time.time() - order_start) * 1000.0
+            order.mark_failed(str(ex))
             failed_count += 1
-            print(f"[HFT #{order.seq:03d}/{len(pipeline):03d}] ✖ {order.side:<4} | Client: {order.client_code:<6} | {order.symbol:<10} x {order.qty:2d} @ {order.rate:7.2f} [{latency:4.0f} ms] -> FAILED")
+            print(f"[HFT #{order.seq:03d}/{len(pipeline):03d}] ✖ {order.side:<4} | Client: {order.client_code:<6} | {order.symbol:<10} x {order.qty:2d} @ {order.rate:7.2f} [{latency:4.0f} ms] -> ERROR: {ex} (Continuing to next)")
+            dismiss_any_open_modal(driver)
 
         if inter_order_delay_ms > 0 and i < len(pipeline) - 1:
             time.sleep(inter_order_delay_ms / 1000.0)

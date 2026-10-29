@@ -112,6 +112,40 @@ public class OMSweb_MultipleTrade {
         }
     }
 
+
+    // ==========================================
+    // 2B. CIRCUIT LIMITS MODEL (SH/SL & CH/CL)
+    // ==========================================
+    public static class CircuitLimits {
+        public final double sh; // Standard High
+        public final double sl; // Standard Low
+        public final double ch; // Circuit High
+        public final double cl; // Circuit Low
+        public final double high; // Effective upper limit
+        public final double low;  // Effective lower limit
+
+        public CircuitLimits(double sh, double sl, double ch, double cl, double refPrice) {
+            this.sh = sh;
+            this.sl = sl;
+            this.ch = ch;
+            this.cl = cl;
+            double h = (sh > 0) ? sh : ((ch > 0) ? ch : (refPrice > 0 ? refPrice * 1.10 : 0));
+            double l = (sl > 0) ? sl : ((cl > 0) ? cl : (refPrice > 0 ? refPrice * 0.90 : 0));
+            this.high = Math.round(h * 100.0) / 100.0;
+            this.low = Math.round(l * 100.0) / 100.0;
+        }
+
+        public boolean isValid() {
+            return high > 0 && low > 0 && high >= low;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("[SL/CL: %.2f - SH/CH: %.2f] (SH=%.2f, SL=%.2f, CH=%.2f, CL=%.2f)",
+                    low, high, sh, sl, ch, cl);
+        }
+    }
+
     // ==========================================
     // 3. MAIN ENTRY POINTS (STANDALONE & RUNNER)
     // ==========================================
@@ -241,18 +275,22 @@ public class OMSweb_MultipleTrade {
             if (!durInput.isEmpty()) maxDurationSec = Integer.parseInt(durInput);
         } catch (Exception ignored) {}
 
-        // 6. Pre-fetch Live Reference Prices (Zero Page Switch)
-        System.out.println("\n[HFT PRE-FLIGHT: 6. PRE-FETCHING MARKET QUOTES (LTP/YCP)]");
+        // 6. Pre-fetch Live Reference Prices & Circuit Limits (SH/SL, CH/CL)
+        System.out.println("\n[HFT PRE-FLIGHT: 6. PRE-FETCHING MARKET QUOTES & CIRCUIT LIMITS (SH/SL, CH/CL)]");
         Map<String, Double> symbolPrices = new LinkedHashMap<>();
+        Map<String, CircuitLimits> symbolCircuits = new LinkedHashMap<>();
         for (String sym : symbols) {
             double price = fetchPriceSafely(driver, wait, sym);
             symbolPrices.put(sym, price);
-            System.out.printf("  ✔ %-10s Reference Price: %7.2f BDT%n", sym, price);
+            CircuitLimits circuits = fetchCircuitLimits(driver, sym, price);
+            symbolCircuits.put(sym, circuits);
+            System.out.printf("  ✔ %-10s Ref: %7.2f BDT | Circuit Bounds: [SL/CL: %7.2f - SH/CH: %7.2f]%n",
+                    sym, price, circuits.low, circuits.high);
         }
 
-        // 7. Generate Interleaved HFT Pipeline
+        // 7. Generate Interleaved HFT Pipeline (Guarded by Circuit Limits)
         List<TradeOrder> pipeline = buildHftPipeline(
-                symbols, buyClients, sellClientsBySymbol, symbolPrices,
+                symbols, buyClients, sellClientsBySymbol, symbolPrices, symbolCircuits,
                 totalOrders, strategyChoice, 0.10
         );
 
@@ -292,19 +330,32 @@ public class OMSweb_MultipleTrade {
             TradeOrder order = pipeline.get(i);
             Instant orderStart = Instant.now();
 
-            boolean ok = placeSingleOrderFast(driver, wait, js, order);
-            long latency = Duration.between(orderStart, Instant.now()).toMillis();
+            try {
+                CircuitLimits limits = (symbolCircuits != null) ? symbolCircuits.get(order.symbol) : null;
+                boolean ok = placeSingleOrderFast(driver, wait, js, order, limits);
+                long latency = Duration.between(orderStart, Instant.now()).toMillis();
 
-            if (ok) {
-                order.markSuccess(latency);
-                successCount++;
-                System.out.printf("[HFT #%03d/%03d] ✔ %-4s | Client: %-6s | %-10s x %2d @ %7.2f (Ref: %7.2f) [%4d ms]%n",
-                        order.seq, order.side, order.clientCode, order.symbol, order.quantity, order.rate, order.refLtp, latency);
-            } else {
-                order.markFailed("Submission failed or intercepted");
+                if (ok) {
+                    order.markSuccess(latency);
+                    successCount++;
+                    System.out.printf("[HFT #%03d/%03d] ✔ %-4s | Client: %-6s | %-10s x %2d @ %7.2f (Ref: %7.2f) [%4d ms]%n",
+                            order.seq, pipeline.size(), order.side, order.clientCode, order.symbol, order.quantity, order.rate, order.refLtp, latency);
+                } else {
+                    order.markFailed("Submission rejected or intercepted");
+                    failedCount++;
+                    System.err.printf("[HFT #%03d/%03d] ✖ %-4s | Client: %-6s | %-10s x %2d @ %7.2f [%4d ms] -> REJECTED (Proceeding to next)%n",
+                            order.seq, pipeline.size(), order.side, order.clientCode, order.symbol, order.quantity, order.rate, latency);
+                    // If first order or any order is rejected, dismiss modal/alerts and move to next
+                    dismissAnyOpenModal(driver, js);
+                }
+            } catch (Exception ex) {
+                long latency = Duration.between(orderStart, Instant.now()).toMillis();
+                order.markFailed(ex.getMessage());
                 failedCount++;
-                System.err.printf("[HFT #%03d/%03d] ✖ %-4s | Client: %-6s | %-10s x %2d @ %7.2f [%4d ms] -> FAILED%n",
-                        order.seq, order.side, order.clientCode, order.symbol, order.quantity, order.rate, latency);
+                System.err.printf("[HFT #%03d/%03d] ✖ %-4s | Client: %-6s | %-10s x %2d @ %7.2f [%4d ms] -> ERROR: %s (Continuing to next)%n",
+                        order.seq, pipeline.size(), order.side, order.clientCode, order.symbol, order.quantity, order.rate, latency, ex.getMessage());
+                // Clean up any stray error popup or modal and proceed to next order
+                dismissAnyOpenModal(driver, js);
             }
 
             // Pacing control
@@ -334,6 +385,10 @@ public class OMSweb_MultipleTrade {
     // 4. FAST ORDER EXECUTION ROUTINE
     // ==========================================
     public static boolean placeSingleOrderFast(WebDriver driver, WebDriverWait wait, JavascriptExecutor js, TradeOrder order) {
+        return placeSingleOrderFast(driver, wait, js, order, null);
+    }
+
+    public static boolean placeSingleOrderFast(WebDriver driver, WebDriverWait wait, JavascriptExecutor js, TradeOrder order, CircuitLimits limits) {
         try {
             // Ensure on Trade Page
             if (!OMSweb_Trade.isAlreadyOnTradePage(driver)) {
@@ -346,7 +401,7 @@ public class OMSweb_MultipleTrade {
                     : By.xpath("//div[@title='Place SELL Order']");
             WebElement btn = wait.until(ExpectedConditions.elementToBeClickable(actionBtn));
             btn.click();
-            Thread.sleep(300);
+            Thread.sleep(250);
 
             // 2. Select Exchange in Modal
             OMSweb_Trade.selectExchangeInModal(driver, "DSE");
@@ -382,19 +437,52 @@ public class OMSweb_MultipleTrade {
             } catch (Exception ignored) {}
             Thread.sleep(100);
 
-            // 6. Rate
-            if (order.rate > 0) {
+            // 6. Rate calculation & Circuit Range enforcement (SH/SL, CH/CL)
+            double rateToUse = order.rate;
+            if (limits != null && limits.isValid()) {
+                if (order.side == OrderSide.BUY && rateToUse > limits.high) {
+                    System.out.printf("  [CIRCUIT CHECK] BUY Rate %.2f exceeds Upper Limit SH/CH (%.2f). Adjusted to SH/CH %.2f BDT.%n",
+                            rateToUse, limits.high, limits.high);
+                    rateToUse = limits.high;
+                } else if (order.side == OrderSide.SELL && rateToUse < limits.low) {
+                    System.out.printf("  [CIRCUIT CHECK] SELL Rate %.2f falls below Lower Limit SL/CL (%.2f). Adjusted to SL/CL %.2f BDT.%n",
+                            rateToUse, limits.low, limits.low);
+                    rateToUse = limits.low;
+                }
+            }
+
+            if (rateToUse > 0) {
                 WebElement rateInput = driver.findElement(LIMIT_RATE_INPUT);
                 clearFieldForcefully(driver, js, LIMIT_RATE_INPUT);
-                rateInput.sendKeys(String.format(Locale.US, "%.2f", order.rate));
+                rateInput.sendKeys(String.format(Locale.US, "%.2f", rateToUse));
                 try {
                     js.executeScript("$('#limit_order_rate').trigger('input').trigger('change');");
                 } catch (Exception ignored) {}
             }
 
+            // Check if UI warning appears indicating price exceeds limit
+            String exceedWarn = checkPriceExceedWarning(driver, js);
+            if (exceedWarn != null) {
+                System.out.printf("  [PRICE EXCEED DETECTED ON UI] '%s' -> Taking %s price!%n",
+                        exceedWarn, (order.side == OrderSide.BUY ? "SH / CH (Upper)" : "SL / CL (Lower)"));
+                if (order.side == OrderSide.BUY) {
+                    rateToUse = (limits != null && limits.high > 0) ? limits.high : (order.refLtp * 1.10);
+                } else {
+                    rateToUse = (limits != null && limits.low > 0) ? limits.low : (order.refLtp * 0.90);
+                }
+                rateToUse = Math.round(rateToUse * 100.0) / 100.0;
+                WebElement rateInput = driver.findElement(LIMIT_RATE_INPUT);
+                clearFieldForcefully(driver, js, LIMIT_RATE_INPUT);
+                rateInput.sendKeys(String.format(Locale.US, "%.2f", rateToUse));
+                try {
+                    js.executeScript("$('#limit_order_rate').trigger('input').trigger('change');");
+                } catch (Exception ignored) {}
+                Thread.sleep(150);
+            }
+
             // 7. Commission Display (Fast UI preview)
             try {
-                OMSweb_Trade.displayCommissionOnOrderWindow(driver, order.clientCode, order.quantity, order.rate);
+                OMSweb_Trade.displayCommissionOnOrderWindow(driver, order.clientCode, order.quantity, rateToUse);
             } catch (Exception ignored) {}
 
             // 8. Submit BUY or SELL
@@ -403,6 +491,25 @@ public class OMSweb_MultipleTrade {
                     : By.xpath("//div[contains(@class, 'form-submit-btn-holder')]//button[normalize-space()='SELL']");
             WebElement submitBtn = wait.until(ExpectedConditions.elementToBeClickable(submitBtnBy));
             submitBtn.click();
+            Thread.sleep(200);
+
+            // Check if post-submit alert shows price exceed
+            String postSubmitExceed = checkPriceExceedWarning(driver, js);
+            if (postSubmitExceed != null) {
+                System.out.printf("  [SUBMIT ALERT: Price Exceeds] '%s' -> Correcting to %s and retrying...%n",
+                        postSubmitExceed, (order.side == OrderSide.BUY ? "SH / CH" : "SL / CL"));
+                dismissAnyOpenModal(driver, js);
+                double retryRate = (order.side == OrderSide.BUY)
+                        ? ((limits != null && limits.high > 0) ? limits.high : (order.refLtp * 1.10))
+                        : ((limits != null && limits.low > 0) ? limits.low : (order.refLtp * 0.90));
+                retryRate = Math.round(retryRate * 100.0) / 100.0;
+                WebElement rateInput = driver.findElement(LIMIT_RATE_INPUT);
+                clearFieldForcefully(driver, js, LIMIT_RATE_INPUT);
+                rateInput.sendKeys(String.format(Locale.US, "%.2f", retryRate));
+                try { js.executeScript("$('#limit_order_rate').trigger('input').trigger('change');"); } catch (Exception ignored) {}
+                Thread.sleep(150);
+                submitBtn.click();
+            }
 
             // 9. Confirm YES
             boolean confirmed = confirmOrderWithRetry(driver, wait, js);
@@ -412,13 +519,8 @@ public class OMSweb_MultipleTrade {
             return confirmed;
 
         } catch (Exception e) {
-            // Dismiss modal if open on error
-            try {
-                js.executeScript(
-                    "var btn = document.querySelector('#cnfirmCancelBtn, button.btn-secondary, .modal.show button.close');" +
-                    "if (btn) btn.click();"
-                );
-            } catch (Exception ignored) {}
+            // Dismiss modal if open on error and return false so loop continues to next order
+            dismissAnyOpenModal(driver, js);
             return false;
         }
     }
@@ -431,6 +533,18 @@ public class OMSweb_MultipleTrade {
             List<String> buyClients,
             Map<String, List<String>> sellClientsBySymbol,
             Map<String, Double> symbolLtpMap,
+            int totalTrades,
+            int strategyChoice,
+            double baseOffset) {
+        return buildHftPipeline(symbols, buyClients, sellClientsBySymbol, symbolLtpMap, null, totalTrades, strategyChoice, baseOffset);
+    }
+
+    public static List<TradeOrder> buildHftPipeline(
+            List<String> symbols,
+            List<String> buyClients,
+            Map<String, List<String>> sellClientsBySymbol,
+            Map<String, Double> symbolLtpMap,
+            Map<String, CircuitLimits> symbolCircuits,
             int totalTrades,
             int strategyChoice,
             double baseOffset) {
@@ -472,6 +586,20 @@ public class OMSweb_MultipleTrade {
                 // Strategy 1: Spread Market Maker (BUY @ LTP - spread, SELL @ LTP + spread)
                 double offset = baseOffset + ((i % 5) * 0.10);
                 rate = (side == OrderSide.BUY) ? Math.max(1.0, ltp - offset) : (ltp + offset);
+            }
+
+            // Circuit range enforcement (SH/SL, CH/CL)
+            CircuitLimits limits = (symbolCircuits != null) ? symbolCircuits.get(symbol) : null;
+            if (limits != null && limits.isValid()) {
+                if (side == OrderSide.BUY && rate > limits.high) {
+                    rate = limits.high;
+                } else if (side == OrderSide.BUY && rate < limits.low) {
+                    rate = limits.low;
+                } else if (side == OrderSide.SELL && rate < limits.low) {
+                    rate = limits.low;
+                } else if (side == OrderSide.SELL && rate > limits.high) {
+                    rate = limits.high;
+                }
             }
 
             rate = Math.round(rate * 100.0) / 100.0;
@@ -544,6 +672,85 @@ public class OMSweb_MultipleTrade {
         } catch (Exception ignored) {}
 
         return realisticFallback;
+    }
+
+
+    // ==========================================
+    // 6B. CIRCUIT LIMIT & EXCEED DETECTION HELPERS
+    // ==========================================
+    public static double parsePrice(String val) {
+        if (val == null) return 0.0;
+        String clean = val.replaceAll("[^0-9.-]", "").trim();
+        if (clean.isEmpty() || clean.equals("-") || clean.equals("--") || clean.equals(".") || clean.equals("-.")) return 0.0;
+        try {
+            return Double.parseDouble(clean);
+        } catch (Exception e) {
+            return 0.0;
+        }
+    }
+
+    public static CircuitLimits fetchCircuitLimits(WebDriver driver, String symbol, double refPrice) {
+        double sh = 0, sl = 0, ch = 0, cl = 0;
+        String cleanSym = (symbol != null) ? symbol.trim().toUpperCase() : "";
+        try {
+            Map<String, String> depth = Market_Depth.getSnapshot(driver, cleanSym, "DSE");
+            if (depth != null && !depth.isEmpty()) {
+                sh = parsePrice(depth.get("SH"));
+                sl = parsePrice(depth.get("SL"));
+                ch = parsePrice(depth.get("CH"));
+                cl = parsePrice(depth.get("CL"));
+            }
+        } catch (Exception ignored) {}
+
+        // Fallback calculation (Standard DSE 10% band) if exchange depth is unavailable
+        if (sh <= 0 && ch <= 0 && refPrice > 0) {
+            sh = Math.round(refPrice * 1.10 * 100.0) / 100.0;
+            ch = sh;
+        }
+        if (sl <= 0 && cl <= 0 && refPrice > 0) {
+            sl = Math.round(refPrice * 0.90 * 100.0) / 100.0;
+            cl = sl;
+        }
+
+        return new CircuitLimits(sh, sl, ch, cl, refPrice);
+    }
+
+    public static String checkPriceExceedWarning(WebDriver driver, JavascriptExecutor js) {
+        try {
+            Object res = js.executeScript(
+                "var selectors = ['.text-danger', '.field-validation-error', '#rate_error', '.order-error', '.toast-error', '.alert-danger', '[id*=\"error\"]', '.tooltip-inner'];" +
+                "for (var i = 0; i < selectors.length; i++) {" +
+                "    var els = document.querySelectorAll(selectors[i]);" +
+                "    for (var j = 0; j < els.length; j++) {" +
+                "        var el = els[j];" +
+                "        if (el && el.offsetParent !== null) {" +
+                "            var t = (el.innerText || el.textContent || '').trim();" +
+                "            var lower = t.toLowerCase();" +
+                "            if (lower.includes('exceed') || lower.includes('circuit') || lower.includes('range') || lower.includes('limit') || lower.includes('high') || lower.includes('low')) {" +
+                "                return t;" +
+                "            }" +
+                "        }" +
+                "    }" +
+                "}" +
+                "return null;"
+            );
+            return (res != null) ? res.toString().trim() : null;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    public static void dismissAnyOpenModal(WebDriver driver, JavascriptExecutor js) {
+        try {
+            js.executeScript(
+                "var btns = document.querySelectorAll('#cnfirmCancelBtn, button.btn-secondary, .modal.show button.close, button[data-dismiss=\"modal\"], button.confirm-cancel');" +
+                "for (var i = 0; i < btns.length; i++) { if (btns[i].offsetParent !== null) { btns[i].click(); } }" +
+                "var modals = document.querySelectorAll('.modal.show, .modal-backdrop');" +
+                "for (var m = 0; m < modals.length; m++) { modals[m].classList.remove('show'); modals[m].style.display = 'none'; }" +
+                "document.body.classList.remove('modal-open');"
+            );
+            Thread.sleep(250);
+        } catch (Exception ignored) {}
     }
 
     public static void fillAndSelectAutocomplete(WebDriver driver, WebDriverWait wait, JavascriptExecutor js, By locator, String text) {
