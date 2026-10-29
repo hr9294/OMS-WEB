@@ -10,5 +10,6 @@
 	<classpathentry exported="true" kind="lib" path="D:/Automation &amp; Load Testing/Selenium/Software/selenium-server-4.31.0.jar"/>
 	<classpathentry exported="true" kind="lib" path="D:/Automation &amp; Load Testing/Selenium/Software/selenium-server-standalone-3.5.3.jar"/>
 	<classpathentry exported="true" kind="lib" path="D:/Appium/Software/java-client-7.5.1-all.jar"/>
+		<classpathentry exported="true" kind="lib" path="D:/Automation &amp; Load Testing/Selenium/Software/postgresql-42.7.4.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

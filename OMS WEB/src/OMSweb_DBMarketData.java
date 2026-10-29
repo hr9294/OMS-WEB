@@ -1,3 +1,7 @@
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -42,6 +46,44 @@ public class OMSweb_DBMarketData {
             System.getenv("MKT_DB_USER") : "marketdata";
     public static final String DB_PASSWORD       = System.getenv("MKT_DB_PASS") != null ?
             System.getenv("MKT_DB_PASS") : "pass4321";
+
+    // ==========================================
+    // DATABASE CONNECTION & PYTHON COLLECTOR BRIDGE
+    // ==========================================
+    public static Connection getJdbcConnection() {
+        try {
+            Class.forName("org.postgresql.Driver");
+            String url = String.format(Locale.US, "jdbc:postgresql://%s:%d/%s?connectTimeout=3&socketTimeout=4", DB_HOST, DB_PORT, DB_NAME);
+            Properties props = new Properties();
+            props.setProperty("user", DB_USER);
+            props.setProperty("password", DB_PASSWORD);
+            props.setProperty("connectTimeout", "3");
+            props.setProperty("socketTimeout", "4");
+            return DriverManager.getConnection(url, props);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    public static void runPythonDbCollector(String exchange) {
+        String[] pyCandidates = {
+            "OMS_WEB_Python/db_market_data.py",
+            "D:\\Automation & Load Testing\\Selenium\\Code\\OMS WEB\\OMS_WEB_Python\\db_market_data.py",
+            "C:\\Users\\hrrah\\git\\repository\\OMS_WEB_Python\\db_market_data.py"
+        };
+        for (String script : pyCandidates) {
+            File f = new File(script);
+            if (f.exists()) {
+                try {
+                    ProcessBuilder pb = new ProcessBuilder("python", f.getAbsolutePath(), "COLLECT", exchange);
+                    pb.redirectErrorStream(true);
+                    Process proc = pb.start();
+                    proc.waitFor();
+                    break;
+                } catch (Exception ignored) {}
+            }
+        }
+    }
 
     // ==========================================
     // 1. DATA MODELS
@@ -198,29 +240,74 @@ public class OMSweb_DBMarketData {
         String tableLtp = exClean.equals("CSE") ? "cse_md_ltp" : "dse_md_ltp";
         String tableSym = exClean.equals("CSE") ? "cse_md_symbols" : "dse_md_symbols";
 
+        String query = String.format(
+                "SELECT l.symbol, COALESCE(s.company_name, l.symbol), l.ltp, l.ycp, " +
+                "l.circuit_up, l.circuit_down, l.floor_price, l.open, l.high, l.low, l.close, l.total_qty, l.last_update, " +
+                "COALESCE(s.sector, '') as sector, COALESCE(s.symbol_instr, '') as symbol_instr " +
+                "FROM %s l LEFT JOIN %s s ON l.symbol = s.symbol AND l.board = s.board " +
+                "WHERE l.board = 'PUBLIC' " +
+                "  AND (s.symbol_instr IS NULL OR s.symbol_instr IN ('EQ', 'MF', 'CS')) " +
+                "  AND COALESCE(s.sector, '') NOT ILIKE '%%Bond%%' " +
+                "  AND COALESCE(s.sector, '') NOT ILIKE '%%Debt%%' " +
+                "  AND COALESCE(s.sector, '') NOT ILIKE '%%Debenture%%' " +
+                "  AND l.symbol NOT LIKE '%%-CE' " +
+                "  AND l.symbol NOT LIKE '%%-PE' " +
+                "  AND l.symbol NOT LIKE '%%-XX' " +
+                "  AND l.symbol NOT LIKE '%%-SPD' " +
+                "  AND l.symbol NOT LIKE '%%BOND%%' " +
+                "  AND l.symbol NOT LIKE 'TB%%' " +
+                "  AND l.symbol NOT LIKE '%%SUKUK%%' " +
+                "  AND l.ltp IS NOT NULL AND l.ltp > 0 " +
+                "ORDER BY l.symbol ASC;",
+                tableLtp, tableSym);
+
+        // Tier 1: Try Native PostgreSQL JDBC Connection
+        try (Connection conn = getJdbcConnection()) {
+            if (conn != null) {
+                try (Statement stmt = conn.createStatement();
+                     ResultSet rs = stmt.executeQuery(query)) {
+                    while (rs.next()) {
+                        String sym = rs.getString(1) != null ? rs.getString(1).trim().toUpperCase() : "";
+                        String name = rs.getString(2) != null ? rs.getString(2).trim() : sym;
+                        double ltp = rs.getDouble(3);
+                        double ycp = rs.getDouble(4);
+                        double up = rs.getDouble(5);
+                        double down = rs.getDouble(6);
+                        double floor = rs.getDouble(7);
+                        double open = rs.getDouble(8);
+                        double high = rs.getDouble(9);
+                        double low = rs.getDouble(10);
+                        double close = rs.getDouble(11);
+                        long qty = rs.getLong(12);
+                        String lastUp = rs.getString(13) != null ? rs.getString(13).trim() : "";
+                        String sec = rs.getString(14) != null ? rs.getString(14).trim() : "";
+                        String sinstr = rs.getString(15) != null ? rs.getString(15).trim() : "";
+
+                        if (!isStrictlyPublicEquity(sym, name, sec, sinstr)) continue;
+                        if (!sym.isEmpty() && ltp > 0) {
+                            targetCache.put(sym, new PublicSymbolLtp(sym, name, ltp, ycp, up, down, floor, open, high, low, close, qty, lastUp));
+                        }
+                    }
+                }
+                if (!targetCache.isEmpty()) {
+                    saveToJsonCache(targetCache);
+                    return Collections.unmodifiableMap(targetCache);
+                }
+            }
+        } catch (Exception ignored) {}
+
+        // Tier 2: Try Python psycopg2 collector
+        if (targetCache.isEmpty()) {
+            runPythonDbCollector(exClean);
+            loadFromJsonCache(targetCache);
+            if (!targetCache.isEmpty()) {
+                return Collections.unmodifiableMap(targetCache);
+            }
+        }
+
         try {
             String psqlExe = findPsqlExecutable();
             if (psqlExe != null) {
-                String query = String.format(
-                        "SELECT l.symbol, COALESCE(s.company_name, l.symbol), l.ltp, l.ycp, " +
-                        "l.circuit_up, l.circuit_down, l.floor_price, l.open, l.high, l.low, l.close, l.total_qty, l.last_update, " +
-                        "COALESCE(s.sector, '') as sector, COALESCE(s.symbol_instr, '') as symbol_instr " +
-                        "FROM %s l LEFT JOIN %s s ON l.symbol = s.symbol AND l.board = s.board " +
-                        "WHERE l.board = 'PUBLIC' " +
-                        "  AND (s.symbol_instr IS NULL OR s.symbol_instr IN ('EQ', 'MF', 'CS')) " +
-                        "  AND COALESCE(s.sector, '') NOT ILIKE '%%Bond%%' " +
-                        "  AND COALESCE(s.sector, '') NOT ILIKE '%%Debt%%' " +
-                        "  AND COALESCE(s.sector, '') NOT ILIKE '%%Debenture%%' " +
-                        "  AND l.symbol NOT LIKE '%%-CE' " +
-                        "  AND l.symbol NOT LIKE '%%-PE' " +
-                        "  AND l.symbol NOT LIKE '%%-XX' " +
-                        "  AND l.symbol NOT LIKE '%%-SPD' " +
-                        "  AND l.symbol NOT LIKE '%%BOND%%' " +
-                        "  AND l.symbol NOT LIKE 'TB%%' " +
-                        "  AND l.symbol NOT LIKE '%%SUKUK%%' " +
-                        "  AND l.ltp IS NOT NULL AND l.ltp > 0 " +
-                        "ORDER BY l.symbol ASC;",
-                        tableLtp, tableSym);
 
                 ProcessBuilder pb = new ProcessBuilder(
                         psqlExe,
@@ -592,8 +679,10 @@ public class OMSweb_DBMarketData {
     private static void saveToJsonCache(Map<String, PublicSymbolLtp> cache) {
         String[] jsonPaths = {
             "OMS_WEB_Python/public_board_ltp.json",
-            "D:\\Anitgravity\\OMS-WEB\\OMS_WEB_Python\\public_board_ltp.json",
-            "C:\\Users\\Hasibur Rahman\\git\\OMS-WEB\\OMS_WEB_Python\\public_board_ltp.json"
+            "C:\\Users\\hrrah\\git\\repository\\OMS_WEB_Python\\public_board_ltp.json",
+            "D:\\Automation & Load Testing\\Selenium\\Code\\OMS WEB\\OMS_WEB_Python\\public_board_ltp.json",
+            "D:\\Automation & Load Testing\\Selenium\\Code\\OMS WEB (2)\\OMS_WEB_Python\\public_board_ltp.json",
+            "../OMS_WEB_Python/public_board_ltp.json"
         };
         for (String p : jsonPaths) {
             File jf = new File(p);
@@ -658,8 +747,10 @@ public class OMSweb_DBMarketData {
     private static void loadFromJsonCache(Map<String, PublicSymbolLtp> cache) {
         String[] jsonPaths = {
             "OMS_WEB_Python/public_board_ltp.json",
-            "D:\\Anitgravity\\OMS-WEB\\OMS_WEB_Python\\public_board_ltp.json",
-            "C:\\Users\\Hasibur Rahman\\git\\OMS-WEB\\OMS_WEB_Python\\public_board_ltp.json"
+            "C:\\Users\\hrrah\\git\\repository\\OMS_WEB_Python\\public_board_ltp.json",
+            "D:\\Automation & Load Testing\\Selenium\\Code\\OMS WEB\\OMS_WEB_Python\\public_board_ltp.json",
+            "D:\\Automation & Load Testing\\Selenium\\Code\\OMS WEB (2)\\OMS_WEB_Python\\public_board_ltp.json",
+            "../OMS_WEB_Python/public_board_ltp.json"
         };
         for (String p : jsonPaths) {
             File jf = new File(p);
