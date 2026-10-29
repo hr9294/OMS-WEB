@@ -4,8 +4,6 @@ import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.JavascriptExecutor;
 import java.util.List;
-import java.awt.Robot;
-import java.awt.event.KeyEvent;
 
 
 public class OMSweb_Login {
