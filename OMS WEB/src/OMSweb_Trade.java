@@ -2866,78 +2866,81 @@ public class OMSweb_Trade {
 	// ============================================================
 
 	public static boolean autoConfirmOrderOrCancellation(WebDriver driver, WebDriverWait wait) {
-
-		// 1. Native JavaScript browser alert/confirm popup
-
+		// 1. Direct jQuery-Confirm fast-path (matches the exact 'Order cancel' modal from common_order.js)
 		try {
-
-			Alert alert = driver.switchTo().alert();
-
-			String txt = alert.getText();
-
-			alert.accept();
-
-			System.out.printf("  ✔ [CONFIRMATION] Automatically accepted browser alert popup ('%s')%n", txt);
-
-			return true;
-
+			JavascriptExecutor js = (JavascriptExecutor) driver;
+			Boolean jcHandled = (Boolean) js.executeScript(
+				"try {" +
+				"    if (window.jconfirm && window.jconfirm.instances && window.jconfirm.instances.length > 0) {" +
+				"        for (var i = 0; i < window.jconfirm.instances.length; i++) {" +
+				"            var inst = window.jconfirm.instances[i];" +
+				"            if (inst && (typeof inst.isOpen !== 'function' || inst.isOpen())) {" +
+				"                if (inst.buttons && inst.buttons.YES) {" +
+				"                    if (typeof inst.buttons.YES.action === 'function') { inst.buttons.YES.action(); }" +
+				"                    if (typeof inst.close === 'function') { inst.close(); }" +
+				"                    return true;" +
+				"                }" +
+				"            }" +
+				"        }" +
+				"    }" +
+				"    if (window.isCancelConfirmBox || document.querySelector('.jconfirm-box') || document.querySelector('.jconfirm')) {" +
+				"        var yesBtn = document.querySelector('.jconfirm-buttons button.btn-success, .jconfirm-box button.btn-success, .jconfirm button.btn-success');" +
+				"        if (yesBtn) { yesBtn.click(); return true; }" +
+				"        if (window.jQuery) {" +
+				"            window.jQuery('.jconfirm-buttons button.btn-success, .jconfirm-box button.btn-success').trigger('click');" +
+				"            return true;" +
+				"        }" +
+				"    }" +
+				"} catch(e) {}" +
+				"return false;"
+			);
+			if (Boolean.TRUE.equals(jcHandled)) {
+				System.out.println("  ✔ [CONFIRMATION] Confirmed 'Order cancel' modal via jQuery-Confirm API / button.btn-success [YES].");
+				return true;
+			}
 		} catch (Exception ignored) {}
 
+		// 2. Native JavaScript browser alert/confirm popup
+		try {
+			Alert alert = driver.switchTo().alert();
+			String txt = alert.getText();
+			alert.accept();
+			System.out.printf("  ✔ [CONFIRMATION] Automatically accepted browser alert popup ('%s')%n", txt);
+			return true;
+		} catch (Exception ignored) {}
 
-
-		// 2. WebDriver clickable locators for DOM modals
-
+		// 3. WebDriver clickable locators for DOM modals (.jconfirm, .btn-success, #cnfirmConfirmBtn)
 		By[] confirmLocators = new By[] {
-
+			By.cssSelector(".jconfirm-buttons button.btn-success"),
+			By.cssSelector(".jconfirm-box button.btn-success"),
+			By.cssSelector("button.btn-success"),
+			By.xpath("//div[contains(@class,'jconfirm')]//button[contains(@class,'btn-success') or normalize-space()='YES']"),
+			By.xpath("//div[contains(@class,'jconfirm-box')]//button[normalize-space()='YES']"),
 			By.id("cnfirmConfirmBtn"),
-
-			By.id("btn_confirm"),
-
-			By.id("confirm_btn"),
-
-			By.id("confirm_ok"),
-
-			By.id("cancel_order_confirm"),
-
 			By.xpath("//button[@id='cnfirmConfirmBtn']"),
-
-			By.xpath("//button[@id='btn_confirm' or @id='confirm_btn' or @id='confirm_ok' or @id='cancel_order_confirm']"),
-
 			By.xpath("//button[normalize-space()='YES' or normalize-space()='Yes' or normalize-space()='yes']"),
-
 			By.xpath("//button[normalize-space()='Confirm' or normalize-space()='CONFIRM']"),
-
 			By.xpath("//button[normalize-space()='OK' or normalize-space()='Ok' or normalize-space()='ok']"),
-
-			By.xpath("//button[contains(translate(normalize-space(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),'cancel order') and not(contains(@class,'cancel-btn'))]"),
-
+			By.id("btn_confirm"),
+			By.id("confirm_btn"),
+			By.id("confirm_ok"),
+			By.id("cancel_order_confirm"),
 			By.xpath("//div[contains(@class,'modal') or contains(@class,'dialog') or contains(@class,'popup') or contains(@class,'swal') or contains(@class,'jconfirm')]//button[not(contains(@class,'close')) and (contains(@class,'btn-primary') or contains(@class,'btn-danger') or contains(@class,'btn-success') or contains(@class,'confirm') or normalize-space()='YES' or normalize-space()='Yes' or normalize-space()='OK' or normalize-space()='Confirm')]"),
-
-			By.cssSelector("button#cnfirmConfirmBtn, button.confirm-btn, .swal2-confirm, .swal-button--confirm, button[data-bb-handler='confirm']")
-
+			By.cssSelector("button#cnfirmConfirmBtn, button.confirm-btn, .swal2-confirm, .swal-button--confirm, button[data-bb-handler=\'confirm\']")
 		};
 
-
-
 		for (By loc : confirmLocators) {
-
 			try {
-
-				WebElement btn = new WebDriverWait(driver, Duration.ofSeconds(2))
-
-						.until(ExpectedConditions.elementToBeClickable(loc));
-
-				btn.click();
-
-				System.out.println("  ✔ [CONFIRMATION] Automatically confirmed modal dialog [YES/CONFIRM].");
-
-				return true;
-
+				List<WebElement> matches = driver.findElements(loc);
+				for (WebElement btn : matches) {
+					if (btn.isDisplayed()) {
+						btn.click();
+						System.out.println("  ✔ [CONFIRMATION] Automatically confirmed modal dialog [YES/CONFIRM].");
+						return true;
+					}
+				}
 			} catch (Exception ignored) {}
-
 		}
-
-
 
 		// 3. Fallback to JavaScript execution
 
