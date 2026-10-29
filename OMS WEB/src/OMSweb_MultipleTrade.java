@@ -1217,11 +1217,15 @@ public class OMSweb_MultipleTrade {
                     Thread.sleep(400);
                     // 5. Confirm cancellation
                     boolean confirmed = confirmOrderWithRetry(driver, wait, js);
-                    System.out.printf("  ✔ [ORDER CANCELLED] Successfully cancelled active order for %s (%s)%n", clientCode, symbol);
+                    if (confirmed) {
+                        System.out.printf("  ✔ [ORDER CANCELLED] Successfully cancelled active order for %s (%s)%n", clientCode, symbol);
+                    } else {
+                        System.err.printf("  ✖ [CANCEL FAILED] Could not confirm cancellation modal for %s (%s)%n", clientCode, symbol);
+                    }
                     Thread.sleep(400);
                     Order_Terminal.navigateToTrade(driver);
                     Thread.sleep(300);
-                    return true;
+                    return confirmed;
                 }
             }
             Order_Terminal.navigateToTrade(driver);

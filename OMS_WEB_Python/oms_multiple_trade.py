@@ -366,7 +366,10 @@ def cancel_latest_order(driver: webdriver.Chrome, client_code: str, symbol: str)
                         except Exception:
                             pass
                         time.sleep(0.15)
-                print(f"  ✔ [ORDER CANCELLED] Successfully cancelled active order for {client_code} ({symbol})")
+                if confirmed:
+                    print(f"  ✔ [ORDER CANCELLED] Successfully cancelled active order for {client_code} ({symbol})")
+                else:
+                    print(f"  ✖ [CANCEL FAILED] Could not confirm cancellation modal for {client_code} ({symbol})")
                 time.sleep(0.4)
                 order_terminal.navigate_to_trade(driver)
                 time.sleep(0.3)
