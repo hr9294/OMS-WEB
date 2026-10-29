@@ -634,17 +634,25 @@ public class OMSweb_DBMarketData {
 
     private static String findPsqlExecutable() {
         String[] candidates = {
+            "C:\\Program Files\\PostgreSQL\\17\\bin\\psql.exe",
             "C:\\Program Files\\PostgreSQL\\16\\bin\\psql.exe",
             "C:\\Program Files\\PostgreSQL\\15\\bin\\psql.exe",
             "C:\\Program Files\\PostgreSQL\\14\\bin\\psql.exe",
-            "C:\\Program Files\\PostgreSQL\\17\\bin\\psql.exe",
-            "psql"
+            "C:\\Program Files\\PostgreSQL\\13\\bin\\psql.exe",
+            "C:\\Program Files\\PostgreSQL\\12\\bin\\psql.exe"
         };
         for (String c : candidates) {
             File f = new File(c);
             if (f.exists()) return c;
         }
-        return "psql";
+        // Test if psql is available in system PATH before returning it
+        try {
+            Process p = new ProcessBuilder("where", "psql").start();
+            if (p.waitFor() == 0) {
+                return "psql";
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 
     private static void loadFromJsonCache(Map<String, PublicSymbolLtp> cache) {

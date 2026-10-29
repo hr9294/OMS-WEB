@@ -126,6 +126,8 @@ public class OMSweb_MultiOrderExecution {
         // Ensure Trade Page is active & color-linked if not already done by master runner
         if (!OMSweb_Trade.isAlreadyOnTradePage(driver)) {
             OMSweb_Trade.navigateToTradePage(driver, wait);
+        }
+        if (!OMSweb_Trade.isWidgetColorConfigured) {
             OMSweb_Trade.runWidgetColorSelection(driver, sc);
         }
 

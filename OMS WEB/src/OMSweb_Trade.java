@@ -24,6 +24,8 @@ public class OMSweb_Trade {
 		// Navigate to Trade Page initially if not already on it
 		if (!isAlreadyOnTradePage(driver)) {
 			navigateToTradePage(driver, wait);
+		}
+		if (!isWidgetColorConfigured) {
 			runWidgetColorSelection(driver, sc);
 		}
 
@@ -1456,8 +1458,17 @@ public class OMSweb_Trade {
 	// ============================================================
 	public static final String[] COLOR_NAMES = { "Turquoise", "Yellow", "Orange", "Green", "Red", "Pink" };
 	public static final String[] COLOR_HEXES = { "#42EADDFF", "#FEE715FF", "#F95700ff", "#06d001", "#EB0506", "#FF3EA5FF" };
+	public static volatile boolean isWidgetColorConfigured = false;
+	public static volatile String activeWidgetColorName = null;
+	public static volatile String activeWidgetColorHex = null;
 
 	public static void runWidgetColorSelection(WebDriver driver, Scanner sc) throws InterruptedException {
+		if (isWidgetColorConfigured) {
+			System.out.printf("[WIDGET COLOR] Already configured as %s (%s). Skipping duplicate prompt.%n",
+					activeWidgetColorName != null ? activeWidgetColorName : "Linked",
+					activeWidgetColorHex != null ? activeWidgetColorHex : "active");
+			return;
+		}
 		System.out.println("\n=== Widget Color Link ===");
 		System.out.println("1.Turquoise 2.Yellow 3.Orange");
 		System.out.println("4.Green 5.Red 6.Pink");
@@ -1477,6 +1488,9 @@ public class OMSweb_Trade {
 
 		System.out.println("\n[WIDGET COLOR] Applying " + chosenColorName + " (" + targetHex + ") to all widgets...");
 		applyColorToAllWidgets(driver, chosenColorName, targetHex);
+		isWidgetColorConfigured = true;
+		activeWidgetColorName = chosenColorName;
+		activeWidgetColorHex = targetHex;
 		Thread.sleep(500);
 	}
 

@@ -225,6 +225,8 @@ public class OMSweb_MultipleTrade {
         // 1. Ensure setup on Trade Page
         if (!OMSweb_Trade.isAlreadyOnTradePage(driver)) {
             OMSweb_Trade.navigateToTradePage(driver, wait);
+        }
+        if (!OMSweb_Trade.isWidgetColorConfigured) {
             OMSweb_Trade.runWidgetColorSelection(driver, sc);
         }
 
