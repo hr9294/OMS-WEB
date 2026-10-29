@@ -42,6 +42,13 @@ DB_CONFIG = {
 # Cache file location for fast offline/cross-process access
 CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "public_board_ltp.json")
 
+# In-memory session caches for sub-millisecond retrieval
+_DSE_LTP_CACHE: Dict[str, Dict[str, Any]] = {}
+_CSE_LTP_CACHE: Dict[str, Dict[str, Any]] = {}
+
+_DSE_BBO_CACHE: Dict[str, Dict[str, Any]] = {}
+_CSE_BBO_CACHE: Dict[str, Dict[str, Any]] = {}
+
 
 def is_strictly_public_equity(symbol: str, company_name: str = "", sector: str = "", symbol_instr: str = "") -> bool:
     """
@@ -85,6 +92,16 @@ def fetch_ltp_from_db(exchange: str = "DSE", symbol: Optional[str] = None) -> Di
     """
     results: Dict[str, Dict[str, Any]] = {}
     ex_clean = (exchange or "DSE").strip().upper()
+    target_cache = _CSE_LTP_CACHE if ex_clean == "CSE" else _DSE_LTP_CACHE
+
+    if target_cache:
+        if symbol:
+            s_clean = symbol.strip().upper()
+            if s_clean in target_cache:
+                return {s_clean: target_cache[s_clean]}
+        else:
+            return dict(target_cache)
+
     table_ltp = "cse_md_ltp" if ex_clean == "CSE" else "dse_md_ltp"
     table_sym = "cse_md_symbols" if ex_clean == "CSE" else "dse_md_symbols"
 
@@ -166,6 +183,8 @@ def fetch_ltp_from_db(exchange: str = "DSE", symbol: Optional[str] = None) -> Di
             }
         conn.close()
         if results and not symbol:
+            target_cache.clear()
+            target_cache.update(results)
             save_public_board_cache(results, CACHE_FILE)
         return results
     except Exception as e:
@@ -472,6 +491,12 @@ def get_public_symbol_ltp(symbol: str, exchange: str = "DSE") -> Optional[float]
     if not symbol:
         return None
     sym_clean = symbol.strip().upper()
+    ex_clean = (exchange or "DSE").strip().upper()
+    target_cache = _CSE_LTP_CACHE if ex_clean == "CSE" else _DSE_LTP_CACHE
+    if not target_cache:
+        fetch_ltp_from_db(ex_clean)
+    if sym_clean in target_cache:
+        return target_cache[sym_clean].get("ltp")
     data = fetch_ltp_from_db(exchange, symbol=sym_clean)
     if sym_clean in data:
         return data[sym_clean].get("ltp")
