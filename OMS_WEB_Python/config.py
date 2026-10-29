@@ -9,7 +9,7 @@ SHARED_CLIENT_DATA_URL = f"{BASE_URL}/shared/getclientdata/?cln_code="
 SHARED_MARKET_DEPTH_URL = f"{BASE_URL}/shared/marketdepth/?symbol="
 
 # Default Credentials
-DEFAULT_USERNAME = os.environ.get("OMS_USERNAME", "testadmin")
+DEFAULT_USERNAME = os.environ.get("OMS_USERNAME", "UFTTRDR020")
 DEFAULT_PASSWORD = os.environ.get("OMS_PASSWORD", "12345")
 
 # Timeouts (seconds)

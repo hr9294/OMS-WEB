@@ -191,10 +191,18 @@ public class OMSweb_MultipleTrade {
         options.addArguments("--remote-allow-origins=*");
         options.addArguments("--disable-blink-features=AutomationControlled");
         options.addArguments("--disable-infobars");
+        options.addArguments("--disable-notifications");
+        options.addArguments("--disable-save-password-bubble");
+        options.addArguments("--disable-features=PasswordLeakDetection,PasswordCheck,PasswordLeakToggleMove,SafeBrowsing");
         options.setAcceptInsecureCerts(true);
         Map<String, Object> prefs = new HashMap<>();
         prefs.put("credentials_enable_service", false);
         prefs.put("profile.password_manager_enabled", false);
+        prefs.put("profile.password_manager_leak_detection", false);
+        prefs.put("password_manager_leak_detection", false);
+        prefs.put("safebrowsing.enabled", false);
+        prefs.put("safebrowsing.enhanced", false);
+        prefs.put("profile.default_content_setting_values.notifications", 2);
         options.setExperimentalOption("prefs", prefs);
 
         WebDriver driver = new ChromeDriver(options);

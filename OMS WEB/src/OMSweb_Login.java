@@ -14,9 +14,14 @@ public class OMSweb_Login {
 		// TODO Auto-generated method stub
 		
 		
+		String username = System.getenv("OMS_USERNAME");
+		if (username == null || username.trim().isEmpty()) {
+			username = "UFTTRDR020";
+		}
 		WebElement userNameInput = driver.findElement(By.xpath("//input[@id='username']"));
-		userNameInput.sendKeys("testadmin");
-        Thread.sleep(1000);
+		userNameInput.clear();
+		userNameInput.sendKeys(username);
+		Thread.sleep(500);
         
 		/*System.out.println("User Name: ");
     	String userName = sc.nextLine();
@@ -138,15 +143,6 @@ public class OMSweb_Login {
             return;
         } catch (Exception ignored) {}
 
-        // 3. Native Robot ENTER key press to hit focused 'OK' button on Chrome native breach modal
-        try {
-            Robot robot = new Robot();
-            robot.delay(150);
-            robot.keyPress(KeyEvent.VK_ENTER);
-            robot.keyRelease(KeyEvent.VK_ENTER);
-            System.out.println("[POPUP] Automatically pressed OK (ENTER key) on popup.");
-        } catch (Exception e) {
-            System.out.println("[POPUP] Note sending automatic OK: " + e.getMessage());
-        }
+        // If no DOM modal or alert is present, do nothing (avoids blind ENTER keystroke)
     }
 }
