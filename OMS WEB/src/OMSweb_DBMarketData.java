@@ -8,8 +8,15 @@ import java.util.*;
  * OMSweb_DBMarketData
  * -------------------
  * Collects Symbols, LTP, YCP, and Circuit Limits directly from the PostgreSQL
- * database table (marketdb -> dse_md_ltp / cse_md_ltp) filtering specifically
- * for the Public Board ('PUBLIC').
+ * database table (marketdb -> dse_md_ltp / cse_md_ltp).
+ *
+ * STRICT FILTERING:
+ *   - ONLY Public Board: board = 'PUBLIC'
+ *   - STRICTLY EXCLUDES all other boards: DEBT, BUYIN, YIELDDBT, BUYDBT, ALTDBT,
+ *     ATBDEBT, SDEBT, SBUYIN, ATBBUYIN, BLOCK, SBLOCK, ATBPUB, ATBX, SCPX, SPUBLIC,
+ *     BULK, ODDLOT, FOREIGN, INDEX, etc.
+ *   - STRICTLY EXCLUDES non-equity/derivative instruments: Bonds, Sukuk, Treasury
+ *     Bills/Bonds (TB...), Debentures, Options (-CE, -PE), Futures, Multi-leg (-SPD, -XX).
  *
  * Configured for UFTFAST OMS / UFTCL UAT environment (192.168.155.22:5445).
  */
@@ -71,8 +78,51 @@ public class OMSweb_DBMarketData {
     private static final Map<String, PublicSymbolLtp> CSE_CACHE = new LinkedHashMap<>();
 
     /**
+     * Validates that a security is strictly a Public Board equity or mutual fund,
+     * filtering out any debt, bond, treasury, option contract, or futures.
+     */
+    public static boolean isStrictlyPublicEquity(String symbol, String companyName, String sector, String symbolInstr) {
+        if (symbol == null || symbol.trim().isEmpty()) return false;
+        String sUpper = symbol.trim().toUpperCase();
+
+        // Reject derivatives / options / futures suffixes
+        if (sUpper.endsWith("-CE") || sUpper.endsWith("-PE") || sUpper.endsWith("-XX") || sUpper.endsWith("-SPD")) {
+            return false;
+        }
+
+        // Reject Treasury bonds / bills and Sukuks
+        if (sUpper.startsWith("TB") && sUpper.length() >= 6) {
+            boolean hasDigit = false;
+            for (char c : sUpper.toCharArray()) {
+                if (Character.isDigit(c)) { hasDigit = true; break; }
+            }
+            if (hasDigit) return false;
+        }
+        if (sUpper.contains("BOND") || sUpper.contains("SUKUK")) {
+            return false;
+        }
+
+        // Reject debt/bond sectors
+        String secUpper = (sector == null) ? "" : sector.toUpperCase();
+        if (secUpper.contains("BOND") || secUpper.contains("DEBT") || secUpper.contains("DEBENTURE")) {
+            return false;
+        }
+
+        // Reject non-equity instrument types
+        String instrUpper = (symbolInstr == null) ? "" : symbolInstr.toUpperCase();
+        if (instrUpper.equals("OPT") || instrUpper.equals("FUT") || instrUpper.equals("MLEG") ||
+            instrUpper.equals("TBILL") || instrUpper.equals("TBOND") || instrUpper.equals("CORP") ||
+            instrUpper.equals("GOVDBT") || instrUpper.equals("CORPDBT") || instrUpper.equals("TB") ||
+            instrUpper.equals("CB") || instrUpper.equals("DB")) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * Collects all Public Board symbols & LTPs from the DB table.
-     * Table: dse_md_ltp (or cse_md_ltp) WHERE board = 'PUBLIC'
+     * Enforces ONLY board = 'PUBLIC' and excludes DEBT, BUYIN, YIELDDBT, etc.
      */
     public static synchronized Map<String, PublicSymbolLtp> fetchPublicBoardLtp(String exchange) {
         String exClean = (exchange == null || exchange.trim().isEmpty()) ? "DSE" : exchange.trim().toUpperCase();
@@ -84,15 +134,29 @@ public class OMSweb_DBMarketData {
         String tableLtp = exClean.equals("CSE") ? "cse_md_ltp" : "dse_md_ltp";
         String tableSym = exClean.equals("CSE") ? "cse_md_symbols" : "dse_md_symbols";
 
-        // 1. Try querying via PostgreSQL psql CLI
+        // 1. Try querying via PostgreSQL psql CLI with strict WHERE filters
         try {
             String psqlExe = findPsqlExecutable();
             if (psqlExe != null) {
                 String query = String.format(
                         "SELECT l.symbol, COALESCE(s.company_name, l.symbol), l.ltp, l.ycp, " +
-                        "l.circuit_up, l.circuit_down, l.floor_price, l.open, l.high, l.low, l.close, l.total_qty, l.last_update " +
+                        "l.circuit_up, l.circuit_down, l.floor_price, l.open, l.high, l.low, l.close, l.total_qty, l.last_update, " +
+                        "COALESCE(s.sector, '') as sector, COALESCE(s.symbol_instr, '') as symbol_instr " +
                         "FROM %s l LEFT JOIN %s s ON l.symbol = s.symbol AND l.board = s.board " +
-                        "WHERE l.board = 'PUBLIC' AND l.ltp IS NOT NULL AND l.ltp > 0 ORDER BY l.symbol ASC;",
+                        "WHERE l.board = 'PUBLIC' " +
+                        "  AND (s.symbol_instr IS NULL OR s.symbol_instr IN ('EQ', 'MF', 'CS')) " +
+                        "  AND COALESCE(s.sector, '') NOT ILIKE '%%Bond%%' " +
+                        "  AND COALESCE(s.sector, '') NOT ILIKE '%%Debt%%' " +
+                        "  AND COALESCE(s.sector, '') NOT ILIKE '%%Debenture%%' " +
+                        "  AND l.symbol NOT LIKE '%%-CE' " +
+                        "  AND l.symbol NOT LIKE '%%-PE' " +
+                        "  AND l.symbol NOT LIKE '%%-XX' " +
+                        "  AND l.symbol NOT LIKE '%%-SPD' " +
+                        "  AND l.symbol NOT LIKE '%%BOND%%' " +
+                        "  AND l.symbol NOT LIKE 'TB%%' " +
+                        "  AND l.symbol NOT LIKE '%%SUKUK%%' " +
+                        "  AND l.ltp IS NOT NULL AND l.ltp > 0 " +
+                        "ORDER BY l.symbol ASC;",
                         tableLtp, tableSym);
 
                 ProcessBuilder pb = new ProcessBuilder(
@@ -114,8 +178,15 @@ public class OMSweb_DBMarketData {
                         String[] p = line.split("\t", -1);
                         if (p.length >= 3) {
                             String sym = p[0].trim().toUpperCase();
+                            String name = p.length > 1 ? p[1].trim() : sym;
+                            String sec = p.length > 13 ? p[13].trim() : "";
+                            String sinstr = p.length > 14 ? p[14].trim() : "";
+
+                            if (!isStrictlyPublicEquity(sym, name, sec, sinstr)) {
+                                continue;
+                            }
+
                             if (!sym.isEmpty()) {
-                                String name = p.length > 1 ? p[1].trim() : sym;
                                 double ltp = parseDouble(p[2]);
                                 double ycp = p.length > 3 ? parseDouble(p[3]) : ltp;
                                 double up = p.length > 4 ? parseDouble(p[4]) : 0.0;
@@ -183,8 +254,9 @@ public class OMSweb_DBMarketData {
         Map<String, PublicSymbolLtp> data = fetchPublicBoardLtp(exchange);
         String ex = (exchange == null) ? "DSE" : exchange.toUpperCase();
         System.out.println("\n" + "=".repeat(95));
-        System.out.printf("  DATABASE TABLE: %s PUBLIC BOARD MARKET DATA (dse_md_ltp WHERE board = 'PUBLIC')%n", ex);
-        System.out.printf("  Target: %s:%d/%s | Total Public Symbols Collected: %d%n", DB_HOST, DB_PORT, DB_NAME, data.size());
+        System.out.printf("  DATABASE TABLE: %s ONLY PUBLIC BOARD MARKET DATA (dse_md_ltp WHERE board = 'PUBLIC')%n", ex);
+        System.out.println("  [EXCLUDED BOARDS: DEBT, BUYIN, YIELDDBT, BUYDBT, BLOCK, SDEBT, ATBDEBT, ALTDBT, ETC.]");
+        System.out.printf("  Target: %s:%d/%s | Total Public Symbols: %d%n", DB_HOST, DB_PORT, DB_NAME, data.size());
         System.out.println("=".repeat(95));
         System.out.printf("%-4s | %-12s | %-28s | %10s | %8s | %9s | %9s%n",
                 "#", "Symbol", "Company Name", "LTP (BDT)", "YCP", "SH/CH", "SL/CL");
@@ -241,7 +313,6 @@ public class OMSweb_DBMarketData {
     }
 
     private static void parseSimpleJson(String json, Map<String, PublicSymbolLtp> cache) {
-        // Simple regex/substring parser for the cached records without external JSON libraries
         int idx = 0;
         while ((idx = json.indexOf("\"symbol\":", idx)) != -1) {
             int blockStart = json.lastIndexOf("{", idx);
@@ -261,8 +332,10 @@ public class OMSweb_DBMarketData {
                 double close = parseDouble(extractJsonField(block, "close"));
                 long qty = parseLong(extractJsonField(block, "total_qty"));
                 String lastUp = extractJsonField(block, "last_update");
+                String sec = extractJsonField(block, "sector");
+                String sinstr = extractJsonField(block, "symbol_instr");
 
-                if (!sym.isEmpty() && ltp > 0) {
+                if (!sym.isEmpty() && ltp > 0 && isStrictlyPublicEquity(sym, name, sec, sinstr)) {
                     cache.put(sym, new PublicSymbolLtp(sym, name, ltp, ycp, up, down, floor, open, high, low, close, qty, lastUp));
                 }
                 idx = blockEnd + 1;
@@ -315,6 +388,6 @@ public class OMSweb_DBMarketData {
 
     public static void main(String[] args) {
         String ex = args.length > 0 ? args[0] : "DSE";
-        printPublicBoardSummary(ex, 30);
+        printPublicBoardSummary(ex, 35);
     }
 }
