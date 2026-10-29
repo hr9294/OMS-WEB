@@ -83,7 +83,7 @@ public class OMSwebmain {
         System.out.println("\n[UFTFAST OMS] 3. Select Trading Execution Option:");
         System.out.println("  1. Standard Trade & 6-Widget Verification [Default]");
         System.out.println("  2. Multi-Order Execution, Right-Click 'Execute at Market' & Real-time 6-Widget Audit");
-        System.out.println("  3. High-Speed Multi-Trade Engine (15-Min Simultaneous: Accepted, Filled, Partial, Cancel)");
+        System.out.println("  3. High-Speed Multi-Trade Engine (2-Min Simultaneous: Accepted, Filled, Partial, Cancel)");
         System.out.println("  4. Collect & View Live Public Board Symbols & LTPs from Database Table (dse_md_ltp)");
         System.out.print("Enter Choice (1, 2, 3, or 4, default=1): ");
         String engChoice = sc.nextLine().trim();

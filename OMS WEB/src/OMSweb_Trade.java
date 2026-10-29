@@ -554,7 +554,9 @@ public class OMSweb_Trade {
 
 			// Check if already on Trade portal (marketwatch_symbol or order_instrument visible)
 			if (isAlreadyOnTradePage(driver)) {
-				System.out.println("[NAV] Already on Trade page.");
+				// Ensure docked Trade tab is focused without reloading the page
+				Order_Terminal.navigateToTrade(driver);
+				System.out.println("[NAV] Already on Trade page. Active tab verified without reloading.");
 				return;
 			}
 
@@ -607,7 +609,9 @@ public class OMSweb_Trade {
 			JavascriptExecutor js = (JavascriptExecutor) driver;
 			Object res = js.executeScript(
 				"var el = document.getElementById('marketwatch_symbol') || document.getElementById('order_instrument');" +
-				"return !!(el && el.offsetParent !== null);"
+				"if (el && el.offsetParent !== null) return true;" +
+				"if (window.location.href.indexOf('trade_portal') !== -1) return true;" +
+				"return false;"
 			);
 			return Boolean.TRUE.equals(res);
 		} catch (Exception e) {
@@ -816,18 +820,49 @@ public class OMSweb_Trade {
 			return;
 		}
 
-		System.out.print("Confirm cancellation? (1=YES / 0=NO, default=1): ");
-		String cancelAns = sc.nextLine().trim();
-		if (!cancelAns.equals("0") && !cancelAns.equalsIgnoreCase("n") && !cancelAns.equalsIgnoreCase("no")) {
+		// Automatically confirm cancellation without prompting user in console
+		System.out.println("[CANCEL] Automatically confirming order cancellation...");
+		boolean cancelConfirmed = false;
+		By[] confirmLocators = new By[] {
+			By.id("cnfirmConfirmBtn"),
+			By.xpath("//button[@id='cnfirmConfirmBtn']"),
+			By.xpath("//button[normalize-space()='YES' or normalize-space()='Yes']"),
+			By.xpath("//div[contains(@class,'modal')]//button[normalize-space()='YES' or normalize-space()='Yes']"),
+			By.cssSelector("button.confirm-btn, button#cnfirmConfirmBtn")
+		};
+		for (By loc : confirmLocators) {
 			try {
-				WebElement yesCancel = wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//button[normalize-space()='YES']")));
-				yesCancel.click();
-				System.out.println("Cancellation confirmed.");
-			} catch (Exception e) {
-				System.out.println("No cancellation confirmation appeared.");
-			}
+				WebElement yesBtn = new WebDriverWait(driver, Duration.ofSeconds(3))
+						.until(ExpectedConditions.elementToBeClickable(loc));
+			yesBtn.click();
+				System.out.println("✔ [CONFIRMATION] Automatically confirmed cancellation modal [YES].");
+				cancelConfirmed = true;
+				break;
+			} catch (Exception ignored) {}
 		}
-		Thread.sleep(1000);
+		if (!cancelConfirmed) {
+			try {
+				JavascriptExecutor jsCancel = (JavascriptExecutor) driver;
+				Boolean jsClick = (Boolean) jsCancel.executeScript(
+					"var btn = document.querySelector('#cnfirmConfirmBtn, button.confirm-btn') || " +
+					"Array.from(document.querySelectorAll('button')).find(function(b) { return (b.innerText || '').trim().toUpperCase() === 'YES'; });" +
+					"if (btn && btn.offsetParent !== null) { btn.click(); return true; } return false;"
+				);
+				if (Boolean.TRUE.equals(jsClick)) {
+					System.out.println("✔ [CONFIRMATION] Automatically confirmed cancellation modal via JS [YES].");
+					cancelConfirmed = true;
+				}
+			} catch (Exception ignored) {}
+		}
+		if (!cancelConfirmed) {
+			System.out.println("[NOTE] No cancellation confirmation modal appeared or already auto-processed.");
+		}
+		Thread.sleep(600);
+
+		// Return back to Trade tab in-place without reloading the Trade page
+		try {
+			Order_Terminal.navigateToTrade(driver);
+		} catch (Exception ignored) {}
 	}
 
 	// ---------- REJECTED ----------

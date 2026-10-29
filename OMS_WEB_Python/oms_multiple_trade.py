@@ -662,21 +662,21 @@ def run_load_test(driver: webdriver.Chrome) -> None:
     print("  1. Spread Market Maker (BUY @ LTP - spread, SELL @ LTP + spread)")
     print("  2. Aggressive Market Taker (BUY & SELL directly at LTP for immediate matching)")
     print("  3. Dynamic Micro-Burst / Volatility (Randomized tight spreads simulating order flow)")
-    print("  4. Full Simultaneous Lifecycle Engine: Accepted, Filled, Partially Filled & Cancelled [15-Min Continuous] (Recommended)")
+    print("  4. Full Simultaneous Lifecycle Engine: Accepted, Filled, Partially Filled & Cancelled [2-Min Continuous] (Recommended)")
     strat_in = input("Select Strategy (1-4, default=4): ").strip()
     strategy_choice = int(strat_in) if strat_in.isdigit() and strat_in in ["1", "2", "3", "4"] else 4
 
     # 5. Execution Volume & Pacing
     print("\n[HFT CONFIG: 5. ORDER VOLUME & PACING]")
     print(f"Active Trading Basket: {len(symbols)} Public Symbols (DB table dse_md_ltp).")
-    total_trades_in = input("Enter Total Orders to Execute (Press ENTER or 0 for continuous 15-min run across EVERY SINGLE SYMBOL): ").strip()
+    total_trades_in = input("Enter Total Orders to Execute (Press ENTER or 0 for continuous 2-min run across EVERY SINGLE SYMBOL): ").strip()
     total_trades = int(total_trades_in) if total_trades_in.isdigit() else 0
 
     delay_in = input("Enter Inter-Order Delay in milliseconds (default 0 ms for maximum burst TPS): ").strip()
     inter_order_delay_ms = int(delay_in) if delay_in.isdigit() else 0
 
-    default_duration_sec = 900  # 15 minutes default
-    dur_in = input(f"Enter Max Duration budget in seconds (default {default_duration_sec}s = 15 minutes): ").strip()
+    default_duration_sec = 120  # 2 minutes default
+    dur_in = input(f"Enter Max Duration budget in seconds (default {default_duration_sec}s = 2 minutes): ").strip()
     max_duration_sec = int(dur_in) if dur_in.isdigit() else default_duration_sec
 
     # 6. Pre-fetch Live Reference Prices & Circuit Limits (SH/SL, CH/CL) directly from DB table
@@ -737,7 +737,7 @@ def run_load_test(driver: webdriver.Chrome) -> None:
         1: "Spread Market Maker Across All Symbols",
         2: "Aggressive Market Taker (LTP) Across All Symbols",
         3: "Dynamic Volatility Jitter Across All Symbols",
-        4: "Full Simultaneous Lifecycle Sweeps Across EVERY SINGLE SYMBOL [15 Min]"
+        4: "Full Simultaneous Lifecycle Sweeps Across EVERY SINGLE SYMBOL [2 Min]"
     }
     print("\n+=============================================================================+")
     print("|              HFT MULTI-SYMBOL MULTI-CLIENT SIMULATION PLAN                  |")
@@ -745,7 +745,7 @@ def run_load_test(driver: webdriver.Chrome) -> None:
     print(f"| Basket Symbols       : {len(symbols)} Public Symbols (100% Universe from dse_md_ltp)")
     print(f"| BUY Client Pool      : {str(buy_clients):<52} |")
     print(f"| SELL Client Routing  : {'Mapped dynamically to verified holding accounts':<52} |")
-    print(f"| Total Planned Orders : {f'{total_trades} orders' if total_trades > 0 else f'{len(pipeline)} orders (15-Minute Continuous Sweeps)':<52} |")
+    print(f"| Total Planned Orders : {f'{total_trades} orders' if total_trades > 0 else f'{len(pipeline)} orders (2-Minute Continuous Sweeps)':<52} |")
     print(f"| Trading Strategy     : {strat_names.get(strategy_choice, 'Full Simultaneous Lifecycle Engine'):<52} |")
     print(f"| Interleave Pacing    : {inter_order_delay_ms} ms delay | Max Duration Budget: {max_duration_sec}s                |")
     print("+=============================================================================+")
@@ -763,7 +763,7 @@ def run_load_test(driver: webdriver.Chrome) -> None:
 
     # 9. High-Speed Execution Loop
     print("\n>>> STARTING HIGH-FREQUENCY MULTI-SYMBOL EXECUTION ENGINE <<<")
-    print(f"[HFT ENGINE] Duration Budget: {max_duration_sec} seconds (15 minutes) | Target: Accepted, Filled, Partially Filled, Cancelled Orders")
+    print(f"[HFT ENGINE] Duration Budget: {max_duration_sec} seconds (2 minutes) | Target: Accepted, Filled, Partially Filled, Cancelled Orders")
     start_time = time.time()
     success_count = 0
     failed_count = 0
@@ -858,7 +858,7 @@ def run_load_test(driver: webdriver.Chrome) -> None:
                 pass
 
     if (time.time() - start_time) >= max_duration_sec:
-        print(f"\n⏱ 15-Minute execution budget reached ({max_duration_sec} seconds). Halting HFT engine gracefully.")
+        print(f"\n⏱ 2-Minute execution budget reached ({max_duration_sec} seconds). Halting HFT engine gracefully.")
 
     total_time = max(0.001, time.time() - start_time)
 

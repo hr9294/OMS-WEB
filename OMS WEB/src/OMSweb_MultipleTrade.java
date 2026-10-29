@@ -330,7 +330,7 @@ public class OMSweb_MultipleTrade {
         System.out.println("  1. Spread Market Maker (BUY @ LTP - spread, SELL @ LTP + spread)");
         System.out.println("  2. Aggressive Market Taker (BUY & SELL directly at LTP for immediate matching)");
         System.out.println("  3. Dynamic Micro-Burst / Volatility (Randomized tight spreads simulating order flow)");
-        System.out.println("  4. Full Simultaneous Lifecycle Engine: Accepted, Filled, Partially Filled & Cancelled [15-Min Continuous] (Recommended)");
+        System.out.println("  4. Full Simultaneous Lifecycle Engine: Accepted, Filled, Partially Filled & Cancelled [2-Min Continuous] (Recommended)");
         System.out.print("Select Strategy (1-4, default=4): ");
         String stratInput = sc.nextLine().trim();
         int strategyChoice = 4;
@@ -341,7 +341,7 @@ public class OMSweb_MultipleTrade {
         // 5. Execution Volume & Pacing
         System.out.println("\n[HFT CONFIG: 5. ORDER VOLUME & PACING]");
         System.out.printf("Active Trading Basket: %d Public Symbols (DB table dse_md_ltp).%n", symbols.size());
-        System.out.printf("Enter Total Orders to Execute (Press ENTER or 0 for continuous 15-min run across EVERY SINGLE SYMBOL): ");
+        System.out.printf("Enter Total Orders to Execute (Press ENTER or 0 for continuous 2-min run across EVERY SINGLE SYMBOL): ");
         String countInput = sc.nextLine().trim();
         int totalOrders = 0; // Default to 0 (continuous 15-min sweep across every single symbol)
         try {
@@ -355,8 +355,8 @@ public class OMSweb_MultipleTrade {
             if (!delayInput.isEmpty()) interOrderDelayMs = Integer.parseInt(delayInput);
         } catch (Exception ignored) {}
 
-        int defaultDurationSec = 900; // 15 minutes default
-        System.out.printf("Enter Max Duration budget in seconds (default %ds = 15 minutes): ", defaultDurationSec);
+        int defaultDurationSec = 120; // 2 minutes default
+        System.out.printf("Enter Max Duration budget in seconds (default %ds = 2 minutes): ", defaultDurationSec);
         String durInput = sc.nextLine().trim();
         int maxDurationSec = defaultDurationSec;
         try {
@@ -408,7 +408,7 @@ public class OMSweb_MultipleTrade {
         );
 
         // 8. Display Simulation Plan & Guardrail Proceed Prompt
-        String stratDisplay = (strategyChoice == 4) ? "Full Simultaneous Lifecycle Sweeps Across EVERY SINGLE SYMBOL [15 Min]"
+        String stratDisplay = (strategyChoice == 4) ? "Full Simultaneous Lifecycle Sweeps Across EVERY SINGLE SYMBOL [2 Min]"
                 : (strategyChoice == 2 ? "Aggressive Market Taker (LTP) Across All Symbols" : (strategyChoice == 3 ? "Dynamic Volatility Jitter Across All Symbols" : "Spread Market Maker Across All Symbols"));
         System.out.println("\n+=============================================================================+");
         System.out.println("|              HFT MULTI-SYMBOL MULTI-CLIENT SIMULATION PLAN                  |");
@@ -416,9 +416,9 @@ public class OMSweb_MultipleTrade {
         System.out.printf("| Basket Symbols       : %d Public Symbols (100%% Universe from dse_md_ltp)%n", symbols.size());
         System.out.printf("| BUY Client Pool      : %-52s |%n", buyClients);
         System.out.printf("| SELL Client Routing  : %-52s |%n", "Mapped dynamically to verified holding accounts");
-        System.out.printf("| Total Planned Orders : %-52s |%n", (totalOrders > 0 ? (totalOrders + " orders") : (pipeline.size() + " orders (15-Minute Continuous Sweeps)")));
+        System.out.printf("| Total Planned Orders : %-52s |%n", (totalOrders > 0 ? (totalOrders + " orders") : (pipeline.size() + " orders (2-Minute Continuous Sweeps)")));
         System.out.printf("| Trading Strategy     : %-52s |%n", stratDisplay);
-        System.out.printf("| Interleave Pacing    : %d ms delay | Max Duration Budget: %ds (15m)       |%n", interOrderDelayMs, maxDurationSec);
+        System.out.printf("| Interleave Pacing    : %d ms delay | Max Duration Budget: %ds (2m)       |%n", interOrderDelayMs, maxDurationSec);
         System.out.println("+=============================================================================+");
 
         System.out.print("\nProceed to execute HFT Simulation? (1=YES / 0=NO, default=1): ");
@@ -430,7 +430,7 @@ public class OMSweb_MultipleTrade {
 
         // 9. High-Speed Execution Loop
         System.out.println("\n>>> STARTING HIGH-FREQUENCY MULTI-SYMBOL EXECUTION ENGINE <<<");
-        System.out.printf("[HFT ENGINE] Duration Budget: %d seconds (15 minutes) | Target: Accepted, Filled, Partially Filled, Cancelled Orders%n", maxDurationSec);
+        System.out.printf("[HFT ENGINE] Duration Budget: %d seconds (2 minutes) | Target: Accepted, Filled, Partially Filled, Cancelled Orders%n", maxDurationSec);
         Instant sessionStart = Instant.now();
         Duration maxBudget = Duration.ofSeconds(maxDurationSec);
         int successCount = 0;
@@ -519,7 +519,7 @@ public class OMSweb_MultipleTrade {
         }
 
         if (Duration.between(sessionStart, Instant.now()).compareTo(maxBudget) >= 0) {
-            System.out.printf("%n⏱ 15-Minute execution budget reached (%d seconds). Halting HFT engine gracefully.%n", maxDurationSec);
+            System.out.printf("%n⏱ 2-Minute execution budget reached (%d seconds). Halting HFT engine gracefully.%n", maxDurationSec);
         }
 
         Duration totalDuration = Duration.between(sessionStart, Instant.now());
