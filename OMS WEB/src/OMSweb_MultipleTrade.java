@@ -77,7 +77,10 @@ public class OMSweb_MultipleTrade {
 
     // Default Symbols Basket contains ALL Public Symbols (from DB table / verified basket)
     public static final List<String> DEFAULT_SYMBOLS = Collections.unmodifiableList(getPublicSymbolsBasket());
-    public static final List<String> DEFAULT_BUY_CLIENTS = Arrays.asList("08096", "00224", "08833", "00507", "09139", "09189", "07605");
+    public static final List<String> DEFAULT_BUY_CLIENTS = Collections.unmodifiableList(Arrays.asList(
+        "34601", "34649", "23986", "15740", "00224", "39187", "00516", "00916",
+        "39187", "02417", "37854", "45971", "18051", "12001", "04474", "03246"
+    ));
 
     // ==========================================
     // 2. DOMAIN ENUM & DATA MODEL
@@ -285,7 +288,11 @@ public class OMSweb_MultipleTrade {
             }
         }
         if (buyClients.isEmpty()) {
-            buyClients.addAll(DEFAULT_BUY_CLIENTS);
+            for (String c : DEFAULT_BUY_CLIENTS) {
+                if (!buyClients.contains(c)) {
+                    buyClients.add(c);
+                }
+            }
         }
         System.out.printf(">> Active BUY Client Pool: %s (%d accounts)%n", buyClients, buyClients.size());
 

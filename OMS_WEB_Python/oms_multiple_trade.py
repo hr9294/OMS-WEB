@@ -47,7 +47,10 @@ def get_public_symbols_basket(exchange: str = "DSE") -> List[str]:
     return list(ALL_PUBLIC_SYMBOLS)
 
 DEFAULT_SYMBOLS = get_public_symbols_basket("DSE")
-DEFAULT_BUY_CLIENTS = ["08096", "00224", "08833", "00507", "09139", "09189", "07605"]
+DEFAULT_BUY_CLIENTS = [
+    "34601", "34649", "23986", "15740", "00224", "39187", "00516", "00916",
+    "39187", "02417", "37854", "45971", "18051", "12001", "04474", "03246"
+]
 
 
 class CircuitLimits:
@@ -630,7 +633,9 @@ def run_load_test(driver: webdriver.Chrome) -> None:
             if clean and clean not in buy_clients:
                 buy_clients.append(clean)
     if not buy_clients:
-        buy_clients = list(DEFAULT_BUY_CLIENTS)
+        for c in DEFAULT_BUY_CLIENTS:
+            if c not in buy_clients:
+                buy_clients.append(c)
     print(f">> Active BUY Client Pool: {buy_clients} ({len(buy_clients)} accounts)")
 
     # Discover holding SELL clients for each symbol via Position API
