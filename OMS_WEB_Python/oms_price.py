@@ -120,13 +120,20 @@ def fetch_price_ltp_or_ycp(
 
     # Tier 4: Safe Symbol-Specific Fallback
     fallback_map = {
-        "GP": 310.0,
-        "BATBC": 380.0,
-        "SQURPHARMA": 215.0,
-        "ACFL": 26.5,
-        "BEXIMCO": 115.0,
-        "WALTONHIL": 680.0,
-        "RENATA": 620.0,
+        "GP": 315.50, "ROBI": 30.50, "BSCCL": 185.00, "BATBC": 518.70,
+        "BEXIMCO": 115.60, "WALTONHIL": 680.00, "SQURPHARMA": 234.20,
+        "RENATA": 780.00, "BXPHARMA": 145.00, "BEACONPHAR": 240.00,
+        "MARICO": 2450.00, "IBNSINA": 310.00, "ACMEPL": 85.00, "ORIONPHARM": 72.00,
+        "LHBL": 72.40, "HEIDELBCEM": 230.00, "CROWNCEMNT": 55.00, "PREMIERCEM": 48.00,
+        "BSRMSTEEL": 62.00, "GPHISPAT": 35.00, "BRACBANK": 44.50, "EBL": 32.00,
+        "CITYBANK": 23.50, "ISLAMIBANK": 32.60, "UCB": 12.50, "DHAKABANK": 13.00,
+        "PUBALIBANK": 28.00, "PRIMEBANK": 21.00, "DUTCHBANGL": 58.00, "LANKABAFIN": 18.00,
+        "IDLC": 42.00, "IPDC": 22.00, "POWERGRID": 52.00, "TITASGAS": 34.00,
+        "MJLBD": 88.00, "UPGDCL": 235.00, "SUMITPOWER": 26.00, "LINDEBD": 1050.00,
+        "MPETROLEUM": 205.00, "PADMAOIL": 195.00, "JAMUNAOIL": 180.00, "AAMRANET": 45.00,
+        "AAMRATECH": 33.00, "GENEXIL": 52.00, "OLYMPIC": 155.00, "UNILEVERCL": 2050.00,
+        "GREENDELTA": 65.00, "RELIANCINS": 70.00, "PIONEERINS": 75.00, "SQUARETEXT": 58.00,
+        "ENVOYTEX": 42.00
     }
     fb = fallback_map.get(sym, 100.0)
     print(f"[MARKET PRICE: FALLBACK] Could not fetch live LTP/YCP. Using default baseline: {fb:.2f} BDT for {sym}")

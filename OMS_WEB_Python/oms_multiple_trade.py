@@ -23,7 +23,20 @@ import oms_price
 import oms_trade
 
 # Default Verified Liquid Basket & High-Cash Client Pools
-DEFAULT_SYMBOLS = ["GP", "BEXIMCO", "LHBL", "BATBC", "SQURPHARMA"]
+ALL_PUBLIC_SYMBOLS = [
+    "GP", "BATBC", "BEXIMCO", "SQURPHARMA", "LHBL",
+    "ROBI", "RENATA", "BRACBANK", "BXPHARMA", "WALTONHIL",
+    "BEACONPHAR", "BSCCL", "CITYBANK", "EBL", "ISLAMIBANK",
+    "UCB", "DHAKABANK", "PUBALIBANK", "PRIMEBANK", "DUTCHBANGL",
+    "LANKABAFIN", "IDLC", "IPDC", "POWERGRID", "TITASGAS",
+    "MJLBD", "UPGDCL", "SUMITPOWER", "LINDEBD", "MPETROLEUM",
+    "PADMAOIL", "JAMUNAOIL", "HEIDELBCEM", "CROWNCEMNT", "BSRMSTEEL",
+    "GPHISPAT", "OLYMPIC", "AAMRANET", "AAMRATECH", "GENEXIL",
+    "UNILEVERCL", "MARICO", "IBNSINA", "GREENDELTA", "RELIANCINS",
+    "SQUARETEXT", "ENVOYTEX"
+]
+
+DEFAULT_SYMBOLS = list(ALL_PUBLIC_SYMBOLS)
 DEFAULT_BUY_CLIENTS = ["08096", "00224", "08833", "00507", "09139", "09189", "07605"]
 
 
@@ -81,6 +94,55 @@ class HftOrder:
 
 # Backward compatibility alias
 LoadOrder = HftOrder
+
+
+def discover_public_symbols_from_browser(driver: webdriver.Chrome) -> List[str]:
+    discovered: List[str] = []
+    if not driver:
+        return discovered
+    try:
+        res = driver.execute_script("""
+            var syms = [];
+            var inputs = ['#order_instrument', '#instrument', '#marketwatch_symbol', '#sc_instrument_search'];
+            for (var i = 0; i < inputs.length; i++) {
+                var $el = window.$ ? $(inputs[i]) : null;
+                if ($el && $el.length && $el.data('ui-autocomplete')) {
+                    var src = $el.autocomplete('option', 'source');
+                    if (Array.isArray(src) && src.length > 0) {
+                        for (var j = 0; j < src.length; j++) {
+                            var s = typeof src[j] === 'string' ? src[j] : (src[j].value || src[j].label || '');
+                            if (s && !syms.includes(s.trim())) syms.push(s.trim());
+                        }
+                    }
+                }
+            }
+            var globals = ['instruments', 'symbols', 'public_symbols', 'symbol_list', 'stock_symbols', 'all_instruments', 'INSTRUMENTS'];
+            for (var g = 0; g < globals.length; g++) {
+                if (window[globals[g]] && Array.isArray(window[globals[g]])) {
+                    window[globals[g]].forEach(function(item) {
+                        var s = typeof item === 'string' ? item : (item.symbol || item.code || item.value || '');
+                        if (s && !syms.includes(s.trim())) syms.push(s.trim());
+                    });
+                }
+            }
+            var rows = document.querySelectorAll('tr[class*="mw_"], #marketwatch_table tbody tr, table.marketwatch tbody tr');
+            for (var r = 0; r < rows.length; r++) {
+                var codeTd = rows[r].querySelector('td.mw_table_symbol, td[class*="symbol"]');
+                if (codeTd && codeTd.innerText) {
+                    var s = codeTd.innerText.trim();
+                    if (s && !syms.includes(s)) syms.push(s);
+                }
+            }
+            return syms;
+        """)
+        if isinstance(res, list):
+            for item in res:
+                c = str(item or "").strip().upper()
+                if c and c not in discovered:
+                    discovered.append(c)
+    except Exception:
+        pass
+    return discovered
 
 
 def fetch_holding_clients_for_symbol(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> List[str]:
@@ -281,20 +343,34 @@ def run_load_test(driver: webdriver.Chrome) -> None:
     # STEP 0: Widget Color Linking
     widget_color.run_widget_color_selection(driver)
 
-    # 2. Multi-Symbol Basket Selection
+    # 2. Multi-Symbol Basket Selection (All Public Symbols)
     print("\n[HFT CONFIG: 1. SYMBOLS BASKET]")
-    print(f"Default Liquid Basket: {', '.join(DEFAULT_SYMBOLS)}")
-    sym_in = input("Enter Symbols comma-separated (press ENTER for default basket): ").strip()
+    print(f"Default Public Basket ({len(DEFAULT_SYMBOLS)} Public Symbols):\n  {', '.join(DEFAULT_SYMBOLS)}")
+    print("Options:")
+    print(f"  - Press ENTER to select ALL Public Symbols ({len(DEFAULT_SYMBOLS)} symbols)")
+    print("  - Type 'TOP' or '10' for Top 10 Liquid Public Symbols")
+    print("  - Enter specific symbols comma-separated (e.g. GP, BEXIMCO, BATBC)")
+    sym_in = input("Enter Choice: ").strip()
 
     symbols: List[str] = []
-    if sym_in:
+    if sym_in.upper() in ["TOP", "10"]:
+        symbols = ["GP", "BATBC", "BEXIMCO", "SQURPHARMA", "LHBL", "ROBI", "RENATA", "BRACBANK", "BXPHARMA", "WALTONHIL"]
+    elif sym_in.upper() in ["ALL", "PUBLIC"] or not sym_in:
+        symbols = list(DEFAULT_SYMBOLS)
+        live_disc = discover_public_symbols_from_browser(driver)
+        if live_disc:
+            for ds in live_disc:
+                if ds not in symbols:
+                    symbols.append(ds)
+            print(f"  ✔ Dynamically discovered & added {len(live_disc)} additional live public symbols from Trade Portal.")
+    else:
         for s in sym_in.replace(",", " ").split():
             clean = s.strip().upper()
             if clean and clean not in symbols:
                 symbols.append(clean)
-    if not symbols:
-        symbols = list(DEFAULT_SYMBOLS)
-    print(f">> Active Trading Basket: {symbols} ({len(symbols)} symbols)")
+        if not symbols:
+            symbols = list(DEFAULT_SYMBOLS)
+    print(f">> Active Trading Basket: {len(symbols)} Public Symbol(s) selected: {symbols}")
 
     # 3. Multi-Client Configuration
     print("\n[HFT CONFIG: 2. CLIENT ROUTING POOLS]")

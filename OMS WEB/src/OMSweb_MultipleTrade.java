@@ -49,7 +49,22 @@ public class OMSweb_MultipleTrade {
     private static final By AUTOCOMPLETE_MENU     = By.cssSelector(".ui-autocomplete");
 
     // Default Verified Liquid Basket & High-Cash Client Pools
-    public static final List<String> DEFAULT_SYMBOLS = Arrays.asList("GP", "BEXIMCO", "LHBL", "BATBC", "SQURPHARMA");
+    // All Verified Public Board Equity Symbols on DSE/CSE
+    public static final List<String> ALL_PUBLIC_SYMBOLS = Collections.unmodifiableList(Arrays.asList(
+        "GP", "BATBC", "BEXIMCO", "SQURPHARMA", "LHBL",
+        "ROBI", "RENATA", "BRACBANK", "BXPHARMA", "WALTONHIL",
+        "BEACONPHAR", "BSCCL", "CITYBANK", "EBL", "ISLAMIBANK",
+        "UCB", "DHAKABANK", "PUBALIBANK", "PRIMEBANK", "DUTCHBANGL",
+        "LANKABAFIN", "IDLC", "IPDC", "POWERGRID", "TITASGAS",
+        "MJLBD", "UPGDCL", "SUMITPOWER", "LINDEBD", "MPETROLEUM",
+        "PADMAOIL", "JAMUNAOIL", "HEIDELBCEM", "CROWNCEMNT", "BSRMSTEEL",
+        "GPHISPAT", "OLYMPIC", "AAMRANET", "AAMRATECH", "GENEXIL",
+        "UNILEVERCL", "MARICO", "IBNSINA", "GREENDELTA", "RELIANCINS",
+        "SQUARETEXT", "ENVOYTEX"
+    ));
+
+    // Default Symbols Basket contains ALL Public Symbols
+    public static final List<String> DEFAULT_SYMBOLS = ALL_PUBLIC_SYMBOLS;
     public static final List<String> DEFAULT_BUY_CLIENTS = Arrays.asList("08096", "00224", "08833", "00507", "09139", "09189", "07605");
 
     // ==========================================
@@ -188,25 +203,43 @@ public class OMSweb_MultipleTrade {
         System.out.println("|    HIGH FREQUENCY TRADING (HFT) & MULTI-SYMBOL MULTI-CLIENT SIMULATOR       |");
         System.out.println("+=============================================================================+");
 
-        // 2. Multi-Symbol Basket Selection
+        // 2. Multi-Symbol Basket Selection (All Public Symbols)
         System.out.println("\n[HFT CONFIG: 1. SYMBOLS BASKET]");
-        System.out.printf("Default Liquid Basket: %s%n", String.join(", ", DEFAULT_SYMBOLS));
-        System.out.print("Enter Symbols comma-separated (press ENTER for default basket): ");
+        System.out.printf("Default Public Basket (%d Public Symbols): %n  %s%n",
+                DEFAULT_SYMBOLS.size(), String.join(", ", DEFAULT_SYMBOLS));
+        System.out.println("Options:");
+        System.out.println("  - Press ENTER to select ALL Public Symbols (" + DEFAULT_SYMBOLS.size() + " symbols)");
+        System.out.println("  - Type 'TOP' or '10' for Top 10 Liquid Public Symbols");
+        System.out.println("  - Enter specific symbols comma-separated (e.g. GP, BEXIMCO, BATBC)");
+        System.out.print("Enter Choice: ");
         String symInput = sc.nextLine().trim();
 
         List<String> symbols = new ArrayList<>();
-        if (!symInput.isEmpty()) {
+        if (symInput.equalsIgnoreCase("TOP") || symInput.equals("10")) {
+            symbols.addAll(Arrays.asList("GP", "BATBC", "BEXIMCO", "SQURPHARMA", "LHBL", "ROBI", "RENATA", "BRACBANK", "BXPHARMA", "WALTONHIL"));
+        } else if (symInput.equalsIgnoreCase("ALL") || symInput.equalsIgnoreCase("PUBLIC") || symInput.isEmpty()) {
+            symbols.addAll(DEFAULT_SYMBOLS);
+            List<String> liveDiscovered = discoverPublicSymbolsFromBrowser(driver);
+            if (!liveDiscovered.isEmpty()) {
+                for (String ds : liveDiscovered) {
+                    if (!symbols.contains(ds)) {
+                        symbols.add(ds);
+                    }
+                }
+                System.out.printf("  ✔ Dynamically discovered & added %d additional live public symbols from Trade Portal.%n", liveDiscovered.size());
+            }
+        } else {
             for (String s : symInput.split("[,\\s]+")) {
                 String clean = s.trim().toUpperCase();
                 if (!clean.isEmpty() && !symbols.contains(clean)) {
                     symbols.add(clean);
                 }
             }
+            if (symbols.isEmpty()) {
+                symbols.addAll(DEFAULT_SYMBOLS);
+            }
         }
-        if (symbols.isEmpty()) {
-            symbols.addAll(DEFAULT_SYMBOLS);
-        }
-        System.out.printf(">> Active Trading Basket: %s (%d symbols)%n", symbols, symbols.size());
+        System.out.printf(">> Active Trading Basket: %d Public Symbol(s) selected: %s%n", symbols.size(), symbols);
 
         // 3. Multi-Client Configuration (BUY & SELL Pools)
         System.out.println("\n[HFT CONFIG: 2. CLIENT ROUTING POOLS]");
@@ -640,14 +673,68 @@ public class OMSweb_MultipleTrade {
 
     public static final Map<String, Double> REALISTIC_PRICES = new LinkedHashMap<>();
     static {
+        // Telecom & Blue Chips
         REALISTIC_PRICES.put("GP", 315.50);
-        REALISTIC_PRICES.put("BEXIMCO", 115.60);
-        REALISTIC_PRICES.put("BATBC", 518.70);
-        REALISTIC_PRICES.put("LHBL", 72.40);
-        REALISTIC_PRICES.put("SQURPHARMA", 234.20);
         REALISTIC_PRICES.put("ROBI", 30.50);
+        REALISTIC_PRICES.put("BSCCL", 185.00);
+        REALISTIC_PRICES.put("BATBC", 518.70);
+        REALISTIC_PRICES.put("BEXIMCO", 115.60);
+        REALISTIC_PRICES.put("WALTONHIL", 680.00);
+
+        // Pharma & Chemicals
+        REALISTIC_PRICES.put("SQURPHARMA", 234.20);
         REALISTIC_PRICES.put("RENATA", 780.00);
+        REALISTIC_PRICES.put("BXPHARMA", 145.00);
+        REALISTIC_PRICES.put("BEACONPHAR", 240.00);
+        REALISTIC_PRICES.put("MARICO", 2450.00);
+        REALISTIC_PRICES.put("IBNSINA", 310.00);
+        REALISTIC_PRICES.put("ACMEPL", 85.00);
+        REALISTIC_PRICES.put("ORIONPHARM", 72.00);
+
+        // Cement & Materials
+        REALISTIC_PRICES.put("LHBL", 72.40);
+        REALISTIC_PRICES.put("HEIDELBCEM", 230.00);
+        REALISTIC_PRICES.put("CROWNCEMNT", 55.00);
+        REALISTIC_PRICES.put("PREMIERCEM", 48.00);
+        REALISTIC_PRICES.put("BSRMSTEEL", 62.00);
+        REALISTIC_PRICES.put("GPHISPAT", 35.00);
+
+        // Banking & Financials
         REALISTIC_PRICES.put("BRACBANK", 44.50);
+        REALISTIC_PRICES.put("EBL", 32.00);
+        REALISTIC_PRICES.put("CITYBANK", 23.50);
+        REALISTIC_PRICES.put("ISLAMIBANK", 32.60);
+        REALISTIC_PRICES.put("UCB", 12.50);
+        REALISTIC_PRICES.put("DHAKABANK", 13.00);
+        REALISTIC_PRICES.put("PUBALIBANK", 28.00);
+        REALISTIC_PRICES.put("PRIMEBANK", 21.00);
+        REALISTIC_PRICES.put("DUTCHBANGL", 58.00);
+        REALISTIC_PRICES.put("LANKABAFIN", 18.00);
+        REALISTIC_PRICES.put("IDLC", 42.00);
+        REALISTIC_PRICES.put("IPDC", 22.00);
+
+        // Fuel & Power
+        REALISTIC_PRICES.put("POWERGRID", 52.00);
+        REALISTIC_PRICES.put("TITASGAS", 34.00);
+        REALISTIC_PRICES.put("MJLBD", 88.00);
+        REALISTIC_PRICES.put("UPGDCL", 235.00);
+        REALISTIC_PRICES.put("SUMITPOWER", 26.00);
+        REALISTIC_PRICES.put("LINDEBD", 1050.00);
+        REALISTIC_PRICES.put("MPETROLEUM", 205.00);
+        REALISTIC_PRICES.put("PADMAOIL", 195.00);
+        REALISTIC_PRICES.put("JAMUNAOIL", 180.00);
+
+        // IT, Consumer & Insurance
+        REALISTIC_PRICES.put("AAMRANET", 45.00);
+        REALISTIC_PRICES.put("AAMRATECH", 33.00);
+        REALISTIC_PRICES.put("GENEXIL", 52.00);
+        REALISTIC_PRICES.put("OLYMPIC", 155.00);
+        REALISTIC_PRICES.put("UNILEVERCL", 2050.00);
+        REALISTIC_PRICES.put("GREENDELTA", 65.00);
+        REALISTIC_PRICES.put("RELIANCINS", 70.00);
+        REALISTIC_PRICES.put("PIONEERINS", 75.00);
+        REALISTIC_PRICES.put("SQUARETEXT", 58.00);
+        REALISTIC_PRICES.put("ENVOYTEX", 42.00);
     }
 
     public static double fetchPriceSafely(WebDriver driver, WebDriverWait wait, String symbol) {
@@ -678,6 +765,59 @@ public class OMSweb_MultipleTrade {
     // ==========================================
     // 6B. CIRCUIT LIMIT & EXCEED DETECTION HELPERS
     // ==========================================
+    public static List<String> discoverPublicSymbolsFromBrowser(WebDriver driver) {
+        List<String> discovered = new ArrayList<>();
+        if (driver == null) return discovered;
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            Object res = js.executeScript(
+                "var syms = [];" +
+                "var inputs = ['#order_instrument', '#instrument', '#marketwatch_symbol', '#sc_instrument_search'];" +
+                "for (var i = 0; i < inputs.length; i++) {" +
+                "    var $el = window.$ ? $(inputs[i]) : null;" +
+                "    if ($el && $el.length && $el.data('ui-autocomplete')) {" +
+                "        var src = $el.autocomplete('option', 'source');" +
+                "        if (Array.isArray(src) && src.length > 0) {" +
+                "            for (var j = 0; j < src.length; j++) {" +
+                "                var s = typeof src[j] === 'string' ? src[j] : (src[j].value || src[j].label || '');" +
+                "                if (s && !syms.includes(s.trim())) syms.push(s.trim());" +
+                "            }" +
+                "        }" +
+                "    }" +
+                "}" +
+                "var globals = ['instruments', 'symbols', 'public_symbols', 'symbol_list', 'stock_symbols', 'all_instruments', 'INSTRUMENTS'];" +
+                "for (var g = 0; g < globals.length; g++) {" +
+                "    if (window[globals[g]] && Array.isArray(window[globals[g]])) {" +
+                "        window[globals[g]].forEach(function(item) {" +
+                "            var s = typeof item === 'string' ? item : (item.symbol || item.code || item.value || '');" +
+                "            if (s && !syms.includes(s.trim())) syms.push(s.trim());" +
+                "        });" +
+                "    }" +
+                "}" +
+                "var rows = document.querySelectorAll('tr[class*=\"mw_\"], #marketwatch_table tbody tr, table.marketwatch tbody tr');" +
+                "for (var r = 0; r < rows.length; r++) {" +
+                "    var codeTd = rows[r].querySelector('td.mw_table_symbol, td[class*=\"symbol\"]');" +
+                "    if (codeTd && codeTd.innerText) {" +
+                "        var s = codeTd.innerText.trim();" +
+                "        if (s && !syms.includes(s)) syms.push(s);" +
+                "    }" +
+                "}" +
+                "return syms;"
+            );
+            if (res instanceof List) {
+                for (Object item : (List<?>) res) {
+                    if (item != null) {
+                        String clean = item.toString().trim().toUpperCase();
+                        if (!clean.isEmpty() && !discovered.contains(clean)) {
+                            discovered.add(clean);
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return discovered;
+    }
+
     public static double parsePrice(String val) {
         if (val == null) return 0.0;
         String clean = val.replaceAll("[^0-9.-]", "").trim();
