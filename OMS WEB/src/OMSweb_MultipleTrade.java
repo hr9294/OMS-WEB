@@ -63,8 +63,19 @@ public class OMSweb_MultipleTrade {
         "SQUARETEXT", "ENVOYTEX"
     ));
 
-    // Default Symbols Basket contains ALL Public Symbols
-    public static final List<String> DEFAULT_SYMBOLS = ALL_PUBLIC_SYMBOLS;
+    // Helper method to retrieve all Public Board symbols from DB table dse_md_ltp
+    public static List<String> getPublicSymbolsBasket() {
+        try {
+            List<String> dbSyms = OMSweb_DBMarketData.getPublicSymbols("DSE");
+            if (dbSyms != null && !dbSyms.isEmpty()) {
+                return dbSyms;
+            }
+        } catch (Exception ignored) {}
+        return ALL_PUBLIC_SYMBOLS;
+    }
+
+    // Default Symbols Basket contains ALL Public Symbols (from DB table / verified basket)
+    public static final List<String> DEFAULT_SYMBOLS = Collections.unmodifiableList(getPublicSymbolsBasket());
     public static final List<String> DEFAULT_BUY_CLIENTS = Arrays.asList("08096", "00224", "08833", "00507", "09139", "09189", "07605");
 
     // ==========================================
@@ -203,16 +214,25 @@ public class OMSweb_MultipleTrade {
         System.out.println("|    HIGH FREQUENCY TRADING (HFT) & MULTI-SYMBOL MULTI-CLIENT SIMULATOR       |");
         System.out.println("+=============================================================================+");
 
-        // 2. Multi-Symbol Basket Selection (All Public Symbols)
+        // 2. Multi-Symbol Basket Selection (All Public Symbols from DB Table)
+        List<String> activePublicSymbols = getPublicSymbolsBasket();
         System.out.println("\n[HFT CONFIG: 1. SYMBOLS BASKET]");
-        System.out.printf("Default Public Basket (%d Public Symbols): %n  %s%n",
-                DEFAULT_SYMBOLS.size(), String.join(", ", DEFAULT_SYMBOLS));
+        System.out.printf("Default Public Basket (%d Public Symbols collected from DB table dse_md_ltp): %n  %s%n",
+                activePublicSymbols.size(),
+                String.join(", ", activePublicSymbols.subList(0, Math.min(25, activePublicSymbols.size()))) + (activePublicSymbols.size() > 25 ? "..." : ""));
         System.out.println("Options:");
-        System.out.println("  - Press ENTER to select ALL Public Symbols (" + DEFAULT_SYMBOLS.size() + " symbols)");
+        System.out.println("  - Press ENTER to select ALL Public Symbols from DB table (" + activePublicSymbols.size() + " symbols)");
+        System.out.println("  - Type 'DB' to view live Public Board symbols & LTPs table (dse_md_ltp / cse_md_ltp)");
         System.out.println("  - Type 'TOP' or '10' for Top 10 Liquid Public Symbols");
         System.out.println("  - Enter specific symbols comma-separated (e.g. GP, BEXIMCO, BATBC)");
         System.out.print("Enter Choice: ");
         String symInput = sc.nextLine().trim();
+
+        if (symInput.equalsIgnoreCase("DB")) {
+            OMSweb_DBMarketData.printPublicBoardSummary("DSE", 35);
+            System.out.print("Enter Choice (press ENTER for ALL Public Symbols): ");
+            symInput = sc.nextLine().trim();
+        }
 
         List<String> symbols = new ArrayList<>();
         if (symInput.equalsIgnoreCase("TOP") || symInput.equals("10")) {

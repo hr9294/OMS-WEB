@@ -36,7 +36,17 @@ ALL_PUBLIC_SYMBOLS = [
     "SQUARETEXT", "ENVOYTEX"
 ]
 
-DEFAULT_SYMBOLS = list(ALL_PUBLIC_SYMBOLS)
+def get_public_symbols_basket(exchange: str = "DSE") -> List[str]:
+    try:
+        from db_market_data import get_public_symbols_list
+        db_syms = get_public_symbols_list(exchange)
+        if db_syms:
+            return db_syms
+    except Exception:
+        pass
+    return list(ALL_PUBLIC_SYMBOLS)
+
+DEFAULT_SYMBOLS = get_public_symbols_basket("DSE")
 DEFAULT_BUY_CLIENTS = ["08096", "00224", "08833", "00507", "09139", "09189", "07605"]
 
 
@@ -343,14 +353,25 @@ def run_load_test(driver: webdriver.Chrome) -> None:
     # STEP 0: Widget Color Linking
     widget_color.run_widget_color_selection(driver)
 
-    # 2. Multi-Symbol Basket Selection (All Public Symbols)
+    # 2. Multi-Symbol Basket Selection (All Public Symbols from DB Table)
+    active_public_syms = get_public_symbols_basket("DSE")
     print("\n[HFT CONFIG: 1. SYMBOLS BASKET]")
-    print(f"Default Public Basket ({len(DEFAULT_SYMBOLS)} Public Symbols):\n  {', '.join(DEFAULT_SYMBOLS)}")
+    sample_preview = ', '.join(active_public_syms[:25]) + ("..." if len(active_public_syms) > 25 else "")
+    print(f"Default Public Basket ({len(active_public_syms)} Public Symbols collected from DB table dse_md_ltp):\n  {sample_preview}")
     print("Options:")
-    print(f"  - Press ENTER to select ALL Public Symbols ({len(DEFAULT_SYMBOLS)} symbols)")
+    print(f"  - Press ENTER to select ALL Public Symbols from DB table ({len(active_public_syms)} symbols)")
+    print("  - Type 'DB' to view live Public Board symbols & LTPs table (dse_md_ltp / cse_md_ltp)")
     print("  - Type 'TOP' or '10' for Top 10 Liquid Public Symbols")
     print("  - Enter specific symbols comma-separated (e.g. GP, BEXIMCO, BATBC)")
     sym_in = input("Enter Choice: ").strip()
+
+    if sym_in.upper() == "DB":
+        try:
+            from db_market_data import print_public_board_summary
+            print_public_board_summary("DSE", limit=35)
+        except Exception as e:
+            print(f"[WARN] {e}")
+        sym_in = input("Enter Choice (press ENTER for ALL Public Symbols): ").strip()
 
     symbols: List[str] = []
     if sym_in.upper() in ["TOP", "10"]:

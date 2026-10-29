@@ -76,7 +76,8 @@ def main() -> None:
             print("  6. Client Portfolio Viewer")
             print("  7. Market Depth & Quotes")
             print("  8. Order Terminal Viewer")
-            choice = input("Enter Choice (1-8, default 1): ").strip()
+            print("  9. Collect & View Live Public Board Symbols & LTPs from DB Table (dse_md_ltp)")
+            choice = input("Enter Choice (1-9, default 1): ").strip()
 
             mode_map = {
                 "1": "trade",
@@ -86,12 +87,16 @@ def main() -> None:
                 "5": "position",
                 "6": "portfolio",
                 "7": "depth",
-                "8": "terminal"
+                "8": "terminal",
+                "9": "db-ltp"
             }
             mode = mode_map.get(choice, "trade")
 
         # Launch selected workflow
-        if mode == "multi-order":
+        if mode == "db-ltp":
+            from db_market_data import print_public_board_summary
+            print_public_board_summary("DSE", limit=50)
+        elif mode == "multi-order":
             oms_multi_order.run_multi_order_pipeline(driver)
         elif mode == "load-test":
             oms_multiple_trade.run_load_test(driver)

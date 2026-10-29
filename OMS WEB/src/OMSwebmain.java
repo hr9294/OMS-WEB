@@ -84,11 +84,14 @@ public class OMSwebmain {
         System.out.println("  1. Standard Trade & 6-Widget Verification [Default]");
         System.out.println("  2. Multi-Order Execution, Right-Click 'Execute at Market' & Real-time 6-Widget Audit");
         System.out.println("  3. High-Speed Multi-Trade & Load Testing Engine (Throughput / TPS)");
-        System.out.print("Enter Choice (1, 2, or 3, default=1): ");
+        System.out.println("  4. Collect & View Live Public Board Symbols & LTPs from Database Table (dse_md_ltp)");
+        System.out.print("Enter Choice (1, 2, 3, or 4, default=1): ");
         String engChoice = sc.nextLine().trim();
 
         // 4. THEN OTHERS
-        if ("3".equals(engChoice)) {
+        if ("4".equals(engChoice)) {
+            OMSweb_DBMarketData.printPublicBoardSummary("DSE", 50);
+        } else if ("3".equals(engChoice)) {
             OMSweb_MultipleTrade.main(driver, sc);
         } else if ("2".equals(engChoice)) {
             OMSweb_MultiOrderExecution.main(driver, sc);

@@ -42,6 +42,16 @@ def fetch_price_ltp_or_ycp(
     sym = clean_symbol(symbol)
     ex = (exchange or "DSE").upper()
 
+    # Tier 0: Direct PostgreSQL DB Table (dse_md_ltp / cse_md_ltp WHERE board = 'PUBLIC')
+    try:
+        from db_market_data import get_public_symbol_ltp
+        db_ltp = get_public_symbol_ltp(sym, ex)
+        if db_ltp and db_ltp > 0:
+            print(f"[MARKET PRICE: DB Table] Resolved Public Board LTP: {float(db_ltp):.2f} BDT for {sym} (dse_md_ltp)")
+            return float(db_ltp)
+    except Exception:
+        pass
+
     # Tier 1: Market Depth API
     try:
         api_script = """
