@@ -1460,6 +1460,8 @@ public class OMSweb_MultipleTrade {
         System.out.printf("| Basket Symbols       : %-6d (Total in trading universe)%n", symbols.size());
         System.out.printf("| Symbols Traded       : %-6d (%.1f%% Universe Coverage across all symbols)%n",
                 distinctAttempted, (distinctAttempted * 100.0 / Math.max(1, symbols.size())));
+        System.out.printf("| Symbols Executed     : %-6d (%.1f%% Execution Rate across active symbols)%n",
+                distinctExecuted, (distinctExecuted * 100.0 / Math.max(1, symbols.size())));
         System.out.printf("| Orders Attempted     : %-6d%n", (successCount + failedCount));
         System.out.printf("| Successful Orders    : %-6d (%.1f%%)%n", successCount, (successCount * 100.0 / Math.max(1, successCount + failedCount)));
         if (acceptedCount > 0 || filledCount > 0 || partialFillCount > 0 || cancelledCount > 0) {

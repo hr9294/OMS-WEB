@@ -938,6 +938,7 @@ def print_hft_execution_summary(
     print(f"| Total Duration       : {total_secs_int // 60:02d}m {total_secs_int % 60:02d}s ({total_time:.2f} seconds)")
     print(f"| Basket Symbols       : {len(symbols):<6} (Total in trading universe){'':<20} |")
     print(f"| Symbols Traded       : {distinct_attempted:<6} ({distinct_attempted * 100.0 / max(1, len(symbols)):.1f}% Universe Coverage across all symbols) |")
+    print(f"| Symbols Executed     : {distinct_executed:<6} ({distinct_executed * 100.0 / max(1, len(symbols)):.1f}% Execution Rate across active symbols)  |")
     print(f"| Orders Attempted     : {total_attempted:<49} |")
     print(f"| Successful Orders    : {success_count:<6} ({success_pct:5.1f}%){'':<33} |")
     if accepted_count > 0 or filled_count > 0 or partial_fill_count > 0 or cancelled_count > 0:
