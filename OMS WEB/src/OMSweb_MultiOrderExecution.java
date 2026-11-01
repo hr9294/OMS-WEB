@@ -641,24 +641,23 @@ public class OMSweb_MultiOrderExecution {
                     js.executeScript("var btn = document.querySelector('.order_submit_btn, div.form-submit-btn-holder button'); if (btn) { $(btn).prop('disabled', false).removeAttr('disabled'); btn.click(); }");
                 }
 
-                // 6. Fast-Path Confirmation YES (Direct jQuery-Confirm / Alert / DOM in 50ms intervals)
+                // 6. Fast-Path Confirmation YES (Direct jQuery-Confirm / Alert / DOM in 100ms intervals, up to 4s)
                 boolean confirmed = false;
-                for (int attempt = 0; attempt < 12; attempt++) {
+                for (int attempt = 0; attempt < 40; attempt++) {
                     confirmed = OMSweb_Trade.autoConfirmOrderOrCancellation(driver, wait);
                     if (confirmed) break;
-                    Thread.sleep(60);
-                }
 
-                if (!confirmed) {
                     List<WebElement> confirmBtns = driver.findElements(
-                            By.xpath("//button[@id='cnfirmConfirmBtn'] | //button[normalize-space()='YES'] | //button[normalize-space()='Yes'] | //button[normalize-space()='Confirm'] | //div[contains(@class,'jconfirm-box')]//button[contains(@class,'btn-success')]"));
+                            By.xpath("//button[@id='cnfirmConfirmBtn'] | //button[normalize-space()='YES'] | //button[normalize-space()='Yes'] | //button[normalize-space()='Confirm'] | //div[contains(@class,'jconfirm-box') or contains(@class,'modal')]//button[contains(@class,'btn-success') or normalize-space()='YES']"));
                     for (WebElement cb : confirmBtns) {
-                        if (cb.isDisplayed()) {
+                        if (cb.isDisplayed() && cb.isEnabled()) {
                             js.executeScript("arguments[0].click();", cb);
                             confirmed = true;
                             break;
                         }
                     }
+                    if (confirmed) break;
+                    Thread.sleep(100);
                 }
 
                 long elapsed = Duration.between(start, Instant.now()).toMillis();

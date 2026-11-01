@@ -2397,53 +2397,52 @@ public class OMSweb_MultipleTrade {
 
 
     public static boolean confirmOrderWithRetry(WebDriver driver, WebDriverWait wait, JavascriptExecutor js) {
-        // 1. Fast-Path: Robust auto-confirmation (jQuery-Confirm, alerts, DOM modals in 50ms intervals)
-        for (int attempt = 0; attempt < 10; attempt++) {
+        // 1. Polling check for confirmation dialog (up to 5 seconds: 50 attempts x 100ms)
+        for (int attempt = 0; attempt < 50; attempt++) {
             try {
                 if (OMSweb_Trade.autoConfirmOrderOrCancellation(driver, wait)) {
                     return true;
                 }
             } catch (Exception ignored) {}
-            try { Thread.sleep(50); } catch (Exception ignored) {}
-        }
 
-        // 2. Non-blocking element check using findElements (bypasses slow 6-second timeout)
-        try {
-            List<WebElement> confirmBtns = driver.findElements(CONFIRM_YES_BUTTON);
-            for (WebElement cb : confirmBtns) {
-                if (cb.isDisplayed()) {
-                    try {
-                        js.executeScript("arguments[0].click();", cb);
-                        return true;
-                    } catch (Exception ignored) {}
+            try {
+                List<WebElement> confirmBtns = driver.findElements(CONFIRM_YES_BUTTON);
+                for (WebElement cb : confirmBtns) {
+                    if (cb.isDisplayed() && cb.isEnabled()) {
+                        try {
+                            js.executeScript("arguments[0].click();", cb);
+                            return true;
+                        } catch (Exception ignored) {}
+                    }
                 }
-            }
-        } catch (Exception ignored) {}
+            } catch (Exception ignored) {}
 
-        // 3. Fallback to JavaScript execution
-        try {
-            Boolean res = (Boolean) js.executeScript(
-                "try {" +
-                "    if (window.jconfirm && window.jconfirm.instances && window.jconfirm.instances.length > 0) {" +
-                "        for (var i = 0; i < window.jconfirm.instances.length; i++) {" +
-                "            var inst = window.jconfirm.instances[i];" +
-                "            if (inst && inst.buttons && inst.buttons.confirm && typeof inst.buttons.confirm.action === 'function') {" +
-                "                inst.buttons.confirm.action(); return true;" +
-                "            }" +
-                "            if (inst && inst.buttons && inst.buttons.yes && typeof inst.buttons.yes.action === 'function') {" +
-                "                inst.buttons.yes.action(); return true;" +
-                "            }" +
-                "        }" +
-                "    }" +
-                "    var btn = document.querySelector('#cnfirmConfirmBtn, button.confirm-btn, .modal-footer .btn-primary, .modal-footer .btn-danger, #btn_confirm, #confirm_btn, #confirm_ok, #cancel_order_confirm, .jconfirm button.btn-success, .jconfirm-box button.btn-success');" +
-                "    if (btn && (btn.offsetParent !== null || btn.offsetWidth > 0 || btn.offsetHeight > 0)) { btn.click(); return true; }" +
-                "    var match = Array.from(document.querySelectorAll('button')).find(function(b) { var t = (b.innerText || b.textContent || '').trim().toUpperCase(); return t === 'YES' || t === 'CONFIRM' || t === 'OK'; });" +
-                "    if (match && (match.offsetParent !== null || match.offsetWidth > 0 || match.offsetHeight > 0)) { match.click(); return true; }" +
-                "} catch(e) {}" +
-                "return false;"
-            );
-            if (Boolean.TRUE.equals(res)) return true;
-        } catch (Exception ignored) {}
+            try {
+                Boolean res = (Boolean) js.executeScript(
+                    "try {" +
+                    "    if (window.jconfirm && window.jconfirm.instances && window.jconfirm.instances.length > 0) {" +
+                    "        for (var i = 0; i < window.jconfirm.instances.length; i++) {" +
+                    "            var inst = window.jconfirm.instances[i];" +
+                    "            if (inst && inst.buttons && inst.buttons.confirm && typeof inst.buttons.confirm.action === 'function') {" +
+                    "                inst.buttons.confirm.action(); return true;" +
+                    "            }" +
+                    "            if (inst && inst.buttons && inst.buttons.yes && typeof inst.buttons.yes.action === 'function') {" +
+                    "                inst.buttons.yes.action(); return true;" +
+                    "            }" +
+                    "        }" +
+                    "    }" +
+                    "    var btn = document.querySelector('#cnfirmConfirmBtn, button.confirm-btn, .modal-footer .btn-primary, .modal-footer .btn-danger, #btn_confirm, #confirm_btn, #confirm_ok, #cancel_order_confirm, .jconfirm button.btn-success, .jconfirm-box button.btn-success');" +
+                    "    if (btn && (btn.offsetParent !== null || btn.offsetWidth > 0 || btn.offsetHeight > 0)) { btn.click(); return true; }" +
+                    "    var match = Array.from(document.querySelectorAll('button')).find(function(b) { var t = (b.innerText || b.textContent || '').trim().toUpperCase(); return t === 'YES' || t === 'CONFIRM' || t === 'OK'; });" +
+                    "    if (match && (match.offsetParent !== null || match.offsetWidth > 0 || match.offsetHeight > 0)) { match.click(); return true; }" +
+                    "} catch(e) {}" +
+                    "return false;"
+                );
+                if (Boolean.TRUE.equals(res)) return true;
+            } catch (Exception ignored) {}
+
+            try { Thread.sleep(100); } catch (Exception ignored) {}
+        }
 
         return false;
     }

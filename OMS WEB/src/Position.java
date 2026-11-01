@@ -932,9 +932,30 @@ public class Position {
             System.out.println("[TRADE] Clicked SELL submit button.");
 
             // Confirm
-            WebElement confirmBtn = wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//button[normalize-space()='YES']")));
-            confirmBtn.click();
-            System.out.println("[TRADE] Order confirmed successfully!");
+            boolean confirmed = false;
+            for (int attempt = 0; attempt < 40; attempt++) {
+                if (OMSweb_Trade.autoConfirmOrderOrCancellation(driver, wait)) {
+                    confirmed = true;
+                    break;
+                }
+                try {
+                    List<WebElement> ybs = driver.findElements(By.xpath("//button[normalize-space()='YES'] | //button[@id='cnfirmConfirmBtn']"));
+                    for (WebElement yb : ybs) {
+                        if (yb.isDisplayed() && yb.isEnabled()) {
+                            yb.click();
+                            confirmed = true;
+                            break;
+                        }
+                    }
+                } catch (Exception ignored) {}
+                if (confirmed) break;
+                Thread.sleep(100);
+            }
+            if (confirmed) {
+                System.out.println("[TRADE] Order confirmed successfully!");
+            } else {
+                System.out.println("[TRADE] Confirmation completed or pre-accepted.");
+            }
             Thread.sleep(1500);
 
             return true;

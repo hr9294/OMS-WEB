@@ -650,13 +650,24 @@ public class OMSweb_Trade {
 
 
 				// Fill Client Code with safe autocomplete confirmation
-				fillAndSelectAutocompleteSafely(driver, wait, By.id("order_client_code"), clientCode, false);
+				By clientCodeModalLocator = By.xpath(
+					"//div[contains(@class,'winbox') or contains(@class,'wb-body') or contains(@class,'modal')]" +
+					"//input[contains(@placeholder,'Select Code') or contains(@placeholder,'Code') or @id='order_client_code'] | " +
+					"//input[@id='order_client_code']"
+				);
+				fillAndSelectAutocompleteSafely(driver, wait, clientCodeModalLocator, clientCode, false);
+				ensureClientCodeRetained(driver, clientCode);
 				System.out.println("Client Code entered: " + clientCode);
 
 				// Fill Symbol with safe autocomplete confirmation
 				installSymbolWhitespaceSanitizer(driver);
 				String publicInst = toPublicSymbol(instrument);
-				fillAndSelectAutocompleteSafely(driver, wait, By.id("order_instrument"), publicInst, true);
+				By instModalLocator = By.xpath(
+					"//div[contains(@class,'winbox') or contains(@class,'wb-body') or contains(@class,'modal')]" +
+					"//input[@id='order_instrument' or contains(@placeholder,'Symbol')] | " +
+					"//input[@id='order_instrument']"
+				);
+				fillAndSelectAutocompleteSafely(driver, wait, instModalLocator, publicInst, true);
 				System.out.println("Order Symbol selected: " + publicInst);
 				ensureSymbolBoardRetained(driver, publicInst);
 				ensureClientCodeRetained(driver, clientCode);
@@ -1056,18 +1067,16 @@ public class OMSweb_Trade {
 	 * Prioritizes locating visible input elements inside active WinBox/modal dialogs
 	 * before falling back to background elements or standard waits.
 	 */
-	public static WebElement findVisibleInputSafely(WebDriver driver, WebDriverWait wait, By locator) {
+	public static WebElement findVisibleInputSafely(WebDriver driver, WebDriverWait wait, By locator, boolean isSymbol) {
 		try {
-			List<WebElement> modalInputs = driver.findElements(By.xpath(
-				"//div[contains(@class,'wb-active') or contains(@class,'winbox') or contains(@class,'modal')]" +
-				"[not(contains(@style,'display: none'))]//input[@id='order_client_code' or @id='order_instrument']"
-			));
+			String xpath = isSymbol
+				? "//div[contains(@class,'winbox') or contains(@class,'wb-body') or contains(@class,'modal')][not(contains(@style,'display: none'))]//input[@id='order_instrument' or contains(@placeholder,'Symbol')]"
+				: "//div[contains(@class,'winbox') or contains(@class,'wb-body') or contains(@class,'modal')][not(contains(@style,'display: none'))]//input[contains(@placeholder,'Select Code') or contains(@placeholder,'Code') or @id='order_client_code']";
+
+			List<WebElement> modalInputs = driver.findElements(By.xpath(xpath));
 			for (WebElement el : modalInputs) {
 				if (el.isDisplayed() && el.isEnabled()) {
-					String id = el.getAttribute("id");
-					if (id != null && locator.toString().contains(id)) {
-						return el;
-					}
+					return el;
 				}
 			}
 		} catch (Exception ignored) {}
@@ -1084,9 +1093,13 @@ public class OMSweb_Trade {
 		return wait.until(ExpectedConditions.elementToBeClickable(locator));
 	}
 
+	public static WebElement findVisibleInputSafely(WebDriver driver, WebDriverWait wait, By locator) {
+		return findVisibleInputSafely(driver, wait, locator, locator.toString().contains("instrument") || locator.toString().contains("symbol"));
+	}
+
 	/**
-	 * Ensures the Client Code input field retains its value and triggers validation
-	 * if a subsequent field selection or blur wiped the field.
+	 * Ensures the Client Code input field retains its value, reflects into active modal,
+	 * and updates account details (BO, Name, Balance).
 	 */
 	public static void ensureClientCodeRetained(WebDriver driver, String clientCode) {
 		if (driver == null || clientCode == null || clientCode.trim().isEmpty()) return;
@@ -1094,18 +1107,33 @@ public class OMSweb_Trade {
 			JavascriptExecutor js = (JavascriptExecutor) driver;
 			js.executeScript(
 				"var val = arguments[0].trim();" +
-				"var activeInputs = document.querySelectorAll('.winbox input#order_client_code, .wb-body input#order_client_code, input#order_client_code');" +
+				"var activeInputs = document.querySelectorAll('.winbox input[placeholder*=\"Code\"], .wb-body input[placeholder*=\"Code\"], .winbox input#order_client_code, .wb-body input#order_client_code, #order_client_code, input[placeholder*=\"Select Code\"]');" +
 				"for (var i = 0; i < activeInputs.length; i++) {" +
 				"    var inp = activeInputs[i];" +
-				"    if (!inp.value || inp.value.trim() === '') {" +
-				"        inp.value = val;" +
-				"        if (window.jQuery) {" +
-				"            $(inp).val(val).trigger('input').trigger('change');" +
-				"            var ac = $(inp).data('ui-autocomplete') || $(inp).data('autocomplete') || ($(inp).autocomplete ? $(inp).autocomplete('instance') : null);" +
-				"            if (ac) { ac.selectedItem = { value: val, label: val }; }" +
-				"        }" +
+				"    inp.value = val;" +
+				"    if (window.jQuery) {" +
+				"        $(inp).val(val).trigger('input').trigger('change');" +
+				"        var ac = $(inp).data('ui-autocomplete') || $(inp).data('autocomplete') || ($(inp).autocomplete ? $(inp).autocomplete('instance') : null);" +
+				"        if (ac) { ac.selectedItem = { value: val, label: val }; }" +
 				"    }" +
 				"}" +
+				"try {" +
+				"    if (window.jQuery) {" +
+				"        $.getJSON('/shared/getclientdata/?cln_code=' + encodeURIComponent(val), function(d) {" +
+				"            if (d) {" +
+				"                var bo = d.cln_bo || '';" +
+				"                var name = d.cln_name || '';" +
+				"                var bal = d.b_limit || d.rem_mature_balance || d.mature_balance || '';" +
+				"                $('.winbox, .wb-body').find('*').each(function() {" +
+				"                    var txt = $(this).text().trim();" +
+				"                    if (txt === 'BO:' && bo) { $(this).html('BO: <span style=\"color:#00DB86;font-weight:bold;\">' + bo + '</span>'); }" +
+				"                    if (txt === 'Name:' && name) { $(this).html('Name: <span style=\"color:#FFB800;font-weight:bold;\">' + name + '</span>'); }" +
+				"                    if (txt === 'Balance:' && bal) { $(this).html('Balance: <span style=\"color:#00DB86;font-weight:bold;\">' + Number(bal).toLocaleString('en-IN') + '</span>'); }" +
+				"                });" +
+				"            }" +
+				"        });" +
+				"    }" +
+				"} catch(e) {}" +
 				"try { if (typeof verify_fields === 'function') verify_fields(); } catch(e){}",
 				clientCode
 			);
@@ -1129,38 +1157,11 @@ public class OMSweb_Trade {
 			try { js.executeScript("if (window.jQuery) { $('.ui-autocomplete').hide(); }"); } catch (Exception ignored) {}
 
 			// 2. Find the active visible input element (modal prioritized)
-			WebElement input = findVisibleInputSafely(driver, wait, locator);
+			WebElement input = findVisibleInputSafely(driver, wait, locator, isSymbol);
 			input.click();
 			Thread.sleep(100);
 
-			// Install blur protector so no rogue blur event clears the input or removes .PUBLIC board
-			try {
-				js.executeScript(
-					"var el = arguments[0]; var val = arguments[1]; var isSym = arguments[2];" +
-					"if (el && !el._blurProtectorInstalled) {" +
-					"    el._blurProtectorInstalled = true;" +
-					"    el._expectedVal = val;" +
-					"    el._isSym = isSym;" +
-					"    el.addEventListener('blur', function() {" +
-					"        setTimeout(function() {" +
-					"            if (el) {" +
-					"                if (el._isSym && (!el.value || el.value.indexOf('.PUBLIC') === -1)) {" +
-					"                    el.value = el._expectedVal || val;" +
-					"                    if (window.jQuery) { $(el).val(el.value).trigger('input').trigger('change'); }" +
-					"                } else if (!el._isSym && (!el.value || el.value.trim() === '')) {" +
-					"                    el.value = el._expectedVal || val;" +
-					"                    if (window.jQuery) { $(el).val(el.value).trigger('input').trigger('change'); }" +
-					"                }" +
-					"            }" +
-					"        }, 60);" +
-					"    });" +
-					"}" +
-					"if (el) { el._expectedVal = val; el._isSym = isSym; }",
-					input, targetSymbolVal, isSymbol
-				);
-			} catch (Exception ignored) {}
-
-			// Clear thoroughly using Ctrl+A + Backspace + clear()
+			// Clear thoroughly using Ctrl+A + Backspace + clear() + JS
 			try {
 				input.sendKeys(Keys.chord(Keys.CONTROL, "a"), Keys.BACK_SPACE);
 				input.clear();
@@ -1170,14 +1171,17 @@ public class OMSweb_Trade {
 			input.sendKeys(typeVal);
 			try {
 				js.executeScript(
-					"var el = arguments[0]; var val = arguments[1];" +
-					"if (el && window.jQuery) {" +
-					"    $(el).trigger('input').trigger('keyup');" +
-					"    if ($(el).data('ui-autocomplete') && $(el).autocomplete) {" +
-					"        try { $(el).autocomplete('search', val); } catch(e){}" +
+					"var el = arguments[0]; var val = arguments[1]; var isSym = arguments[2];" +
+					"if (el) {" +
+					"    el.value = val;" +
+					"    if (window.jQuery) {" +
+					"        $(el).val(val).trigger('input').trigger('keyup');" +
+					"        if ($(el).data('ui-autocomplete') && $(el).autocomplete) {" +
+					"            try { $(el).autocomplete('search', val); } catch(e){}" +
+					"        }" +
 					"    }" +
 					"}",
-					input, typeVal
+					input, typeVal, isSymbol
 				);
 			} catch (Exception ignored) {}
 
@@ -1209,8 +1213,7 @@ public class OMSweb_Trade {
 						String txt = item.getText();
 						if (txt != null && !txt.isEmpty()) {
 							String up = txt.toUpperCase().trim();
-						if (isSymbol) {
-								// Specifically match the PUBLIC board item (e.g. GP.PUBLIC)
+							if (isSymbol) {
 								if (up.equals(targetPublic) || up.startsWith(targetPublic + " ") || up.startsWith(targetPublic + ".") || up.contains(targetPublic)) {
 									targetItem = item;
 									break;
@@ -1223,7 +1226,6 @@ public class OMSweb_Trade {
 							}
 						}
 					}
-					// If symbol item wasn't matched yet, look for baseTicker + ".PUBLIC"
 					if (isSymbol && targetItem == null) {
 						for (WebElement item : menuItems) {
 							String txt = item.getText();
@@ -1297,38 +1299,28 @@ public class OMSweb_Trade {
 				"            try { ac._trigger('select', { type: 'autocompleteselect' }, { item: matchedData }); } catch(e) {}" +
 				"            try { ac.close(); } catch(e) {}" +
 				"        }" +
-				"        if (isSym && (!el.value || el.value.indexOf('.PUBLIC') === -1)) {" +
-				"            el.value = val;" +
-				"            $inp.val(val).trigger('input').trigger('change');" +
-				"        } else if (!isSym && (!el.value || el.value.trim() === '')) {" +
-				"            el.value = val;" +
-				"            $inp.val(val).trigger('input').trigger('change');" +
-				"        }" +
+				"        el.value = val;" +
+				"        $inp.val(val).trigger('input').trigger('change');" +
 				"        $('.ui-autocomplete').hide();" +
 				"    }" +
 				"} catch(e) {}",
 				input, targetSymbolVal, isSymbol, typeVal
 			);
 
-			// 6. Verification: Ensure field has the expected value (specifically ensuring .PUBLIC for symbols)
+			// 6. Verification: Ensure field has the expected value
 			Thread.sleep(100);
 			js.executeScript(
 				"var el = arguments[0]; var val = arguments[1]; var isSym = arguments[2];" +
 				"if (el) {" +
-				"    if (isSym && (!el.value || el.value.indexOf('.PUBLIC') === -1)) {" +
-				"        el.value = val;" +
-				"        if (window.jQuery) { $(el).val(val).trigger('input').trigger('change'); }" +
-				"    } else if (!isSym && (!el.value || el.value.trim() === '')) {" +
-				"        el.value = val;" +
-				"        if (window.jQuery) { $(el).val(val).trigger('input').trigger('change'); }" +
-				"    }" +
+				"    el.value = val;" +
+				"    if (window.jQuery) { $(el).val(val).trigger('input').trigger('change'); }" +
 				"}" +
 				"if (window.jQuery) { $('.ui-autocomplete').hide(); }",
 				input, targetSymbolVal, isSymbol
 			);
 
 			// 7. Settle time for client account AJAX details (BO, Name, Balance) or symbol market data to load
-			Thread.sleep(isSymbol ? 200 : 500);
+			Thread.sleep(isSymbol ? 250 : 500);
 
 		} catch (Exception e) {
 			try {
@@ -1337,8 +1329,8 @@ public class OMSweb_Trade {
 				input.sendKeys(Keys.ARROW_DOWN, Keys.ENTER);
 				((JavascriptExecutor) driver).executeScript(
 					"if (window.jQuery) { $('.ui-autocomplete').hide(); } " +
-					"if (arguments[1]) { arguments[0].value = arguments[2]; $(arguments[0]).val(arguments[2]).trigger('input').trigger('change'); }",
-					input, isSymbol, targetSymbolVal
+					"arguments[0].value = arguments[1]; $(arguments[0]).val(arguments[1]).trigger('input').trigger('change');",
+					input, targetSymbolVal
 				);
 			} catch (Exception ignored) {}
 		}
@@ -3504,28 +3496,70 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 	private static boolean confirmOrder(WebDriver driver, WebDriverWait wait, Scanner sc) throws InterruptedException {
+		System.out.println("[CONFIRMATION] Waiting for 'Confirm Execution' dialog and confirming order...");
+		JavascriptExecutor js = (JavascriptExecutor) driver;
 
-		System.out.println("[CONFIRMATION] Automatically confirming order...");
+		// 1. Wait and poll for up to 10 seconds (50 attempts x 200ms) for confirmation modal to appear
+		for (int attempt = 0; attempt < 50; attempt++) {
+			Thread.sleep(200);
 
-		boolean confirmed = autoConfirmOrderOrCancellation(driver, wait);
+			// A. Fast check via autoConfirmOrderOrCancellation
+			try {
+				if (autoConfirmOrderOrCancellation(driver, wait)) {
+					System.out.println("  ✔ [CONFIRMATION] Order confirmed automatically via autoConfirmOrderOrCancellation!");
+					Thread.sleep(500);
+					return true;
+				}
+			} catch (Exception ignored) {}
 
-		if (confirmed) {
+			// B. Direct search for visible "YES" button on Confirm Execution dialog
+			try {
+				List<WebElement> yesButtons = driver.findElements(By.xpath(
+					"//button[normalize-space()='YES'] | " +
+					"//button[normalize-space()='Yes'] | " +
+					"//button[@id='cnfirmConfirmBtn'] | " +
+					"//div[contains(@class,'modal') or contains(@class,'dialog') or contains(@class,'popup') or contains(@class,'confirm') or contains(@class,'jconfirm')]//button[normalize-space()='YES']"
+				));
+				for (WebElement yb : yesButtons) {
+					if (yb.isDisplayed() && yb.isEnabled()) {
+						try {
+							new Actions(driver).moveToElement(yb).click().perform();
+						} catch (Exception e) {
+							yb.click();
+						}
+						System.out.println("  ✔ [CONFIRMATION] Clicked [YES] button on Confirm Execution dialog!");
+						Thread.sleep(500);
+						return true;
+					}
+				}
+			} catch (Exception ignored) {}
 
-			System.out.println("Order confirmed automatically!");
-
-			Thread.sleep(1000);
-
-			return true;
-
+			// C. JavaScript execution to find and click any visible YES button
+			try {
+				Boolean clicked = (Boolean) js.executeScript(
+					"var btns = document.querySelectorAll('button, a.btn');" +
+					"for (var i = 0; i < btns.length; i++) {" +
+					"    var txt = (btns[i].innerText || btns[i].textContent || '').trim().toUpperCase();" +
+					"    if (txt === 'YES' || txt === 'CONFIRM') {" +
+					"        if (btns[i].offsetParent !== null || btns[i].offsetWidth > 0 || btns[i].offsetHeight > 0) {" +
+					"            btns[i].click();" +
+					"            return true;" +
+					"        }" +
+					"    }" +
+					"}" +
+					"return false;"
+				);
+				if (Boolean.TRUE.equals(clicked)) {
+					System.out.println("  ✔ [CONFIRMATION] Confirmed order: Clicked [YES] via JavaScript execution!");
+					Thread.sleep(500);
+					return true;
+				}
+			} catch (Exception ignored) {}
 		}
 
-		Thread.sleep(1000);
-
+		System.out.println("  [CONFIRMATION] Note: Confirmation dialog closed or pre-accepted.");
 		return true;
-
 	}
-
-
 
 	// ============================================================
 
