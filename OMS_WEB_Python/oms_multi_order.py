@@ -22,6 +22,11 @@ import order_summary
 import order_terminal
 
 
+DEFAULT_BUY_CLIENTS = [
+    "34601", "34649", "23986", "15740", "00224", "39187", "00516", "00916",
+    "39187", "02417", "37854", "45971", "18051", "12001", "04474", "03246"
+]
+
 class OrderItem:
     def __init__(
         self,
@@ -127,8 +132,8 @@ def build_order_queue(
 
     if choice == 1:
         # Strategy 1: Multiple BUY orders (DOWN prices < P) + Opposite SELL order (UPPER price > P)
-        buy_in = input("\nEnter BUY Client Code(s) (single or comma-separated, default=08096): ").strip()
-        buy_clients = parse_client_list(buy_in, ["08096", "00224", "08833"])
+        buy_in = input(f"\nEnter BUY Client Code(s) (single or comma-separated, default={DEFAULT_BUY_CLIENTS[0]}): ").strip()
+        buy_clients = parse_client_list(buy_in, DEFAULT_BUY_CLIENTS)
 
         default_sell = pos_holders[0]
         sell_in = input(f"Enter Opposite SELL Client Code (from Position) [default={default_sell}]: ").strip()
@@ -159,8 +164,8 @@ def build_order_queue(
         sell_in = input(f"\nEnter SELL Client Code(s) (from Position, single or comma-separated) [default={def_sell_str}]: ").strip()
         sell_clients = parse_client_list(sell_in, default_sells)
 
-        buy_in = input("Enter Opposite BUY Client Code [default=08096]: ").strip()
-        buy_client = buy_in or "08096"
+        buy_in = input(f"Enter Opposite BUY Client Code [default={DEFAULT_BUY_CLIENTS[0]}]: ").strip()
+        buy_client = buy_in or DEFAULT_BUY_CLIENTS[0]
 
         set_trade_page_client_code(driver, sell_clients[0])
 
@@ -192,7 +197,7 @@ def build_order_queue(
         total_qty = 0
         first_client = ""
         for i in range(p_count):
-            default_client = "08096" if p_side == "BUY" else pos_holders[i % len(pos_holders)]
+            default_client = DEFAULT_BUY_CLIENTS[i % len(DEFAULT_BUY_CLIENTS)] if p_side == "BUY" else pos_holders[i % len(pos_holders)]
             c_in = input(f"  Order #{i+1} Client [{default_client}]: ").strip()
             client = c_in or default_client
             if not first_client:
@@ -210,7 +215,7 @@ def build_order_queue(
             queue.append(OrderItem(item_counter, p_side, client, symbol, qty, rate, False))
             item_counter += 1
 
-        default_opp = "08096" if opp_side == "BUY" else pos_holders[0]
+        default_opp = DEFAULT_BUY_CLIENTS[0] if opp_side == "BUY" else pos_holders[0]
         opp_in = input(f"Enter Opposite {opp_side} Client [{default_opp}]: ").strip()
         opp_client = opp_in or default_opp
 

@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.Scanner;
 import java.util.Set;
 import java.util.HashSet;
-//import java.util.Collections;
+import java.util.Collections;
 
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
@@ -41,6 +41,11 @@ import org.openqa.selenium.support.ui.WebDriverWait;
  * ============================================================================
  */
 public class OMSweb_MultiOrderExecution {
+
+    public static final List<String> DEFAULT_BUY_CLIENTS = Collections.unmodifiableList(Arrays.asList(
+        "34601", "34649", "23986", "15740", "00224", "39187", "00516", "00916",
+        "39187", "02417", "37854", "45971", "18051", "12001", "04474", "03246"
+    ));
 
     // =========================================================================
     // 1. DATA MODELS & ENUMS
@@ -300,9 +305,9 @@ public class OMSweb_MultiOrderExecution {
 
         if (choice == 1) {
             // Strategy 1: Multiple BUY orders (DOWN prices) + Opposite SELL order (UPPER price)
-            System.out.print("\nEnter BUY Client Code(s) (single or comma-separated, default=08096): ");
+            System.out.printf("\nEnter BUY Client Code(s) (single or comma-separated, default=%s): ", DEFAULT_BUY_CLIENTS.get(0));
             String buyIn = sc.nextLine().trim();
-            List<String> buyClients = parseClientList(buyIn, Arrays.asList("08096", "00224", "08833"));
+            List<String> buyClients = parseClientList(buyIn, DEFAULT_BUY_CLIENTS);
 
             String defaultSell = posHolders.get(0);
             System.out.printf("Enter Opposite SELL Client Code (from Position) [default=%s]: ", defaultSell);
@@ -336,9 +341,9 @@ public class OMSweb_MultiOrderExecution {
             String sellIn = sc.nextLine().trim();
             List<String> sellClients = parseClientList(sellIn, defaultSells);
 
-            System.out.print("Enter Opposite BUY Client Code [default=08096]: ");
+            System.out.printf("Enter Opposite BUY Client Code [default=%s]: ", DEFAULT_BUY_CLIENTS.get(0));
             String buyIn = sc.nextLine().trim();
-            String buyClient = buyIn.isEmpty() ? "08096" : buyIn;
+            String buyClient = buyIn.isEmpty() ? DEFAULT_BUY_CLIENTS.get(0) : buyIn;
 
             setTradePageClientCode(driver, sellClients.get(0));
 
@@ -373,7 +378,7 @@ public class OMSweb_MultiOrderExecution {
             int totalPrimaryQty = 0;
             String firstClient = "";
             for (int i = 0; i < pCount; i++) {
-                String defaultClient = (primarySide == OrderSide.BUY) ? "08096" : posHolders.get(i % posHolders.size());
+                String defaultClient = (primarySide == OrderSide.BUY) ? DEFAULT_BUY_CLIENTS.get(i % DEFAULT_BUY_CLIENTS.size()) : posHolders.get(i % posHolders.size());
                 System.out.printf("  Order #%d Client [%s]: ", (i + 1), defaultClient);
                 String cInput = sc.nextLine().trim();
                 String client = cInput.isEmpty() ? defaultClient : cInput;
@@ -401,7 +406,7 @@ public class OMSweb_MultiOrderExecution {
             }
 
             // Opposite order
-            String defaultOppClient = (oppSide == OrderSide.BUY) ? "08096" : posHolders.get(0);
+            String defaultOppClient = (oppSide == OrderSide.BUY) ? DEFAULT_BUY_CLIENTS.get(0) : posHolders.get(0);
             System.out.printf("Enter Opposite %s Client [%s]: ", oppSide, defaultOppClient);
             String ocInput = sc.nextLine().trim();
             String oppClient = ocInput.isEmpty() ? defaultOppClient : ocInput;
