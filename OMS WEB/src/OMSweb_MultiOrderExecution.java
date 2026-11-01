@@ -172,9 +172,13 @@ public class OMSweb_MultiOrderExecution {
 
         System.out.printf("[SETUP] Target Symbol: %s on Exchange: %s%n", symbol, exchange);
 
-        // Fetch current Market reference price (LTP or YCP) for dynamic non-crossing pricing
-        double refPrice = OMSweb_Trade.fetchPriceLtpOrYcp(driver, wait, symbol, exchange);
-        System.out.printf("[MARKET] Reference Price for %s is %.2f BDT (Base for Limit Pricing)%n", symbol, refPrice);
+        // Fetch current Market reference price (LTP) directly from DB with Primary -> Secondary failover
+        double refPrice = OMSweb_DBMarketData.getDirectSymbolLtpFromDb(symbol, exchange);
+        if (refPrice <= 0) {
+            System.out.println("[MARKET] DB query returned 0. Falling back to Market Watch / Depth API...");
+            refPrice = OMSweb_Trade.fetchPriceLtpOrYcp(driver, wait, symbol, exchange);
+        }
+        System.out.printf("[MARKET] Reference Price (LTP) for %s is %.2f BDT (Base for Limit Pricing)%n", symbol, refPrice);
 
         // Configure Strategy
         System.out.println("\nSelect Multi-Order Execution Strategy:");
@@ -585,115 +589,63 @@ public class OMSweb_MultiOrderExecution {
                     OMSweb_Trade.navigateToTradePage(driver, wait);
                 }
 
-                // 1. Open BUY or SELL Modal (bypassing any WinBox title interception)
+                // 1. Open BUY or SELL Modal (Fast JS Click, bypassing WinBox title interception)
                 By actionBtn = (item.getSide() == OrderSide.BUY)
                         ? By.xpath("//div[@title='Place BUY Order'] | //button[normalize-space()='BUY'] | //div[contains(@class,'new_buy_order')]")
                         : By.xpath("//div[@title='Place SELL Order'] | //button[normalize-space()='SELL'] | //div[contains(@class,'new_sell_order')]");
-                WebElement btn = wait.until(ExpectedConditions.presenceOfElementLocated(actionBtn));
-                try {
-                    js.executeScript("arguments[0].click();", btn);
-                } catch (Exception clickEx) {
-                    btn.click();
+                List<WebElement> actionBtns = driver.findElements(actionBtn);
+                if (!actionBtns.isEmpty()) {
+                    js.executeScript("arguments[0].click();", actionBtns.get(0));
                 }
-                Thread.sleep(350);
 
                 // 2. Select Exchange in Modal
                 OMSweb_Trade.selectExchangeInModal(driver, exchange);
-                Thread.sleep(200);
 
-                // 3. Client Code
-                WebElement clientInput = wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("order_client_code")));
-                clientInput.click();
-                clientInput.clear();
-                clientInput.sendKeys(item.getClientCode());
+                // 3. Ultra-Fast Form Population via Native JS (Bypasses slow keystroke sendKeys & sleeps)
+                String rateStr = (item.getRate() > 0) ? String.format(java.util.Locale.US, "%.2f", item.getRate()) : "";
+                js.executeScript(
+                    "var sym = document.getElementById('order_instrument'); if (sym) { sym.value = arguments[0]; $(sym).trigger('input').trigger('change'); }" +
+                    "var cln = document.getElementById('order_client_code'); if (cln) { cln.value = arguments[1]; $(cln).trigger('input').trigger('change'); }" +
+                    "var qty = document.getElementById('order_qty'); if (qty) { qty.value = arguments[2]; $(qty).trigger('input').trigger('change'); }" +
+                    "if (arguments[3] !== '') { var r = document.getElementById('limit_order_rate'); if (r) { r.value = arguments[3]; $(r).trigger('input').trigger('change'); } }" +
+                    "try { if (typeof verify_fields === 'function') verify_fields(); $('.order_submit_btn').prop('disabled', false).removeAttr('disabled'); } catch(e){}",
+                    item.getSymbol(), item.getClientCode(), String.valueOf(item.getQuantity()), rateStr
+                );
+
+                // 4. Commission Display trigger
                 try {
-                    js.executeScript("$('#order_client_code').val(arguments[0]).trigger('input').trigger('change');", item.getClientCode());
+                    OMSweb_Trade.displayCommissionOnOrderWindow(driver, item.getClientCode(), item.getQuantity(), item.getRate());
                 } catch (Exception ignored) {}
-                Thread.sleep(250);
 
-                // 4. Instrument / Symbol
-                WebElement symInput = driver.findElement(By.id("order_instrument"));
-                symInput.clear();
-                symInput.sendKeys(item.getSymbol());
-                Thread.sleep(200);
-                symInput.sendKeys(Keys.ARROW_DOWN);
-                symInput.sendKeys(Keys.ENTER);
-                try {
-                    js.executeScript("$('#order_instrument').trigger('input').trigger('change');");
-                } catch (Exception ignored) {}
-                Thread.sleep(250);
-
-                // 5. Quantity
-                WebElement qtyInput = driver.findElement(By.id("order_qty"));
-                qtyInput.clear();
-                qtyInput.sendKeys(String.valueOf(item.getQuantity()));
-                try {
-                    js.executeScript("$('#order_qty').val(arguments[0]).trigger('input').trigger('change');", String.valueOf(item.getQuantity()));
-                } catch (Exception ignored) {}
-                Thread.sleep(250);
-
-                // 6. Rate
-                if (item.getRate() > 0) {
-                    try {
-                        String rateStr = String.format(java.util.Locale.US, "%.2f", item.getRate());
-                        WebElement rateInput = driver.findElement(By.id("limit_order_rate"));
-                        if (rateInput.isDisplayed()) {
-                            rateInput.clear();
-                            rateInput.sendKeys(rateStr);
-                        } else {
-                            js.executeScript("arguments[0].value = arguments[1]; try { $(arguments[0]).trigger('input').trigger('change'); } catch(e){}",
-                                    rateInput, rateStr);
-                        }
-                        js.executeScript("$('#limit_order_rate').val(arguments[0]).trigger('input').trigger('change');", rateStr);
-                    } catch (Exception ignored) {}
-                    Thread.sleep(250);
-                }
-
-                // 7. Commission Display & Saleable verification wait
-                OMSweb_Trade.displayCommissionOnOrderWindow(driver, item.getClientCode(), item.getQuantity(), item.getRate());
-                Thread.sleep(300);
-
-                // Ensure submit button is enabled (waiting for checksaleable / verify_fields)
+                // 5. Submit BUY or SELL Button
                 By submitBtnBy = (item.getSide() == OrderSide.BUY)
                         ? By.xpath("//div[contains(@class, 'form-submit-btn-holder')]//button[normalize-space()='BUY'] | //button[contains(@class,'activebuy') and normalize-space()='BUY']")
                         : By.xpath("//div[contains(@class, 'form-submit-btn-holder')]//button[normalize-space()='SELL'] | //button[contains(@class,'activesell') and normalize-space()='SELL']");
 
-                try {
-                    wait.until(driver1 -> {
-                        List<WebElement> candidateBtns = driver1.findElements(submitBtnBy);
-                        for (WebElement b : candidateBtns) {
-                            if (b.isDisplayed() && b.isEnabled()) return b;
+                // Rapid verification & click (up to 800ms)
+                boolean clicked = false;
+                for (int a = 0; a < 8; a++) {
+                    List<WebElement> subBtns = driver.findElements(submitBtnBy);
+                    for (WebElement b : subBtns) {
+                        if (b.isDisplayed()) {
+                            js.executeScript("$(arguments[0]).prop('disabled', false).removeAttr('disabled'); arguments[0].click();", b);
+                            clicked = true;
+                            break;
                         }
-                        js.executeScript("try { if (typeof verify_fields === 'function') verify_fields(); } catch(e){}");
-                        return null;
-                    });
-                } catch (Exception waitEx) {
-                    js.executeScript("try { $('.order_submit_btn').prop('disabled', false).removeAttr('disabled'); } catch(e){}");
-                }
-
-                // 8. Click Submit BUY or SELL
-                WebElement submitBtn = null;
-                List<WebElement> subBtns = driver.findElements(submitBtnBy);
-                for (WebElement b : subBtns) {
-                    if (b.isDisplayed()) {
-                        submitBtn = b;
-                        break;
                     }
+                    if (clicked) break;
+                    Thread.sleep(60);
                 }
-                if (submitBtn == null && !subBtns.isEmpty()) submitBtn = subBtns.get(0);
-                if (submitBtn != null) {
-                    js.executeScript("arguments[0].click();", submitBtn);
-                } else {
-                    WebElement fallbackBtn = wait.until(ExpectedConditions.elementToBeClickable(submitBtnBy));
-                    fallbackBtn.click();
+                if (!clicked) {
+                    js.executeScript("var btn = document.querySelector('.order_submit_btn, div.form-submit-btn-holder button'); if (btn) { $(btn).prop('disabled', false).removeAttr('disabled'); btn.click(); }");
                 }
 
-                // 9. Confirm YES via autoConfirmOrderOrCancellation engine
+                // 6. Fast-Path Confirmation YES (Direct jQuery-Confirm / Alert / DOM in 50ms intervals)
                 boolean confirmed = false;
-                for (int attempt = 0; attempt < 15; attempt++) {
+                for (int attempt = 0; attempt < 12; attempt++) {
                     confirmed = OMSweb_Trade.autoConfirmOrderOrCancellation(driver, wait);
                     if (confirmed) break;
-                    Thread.sleep(250);
+                    Thread.sleep(60);
                 }
 
                 if (!confirmed) {
@@ -713,7 +665,7 @@ public class OMSweb_MultiOrderExecution {
                         item.getId(), elapsed, item.getSide(), item.getClientCode(), item.getQuantity(), item.getRate());
 
                 placed.add(item);
-                Thread.sleep(800);
+                Thread.sleep(150);
 
             } catch (Exception e) {
                 System.err.printf("✖ [ORDER FAILED] Order #%d (%s %s x %d @ %.2f): %s%n",

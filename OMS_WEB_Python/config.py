@@ -36,12 +36,20 @@ COLOR_NAMES = ["Turquoise", "Yellow", "Orange", "Green", "Red", "Pink"]
 COLOR_HEXES = ["#42EADDFF", "#FEE715FF", "#F95700ff", "#06d001", "#EB0506", "#FF3EA5FF"]
 COLOR_MAP = dict(zip(COLOR_NAMES, COLOR_HEXES))
 
-# Market Data Database Settings (PostgreSQL)
-MARKETDATA_DB_URI = os.environ.get(
-    "MARKETDATA_DB_URI",
+# Market Data Database Settings (PostgreSQL - Primary & Secondary Fallback)
+PRIMARY_MARKETDATA_DB_URI = os.environ.get(
+    "PRIMARY_MARKETDATA_DB_URI",
+    "postgresql+psycopg2://marketdata:pass4321@192.168.155.22:5445/marketdb"
+)
+SECONDARY_MARKETDATA_DB_URI = os.environ.get(
+    "SECONDARY_MARKETDATA_DB_URI",
     "postgresql+psycopg2://marketdata:pass4321@10.20.8.29:5445/marketdb"
 )
-MKT_DB_HOST = os.environ.get("MKT_DB_HOST", "10.20.8.29")
+MARKETDATA_DB_URI = PRIMARY_MARKETDATA_DB_URI
+
+PRIMARY_DB_HOST = "192.168.155.22"
+SECONDARY_DB_HOST = "10.20.8.29"
+MKT_DB_HOST = PRIMARY_DB_HOST
 MKT_DB_PORT = int(os.environ.get("MKT_DB_PORT", "5445"))
 MKT_DB_NAME = os.environ.get("MKT_DB_NAME", "marketdb")
 MKT_DB_USER = os.environ.get("MKT_DB_USER", "marketdata")

@@ -30,18 +30,29 @@ from typing import Dict, List, Optional, Any
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
-# Database Connection Settings
-MARKETDATA_DB_URI = os.environ.get(
-    "MARKETDATA_DB_URI",
+# Database Connection Settings (Primary: 192.168.155.22:5445 | Secondary Fallback: 10.20.8.29:5445)
+PRIMARY_MARKETDATA_DB_URI = os.environ.get(
+    "PRIMARY_MARKETDATA_DB_URI",
+    "postgresql+psycopg2://marketdata:pass4321@192.168.155.22:5445/marketdb"
+)
+SECONDARY_MARKETDATA_DB_URI = os.environ.get(
+    "SECONDARY_MARKETDATA_DB_URI",
     "postgresql+psycopg2://marketdata:pass4321@10.20.8.29:5445/marketdb"
 )
+MARKETDATA_DB_URI = PRIMARY_MARKETDATA_DB_URI
+
+DB_ENDPOINTS = [
+    {"label": "Primary (192.168.155.22)", "uri": PRIMARY_MARKETDATA_DB_URI, "host": "192.168.155.22", "port": 5445},
+    {"label": "Secondary Fallback (10.20.8.29)", "uri": SECONDARY_MARKETDATA_DB_URI, "host": "10.20.8.29", "port": 5445},
+]
+
 DB_CONFIG = {
-    "host": os.environ.get("MKT_DB_HOST", "10.20.8.29"),
+    "host": os.environ.get("MKT_DB_HOST", "192.168.155.22"),
     "port": int(os.environ.get("MKT_DB_PORT", "5445")),
     "dbname": os.environ.get("MKT_DB_NAME", "marketdb"),
     "user": os.environ.get("MKT_DB_USER", "marketdata"),
     "password": os.environ.get("MKT_DB_PASS", "pass4321"),
-    "timeout": 5,
+    "timeout": 3,
 }
 
 # Cache file location for fast offline/cross-process access
@@ -57,27 +68,41 @@ _CSE_BBO_CACHE: Dict[str, Dict[str, Any]] = {}
 
 def get_db_connection():
     """
-    Creates and returns a PostgreSQL database connection using MARKETDATA_DB_URI or DB_CONFIG.
-    Strips '+psycopg2' scheme prefix if present so psycopg2 connects directly.
+    Creates and returns a PostgreSQL database connection with automatic failover.
+    Tries Primary DB (192.168.155.22:5445) first; if any error occurs,
+    automatically falls back to Secondary DB (10.20.8.29:5445).
     """
     import psycopg2
-    if MARKETDATA_DB_URI:
-        uri = MARKETDATA_DB_URI
-        if uri.startswith("postgresql+psycopg2://"):
-            uri = "postgresql://" + uri[len("postgresql+psycopg2://"):]
-        try:
-            return psycopg2.connect(uri, connect_timeout=DB_CONFIG.get("timeout", 5))
-        except Exception:
-            pass
+    errors = []
 
-    return psycopg2.connect(
-        host=DB_CONFIG["host"],
-        port=DB_CONFIG["port"],
-        dbname=DB_CONFIG["dbname"],
-        user=DB_CONFIG["user"],
-        password=DB_CONFIG["password"],
-        connect_timeout=DB_CONFIG.get("timeout", 5),
-    )
+    for ep in DB_ENDPOINTS:
+        label = ep["label"]
+        uri = ep["uri"]
+        # Strip '+psycopg2' scheme prefix if present
+        if uri.startswith("postgresql+psycopg2://"):
+            raw_uri = "postgresql://" + uri[len("postgresql+psycopg2://"):]
+        else:
+            raw_uri = uri
+
+        try:
+            conn = psycopg2.connect(raw_uri, connect_timeout=DB_CONFIG.get("timeout", 3))
+            return conn
+        except Exception as e:
+            errors.append(f"{label}: {e}")
+            try:
+                conn = psycopg2.connect(
+                    host=ep["host"],
+                    port=ep["port"],
+                    dbname=DB_CONFIG["dbname"],
+                    user=DB_CONFIG["user"],
+                    password=DB_CONFIG["password"],
+                    connect_timeout=DB_CONFIG.get("timeout", 3),
+                )
+                return conn
+            except Exception as e2:
+                errors.append(f"{label} fallback params: {e2}")
+
+    raise ConnectionError(f"Failed to connect to both Primary and Secondary DBs: {'; '.join(errors)}")
 
 
 def is_strictly_public_equity(symbol: str, company_name: str = "", sector: str = "", symbol_instr: str = "") -> bool:

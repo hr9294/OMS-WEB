@@ -1,5 +1,6 @@
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.io.BufferedReader;
@@ -33,36 +34,124 @@ import java.util.regex.Pattern;
  */
 public class OMSweb_DBMarketData {
 
-    // Database Connection Parameters
-    public static final String MARKETDATA_DB_URI = System.getenv("MARKETDATA_DB_URI") != null ?
-            System.getenv("MARKETDATA_DB_URI") : "postgresql+psycopg2://marketdata:pass4321@10.20.8.29:5445/marketdb";
-    public static final String DB_HOST           = System.getenv("MKT_DB_HOST") != null ?
-            System.getenv("MKT_DB_HOST") : "10.20.8.29";
-    public static final int    DB_PORT           = System.getenv("MKT_DB_PORT") != null ?
-            Integer.parseInt(System.getenv("MKT_DB_PORT")) : 5445;
-    public static final String DB_NAME           = System.getenv("MKT_DB_NAME") != null ?
-            System.getenv("MKT_DB_NAME") : "marketdb";
-    public static final String DB_USER           = System.getenv("MKT_DB_USER") != null ?
-            System.getenv("MKT_DB_USER") : "marketdata";
-    public static final String DB_PASSWORD       = System.getenv("MKT_DB_PASS") != null ?
-            System.getenv("MKT_DB_PASS") : "pass4321";
+    // Database Connection Parameters (Primary: 192.168.155.22:5445 | Secondary Fallback: 10.20.8.29:5445)
+    public static final String PRIMARY_DB_URI    = "postgresql+psycopg2://marketdata:pass4321@192.168.155.22:5445/marketdb";
+    public static final String PRIMARY_DB_HOST   = "192.168.155.22";
+    public static final int    PRIMARY_DB_PORT   = 5445;
+
+    public static final String SECONDARY_DB_URI  = "postgresql+psycopg2://marketdata:pass4321@10.20.8.29:5445/marketdb";
+    public static final String SECONDARY_DB_HOST = "10.20.8.29";
+    public static final int    SECONDARY_DB_PORT = 5445;
+
+    public static final String DB_NAME           = System.getenv("MKT_DB_NAME") != null ? System.getenv("MKT_DB_NAME") : "marketdb";
+    public static final String DB_USER           = System.getenv("MKT_DB_USER") != null ? System.getenv("MKT_DB_USER") : "marketdata";
+    public static final String DB_PASSWORD       = System.getenv("MKT_DB_PASS") != null ? System.getenv("MKT_DB_PASS") : "pass4321";
+
+    public static volatile String DB_HOST        = PRIMARY_DB_HOST;
+    public static volatile int    DB_PORT        = PRIMARY_DB_PORT;
+    public static volatile String MARKETDATA_DB_URI = PRIMARY_DB_URI;
 
     // ==========================================
     // DATABASE CONNECTION & PYTHON COLLECTOR BRIDGE
     // ==========================================
     public static Connection getJdbcConnection() {
+        // 1. Try Primary Database (192.168.155.22:5445)
         try {
             Class.forName("org.postgresql.Driver");
-            String url = String.format(Locale.US, "jdbc:postgresql://%s:%d/%s?connectTimeout=3&socketTimeout=4", DB_HOST, DB_PORT, DB_NAME);
+            String url = String.format(Locale.US, "jdbc:postgresql://%s:%d/%s?connectTimeout=2&socketTimeout=3",
+                    PRIMARY_DB_HOST, PRIMARY_DB_PORT, DB_NAME);
             Properties props = new Properties();
             props.setProperty("user", DB_USER);
             props.setProperty("password", DB_PASSWORD);
-            props.setProperty("connectTimeout", "3");
-            props.setProperty("socketTimeout", "4");
-            return DriverManager.getConnection(url, props);
-        } catch (Throwable t) {
-            return null;
+            props.setProperty("connectTimeout", "2");
+            props.setProperty("socketTimeout", "3");
+            Connection conn = DriverManager.getConnection(url, props);
+            if (conn != null && !conn.isClosed()) {
+                DB_HOST = PRIMARY_DB_HOST;
+                DB_PORT = PRIMARY_DB_PORT;
+                MARKETDATA_DB_URI = PRIMARY_DB_URI;
+                return conn;
+            }
+        } catch (Throwable t1) {
+            System.err.printf("[DB] Primary Database (%s:%d) error: %s. Falling back to Secondary (%s:%d)...%n",
+                    PRIMARY_DB_HOST, PRIMARY_DB_PORT, t1.getMessage(), SECONDARY_DB_HOST, SECONDARY_DB_PORT);
         }
+
+        // 2. Fallback to Secondary Database (10.20.8.29:5445)
+        try {
+            Class.forName("org.postgresql.Driver");
+            String url = String.format(Locale.US, "jdbc:postgresql://%s:%d/%s?connectTimeout=2&socketTimeout=3",
+                    SECONDARY_DB_HOST, SECONDARY_DB_PORT, DB_NAME);
+            Properties props = new Properties();
+            props.setProperty("user", DB_USER);
+            props.setProperty("password", DB_PASSWORD);
+            props.setProperty("connectTimeout", "2");
+            props.setProperty("socketTimeout", "3");
+            Connection conn = DriverManager.getConnection(url, props);
+            if (conn != null && !conn.isClosed()) {
+                DB_HOST = SECONDARY_DB_HOST;
+                DB_PORT = SECONDARY_DB_PORT;
+                MARKETDATA_DB_URI = SECONDARY_DB_URI;
+                System.out.printf("[DB] Connected successfully to Secondary Market DB (%s:%d).%n",
+                        SECONDARY_DB_HOST, SECONDARY_DB_PORT);
+                return conn;
+            }
+        } catch (Throwable t2) {
+            System.err.printf("[DB] Secondary Database (%s:%d) error: %s%n",
+                    SECONDARY_DB_HOST, SECONDARY_DB_PORT, t2.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Directly retrieves a single symbol's LTP from DB (dse_md_ltp / cse_md_ltp) in <15ms
+     * with automatic Primary -> Secondary failover.
+     */
+    public static double getDirectSymbolLtpFromDb(String symbol, String exchange) {
+        if (symbol == null || symbol.trim().isEmpty()) return 0.0;
+        String cleanSym = symbol.trim().toUpperCase();
+        if (cleanSym.contains(".")) {
+            cleanSym = cleanSym.substring(0, cleanSym.indexOf('.'));
+        }
+        String table = (exchange != null && exchange.equalsIgnoreCase("CSE")) ? "cse_md_ltp" : "dse_md_ltp";
+        String sql = String.format("SELECT ltp FROM %s WHERE symbol = ? AND board = 'PUBLIC' LIMIT 1;", table);
+
+        String[][] dbs = {
+            { PRIMARY_DB_HOST, String.valueOf(PRIMARY_DB_PORT), "Primary (" + PRIMARY_DB_HOST + ")" },
+            { SECONDARY_DB_HOST, String.valueOf(SECONDARY_DB_PORT), "Secondary (" + SECONDARY_DB_HOST + ")" }
+        };
+
+        for (String[] db : dbs) {
+            String host = db[0];
+            int port = Integer.parseInt(db[1]);
+            String label = db[2];
+            try {
+                Class.forName("org.postgresql.Driver");
+                String url = String.format(Locale.US, "jdbc:postgresql://%s:%d/%s?connectTimeout=2&socketTimeout=3", host, port, DB_NAME);
+                Properties props = new Properties();
+                props.setProperty("user", DB_USER);
+                props.setProperty("password", DB_PASSWORD);
+                props.setProperty("connectTimeout", "2");
+                props.setProperty("socketTimeout", "3");
+                try (Connection conn = DriverManager.getConnection(url, props);
+                     PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setString(1, cleanSym);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (rs.next()) {
+                            double ltp = rs.getDouble("ltp");
+                            if (ltp > 0) {
+                                System.out.printf("[MARKET DATA: DB %s] Retrieved LTP for %s: %.2f BDT (Table: %s)%n",
+                                        label, cleanSym, ltp, table);
+                                return ltp;
+                            }
+                        }
+                    }
+                }
+            } catch (Throwable t) {
+                System.err.printf("[WARN: DB LTP] Failed to query %s on %s: %s. Trying next...%n", cleanSym, label, t.getMessage());
+            }
+        }
+        return 0.0;
     }
 
     public static void runPythonDbCollector(String exchange) {

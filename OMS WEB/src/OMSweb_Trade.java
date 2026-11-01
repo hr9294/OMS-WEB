@@ -2568,21 +2568,16 @@ public class OMSweb_Trade {
 
 
 		// Tier 0: Direct PostgreSQL Database Table (dse_md_ltp / cse_md_ltp WHERE board = 'PUBLIC')
-
 		try {
-
-			double dbPrice = OMSweb_DBMarketData.getSymbolLtp(cleanSym, ex, 0.0);
-
-			if (dbPrice > 0) {
-
-				System.out.printf("[MARKET PRICE: DB Table] Resolved Public Board LTP for %s: %.2f BDT (%s_md_ltp)%n",
-
-						cleanSym, dbPrice, ex.toLowerCase());
-
-				return dbPrice;
-
+			double dbPrice = OMSweb_DBMarketData.getDirectSymbolLtpFromDb(cleanSym, ex);
+			if (dbPrice <= 0) {
+				dbPrice = OMSweb_DBMarketData.getSymbolLtp(cleanSym, ex, 0.0);
 			}
-
+			if (dbPrice > 0) {
+				System.out.printf("[MARKET PRICE: DB Table] Resolved Public Board LTP for %s: %.2f BDT (%s_md_ltp)%n",
+						cleanSym, dbPrice, ex.toLowerCase());
+				return dbPrice;
+			}
 		} catch (Exception ignored) {}
 
 
