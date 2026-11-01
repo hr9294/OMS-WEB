@@ -1,5 +1,14 @@
 {
-    "python.defaultInterpreterPath": "C:\\Users\\hrrah\\AppData\\Local\\Python\\pythoncore-3.15-64\\python.exe",
+    "java.project.sourcePaths": [
+        "OMS WEB/src"
+    ],
+    "java.project.outputPath": "OMS WEB/bin",
+    "java.project.referencedLibraries": [
+        "D:/Automation & Load Testing/Selenium/Software/*.jar",
+        "D:/Automation & Load Testing/Appium/Software/*.jar"
+    ],
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "python.defaultInterpreterPath": "C:\\Users\\Hasibur Rahman\\AppData\\Local\\Programs\\Python\\Python311\\python.exe",
     "python.terminal.activateEnvironment": true,
     "files.exclude": {
         "**/__pycache__": true,
