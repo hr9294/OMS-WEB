@@ -641,14 +641,23 @@ public class OMSweb_MultiOrderExecution {
                     js.executeScript("var btn = document.querySelector('.order_submit_btn, div.form-submit-btn-holder button'); if (btn) { $(btn).prop('disabled', false).removeAttr('disabled'); btn.click(); }");
                 }
 
-                // 6. Fast-Path Confirmation YES (Direct jQuery-Confirm / Alert / DOM in 100ms intervals, up to 4s)
+                // 6. Fast-Path Confirmation YES (Direct jQuery-Confirm / Alert / DOM in 40ms intervals, up to 2.5s)
                 boolean confirmed = false;
-                for (int attempt = 0; attempt < 40; attempt++) {
+                for (int attempt = 0; attempt < 60; attempt++) {
                     confirmed = OMSweb_Trade.autoConfirmOrderOrCancellation(driver, wait);
                     if (confirmed) break;
 
+                    try {
+                        Boolean jsClicked = (Boolean) js.executeScript(
+                            "var btn = document.getElementById('cnfirmConfirmBtn');" +
+                            "if (btn && (btn.offsetParent !== null || btn.offsetWidth > 0 || btn.offsetHeight > 0)) { btn.click(); return true; }" +
+                            "return false;"
+                        );
+                        if (Boolean.TRUE.equals(jsClicked)) { confirmed = true; break; }
+                    } catch (Exception ignored) {}
+
                     List<WebElement> confirmBtns = driver.findElements(
-                            By.xpath("//button[@id='cnfirmConfirmBtn'] | //button[normalize-space()='YES'] | //button[normalize-space()='Yes'] | //button[normalize-space()='Confirm'] | //div[contains(@class,'jconfirm-box') or contains(@class,'modal')]//button[contains(@class,'btn-success') or normalize-space()='YES']"));
+                            By.xpath("//*[@id='cnfirmConfirmBtn'] | //button[normalize-space()='YES'] | //button[normalize-space()='Yes'] | //button[normalize-space()='Confirm'] | //div[contains(@class,'jconfirm-box') or contains(@class,'modal')]//*[contains(@class,'btn-success') or normalize-space()='YES']"));
                     for (WebElement cb : confirmBtns) {
                         if (cb.isDisplayed() && cb.isEnabled()) {
                             js.executeScript("arguments[0].click();", cb);
@@ -657,7 +666,7 @@ public class OMSweb_MultiOrderExecution {
                         }
                     }
                     if (confirmed) break;
-                    Thread.sleep(100);
+                    Thread.sleep(40);
                 }
 
                 long elapsed = Duration.between(start, Instant.now()).toMillis();

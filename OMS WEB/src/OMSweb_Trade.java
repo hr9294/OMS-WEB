@@ -658,7 +658,7 @@ public class OMSweb_Trade {
 				fillAndSelectAutocompleteSafely(driver, wait, clientCodeModalLocator, clientCode, false);
 				ensureClientCodeRetained(driver, clientCode);
 				System.out.println("  ✔ Client Code entered: " + clientCode);
-				Thread.sleep(800); // Visual pacing: user clearly sees Client Code entered first
+				Thread.sleep(300); // Visual pacing: user clearly sees Client Code entered first
 
 				// 2. Fill Symbol with safe autocomplete confirmation
 				installSymbolWhitespaceSanitizer(driver);
@@ -672,7 +672,7 @@ public class OMSweb_Trade {
 				ensureSymbolBoardRetained(driver, publicInst);
 				ensureClientCodeRetained(driver, clientCode);
 				System.out.println("  ✔ Order Symbol selected: " + publicInst);
-				Thread.sleep(800); // Visual pacing: user clearly sees Symbol entered second
+				Thread.sleep(300); // Visual pacing: user clearly sees Symbol entered second
 
 				// 3. Fill Quantity
 				System.out.println(">>> [3/4] Entering Quantity: " + tradeQty + " and Rate: " + executedRate + "...");
@@ -702,7 +702,7 @@ public class OMSweb_Trade {
 					double mRate = getEnteredRate(driver);
 					if (mRate > 0.0) executedRate = mRate;
 				}
-				Thread.sleep(300);
+				Thread.sleep(150);
 
 				// Display Commission on Buy and Sell window when client has commission
 				displayCommissionOnOrderWindow(driver, clientCode, tradeQty, executedRate);
@@ -710,7 +710,7 @@ public class OMSweb_Trade {
 				// Final retention verification before submitting
 				ensureSymbolBoardRetained(driver, publicInst);
 				ensureClientCodeRetained(driver, clientCode);
-				Thread.sleep(500); // Visual pacing before order submit
+				Thread.sleep(200); // Visual pacing before order submit
 
 				// 4. Submit Order
 				System.out.println(">>> [4/4] Submitting " + sideText + " order and awaiting Confirmation Dialog...");
@@ -3463,23 +3463,20 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 	private static boolean confirmOrder(WebDriver driver, WebDriverWait wait, Scanner sc) throws InterruptedException {
-		System.out.println("[CONFIRMATION] Waiting for 'Confirm Execution' dialog and confirming order...");
+		System.out.println("[CONFIRMATION] Auto-confirming 'Confirm Execution' dialog [YES]...");
 		JavascriptExecutor js = (JavascriptExecutor) driver;
 
-		// 1. Wait and poll for up to 10 seconds (50 attempts x 200ms) for confirmation modal to appear
-		for (int attempt = 0; attempt < 50; attempt++) {
-			Thread.sleep(200);
-
+		// Fast polling loop: up to 3 seconds (60 attempts x 50ms)
+		for (int attempt = 0; attempt < 60; attempt++) {
 			// A. Fast check via autoConfirmOrderOrCancellation
 			try {
 				if (autoConfirmOrderOrCancellation(driver, wait)) {
 					System.out.println("  ✔ [CONFIRMATION] Order confirmed automatically via autoConfirmOrderOrCancellation!");
-					Thread.sleep(600);
 					return true;
 				}
 			} catch (Exception ignored) {}
 
-			// B. Direct search for visible "YES" button on Confirm Execution dialog (button, a, div, span)
+			// B. Direct search for visible YES button on Confirm Execution dialog (button, a, div, span)
 			try {
 				List<WebElement> yesButtons = driver.findElements(By.xpath(
 					"//*[@id='cnfirmConfirmBtn'] | " +
@@ -3491,12 +3488,11 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				for (WebElement yb : yesButtons) {
 					if (yb.isDisplayed() && yb.isEnabled()) {
 						try {
-							new Actions(driver).moveToElement(yb).click().perform();
+							js.executeScript("arguments[0].click();", yb);
 						} catch (Exception e) {
 							yb.click();
 						}
 						System.out.println("  ✔ [CONFIRMATION] Clicked [YES] button on Confirm Execution dialog!");
-						Thread.sleep(600);
 						return true;
 					}
 				}
@@ -3505,7 +3501,9 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			// C. JavaScript execution to find and click any visible YES button
 			try {
 				Boolean clicked = (Boolean) js.executeScript(
-					"var btns = document.querySelectorAll('#cnfirmConfirmBtn, button, a, div.btn, span.btn');" +
+					"var btn = document.getElementById('cnfirmConfirmBtn');" +
+					"if (btn && (btn.offsetParent !== null || btn.offsetWidth > 0 || btn.offsetHeight > 0)) { btn.click(); return true; }" +
+					"var btns = document.querySelectorAll('button, a, div.btn, span.btn');" +
 					"for (var i = 0; i < btns.length; i++) {" +
 					"    var txt = (btns[i].innerText || btns[i].textContent || '').trim().toUpperCase();" +
 					"    if (txt === 'YES' || txt === 'CONFIRM') {" +
@@ -3519,10 +3517,11 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				);
 				if (Boolean.TRUE.equals(clicked)) {
 					System.out.println("  ✔ [CONFIRMATION] Confirmed order: Clicked [YES] via JavaScript execution!");
-					Thread.sleep(600);
 					return true;
 				}
 			} catch (Exception ignored) {}
+
+			Thread.sleep(50);
 		}
 
 		System.out.println("  [CONFIRMATION] Note: Confirmation dialog closed or pre-accepted.");
