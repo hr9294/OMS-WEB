@@ -81,50 +81,7 @@ public class OMSweb_MultipleTrade {
     public static volatile String MARKETDATA_DB_URI = PRIMARY_DB_URI;
 
     public static Connection getJdbcConnection() {
-        // 1. Try Primary Database (192.168.155.22:5445)
-        try {
-            Class.forName("org.postgresql.Driver");
-            String url = String.format(Locale.US, "jdbc:postgresql://%s:%d/%s?connectTimeout=2&socketTimeout=3",
-                    PRIMARY_DB_HOST, PRIMARY_DB_PORT, DB_NAME);
-            Properties props = new Properties();
-            props.setProperty("user", DB_USER);
-            props.setProperty("password", DB_PASSWORD);
-            props.setProperty("connectTimeout", "2");
-            props.setProperty("socketTimeout", "3");
-            Connection conn = DriverManager.getConnection(url, props);
-            if (conn != null && !conn.isClosed()) {
-                ACTIVE_DB_HOST = PRIMARY_DB_HOST;
-                ACTIVE_DB_PORT = PRIMARY_DB_PORT;
-                MARKETDATA_DB_URI = PRIMARY_DB_URI;
-                return conn;
-            }
-        } catch (Throwable t1) {
-            System.err.printf("[MULTITRADE DB] Primary (%s:%d) error: %s. Falling back to Secondary (%s:%d)...%n",
-                    PRIMARY_DB_HOST, PRIMARY_DB_PORT, t1.getMessage(), SECONDARY_DB_HOST, SECONDARY_DB_PORT);
-        }
-
-        // 2. Fallback to Secondary Database (10.20.8.29:5445)
-        try {
-            Class.forName("org.postgresql.Driver");
-            String url = String.format(Locale.US, "jdbc:postgresql://%s:%d/%s?connectTimeout=2&socketTimeout=3",
-                    SECONDARY_DB_HOST, SECONDARY_DB_PORT, DB_NAME);
-            Properties props = new Properties();
-            props.setProperty("user", DB_USER);
-            props.setProperty("password", DB_PASSWORD);
-            props.setProperty("connectTimeout", "2");
-            props.setProperty("socketTimeout", "3");
-            Connection conn = DriverManager.getConnection(url, props);
-            if (conn != null && !conn.isClosed()) {
-                ACTIVE_DB_HOST = SECONDARY_DB_HOST;
-                ACTIVE_DB_PORT = SECONDARY_DB_PORT;
-                MARKETDATA_DB_URI = SECONDARY_DB_URI;
-                return conn;
-            }
-        } catch (Throwable t2) {
-            System.err.printf("[MULTITRADE DB] Secondary (%s:%d) connection failed: %s%n",
-                    SECONDARY_DB_HOST, SECONDARY_DB_PORT, t2.getMessage());
-        }
-        return null;
+        return OMSweb_DBMarketData.getJdbcConnection();
     }
 
     /**
@@ -132,54 +89,36 @@ public class OMSweb_MultipleTrade {
      * Returns live Public Board LTP in ~10-15 ms.
      */
     public static double getDirectSymbolLtpFromDb(String symbol, String exchange) {
-        if (symbol == null || symbol.trim().isEmpty()) return 0.0;
-        String cleanSym = symbol.trim().toUpperCase();
-        String table = "CSE".equalsIgnoreCase(exchange) ? "cse_md_ltp" : "dse_md_ltp";
-        String sql = "SELECT ltp FROM " + table + " WHERE symbol = ? AND board = 'PUBLIC' AND ltp IS NOT NULL AND ltp > 0 LIMIT 1";
-
-        String[][] dbs = {
-            { PRIMARY_DB_HOST, String.valueOf(PRIMARY_DB_PORT), "Primary (" + PRIMARY_DB_HOST + ")" },
-            { SECONDARY_DB_HOST, String.valueOf(SECONDARY_DB_PORT), "Secondary (" + SECONDARY_DB_HOST + ")" }
-        };
-
-        for (String[] db : dbs) {
-            String host = db[0];
-            int port = Integer.parseInt(db[1]);
-            String label = db[2];
-            try {
-                Class.forName("org.postgresql.Driver");
-                String url = String.format(Locale.US, "jdbc:postgresql://%s:%d/%s?connectTimeout=2&socketTimeout=3", host, port, DB_NAME);
-                Properties props = new Properties();
-                props.setProperty("user", DB_USER);
-                props.setProperty("password", DB_PASSWORD);
-                props.setProperty("connectTimeout", "2");
-                props.setProperty("socketTimeout", "3");
-                try (Connection conn = DriverManager.getConnection(url, props);
-                     PreparedStatement ps = conn.prepareStatement(sql)) {
-                    ps.setString(1, cleanSym);
-                    try (ResultSet rs = ps.executeQuery()) {
-                        if (rs.next()) {
-                            double ltp = rs.getDouble("ltp");
-                            if (ltp > 0) {
-                                return ltp;
-                            }
-                        }
-                    }
-                }
-            } catch (Throwable t) {
-                System.err.printf("[WARN: MULTITRADE DB LTP] Query for %s failed on %s: %s. Trying fallback...%n", cleanSym, label, t.getMessage());
-            }
-        }
-        return 0.0;
+        return OMSweb_DBMarketData.getDirectSymbolLtpFromDb(symbol, exchange);
     }
 
     /**
-     * Direct query on dse_md_ltp / cse_md_ltp for circuit limits with Primary -> Secondary failover.
-     * Returns CircuitLimits (SH/CH, SL/CL) in ~10-15 ms.
+     * Direct query on dse_md_ltp / cse_md_ltp for circuit limits with Primary -> Secondary failover
+     * and smart circuit breaker.
+     * Returns CircuitLimits (SH/CH, SL/CL) in ~10-15 ms (or 0 ms from cache if offline).
      */
     public static CircuitLimits getDirectCircuitLimitsFromDb(String symbol, String exchange) {
         if (symbol == null || symbol.trim().isEmpty()) return null;
         String cleanSym = symbol.trim().toUpperCase();
+        if (cleanSym.contains(".")) {
+            cleanSym = cleanSym.substring(0, cleanSym.indexOf('.'));
+        }
+
+        if (OMSweb_DBMarketData.isDbCircuitOpen()) {
+            OMSweb_DBMarketData.PublicSymbolLtp cached = OMSweb_DBMarketData.getCachedSymbol(cleanSym, exchange);
+            if (cached != null) {
+                double ltp = cached.ltp;
+                double up = cached.circuitUp;
+                double down = cached.circuitDown;
+                if (up <= 0 && ltp > 0) up = Math.round(ltp * 1.10 * 100.0) / 100.0;
+                if (down <= 0 && ltp > 0) down = Math.round(ltp * 0.90 * 100.0) / 100.0;
+                if (up > 0 || down > 0) {
+                    return new CircuitLimits(up, down, up, down, ltp);
+                }
+            }
+            return null;
+        }
+
         String table = "CSE".equalsIgnoreCase(exchange) ? "cse_md_ltp" : "dse_md_ltp";
         String sql = "SELECT ltp, circuit_up, circuit_down FROM " + table + " WHERE symbol = ? AND board = 'PUBLIC' AND ltp IS NOT NULL AND ltp > 0 LIMIT 1";
 
@@ -188,10 +127,15 @@ public class OMSweb_MultipleTrade {
             { SECONDARY_DB_HOST, String.valueOf(SECONDARY_DB_PORT), "Secondary (" + SECONDARY_DB_HOST + ")" }
         };
 
+        boolean anyReachable = false;
         for (String[] db : dbs) {
             String host = db[0];
             int port = Integer.parseInt(db[1]);
             String label = db[2];
+            if (!OMSweb_DBMarketData.isHostReachable(host, port, 150)) {
+                continue;
+            }
+            anyReachable = true;
             try {
                 Class.forName("org.postgresql.Driver");
                 String url = String.format(Locale.US, "jdbc:postgresql://%s:%d/%s?connectTimeout=2&socketTimeout=3", host, port, DB_NAME);
@@ -211,6 +155,7 @@ public class OMSweb_MultipleTrade {
                             if (up <= 0 && ltp > 0) up = Math.round(ltp * 1.10 * 100.0) / 100.0;
                             if (down <= 0 && ltp > 0) down = Math.round(ltp * 0.90 * 100.0) / 100.0;
                             if (up > 0 || down > 0) {
+                                OMSweb_DBMarketData.recordDbSuccess();
                                 return new CircuitLimits(up, down, up, down, ltp);
                             }
                         }
@@ -218,6 +163,22 @@ public class OMSweb_MultipleTrade {
                 }
             } catch (Throwable t) {
                 System.err.printf("[WARN: MULTITRADE DB CIRCUITS] Query for %s failed on %s: %s. Trying fallback...%n", cleanSym, label, t.getMessage());
+            }
+        }
+
+        if (!anyReachable) {
+            OMSweb_DBMarketData.recordDbFailure();
+        }
+
+        OMSweb_DBMarketData.PublicSymbolLtp cached = OMSweb_DBMarketData.getCachedSymbol(cleanSym, exchange);
+        if (cached != null) {
+            double ltp = cached.ltp;
+            double up = cached.circuitUp;
+            double down = cached.circuitDown;
+            if (up <= 0 && ltp > 0) up = Math.round(ltp * 1.10 * 100.0) / 100.0;
+            if (down <= 0 && ltp > 0) down = Math.round(ltp * 0.90 * 100.0) / 100.0;
+            if (up > 0 || down > 0) {
+                return new CircuitLimits(up, down, up, down, ltp);
             }
         }
         return null;
@@ -2016,34 +1977,17 @@ public class OMSweb_MultipleTrade {
 
         String cleanSym = (symbol != null) ? symbol.trim().toUpperCase() : "";
 
-        // Direct DB LTP lookup with Primary -> Secondary failover
+        // Priority 1: Direct DB / Cache LTP lookup with failover & circuit breaker
         try {
-            double fastLtp = getDirectSymbolLtpFromDb(cleanSym, "DSE");
-            if (fastLtp > 0) {
-                return fastLtp;
+            double dbPrice = OMSweb_DBMarketData.getDirectSymbolLtpFromDb(cleanSym, "DSE");
+            if (dbPrice > 0) {
+                return dbPrice;
             }
         } catch (Exception ignored) {}
 
         double realisticFallback = REALISTIC_PRICES.getOrDefault(cleanSym, 100.00);
 
         try {
-
-            // Priority 1: PostgreSQL DB Table (dse_md_ltp WHERE board = 'PUBLIC')
-
-            // Direct DB lookup with Primary -> Secondary failover
-            double dbPrice = getDirectSymbolLtpFromDb(cleanSym, "DSE");
-            if (dbPrice <= 0) {
-                dbPrice = OMSweb_DBMarketData.getDirectSymbolLtpFromDb(cleanSym, "DSE");
-            }
-            if (dbPrice <= 0) {
-                dbPrice = OMSweb_DBMarketData.getSymbolLtp(cleanSym, "DSE", 0.0);
-            }
-
-            if (dbPrice > 0) {
-
-                return dbPrice;
-
-            }
 
             double price = OMSweb_Trade.fetchPriceLtpOrYcp(driver, wait, cleanSym, "DSE");
 
