@@ -648,45 +648,15 @@ public class OMSweb_Trade {
 
 
 
-				// Fill Client Code
-
-				WebElement order_client_code = wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("order_client_code")));
-
-				order_client_code.click();
-
-				order_client_code.clear();
-
-				order_client_code.sendKeys(clientCode);
-
-				try {
-
-					((JavascriptExecutor) driver).executeScript("$('#order_client_code').trigger('change');");
-
-				} catch (Exception ignored) {}
-
+				// Fill Client Code with safe autocomplete confirmation
+				fillAndSelectAutocompleteSafely(driver, wait, By.id("order_client_code"), clientCode, false);
 				System.out.println("Client Code entered: " + clientCode);
 
-				Thread.sleep(200);
-
-
-
-				// Fill Symbol
-
-				WebElement symbolInput = driver.findElement(By.id("order_instrument"));
-
-				symbolInput.clear();
-
-				installSymbolWhitespaceSanitizer(driver); String cleanInst = cleanSymbol(instrument); symbolInput.sendKeys(cleanInst);
-
-				wait.until(ExpectedConditions.presenceOfElementLocated(By.className("ui-autocomplete-input")));
-
-				symbolInput.sendKeys(Keys.ARROW_DOWN);
-
-				symbolInput.sendKeys(Keys.ENTER);
-
-				((JavascriptExecutor) driver).executeScript("arguments[0].scrollIntoView(true);", symbolInput);
-
-				System.out.println("Order Symbol selected: " + instrument);
+				// Fill Symbol with safe autocomplete confirmation
+				installSymbolWhitespaceSanitizer(driver);
+				String cleanInst = cleanSymbol(instrument);
+				fillAndSelectAutocompleteSafely(driver, wait, By.id("order_instrument"), cleanInst, true);
+				System.out.println("Order Symbol selected: " + cleanInst);
 
 
 
@@ -1046,6 +1016,67 @@ public class OMSweb_Trade {
 	 * 5. Force-enables locked or disabled form inputs (.order_submit_btn, inputs, buttons).
 	 * 6. Brings floating trading windows to the front (zIndex = 9999).
 	 */
+	/**
+	 * Safely fills a jQuery UI autocomplete input (Client Code or Symbol) and confirms
+	 * selection, completely preventing menu overlap, race conditions, and screen freezing.
+	 */
+	public static void fillAndSelectAutocompleteSafely(WebDriver driver, WebDriverWait wait, By locator, String value, boolean isSymbol) {
+		if (driver == null || locator == null || value == null || value.trim().isEmpty()) return;
+		try {
+			JavascriptExecutor js = (JavascriptExecutor) driver;
+			// 1. Dismiss any lingering autocomplete from a previous field
+			try { js.executeScript("if (window.jQuery) { $('.ui-autocomplete').hide(); }"); } catch (Exception ignored) {}
+
+			WebElement input = wait.until(ExpectedConditions.visibilityOfElementLocated(locator));
+			input.click();
+			input.clear();
+			input.sendKeys(value.trim());
+
+			// 2. Allow autocomplete query to render (180ms)
+			Thread.sleep(180);
+
+			// 3. Confirm and select matching item from the dropdown
+			js.executeScript(
+				"try {" +
+				"    var menu = $('.ui-autocomplete:visible');" +
+				"    if (menu.length) {" +
+				"        var target = arguments[0].toUpperCase();" +
+				"        var isSym = arguments[1];" +
+				"        var selected = false;" +
+				"        menu.find('li.ui-menu-item').each(function() {" +
+				"            var txt = $(this).text().trim().toUpperCase();" +
+				"            if (isSym && (txt === target || txt.indexOf(target + '.PUBLIC') !== -1)) {" +
+				"                var a = $(this).find('a'); (a.length ? a : $(this)).click();" +
+				"                selected = true;" +
+				"                return false;" +
+				"            } else if (!isSym && txt.indexOf(target) !== -1) {" +
+				"                var a = $(this).find('a'); (a.length ? a : $(this)).click();" +
+				"                selected = true;" +
+				"                return false;" +
+				"            }" +
+				"        });" +
+				"        if (!selected) {" +
+				"            var first = menu.find('li.ui-menu-item').first();" +
+				"            if (first.length) { var a = first.find('a'); (a.length ? a : first).click(); }" +
+				"        }" +
+				"    }" +
+				"    if (window.jQuery) { $('.ui-autocomplete').hide(); }" +
+				"} catch(e) {}",
+				value.trim(), isSymbol
+			);
+
+			// Trigger native events so app state updates
+			try { js.executeScript("$(arguments[0]).trigger('input').trigger('change');", input); } catch (Exception ignored) {}
+			Thread.sleep(100);
+		} catch (Exception e) {
+			try {
+				WebElement input = driver.findElement(locator);
+				input.sendKeys(Keys.ARROW_DOWN, Keys.ENTER);
+				((JavascriptExecutor) driver).executeScript("if (window.jQuery) { $('.ui-autocomplete').hide(); }");
+			} catch (Exception ignored) {}
+		}
+	}
+
 	public static boolean ensureUIUnlocked(WebDriver driver) {
 		if (driver == null) return false;
 		boolean unblocked = false;
@@ -1074,7 +1105,7 @@ public class OMSweb_Trade {
 				"            }" +
 				"        }" +
 				"    }" +
-				"    var blockers = document.querySelectorAll('.modal-backdrop, .jconfirm-bg, .jconfirm-overlay, .blockOverlay, .blockUI, #context-menu-layer, .swal2-container, .swal-overlay, .ui-widget-overlay, .loading-overlay');" +
+				"    var blockers = document.querySelectorAll('.modal-backdrop, .jconfirm-bg, .jconfirm-overlay, .blockOverlay, .blockUI, #context-menu-layer, .swal2-container, .swal-overlay, .ui-widget-overlay, .loading-overlay, .ui-autocomplete');" +
 				"    for (var b = 0; b < blockers.length; b++) {" +
 				"        try { blockers[b].parentNode.removeChild(blockers[b]); changed = true; } catch(e) { blockers[b].style.display = 'none'; }" +
 				"    }" +
@@ -2542,33 +2573,11 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 			String clientCode) throws InterruptedException {
 
-		WebElement client = driver.findElement(By.id("order_client_code"));
+		fillAndSelectAutocompleteSafely(driver, wait, By.id("order_client_code"), clientCode, false);
 
-		client.click();
-
-		client.clear();
-
-		client.sendKeys(clientCode);
-
-		try {
-
-			((JavascriptExecutor) driver).executeScript("$('#order_client_code').trigger('change');");
-
-		} catch (Exception ignored) {}
-
-
-
-		WebElement symbol = driver.findElement(By.id("order_instrument"));
-
-		symbol.clear();
-
-		installSymbolWhitespaceSanitizer(driver); String cleanInst2 = cleanSymbol(instrument); symbol.sendKeys(cleanInst2);
-
-		wait.until(ExpectedConditions.presenceOfElementLocated(By.className("ui-autocomplete-input")));
-
-		symbol.sendKeys(Keys.ARROW_DOWN);
-
-		symbol.sendKeys(Keys.ENTER);
+		installSymbolWhitespaceSanitizer(driver);
+		String cleanInst2 = cleanSymbol(instrument);
+		fillAndSelectAutocompleteSafely(driver, wait, By.id("order_instrument"), cleanInst2, true);
 
 
 

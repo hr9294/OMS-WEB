@@ -1231,45 +1231,11 @@ public class OMSweb_MultipleTrade {
 
 
 
-            // 3. Client Code
+            // 3. Client Code with safe autocomplete confirmation
+            OMSweb_Trade.fillAndSelectAutocompleteSafely(driver, wait, CLIENT_CODE_INPUT, order.clientCode, false);
 
-            WebElement clientInput = wait.until(ExpectedConditions.visibilityOfElementLocated(CLIENT_CODE_INPUT));
-
-            clientInput.click();
-
-            clearFieldForcefully(driver, js, CLIENT_CODE_INPUT);
-
-            clientInput.sendKeys(order.clientCode);
-
-            try {
-
-                js.executeScript("$('#order_client_code').trigger('input').trigger('change');");
-
-            } catch (Exception ignored) {}
-
-            Thread.sleep(100);
-
-
-
-            // 4. Instrument / Symbol
-
-            WebElement symInput = driver.findElement(ORDER_INSTRUMENT_INP);
-
-            clearFieldForcefully(driver, js, ORDER_INSTRUMENT_INP);
-
-            symInput.sendKeys(order.symbol);
-
-            try {
-
-                wait.until(ExpectedConditions.presenceOfElementLocated(AUTOCOMPLETE_MENU));
-
-            } catch (Exception ignored) {}
-
-            symInput.sendKeys(Keys.ARROW_DOWN);
-
-            symInput.sendKeys(Keys.ENTER);
-
-            Thread.sleep(100);
+            // 4. Instrument / Symbol with safe autocomplete confirmation
+            OMSweb_Trade.fillAndSelectAutocompleteSafely(driver, wait, ORDER_INSTRUMENT_INP, order.symbol, true);
 
 
 

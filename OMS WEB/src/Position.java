@@ -894,19 +894,9 @@ public class Position {
             OMSweb_Trade.selectExchangeInModal(driver, exchange);
             Thread.sleep(200);
 
-            // Fill Client Code
-            WebElement clientInp = wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("order_client_code")));
-            clientInp.click();
-            clientInp.clear();
-            clientInp.sendKeys(clientCode);
-
-            // Fill Symbol
-            WebElement symInp = driver.findElement(By.id("order_instrument"));
-            symInp.clear();
-            symInp.sendKeys(cleanSymbol(symbol));
-            wait.until(ExpectedConditions.presenceOfElementLocated(By.className("ui-autocomplete-input")));
-            symInp.sendKeys(Keys.ARROW_DOWN);
-            symInp.sendKeys(Keys.ENTER);
+            // Fill Client Code & Symbol with safe autocomplete confirmation
+            OMSweb_Trade.fillAndSelectAutocompleteSafely(driver, wait, By.id("order_client_code"), clientCode, false);
+            OMSweb_Trade.fillAndSelectAutocompleteSafely(driver, wait, By.id("order_instrument"), cleanSymbol(symbol), true);
 
             // Fill Qty
             WebElement qtyInp = driver.findElement(By.id("order_qty"));
