@@ -791,9 +791,13 @@ public class Order_Terminal {
 
                     String rowText = row.getText().toUpperCase();
                     if (!cleanSym.isEmpty() && !rowText.contains(cleanSym)) continue;
-                    if (!rowText.contains("ACCEPTED") && !rowText.contains("PARTIALLY")) continue;
 
-                    if (clientCodes != null && !clientCodes.isEmpty()) {
+                    boolean isAccepted = rowText.contains("ACCEPTED") || rowText.contains("ACCEPT");
+                    boolean isPartially = rowText.contains("PARTIAL") || rowText.contains("PARTIALLY") || rowText.contains("PF");
+                    if (!isAccepted && !isPartially) continue;
+
+                    // If order is PARTIALLY filled, always select it! If ACCEPTED, check client match if provided
+                    if (!isPartially && clientCodes != null && !clientCodes.isEmpty()) {
                         boolean clientMatch = false;
                         for (String cc : clientCodes) {
                             if (rowText.contains(cc.trim().toUpperCase())) {
@@ -935,9 +939,13 @@ public class Order_Terminal {
 
                     String rowText = row.getText().toUpperCase();
                     if (!cleanSym.isEmpty() && !rowText.contains(cleanSym)) continue;
-                    if (!rowText.contains("ACCEPTED") && !rowText.contains("PARTIALLY")) continue;
 
-                    if (clientCodes != null && !clientCodes.isEmpty()) {
+                    boolean isAccepted = rowText.contains("ACCEPTED") || rowText.contains("ACCEPT");
+                    boolean isPartially = rowText.contains("PARTIAL") || rowText.contains("PARTIALLY") || rowText.contains("PF");
+                    if (!isAccepted && !isPartially) continue;
+
+                    // If order is PARTIALLY filled, always select it! If ACCEPTED, check client match if provided
+                    if (!isPartially && clientCodes != null && !clientCodes.isEmpty()) {
                         boolean clientMatch = false;
                         for (String cc : clientCodes) {
                             if (rowText.contains(cc.trim().toUpperCase())) {
@@ -1080,9 +1088,13 @@ public class Order_Terminal {
 
                     String rowText = row.getText().toUpperCase();
                     if (!cleanSym.isEmpty() && !rowText.contains(cleanSym)) continue;
-                    if (!rowText.contains("ACCEPTED") && !rowText.contains("PARTIALLY")) continue;
 
-                    if (clientCodes != null && !clientCodes.isEmpty()) {
+                    boolean isAccepted = rowText.contains("ACCEPTED") || rowText.contains("ACCEPT");
+                    boolean isPartially = rowText.contains("PARTIAL") || rowText.contains("PARTIALLY") || rowText.contains("PF");
+                    if (!isAccepted && !isPartially) continue;
+
+                    // If order is PARTIALLY filled, always select it! If ACCEPTED, check client match if provided
+                    if (!isPartially && clientCodes != null && !clientCodes.isEmpty()) {
                         boolean clientMatch = false;
                         for (String cc : clientCodes) {
                             if (rowText.contains(cc.trim().toUpperCase())) {
@@ -1209,9 +1221,13 @@ public class Order_Terminal {
 
                     String rowText = row.getText().toUpperCase();
                     if (!cleanSym.isEmpty() && !rowText.contains(cleanSym)) continue;
-                    if (!rowText.contains("ACCEPTED") && !rowText.contains("PARTIALLY")) continue;
 
-                    if (clientCodes != null && !clientCodes.isEmpty()) {
+                    boolean isAccepted = rowText.contains("ACCEPTED") || rowText.contains("ACCEPT");
+                    boolean isPartially = rowText.contains("PARTIAL") || rowText.contains("PARTIALLY") || rowText.contains("PF");
+                    if (!isAccepted && !isPartially) continue;
+
+                    // If order is PARTIALLY filled, always select it! If ACCEPTED, check client match if provided
+                    if (!isPartially && clientCodes != null && !clientCodes.isEmpty()) {
                         boolean clientMatch = false;
                         for (String cc : clientCodes) {
                             if (rowText.contains(cc.trim().toUpperCase())) {
