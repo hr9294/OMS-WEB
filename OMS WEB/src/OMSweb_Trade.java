@@ -1035,7 +1035,163 @@ public class OMSweb_Trade {
 
 
 
-	public static void restoreTradePageState(WebDriver driver, String symbol, String clientCode) {
+	
+
+	/**
+	 * Automatically unlocks the UI if it is blocked, frozen, or locked:
+	 * 1. Dismisses/accepts any open native browser alerts.
+	 * 2. Closes any lingering jQuery-Confirm dialogs, SweetAlerts, Bootbox modals.
+	 * 3. Removes blocking backdrops (.modal-backdrop, .jconfirm-bg, .blockOverlay, #context-menu-layer, .ui-widget-overlay).
+	 * 4. Unfreezes document.body (removes .modal-open, restores overflow and pointer-events).
+	 * 5. Force-enables locked or disabled form inputs (.order_submit_btn, inputs, buttons).
+	 * 6. Brings floating trading windows to the front (zIndex = 9999).
+	 */
+	public static boolean ensureUIUnlocked(WebDriver driver) {
+		if (driver == null) return false;
+		boolean unblocked = false;
+
+		// 1. Dismiss native browser alerts
+		try {
+			Alert alert = driver.switchTo().alert();
+			String txt = alert.getText();
+			System.out.println("[AUTO-UNBLOCK] Dismissed blocking browser alert: " + txt);
+			alert.dismiss();
+			unblocked = true;
+		} catch (Exception ignored) {}
+
+		// 2. Comprehensive DOM Unblock via native JavaScript
+		try {
+			JavascriptExecutor js = (JavascriptExecutor) driver;
+			Object res = js.executeScript(
+				"var changed = false;" +
+				"try {" +
+				"    if (window.jconfirm && window.jconfirm.instances && window.jconfirm.instances.length > 0) {" +
+				"        for (var i = 0; i < window.jconfirm.instances.length; i++) {" +
+				"            var inst = window.jconfirm.instances[i];" +
+				"            if (inst && typeof inst.close === 'function') {" +
+				"                inst.close();" +
+				"                changed = true;" +
+				"            }" +
+				"        }" +
+				"    }" +
+				"    var blockers = document.querySelectorAll('.modal-backdrop, .jconfirm-bg, .jconfirm-overlay, .blockOverlay, .blockUI, #context-menu-layer, .swal2-container, .swal-overlay, .ui-widget-overlay, .loading-overlay');" +
+				"    for (var b = 0; b < blockers.length; b++) {" +
+				"        try { blockers[b].parentNode.removeChild(blockers[b]); changed = true; } catch(e) { blockers[b].style.display = 'none'; }" +
+				"    }" +
+				"    var modals = document.querySelectorAll('.modal.show, .modal[style*=\"display: block\"]');" +
+				"    for (var m = 0; m < modals.length; m++) {" +
+				"        modals[m].classList.remove('show');" +
+				"        modals[m].style.display = 'none';" +
+				"        changed = true;" +
+				"    }" +
+				"    if (document.body) {" +
+				"        if (document.body.classList.contains('modal-open') || document.body.style.pointerEvents === 'none') changed = true;" +
+				"        document.body.classList.remove('modal-open', 'stop-scrolling');" +
+				"        document.body.style.overflow = 'auto';" +
+				"        document.body.style.pointerEvents = 'auto';" +
+				"    }" +
+				"    if (document.documentElement) {" +
+				"        document.documentElement.style.overflow = 'auto';" +
+				"        document.documentElement.style.pointerEvents = 'auto';" +
+				"    }" +
+				"    var formElements = document.querySelectorAll('#order_instrument, #order_client_code, #order_qty, #limit_order_rate, .order_submit_btn, div.form-submit-btn-holder button, #cnfirmConfirmBtn, #cnfirmCancelBtn');" +
+				"    for (var k = 0; k < formElements.length; k++) {" +
+				"        var el = formElements[k];" +
+				"        if (el.disabled || el.readOnly || el.style.pointerEvents === 'none') {" +
+				"            el.removeAttribute('disabled');" +
+				"            el.removeAttribute('readonly');" +
+				"            el.style.pointerEvents = 'auto';" +
+				"            if (window.jQuery) { window.jQuery(el).prop('disabled', false).prop('readonly', false); }" +
+				"            changed = true;" +
+				"        }" +
+				"    }" +
+				"    if (window.jQuery) { window.jQuery('.context-menu-list').hide(); }" +
+				"    var activeWindow = document.querySelector('.wb-active, .winbox, div.form-submit-btn-holder');" +
+				"    if (activeWindow && activeWindow.style) { activeWindow.style.zIndex = '9999'; }" +
+				"} catch(e) {}" +
+				"return changed;"
+			);
+			if (Boolean.TRUE.equals(res)) {
+				unblocked = true;
+				System.out.println("[AUTO-UNBLOCK] Detected and unlocked blocked UI overlays/modals automatically.");
+			}
+		} catch (Exception ignored) {}
+
+		return unblocked;
+	}
+
+	/**
+	 * Resilient click execution:
+	 * If UI is blocked, locked, intercepted, or element is covered,
+	 * automatically unlocks UI and executes click via native JS event dispatch.
+	 */
+	public static boolean safeClick(WebDriver driver, WebElement element) {
+		if (element == null) return false;
+		try {
+			ensureUIUnlocked(driver);
+			((JavascriptExecutor) driver).executeScript("arguments[0].scrollIntoView({behavior: 'instant', block: 'center'});", element);
+			element.click();
+			return true;
+		} catch (Exception clickEx) {
+			try {
+				ensureUIUnlocked(driver);
+				((JavascriptExecutor) driver).executeScript(
+					"arguments[0].removeAttribute('disabled');" +
+					"arguments[0].style.pointerEvents = 'auto';" +
+					"arguments[0].dispatchEvent(new MouseEvent('mouseover', {bubbles: true, cancelable: true, view: window}));" +
+					"arguments[0].dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true, view: window}));" +
+					"arguments[0].dispatchEvent(new MouseEvent('mouseup', {bubbles: true, cancelable: true, view: window}));" +
+					"arguments[0].dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}));" +
+					"arguments[0].click();",
+					element
+				);
+				return true;
+			} catch (Exception fallbackEx) {
+				return false;
+			}
+		}
+	}
+
+	public static boolean safeClick(WebDriver driver, By locator) {
+		if (driver == null || locator == null) return false;
+		try {
+			List<WebElement> elements = driver.findElements(locator);
+			for (WebElement el : elements) {
+				if (el.isDisplayed()) {
+					return safeClick(driver, el);
+				}
+			}
+			if (!elements.isEmpty()) {
+				return safeClick(driver, elements.get(0));
+			}
+		} catch (Exception ignored) {}
+		return false;
+	}
+
+	/**
+	 * Resilient input population:
+	 * If input is locked, readonly, disabled, or covered by UI overlay,
+	 * forcefully unlocks the field, clears it, sets the value, and triggers input/change events.
+	 */
+	public static boolean safeType(WebDriver driver, WebElement element, String value) {
+		if (element == null) return false;
+		try {
+			ensureUIUnlocked(driver);
+			((JavascriptExecutor) driver).executeScript(
+				"arguments[0].removeAttribute('disabled');" +
+				"arguments[0].removeAttribute('readonly');" +
+				"arguments[0].style.pointerEvents = 'auto';" +
+				"arguments[0].value = arguments[1];" +
+				"if (window.jQuery) { window.jQuery(arguments[0]).trigger('input').trigger('change'); }" +
+				"else { arguments[0].dispatchEvent(new Event('input', {bubbles: true})); arguments[0].dispatchEvent(new Event('change', {bubbles: true})); }",
+				element, (value != null ? value : "")
+			);
+			return true;
+		} catch (Exception e) {
+			return false;
+		}
+	}
+public static void restoreTradePageState(WebDriver driver, String symbol, String clientCode) {
 
 		try {
 

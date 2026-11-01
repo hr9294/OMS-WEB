@@ -321,6 +321,7 @@ def run_multi_order_pipeline(driver: webdriver.Chrome) -> None:
     placed_orders = []
     for idx, item in enumerate(order_queue, 1):
         print(f"\n--- Placed Order [{idx}/{len(order_queue)}] ---")
+        oms_trade.ensure_ui_unlocked(driver)
         try:
             ok = oms_trade.place_order(
                 driver=driver,
@@ -369,6 +370,7 @@ def run_multi_order_pipeline(driver: webdriver.Chrome) -> None:
     print("| STEP 3: ORDER TERMINAL SELECTION & 'EXECUTE AT MARKET' CONTEXT CLICK        |")
     print("+=============================================================================+")
     time.sleep(1.0)
+    oms_trade.ensure_ui_unlocked(driver)
     placed_clients = list(set(o["client_code"] for o in placed_orders))
     buy_orders_count = sum(1 for o in placed_orders if o["side"].upper() == "BUY")
     sell_orders_count = sum(1 for o in placed_orders if o["side"].upper() == "SELL")

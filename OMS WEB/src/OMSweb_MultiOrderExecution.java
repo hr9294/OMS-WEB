@@ -581,6 +581,7 @@ public class OMSweb_MultiOrderExecution {
         for (int i = 0; i < queue.size(); i++) {
             OrderItem item = queue.get(i);
             Instant start = Instant.now();
+            OMSweb_Trade.ensureUIUnlocked(driver);
             System.out.printf("%n>>> Placing Order [%d/%d]: %s...%n", (i + 1), queue.size(), item);
 
             try {
@@ -730,6 +731,7 @@ public class OMSweb_MultiOrderExecution {
     // =========================================================================
     private static boolean selectAndExecuteAtMarket(WebDriver driver, WebDriverWait wait, JavascriptExecutor js, List<OrderItem> placedOrders, String symbol, int strategyChoice) {
         try {
+            OMSweb_Trade.ensureUIUnlocked(driver);
             System.out.println("\n[TERMINAL] Navigating to Order Terminal widget...");
             Thread.sleep(1000);
             Order_Terminal.refresh(driver);

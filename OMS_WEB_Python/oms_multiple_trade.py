@@ -625,6 +625,10 @@ def check_price_exceed_warning(driver: webdriver.Chrome) -> Optional[str]:
 
 
 def dismiss_any_open_modal(driver: webdriver.Chrome) -> None:
+    try:
+        import oms_trade
+        oms_trade.ensure_ui_unlocked(driver)
+    except Exception: pass
 
     try:
 

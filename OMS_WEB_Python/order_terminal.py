@@ -300,7 +300,12 @@ def execute_separated_buy_and_sell_at_market(driver: webdriver.Chrome, symbol: O
 
 
 def _trigger_context_menu_and_confirm(driver: webdriver.Chrome) -> bool:
-    """Dispatches right-click contextmenu event on selected row, clicks 'Execute at Market', and confirms."""
+    """Dispatches right-click
+    try:
+        import oms_trade
+        oms_trade.ensure_ui_unlocked(driver)
+    except Exception: pass
+ contextmenu event on selected row, clicks 'Execute at Market', and confirms."""
     time.sleep(0.5)
     context_script = """
     var rows = Array.from(document.querySelectorAll('#order_terminal_table tbody tr, table tbody tr'));
@@ -439,7 +444,12 @@ def _trigger_context_menu_and_confirm(driver: webdriver.Chrome) -> bool:
 
 
 def select_multiple_buy_orders_only_at_market(driver: webdriver.Chrome, symbol: Optional[str] = None, client_codes: Optional[List[str]] = None) -> bool:
-    """Selects MULTIPLE BUY orders only (Accepted & Partially Filled), leaving resting SELL order unselected, right-clicks, and executes at market."""
+    """
+    try:
+        import oms_trade
+        oms_trade.ensure_ui_unlocked(driver)
+    except Exception: pass
+Selects MULTIPLE BUY orders only (Accepted & Partially Filled), leaving resting SELL order unselected, right-clicks, and executes at market."""
     navigate_to_order_terminal(driver)
     refresh(driver)
     time.sleep(0.8)

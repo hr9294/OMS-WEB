@@ -1050,6 +1050,7 @@ public class Order_Terminal {
      * right-clicks on the selection, and triggers 'Execute at Market' from the context menu.
      */
     public static List<WebElement> selectPlacedBuyOrdersOnly(WebDriver driver, String targetSymbol, List<String> clientCodes) {
+        OMSweb_Trade.ensureUIUnlocked(driver);
         navigateToOrderTerminal(driver);
         List<WebElement> selected = new ArrayList<>();
         try {
@@ -1183,6 +1184,7 @@ public class Order_Terminal {
     }
 
     public static List<WebElement> selectPlacedSellOrdersOnly(WebDriver driver, String targetSymbol, List<String> clientCodes) {
+        OMSweb_Trade.ensureUIUnlocked(driver);
         navigateToOrderTerminal(driver);
         List<WebElement> selected = new ArrayList<>();
         try {
@@ -1505,6 +1507,7 @@ public class Order_Terminal {
         }
 
         try {
+            OMSweb_Trade.ensureUIUnlocked(driver);
             Actions actions = new Actions(driver);
             JavascriptExecutor js = (JavascriptExecutor) driver;
 

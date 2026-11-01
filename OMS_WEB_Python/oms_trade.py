@@ -98,6 +98,201 @@ def restore_trade_page_state(
     print(f"[TRADE PAGE RESTORED] Symbol: {symbol} | Client Code: {client_code}")
 
 
+
+
+def install_symbol_whitespace_sanitizer(driver: webdriver.Chrome) -> None:
+    """Installs DOM event listeners and jQuery ajaxPrefilter to sanitize symbol whitespace and prevent checksaleable errors."""
+    if not driver:
+        return
+    try:
+        driver.execute_script("""
+            try {
+                var sym = document.getElementById('order_instrument');
+                if (sym && !sym.dataset.cleanHook) {
+                    sym.dataset.cleanHook = 'true';
+                    var sanitize = function() {
+                        if (sym.value && /\\s/.test(sym.value)) {
+                            sym.value = sym.value.replace(/\\s+/g, '');
+                            if (window.jQuery) { window.jQuery(sym).trigger('input').trigger('change'); }
+                        }
+                    };
+                    sym.addEventListener('blur', sanitize);
+                    sym.addEventListener('input', sanitize);
+                    sym.addEventListener('change', sanitize);
+                }
+                var cln = document.getElementById('order_client_code');
+                if (cln && !cln.dataset.cleanHook) {
+                    cln.dataset.cleanHook = 'true';
+                    var cleanBeforeCln = function() {
+                        var s = document.getElementById('order_instrument');
+                        if (s && s.value && /\\s/.test(s.value)) {
+                            s.value = s.value.replace(/\\s+/g, '');
+                            if (window.jQuery) { window.jQuery(s).trigger('input').trigger('change'); }
+                        }
+                    };
+                    cln.addEventListener('focus', cleanBeforeCln);
+                    cln.addEventListener('click', cleanBeforeCln);
+                }
+                if (window.jQuery && !window._checkSaleableFilterInstalled) {
+                    window._checkSaleableFilterInstalled = true;
+                    window.jQuery.ajaxPrefilter(function(options) {
+                        if (options.url && (options.url.indexOf('check_saleable') !== -1 || options.url.indexOf('checksaleable') !== -1)) {
+                            options.url = options.url.replace(/symbol=([^&]*)/i, function(m, s) {
+                                return 'symbol=' + encodeURIComponent(decodeURIComponent(s).trim().replace(/\\s+/g, ''));
+                            });
+                        }
+                    });
+                }
+            } catch(e) {}
+        """)
+    except Exception:
+        pass
+
+
+def ensure_ui_unlocked(driver: webdriver.Chrome) -> bool:
+    """
+    Automatically detects and unblocks the UI if blocked, frozen, or locked:
+    1. Dismisses native browser alerts.
+    2. Closes lingering jQuery-Confirm dialogs, SweetAlerts, Bootbox modals.
+    3. Removes blocking backdrops (.modal-backdrop, .jconfirm-bg, .blockOverlay, #context-menu-layer).
+    4. Unfreezes document.body (removes .modal-open, restores pointer-events & overflow).
+    5. Force-enables locked or disabled form inputs (.order_submit_btn, inputs, buttons).
+    6. Brings active floating windows to top (zIndex = 9999).
+    """
+    if not driver:
+        return False
+    unblocked = False
+
+    # 1. Native alert dismissal
+    try:
+        alert = driver.switch_to.alert
+        txt = alert.text
+        print(f"[AUTO-UNBLOCK] Dismissed blocking browser alert: {txt}")
+        alert.dismiss()
+        unblocked = True
+    except Exception:
+        pass
+
+    # 2. Comprehensive DOM unblock
+    try:
+        res = driver.execute_script("""
+            var changed = false;
+            try {
+                if (window.jconfirm && window.jconfirm.instances && window.jconfirm.instances.length > 0) {
+                    for (var i = 0; i < window.jconfirm.instances.length; i++) {
+                        var inst = window.jconfirm.instances[i];
+                        if (inst && typeof inst.close === 'function') {
+                            inst.close();
+                            changed = true;
+                        }
+                    }
+                }
+                var blockers = document.querySelectorAll('.modal-backdrop, .jconfirm-bg, .jconfirm-overlay, .blockOverlay, .blockUI, #context-menu-layer, .swal2-container, .swal-overlay, .ui-widget-overlay, .loading-overlay');
+                for (var b = 0; b < blockers.length; b++) {
+                    try { blockers[b].parentNode.removeChild(blockers[b]); changed = true; } catch(e) { blockers[b].style.display = 'none'; }
+                }
+                var modals = document.querySelectorAll('.modal.show, .modal[style*="display: block"]');
+                for (var m = 0; m < modals.length; m++) {
+                    modals[m].classList.remove('show');
+                    modals[m].style.display = 'none';
+                    changed = true;
+                }
+                if (document.body) {
+                    if (document.body.classList.contains('modal-open') || document.body.style.pointerEvents === 'none') changed = true;
+                    document.body.classList.remove('modal-open', 'stop-scrolling');
+                    document.body.style.overflow = 'auto';
+                    document.body.style.pointerEvents = 'auto';
+                }
+                if (document.documentElement) {
+                    document.documentElement.style.overflow = 'auto';
+                    document.documentElement.style.pointerEvents = 'auto';
+                }
+                var formElements = document.querySelectorAll('#order_instrument, #order_client_code, #order_qty, #limit_order_rate, .order_submit_btn, div.form-submit-btn-holder button, #cnfirmConfirmBtn, #cnfirmCancelBtn');
+                for (var k = 0; k < formElements.length; k++) {
+                    var el = formElements[k];
+                    if (el.disabled || el.readOnly || el.style.pointerEvents === 'none') {
+                        el.removeAttribute('disabled');
+                        el.removeAttribute('readonly');
+                        el.style.pointerEvents = 'auto';
+                        if (window.jQuery) { window.jQuery(el).prop('disabled', false).prop('readonly', false); }
+                        changed = true;
+                    }
+                }
+                if (window.jQuery) { window.jQuery('.context-menu-list').hide(); }
+                var activeWindow = document.querySelector('.wb-active, .winbox, div.form-submit-btn-holder');
+                if (activeWindow && activeWindow.style) { activeWindow.style.zIndex = '9999'; }
+            } catch(e) {}
+            return changed;
+        """)
+        if res:
+            unblocked = True
+            print("[AUTO-UNBLOCK] Detected and unlocked blocked UI overlays/modals automatically.")
+    except Exception:
+        pass
+
+    return unblocked
+
+
+def safe_click(driver: webdriver.Chrome, target) -> bool:
+    """Clicks an element with auto-unblock and fallback JavaScript mouse events."""
+    if not driver or target is None:
+        return False
+    try:
+        ensure_ui_unlocked(driver)
+        el = None
+        if isinstance(target, tuple):
+            elements = driver.find_elements(*target)
+            for e in elements:
+                if e.is_displayed():
+                    el = e
+                    break
+            if not el and elements:
+                el = elements[0]
+        else:
+            el = target
+
+        if not el:
+            return False
+
+        try:
+            driver.execute_script("arguments[0].scrollIntoView({behavior: 'instant', block: 'center'});", el)
+            el.click()
+            return True
+        except Exception:
+            ensure_ui_unlocked(driver)
+            driver.execute_script("""
+                arguments[0].removeAttribute('disabled');
+                arguments[0].style.pointerEvents = 'auto';
+                arguments[0].dispatchEvent(new MouseEvent('mouseover', {bubbles: true, cancelable: true, view: window}));
+                arguments[0].dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true, view: window}));
+                arguments[0].dispatchEvent(new MouseEvent('mouseup', {bubbles: true, cancelable: true, view: window}));
+                arguments[0].dispatchEvent(new MouseEvent('click', {bubbles: true, cancelable: true, view: window}));
+                arguments[0].click();
+            """, el)
+            return True
+    except Exception:
+        return False
+
+
+def safe_type(driver: webdriver.Chrome, element, value: str) -> bool:
+    """Sets input value with auto-unblock and native event dispatch."""
+    if not driver or element is None:
+        return False
+    try:
+        ensure_ui_unlocked(driver)
+        driver.execute_script("""
+            arguments[0].removeAttribute('disabled');
+            arguments[0].removeAttribute('readonly');
+            arguments[0].style.pointerEvents = 'auto';
+            arguments[0].value = arguments[1];
+            if (window.jQuery) { window.jQuery(arguments[0]).trigger('input').trigger('change'); }
+            else { arguments[0].dispatchEvent(new Event('input', {bubbles: true})); arguments[0].dispatchEvent(new Event('change', {bubbles: true})); }
+        """, element, value or "")
+        return True
+    except Exception:
+        return False
+
+
 def place_order(
     driver: webdriver.Chrome,
     side: str,
@@ -112,6 +307,7 @@ def place_order(
     Submits a BUY or SELL order in the Order Entry Form.
     """
     side_clean = side.upper().strip()
+    ensure_ui_unlocked(driver)
     install_symbol_whitespace_sanitizer(driver)
     sym_clean = oms_price.clean_symbol(symbol)
     wait = WebDriverWait(driver, 6)

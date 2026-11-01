@@ -1256,6 +1256,7 @@ public class OMSweb_MultipleTrade {
     public static boolean placeSingleOrderFast(WebDriver driver, WebDriverWait wait, JavascriptExecutor js, TradeOrder order, CircuitLimits limits) {
 
         try {
+            OMSweb_Trade.ensureUIUnlocked(driver);
 
             // Ensure on Trade Page
 
