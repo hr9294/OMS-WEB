@@ -610,7 +610,7 @@ public class OMSweb_MultiOrderExecution {
                     "var qty = document.getElementById('order_qty'); if (qty) { qty.value = arguments[2]; $(qty).trigger('input').trigger('change'); }" +
                     "if (arguments[3] !== '') { var r = document.getElementById('limit_order_rate'); if (r) { r.value = arguments[3]; $(r).trigger('input').trigger('change'); } }" +
                     "try { if (typeof verify_fields === 'function') verify_fields(); $('.order_submit_btn').prop('disabled', false).removeAttr('disabled'); } catch(e){}",
-                    item.getSymbol(), item.getClientCode(), String.valueOf(item.getQuantity()), rateStr
+                    OMSweb_Trade.toPublicSymbol(item.getSymbol()), item.getClientCode(), String.valueOf(item.getQuantity()), rateStr
                 );
 
                 // 4. Commission Display trigger

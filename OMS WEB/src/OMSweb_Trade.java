@@ -655,9 +655,10 @@ public class OMSweb_Trade {
 
 				// Fill Symbol with safe autocomplete confirmation
 				installSymbolWhitespaceSanitizer(driver);
-				String cleanInst = cleanSymbol(instrument);
-				fillAndSelectAutocompleteSafely(driver, wait, By.id("order_instrument"), cleanInst, true);
-				System.out.println("Order Symbol selected: " + cleanInst);
+				String publicInst = toPublicSymbol(instrument);
+				fillAndSelectAutocompleteSafely(driver, wait, By.id("order_instrument"), publicInst, true);
+				System.out.println("Order Symbol selected: " + publicInst);
+				ensureSymbolBoardRetained(driver, publicInst);
 				ensureClientCodeRetained(driver, clientCode);
 
 
@@ -948,23 +949,56 @@ public class OMSweb_Trade {
 
 	// =========================================================================
 
-	    public static String cleanSymbol(String sym) {
+	public static String cleanSymbol(String sym) {
+		if (sym == null) return "";
+		String s = sym.trim().toUpperCase();
+		s = s.replaceAll("\\[[A-Z0-9]+\\]", "");
+		if (s.contains(".")) {
+			s = s.split("\\.")[0];
+		}
+		return s.trim();
+	}
 
-        if (sym == null) return "";
+	/**
+	 * Formats any symbol to its standard Public trading board format (e.g. GP -> GP.PUBLIC).
+	 */
+	public static String toPublicSymbol(String sym) {
+		if (sym == null) return "";
+		String s = sym.trim().toUpperCase().replaceAll("\\[[A-Z0-9]+\\]", "");
+		if (s.contains(".")) {
+			s = s.split("\\.")[0].trim();
+		}
+		if (s.isEmpty()) return "";
+		return s + ".PUBLIC";
+	}
 
-        String s = sym.trim().toUpperCase();
-
-        s = s.replaceAll("\\[[A-Z0-9]+\\]", "");
-
-        if (s.contains(".")) {
-
-            s = s.split("\\.")[0];
-
-        }
-
-        return s.trim();
-
-    }
+	/**
+	 * Ensures the Symbol input field retains the PUBLIC board name (e.g. GP.PUBLIC).
+	 */
+	public static void ensureSymbolBoardRetained(WebDriver driver, String symbol) {
+		if (driver == null || symbol == null || symbol.trim().isEmpty()) return;
+		String publicSym = toPublicSymbol(symbol);
+		try {
+			JavascriptExecutor js = (JavascriptExecutor) driver;
+			js.executeScript(
+				"var val = arguments[0].trim();" +
+				"var activeInputs = document.querySelectorAll('.winbox input#order_instrument, .wb-body input#order_instrument, input#order_instrument');" +
+				"for (var i = 0; i < activeInputs.length; i++) {" +
+				"    var inp = activeInputs[i];" +
+				"    if (!inp.value || inp.value.indexOf('.PUBLIC') === -1) {" +
+				"        inp.value = val;" +
+				"        if (window.jQuery) {" +
+				"            $(inp).val(val).trigger('input').trigger('change');" +
+				"            var ac = $(inp).data('ui-autocomplete') || $(inp).data('autocomplete') || ($(inp).autocomplete ? $(inp).autocomplete('instance') : null);" +
+				"            if (ac) { ac.selectedItem = { value: val, label: val }; }" +
+				"        }" +
+				"    }" +
+				"}" +
+				"try { if (typeof verify_fields === 'function') verify_fields(); } catch(e){}",
+				publicSym
+			);
+		} catch (Exception ignored) {}
+	}
 
 	public static void installSymbolWhitespaceSanitizer(WebDriver driver) {
 		if (driver == null) return;
@@ -1081,10 +1115,13 @@ public class OMSweb_Trade {
 	/**
 	 * Safely fills a jQuery UI autocomplete input (Client Code or Symbol) and confirms
 	 * selection, completely preventing menu overlap, race conditions, screen freezing, and blur-clearing.
+	 * For Symbols, specifically selects and guarantees the PUBLIC trading board (e.g. GP.PUBLIC).
 	 */
 	public static void fillAndSelectAutocompleteSafely(WebDriver driver, WebDriverWait wait, By locator, String value, boolean isSymbol) {
 		if (driver == null || locator == null || value == null || value.trim().isEmpty()) return;
 		String cleanVal = value.trim();
+		String targetSymbolVal = isSymbol ? toPublicSymbol(cleanVal) : cleanVal;
+		String typeVal = isSymbol ? cleanSymbol(cleanVal) : cleanVal;
 		try {
 			JavascriptExecutor js = (JavascriptExecutor) driver;
 
@@ -1096,24 +1133,30 @@ public class OMSweb_Trade {
 			input.click();
 			Thread.sleep(100);
 
-			// Install blur protector so no rogue blur event clears the input
+			// Install blur protector so no rogue blur event clears the input or removes .PUBLIC board
 			try {
 				js.executeScript(
-					"var el = arguments[0]; var val = arguments[1];" +
+					"var el = arguments[0]; var val = arguments[1]; var isSym = arguments[2];" +
 					"if (el && !el._blurProtectorInstalled) {" +
 					"    el._blurProtectorInstalled = true;" +
 					"    el._expectedVal = val;" +
+					"    el._isSym = isSym;" +
 					"    el.addEventListener('blur', function() {" +
 					"        setTimeout(function() {" +
-					"            if (el && (!el.value || el.value.trim() === '')) {" +
-					"                el.value = el._expectedVal || val;" +
-					"                if (window.jQuery) { $(el).val(el.value).trigger('input').trigger('change'); }" +
+					"            if (el) {" +
+					"                if (el._isSym && (!el.value || el.value.indexOf('.PUBLIC') === -1)) {" +
+					"                    el.value = el._expectedVal || val;" +
+					"                    if (window.jQuery) { $(el).val(el.value).trigger('input').trigger('change'); }" +
+					"                } else if (!el._isSym && (!el.value || el.value.trim() === '')) {" +
+					"                    el.value = el._expectedVal || val;" +
+					"                    if (window.jQuery) { $(el).val(el.value).trigger('input').trigger('change'); }" +
+					"                }" +
 					"            }" +
 					"        }, 60);" +
 					"    });" +
 					"}" +
-					"if (el) el._expectedVal = val;",
-					input, cleanVal
+					"if (el) { el._expectedVal = val; el._isSym = isSym; }",
+					input, targetSymbolVal, isSymbol
 				);
 			} catch (Exception ignored) {}
 
@@ -1124,7 +1167,7 @@ public class OMSweb_Trade {
 			} catch (Exception ignored) {}
 
 			// 3. Type characters cleanly and trigger autocomplete query immediately
-			input.sendKeys(cleanVal);
+			input.sendKeys(typeVal);
 			try {
 				js.executeScript(
 					"var el = arguments[0]; var val = arguments[1];" +
@@ -1134,12 +1177,12 @@ public class OMSweb_Trade {
 					"        try { $(el).autocomplete('search', val); } catch(e){}" +
 					"    }" +
 					"}",
-					input, cleanVal
+					input, typeVal
 				);
 			} catch (Exception ignored) {}
 
-			// 4. Dynamically wait for the autocomplete dropdown to render (up to 5s for client code, 2.5s for symbol)
-			int maxWaitAttempts = isSymbol ? 25 : 50;
+			// 4. Dynamically wait for the autocomplete dropdown to render (up to 5s for client code, 3s for symbol)
+			int maxWaitAttempts = isSymbol ? 30 : 50;
 			boolean menuFound = false;
 
 			for (int a = 0; a < maxWaitAttempts; a++) {
@@ -1159,12 +1202,16 @@ public class OMSweb_Trade {
 				try {
 					List<WebElement> menuItems = driver.findElements(By.cssSelector(".ui-autocomplete:visible li.ui-menu-item"));
 					WebElement targetItem = null;
+					String targetPublic = targetSymbolVal.toUpperCase();
+					String baseTicker = typeVal.toUpperCase();
+
 					for (WebElement item : menuItems) {
 						String txt = item.getText();
 						if (txt != null && !txt.isEmpty()) {
-							String up = txt.toUpperCase();
-							if (isSymbol) {
-								if (up.equals(cleanVal.toUpperCase()) || up.contains(cleanVal.toUpperCase() + ".PUBLIC") || up.startsWith(cleanVal.toUpperCase() + " ")) {
+							String up = txt.toUpperCase().trim();
+						if (isSymbol) {
+								// Specifically match the PUBLIC board item (e.g. GP.PUBLIC)
+								if (up.equals(targetPublic) || up.startsWith(targetPublic + " ") || up.startsWith(targetPublic + ".") || up.contains(targetPublic)) {
 									targetItem = item;
 									break;
 								}
@@ -1173,6 +1220,16 @@ public class OMSweb_Trade {
 									targetItem = item;
 									break;
 								}
+							}
+						}
+					}
+					// If symbol item wasn't matched yet, look for baseTicker + ".PUBLIC"
+					if (isSymbol && targetItem == null) {
+						for (WebElement item : menuItems) {
+							String txt = item.getText();
+							if (txt != null && txt.toUpperCase().contains(baseTicker + ".PUBLIC")) {
+								targetItem = item;
+								break;
 							}
 						}
 					}
@@ -1196,12 +1253,13 @@ public class OMSweb_Trade {
 				input.sendKeys(Keys.ENTER);
 			} catch (Exception ignored) {}
 
-			// C. Direct jQuery UI Widget API invocation in JavaScript (guarantees options.select callback runs & closes menu)
+			// C. Direct jQuery UI Widget API invocation in JavaScript (guarantees options.select callback runs, closes menu & sets PUBLIC board)
 			js.executeScript(
 				"try {" +
 				"    var el = arguments[0];" +
 				"    var val = arguments[1];" +
 				"    var isSym = arguments[2];" +
+				"    var baseTicker = arguments[3];" +
 				"    if (window.jQuery) {" +
 				"        var $inp = $(el);" +
 				"        var ac = $inp.data('ui-autocomplete') || $inp.data('autocomplete') || ($inp.autocomplete ? $inp.autocomplete('instance') : null);" +
@@ -1213,7 +1271,7 @@ public class OMSweb_Trade {
 				"                var data = $(this).data('ui-autocomplete-item') || $(this).data('item.autocomplete');" +
 				"                var txt = $(this).text().trim().toUpperCase();" +
 				"                if (isSym) {" +
-				"                    if (txt === val.toUpperCase() || txt.indexOf(val.toUpperCase() + '.PUBLIC') !== -1 || txt.startsWith(val.toUpperCase() + ' ')) {" +
+				"                    if (txt === val.toUpperCase() || txt.indexOf(val.toUpperCase()) !== -1 || txt.indexOf(baseTicker.toUpperCase() + '.PUBLIC') !== -1) {" +
 				"                        matchedItem = $(this); matchedData = data; return false;" +
 				"                    }" +
 				"                } else {" +
@@ -1239,37 +1297,49 @@ public class OMSweb_Trade {
 				"            try { ac._trigger('select', { type: 'autocompleteselect' }, { item: matchedData }); } catch(e) {}" +
 				"            try { ac.close(); } catch(e) {}" +
 				"        }" +
-				"        if (!el.value || el.value.trim() === '') {" +
+				"        if (isSym && (!el.value || el.value.indexOf('.PUBLIC') === -1)) {" +
+				"            el.value = val;" +
+				"            $inp.val(val).trigger('input').trigger('change');" +
+				"        } else if (!isSym && (!el.value || el.value.trim() === '')) {" +
 				"            el.value = val;" +
 				"            $inp.val(val).trigger('input').trigger('change');" +
 				"        }" +
 				"        $('.ui-autocomplete').hide();" +
 				"    }" +
 				"} catch(e) {}",
-				input, cleanVal, isSymbol
+				input, targetSymbolVal, isSymbol, typeVal
 			);
 
-			// 6. Verification: Ensure field has the expected value; if empty, force it
+			// 6. Verification: Ensure field has the expected value (specifically ensuring .PUBLIC for symbols)
 			Thread.sleep(100);
 			js.executeScript(
-				"var el = arguments[0]; var val = arguments[1];" +
-				"if (el && (!el.value || el.value.trim() === '')) {" +
-				"    el.value = val;" +
-				"    if (window.jQuery) { $(el).val(val).trigger('input').trigger('change'); }" +
+				"var el = arguments[0]; var val = arguments[1]; var isSym = arguments[2];" +
+				"if (el) {" +
+				"    if (isSym && (!el.value || el.value.indexOf('.PUBLIC') === -1)) {" +
+				"        el.value = val;" +
+				"        if (window.jQuery) { $(el).val(val).trigger('input').trigger('change'); }" +
+				"    } else if (!isSym && (!el.value || el.value.trim() === '')) {" +
+				"        el.value = val;" +
+				"        if (window.jQuery) { $(el).val(val).trigger('input').trigger('change'); }" +
+				"    }" +
 				"}" +
 				"if (window.jQuery) { $('.ui-autocomplete').hide(); }",
-				input, cleanVal
+				input, targetSymbolVal, isSymbol
 			);
 
-			// 7. Settle time for client account AJAX details (BO, Name, Balance) to load without interruption
-			Thread.sleep(isSymbol ? 150 : 500);
+			// 7. Settle time for client account AJAX details (BO, Name, Balance) or symbol market data to load
+			Thread.sleep(isSymbol ? 200 : 500);
 
 		} catch (Exception e) {
 			try {
 				WebElement input = driver.findElement(locator);
-				input.sendKeys(cleanVal);
+				input.sendKeys(typeVal);
 				input.sendKeys(Keys.ARROW_DOWN, Keys.ENTER);
-				((JavascriptExecutor) driver).executeScript("if (window.jQuery) { $('.ui-autocomplete').hide(); }");
+				((JavascriptExecutor) driver).executeScript(
+					"if (window.jQuery) { $('.ui-autocomplete').hide(); } " +
+					"if (arguments[1]) { arguments[0].value = arguments[2]; $(arguments[0]).val(arguments[2]).trigger('input').trigger('change'); }",
+					input, isSymbol, targetSymbolVal
+				);
 			} catch (Exception ignored) {}
 		}
 	}
@@ -1477,11 +1547,15 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 					orderInst.clear();
 
-					orderInst.sendKeys(sym);
+					String pubSym = toPublicSymbol(sym);
+
+					orderInst.sendKeys(pubSym);
 
 					orderInst.sendKeys(Keys.ARROW_DOWN);
 
 					orderInst.sendKeys(Keys.ENTER);
+
+					ensureSymbolBoardRetained(driver, pubSym);
 
 				} catch (Exception ignored) {}
 
@@ -2773,8 +2847,9 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		fillAndSelectAutocompleteSafely(driver, wait, By.id("order_client_code"), clientCode, false);
 
 		installSymbolWhitespaceSanitizer(driver);
-		String cleanInst2 = cleanSymbol(instrument);
-		fillAndSelectAutocompleteSafely(driver, wait, By.id("order_instrument"), cleanInst2, true);
+		String publicInst2 = toPublicSymbol(instrument);
+		fillAndSelectAutocompleteSafely(driver, wait, By.id("order_instrument"), publicInst2, true);
+		ensureSymbolBoardRetained(driver, publicInst2);
 		ensureClientCodeRetained(driver, clientCode);
 
 

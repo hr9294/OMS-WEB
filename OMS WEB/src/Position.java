@@ -896,7 +896,9 @@ public class Position {
 
             // Fill Client Code & Symbol with safe autocomplete confirmation
             OMSweb_Trade.fillAndSelectAutocompleteSafely(driver, wait, By.id("order_client_code"), clientCode, false);
-            OMSweb_Trade.fillAndSelectAutocompleteSafely(driver, wait, By.id("order_instrument"), cleanSymbol(symbol), true);
+            String publicSymbol = OMSweb_Trade.toPublicSymbol(symbol);
+            OMSweb_Trade.fillAndSelectAutocompleteSafely(driver, wait, By.id("order_instrument"), publicSymbol, true);
+            OMSweb_Trade.ensureSymbolBoardRetained(driver, publicSymbol);
             OMSweb_Trade.ensureClientCodeRetained(driver, clientCode);
 
             // Fill Qty
