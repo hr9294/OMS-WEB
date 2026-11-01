@@ -44,10 +44,46 @@ import oms_price
 
 import oms_trade
 
+# Database Connection Settings (Primary: 192.168.155.22:5445 | Secondary Fallback: 10.20.8.29:5445)
+PRIMARY_MARKETDATA_DB_URI = "postgresql+psycopg2://marketdata:pass4321@192.168.155.22:5445/marketdb"
+SECONDARY_MARKETDATA_DB_URI = "postgresql+psycopg2://marketdata:pass4321@10.20.8.29:5445/marketdb"
+PRIMARY_DB_HOST = "192.168.155.22"
+SECONDARY_DB_HOST = "10.20.8.29"
+MKT_DB_PORT = 5445
+MKT_DB_NAME = "marketdb"
+MKT_DB_USER = "marketdata"
+MKT_DB_PASS = "pass4321"
+
+
+def get_direct_symbol_ltp_from_db(symbol: str, exchange: str = "DSE") -> float:
+    """Directly queries dse_md_ltp / cse_md_ltp with Primary -> Secondary failover."""
+    try:
+        import db_market_data
+        val = db_market_data.get_public_symbol_ltp(symbol, exchange)
+        if val and val > 0:
+            return float(val)
+    except Exception:
+        pass
+    return 0.0
+
+
+def get_direct_circuit_limits_from_db(symbol: str, exchange: str = "DSE") -> Optional[Any]:
+    """Directly queries circuit limits from DB with Primary -> Secondary failover."""
+    try:
+        import db_market_data
+        data = db_market_data.fetch_ltp_from_db(exchange, symbol=symbol).get(symbol.strip().upper(), {})
+        if data:
+            up = float(data.get("circuit_up", 0.0) or 0.0)
+            down = float(data.get("circuit_down", 0.0) or 0.0)
+            ltp = float(data.get("ltp", 0.0) or 0.0)
+            if up > 0 or down > 0:
+                return CircuitLimits(up, down, up, down, ltp)
+    except Exception:
+        pass
+    return None
 
 
 # Default Verified Liquid Basket & High-Cash Client Pools
-
 ALL_PUBLIC_SYMBOLS = [
 
     "GP", "BATBC", "BEXIMCO", "SQURPHARMA", "LHBL",

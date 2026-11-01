@@ -1,4 +1,10 @@
 import java.time.Duration;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.util.Properties;
 
 import java.time.Instant;
 
@@ -75,6 +81,169 @@ import org.openqa.selenium.support.ui.WebDriverWait;
  */
 
 public class OMSweb_MultipleTrade {
+
+    // ==========================================
+    // 0. DATABASE CONNECTION & FAILOVER PARAMETERS (PostgreSQL)
+    // Primary: 192.168.155.22:5445 | Secondary Fallback: 10.20.8.29:5445
+    // ==========================================
+    public static final String PRIMARY_DB_URI    = "postgresql+psycopg2://marketdata:pass4321@192.168.155.22:5445/marketdb";
+    public static final String PRIMARY_DB_HOST   = "192.168.155.22";
+    public static final int    PRIMARY_DB_PORT   = 5445;
+
+    public static final String SECONDARY_DB_URI  = "postgresql+psycopg2://marketdata:pass4321@10.20.8.29:5445/marketdb";
+    public static final String SECONDARY_DB_HOST = "10.20.8.29";
+    public static final int    SECONDARY_DB_PORT = 5445;
+
+    public static final String DB_NAME           = System.getenv("MKT_DB_NAME") != null ? System.getenv("MKT_DB_NAME") : "marketdb";
+    public static final String DB_USER           = System.getenv("MKT_DB_USER") != null ? System.getenv("MKT_DB_USER") : "marketdata";
+    public static final String DB_PASSWORD       = System.getenv("MKT_DB_PASS") != null ? System.getenv("MKT_DB_PASS") : "pass4321";
+
+    public static volatile String ACTIVE_DB_HOST = PRIMARY_DB_HOST;
+    public static volatile int    ACTIVE_DB_PORT = PRIMARY_DB_PORT;
+    public static volatile String MARKETDATA_DB_URI = PRIMARY_DB_URI;
+
+    public static Connection getJdbcConnection() {
+        // 1. Try Primary Database (192.168.155.22:5445)
+        try {
+            Class.forName("org.postgresql.Driver");
+            String url = String.format(Locale.US, "jdbc:postgresql://%s:%d/%s?connectTimeout=2&socketTimeout=3",
+                    PRIMARY_DB_HOST, PRIMARY_DB_PORT, DB_NAME);
+            Properties props = new Properties();
+            props.setProperty("user", DB_USER);
+            props.setProperty("password", DB_PASSWORD);
+            props.setProperty("connectTimeout", "2");
+            props.setProperty("socketTimeout", "3");
+            Connection conn = DriverManager.getConnection(url, props);
+            if (conn != null && !conn.isClosed()) {
+                ACTIVE_DB_HOST = PRIMARY_DB_HOST;
+                ACTIVE_DB_PORT = PRIMARY_DB_PORT;
+                MARKETDATA_DB_URI = PRIMARY_DB_URI;
+                return conn;
+            }
+        } catch (Throwable t1) {
+            System.err.printf("[MULTITRADE DB] Primary (%s:%d) error: %s. Falling back to Secondary (%s:%d)...%n",
+                    PRIMARY_DB_HOST, PRIMARY_DB_PORT, t1.getMessage(), SECONDARY_DB_HOST, SECONDARY_DB_PORT);
+        }
+
+        // 2. Fallback to Secondary Database (10.20.8.29:5445)
+        try {
+            Class.forName("org.postgresql.Driver");
+            String url = String.format(Locale.US, "jdbc:postgresql://%s:%d/%s?connectTimeout=2&socketTimeout=3",
+                    SECONDARY_DB_HOST, SECONDARY_DB_PORT, DB_NAME);
+            Properties props = new Properties();
+            props.setProperty("user", DB_USER);
+            props.setProperty("password", DB_PASSWORD);
+            props.setProperty("connectTimeout", "2");
+            props.setProperty("socketTimeout", "3");
+            Connection conn = DriverManager.getConnection(url, props);
+            if (conn != null && !conn.isClosed()) {
+                ACTIVE_DB_HOST = SECONDARY_DB_HOST;
+                ACTIVE_DB_PORT = SECONDARY_DB_PORT;
+                MARKETDATA_DB_URI = SECONDARY_DB_URI;
+                return conn;
+            }
+        } catch (Throwable t2) {
+            System.err.printf("[MULTITRADE DB] Secondary (%s:%d) connection failed: %s%n",
+                    SECONDARY_DB_HOST, SECONDARY_DB_PORT, t2.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Direct query on dse_md_ltp / cse_md_ltp with Primary -> Secondary failover.
+     * Returns live Public Board LTP in ~10-15 ms.
+     */
+    public static double getDirectSymbolLtpFromDb(String symbol, String exchange) {
+        if (symbol == null || symbol.trim().isEmpty()) return 0.0;
+        String cleanSym = symbol.trim().toUpperCase();
+        String table = "CSE".equalsIgnoreCase(exchange) ? "cse_md_ltp" : "dse_md_ltp";
+        String sql = "SELECT ltp FROM " + table + " WHERE symbol = ? AND board = 'PUBLIC' AND ltp IS NOT NULL AND ltp > 0 LIMIT 1";
+
+        String[][] dbs = {
+            { PRIMARY_DB_HOST, String.valueOf(PRIMARY_DB_PORT), "Primary (" + PRIMARY_DB_HOST + ")" },
+            { SECONDARY_DB_HOST, String.valueOf(SECONDARY_DB_PORT), "Secondary (" + SECONDARY_DB_HOST + ")" }
+        };
+
+        for (String[] db : dbs) {
+            String host = db[0];
+            int port = Integer.parseInt(db[1]);
+            String label = db[2];
+            try {
+                Class.forName("org.postgresql.Driver");
+                String url = String.format(Locale.US, "jdbc:postgresql://%s:%d/%s?connectTimeout=2&socketTimeout=3", host, port, DB_NAME);
+                Properties props = new Properties();
+                props.setProperty("user", DB_USER);
+                props.setProperty("password", DB_PASSWORD);
+                props.setProperty("connectTimeout", "2");
+                props.setProperty("socketTimeout", "3");
+                try (Connection conn = DriverManager.getConnection(url, props);
+                     PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setString(1, cleanSym);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (rs.next()) {
+                            double ltp = rs.getDouble("ltp");
+                            if (ltp > 0) {
+                                return ltp;
+                            }
+                        }
+                    }
+                }
+            } catch (Throwable t) {
+                System.err.printf("[WARN: MULTITRADE DB LTP] Query for %s failed on %s: %s. Trying fallback...%n", cleanSym, label, t.getMessage());
+            }
+        }
+        return 0.0;
+    }
+
+    /**
+     * Direct query on dse_md_ltp / cse_md_ltp for circuit limits with Primary -> Secondary failover.
+     * Returns CircuitLimits (SH/CH, SL/CL) in ~10-15 ms.
+     */
+    public static CircuitLimits getDirectCircuitLimitsFromDb(String symbol, String exchange) {
+        if (symbol == null || symbol.trim().isEmpty()) return null;
+        String cleanSym = symbol.trim().toUpperCase();
+        String table = "CSE".equalsIgnoreCase(exchange) ? "cse_md_ltp" : "dse_md_ltp";
+        String sql = "SELECT ltp, circuit_up, circuit_down FROM " + table + " WHERE symbol = ? AND board = 'PUBLIC' AND ltp IS NOT NULL AND ltp > 0 LIMIT 1";
+
+        String[][] dbs = {
+            { PRIMARY_DB_HOST, String.valueOf(PRIMARY_DB_PORT), "Primary (" + PRIMARY_DB_HOST + ")" },
+            { SECONDARY_DB_HOST, String.valueOf(SECONDARY_DB_PORT), "Secondary (" + SECONDARY_DB_HOST + ")" }
+        };
+
+        for (String[] db : dbs) {
+            String host = db[0];
+            int port = Integer.parseInt(db[1]);
+            String label = db[2];
+            try {
+                Class.forName("org.postgresql.Driver");
+                String url = String.format(Locale.US, "jdbc:postgresql://%s:%d/%s?connectTimeout=2&socketTimeout=3", host, port, DB_NAME);
+                Properties props = new Properties();
+                props.setProperty("user", DB_USER);
+                props.setProperty("password", DB_PASSWORD);
+                props.setProperty("connectTimeout", "2");
+                props.setProperty("socketTimeout", "3");
+                try (Connection conn = DriverManager.getConnection(url, props);
+                     PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setString(1, cleanSym);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (rs.next()) {
+                            double ltp = rs.getDouble("ltp");
+                            double up = rs.getDouble("circuit_up");
+                            double down = rs.getDouble("circuit_down");
+                            if (up <= 0 && ltp > 0) up = Math.round(ltp * 1.10 * 100.0) / 100.0;
+                            if (down <= 0 && ltp > 0) down = Math.round(ltp * 0.90 * 100.0) / 100.0;
+                            if (up > 0 || down > 0) {
+                                return new CircuitLimits(up, down, up, down, ltp);
+                            }
+                        }
+                    }
+                }
+            } catch (Throwable t) {
+                System.err.printf("[WARN: MULTITRADE DB CIRCUITS] Query for %s failed on %s: %s. Trying fallback...%n", cleanSym, label, t.getMessage());
+            }
+        }
+        return null;
+    }
 
 
 
@@ -1868,13 +2037,28 @@ public class OMSweb_MultipleTrade {
 
         String cleanSym = (symbol != null) ? symbol.trim().toUpperCase() : "";
 
+        // Direct DB LTP lookup with Primary -> Secondary failover
+        try {
+            double fastLtp = getDirectSymbolLtpFromDb(cleanSym, "DSE");
+            if (fastLtp > 0) {
+                return fastLtp;
+            }
+        } catch (Exception ignored) {}
+
         double realisticFallback = REALISTIC_PRICES.getOrDefault(cleanSym, 100.00);
 
         try {
 
             // Priority 1: PostgreSQL DB Table (dse_md_ltp WHERE board = 'PUBLIC')
 
-            double dbPrice = OMSweb_DBMarketData.getSymbolLtp(cleanSym, "DSE", 0.0);
+            // Direct DB lookup with Primary -> Secondary failover
+            double dbPrice = getDirectSymbolLtpFromDb(cleanSym, "DSE");
+            if (dbPrice <= 0) {
+                dbPrice = OMSweb_DBMarketData.getDirectSymbolLtpFromDb(cleanSym, "DSE");
+            }
+            if (dbPrice <= 0) {
+                dbPrice = OMSweb_DBMarketData.getSymbolLtp(cleanSym, "DSE", 0.0);
+            }
 
             if (dbPrice > 0) {
 
@@ -2064,6 +2248,14 @@ public class OMSweb_MultipleTrade {
 
         String cleanSym = (symbol != null) ? symbol.trim().toUpperCase() : "";
 
+        // Direct DB LTP lookup with Primary -> Secondary failover
+        try {
+            CircuitLimits dbLimits = getDirectCircuitLimitsFromDb(cleanSym, "DSE");
+            if (dbLimits != null && dbLimits.isValid()) {
+                return dbLimits;
+            }
+        } catch (Exception ignored) {}
+
         try {
 
             // Priority 1: PostgreSQL DB Table (dse_md_ltp circuit limits)
@@ -2189,30 +2381,38 @@ public class OMSweb_MultipleTrade {
 
 
     public static void dismissAnyOpenModal(WebDriver driver, JavascriptExecutor js) {
-
         try {
+            try {
+                org.openqa.selenium.Alert alert = driver.switchTo().alert();
+                alert.dismiss();
+            } catch (Exception ignored) {}
 
             js.executeScript(
-
-                "var btns = document.querySelectorAll('#cnfirmCancelBtn, button.btn-secondary, .modal.show button.close, button[data-dismiss=\"modal\"], button.confirm-cancel');" +
-
-                "for (var i = 0; i < btns.length; i++) { if (btns[i].offsetParent !== null) { btns[i].click(); } }" +
-
-                "var modals = document.querySelectorAll('.modal.show, .modal-backdrop');" +
-
-                "for (var m = 0; m < modals.length; m++) { modals[m].classList.remove('show'); modals[m].style.display = 'none'; }" +
-
-                "document.body.classList.remove('modal-open');"
-
+                "try {" +
+                "    if (window.jconfirm && window.jconfirm.instances) {" +
+                "        for (var j = 0; j < window.jconfirm.instances.length; j++) {" +
+                "            if (window.jconfirm.instances[j] && typeof window.jconfirm.instances[j].close === 'function') {" +
+                "                window.jconfirm.instances[j].close();" +
+                "            }" +
+                "        }" +
+                "    }" +
+                "    var btns = document.querySelectorAll('#cnfirmCancelBtn, button.btn-secondary, button.btn-danger, .modal.show button.close, button[data-dismiss=\"modal\"], button.confirm-cancel, .jconfirm-closeIcon');" +
+                "    for (var i = 0; i < btns.length; i++) { if (btns[i].offsetParent !== null) { btns[i].click(); } }" +
+                "    var modals = document.querySelectorAll('.modal.show, .modal-backdrop, .jconfirm');" +
+                "    for (var m = 0; m < modals.length; m++) { modals[m].classList.remove('show'); modals[m].style.display = 'none'; }" +
+                "    var overlay = document.getElementById('context-menu-layer');" +
+                "    if (overlay) overlay.remove();" +
+                "    if (window.jQuery) { window.jQuery('.context-menu-list').hide(); }" +
+                "    document.body.classList.remove('modal-open');" +
+                "    var sym = document.getElementById('order_instrument'); if (sym) sym.value = '';" +
+                "    var cln = document.getElementById('order_client_code'); if (cln) cln.value = '';" +
+                "    var qty = document.getElementById('order_qty'); if (qty) qty.value = '';" +
+                "    var rate = document.getElementById('limit_order_rate'); if (rate) rate.value = '';" +
+                "} catch(e) {}"
             );
-
-            Thread.sleep(250);
-
+            Thread.sleep(150);
         } catch (Exception ignored) {}
-
     }
-
-
 
     public static void fillAndSelectAutocomplete(WebDriver driver, WebDriverWait wait, JavascriptExecutor js, By locator, String text) {
 
