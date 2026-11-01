@@ -438,6 +438,134 @@ def _trigger_context_menu_and_confirm(driver: webdriver.Chrome) -> bool:
     return clicked
 
 
+def select_multiple_buy_orders_only_at_market(driver: webdriver.Chrome, symbol: Optional[str] = None, client_codes: Optional[List[str]] = None) -> bool:
+    """Selects MULTIPLE BUY orders only (Accepted & Partially Filled), leaving resting SELL order unselected, right-clicks, and executes at market."""
+    navigate_to_order_terminal(driver)
+    refresh(driver)
+    time.sleep(0.8)
+
+    print(f"\n[ORDER TERMINAL] >>> SELECTING MULTIPLE BUY ORDERS ONLY (Symbol: {symbol or 'ALL'}, Resting SELL unselected) <<<")
+
+    select_script = """
+    var targetSymbol = (arguments[0] || '').toLowerCase();
+    var clientCodes = arguments[1] || [];
+    var rows = Array.from(document.querySelectorAll('#order_terminal_table tbody tr, table tbody tr'));
+
+    for (var j = 0; j < rows.length; j++) {
+        var c = rows[j].querySelector('input[type="checkbox"]');
+        if (c && c.checked) c.click();
+        rows[j].classList.remove('selected', 'active', 'order_highlight');
+    }
+
+    var buyRows = [];
+
+    for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        var txt = (r.innerText || '').toLowerCase();
+        var isAccepted = txt.includes('accepted') || txt.includes('accept');
+        var isPartially = txt.includes('partially') || txt.includes('partial') || txt.includes('pf');
+        if (!isAccepted && !isPartially) continue;
+        if (targetSymbol && !txt.includes(targetSymbol)) continue;
+
+        // If partially filled buy order, always select it! If accepted, match clientCodes if provided
+        if (!isPartially && clientCodes.length > 0) {
+            var matchClient = false;
+            for (var k = 0; k < clientCodes.length; k++) {
+                if (txt.includes(clientCodes[k].toLowerCase())) { matchClient = true; break; }
+            }
+            if (!matchClient) continue;
+        }
+
+        var isBuy = (txt.includes('buy') || r.classList.contains('order-buy')) && !txt.includes('sell');
+        if (isBuy) {
+            buyRows.push(r);
+        }
+    }
+
+    for (var s = 0; s < buyRows.length; s++) {
+        var row = buyRows[s];
+        var chk = row.querySelector('input[type="checkbox"]');
+        if (chk && !chk.checked) chk.click();
+        row.classList.add('selected', 'active', 'order_highlight');
+    }
+    return { buys: buyRows.length, total: buyRows.length };
+    """
+    res = driver.execute_script(select_script, symbol or "", client_codes or [])
+    buys_cnt = res.get("buys", 0) if isinstance(res, dict) else 0
+    total_cnt = res.get("total", 0) if isinstance(res, dict) else 0
+
+    print(f"[ORDER TERMINAL] Selected {buys_cnt} BUY order(s) ONLY (Resting SELL unselected).")
+    if not total_cnt:
+        print("[TERMINAL: WARN] No matching BUY orders found to execute.")
+        return False
+
+    return _trigger_context_menu_and_confirm(driver)
+
+
+def select_multiple_sell_orders_only_at_market(driver: webdriver.Chrome, symbol: Optional[str] = None, client_codes: Optional[List[str]] = None) -> bool:
+    """Selects MULTIPLE SELL orders only (Accepted & Partially Filled), leaving resting BUY order unselected, right-clicks, and executes at market."""
+    navigate_to_order_terminal(driver)
+    refresh(driver)
+    time.sleep(0.8)
+
+    print(f"\n[ORDER TERMINAL] >>> SELECTING MULTIPLE SELL ORDERS ONLY (Symbol: {symbol or 'ALL'}, Resting BUY unselected) <<<")
+
+    select_script = """
+    var targetSymbol = (arguments[0] || '').toLowerCase();
+    var clientCodes = arguments[1] || [];
+    var rows = Array.from(document.querySelectorAll('#order_terminal_table tbody tr, table tbody tr'));
+
+    for (var j = 0; j < rows.length; j++) {
+        var c = rows[j].querySelector('input[type="checkbox"]');
+        if (c && c.checked) c.click();
+        rows[j].classList.remove('selected', 'active', 'order_highlight');
+    }
+
+    var sellRows = [];
+
+    for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        var txt = (r.innerText || '').toLowerCase();
+        var isAccepted = txt.includes('accepted') || txt.includes('accept');
+        var isPartially = txt.includes('partially') || txt.includes('partial') || txt.includes('pf');
+        if (!isAccepted && !isPartially) continue;
+        if (targetSymbol && !txt.includes(targetSymbol)) continue;
+
+        // If partially filled sell order, always select it! If accepted, match clientCodes if provided
+        if (!isPartially && clientCodes.length > 0) {
+            var matchClient = false;
+            for (var k = 0; k < clientCodes.length; k++) {
+                if (txt.includes(clientCodes[k].toLowerCase())) { matchClient = true; break; }
+            }
+            if (!matchClient) continue;
+        }
+
+        var isSell = txt.includes('sell') || r.classList.contains('order-sell');
+        if (isSell) {
+            sellRows.push(r);
+        }
+    }
+
+    for (var s = 0; s < sellRows.length; s++) {
+        var row = sellRows[s];
+        var chk = row.querySelector('input[type="checkbox"]');
+        if (chk && !chk.checked) chk.click();
+        row.classList.add('selected', 'active', 'order_highlight');
+    }
+    return { sells: sellRows.length, total: sellRows.length };
+    """
+    res = driver.execute_script(select_script, symbol or "", client_codes or [])
+    sells_cnt = res.get("sells", 0) if isinstance(res, dict) else 0
+    total_cnt = res.get("total", 0) if isinstance(res, dict) else 0
+
+    print(f"[ORDER TERMINAL] Selected {sells_cnt} SELL order(s) ONLY (Resting BUY unselected).")
+    if not total_cnt:
+        print("[TERMINAL: WARN] No matching SELL orders found to execute.")
+        return False
+
+    return _trigger_context_menu_and_confirm(driver)
+
+
 def select_multiple_buy_and_one_sell_at_market(driver: webdriver.Chrome, symbol: Optional[str] = None, client_codes: Optional[List[str]] = None) -> bool:
     """Selects MULTIPLE BUY orders and its ONLY ONE corresponding SELL order, right-clicks, and executes at market."""
     navigate_to_order_terminal(driver)

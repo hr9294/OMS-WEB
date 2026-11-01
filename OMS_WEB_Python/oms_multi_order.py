@@ -345,17 +345,17 @@ def run_multi_order_pipeline(driver: webdriver.Chrome) -> None:
     sell_orders_count = sum(1 for o in placed_orders if o["side"].upper() == "SELL")
 
     if choice == 1 or (buy_orders_count > 1 and sell_orders_count <= 1):
-        print(f"\n[TERMINAL] Strategy 1: Selecting ONLY placed Multiple BUY Orders and its ONLY ONE SELL Order...")
-        exec_success = order_terminal.select_multiple_buy_and_one_sell_at_market(driver, symbol=symbol, client_codes=placed_clients)
+        print(f"\n[TERMINAL] Strategy 1: Selecting ONLY placed Multiple BUY Orders (Resting SELL order unselected)...")
+        exec_success = order_terminal.select_multiple_buy_orders_only_at_market(driver, symbol=symbol, client_codes=placed_clients)
         if not exec_success:
             print("[TERMINAL] Retrying without client code filter...")
-            exec_success = order_terminal.select_multiple_buy_and_one_sell_at_market(driver, symbol=symbol, client_codes=None)
+            exec_success = order_terminal.select_multiple_buy_orders_only_at_market(driver, symbol=symbol, client_codes=None)
     elif choice == 2 or (sell_orders_count > 1 and buy_orders_count <= 1):
-        print(f"\n[TERMINAL] Strategy 2: Selecting ONLY placed Multiple SELL Orders and its ONLY ONE BUY Order...")
-        exec_success = order_terminal.select_multiple_sell_and_one_buy_at_market(driver, symbol=symbol, client_codes=placed_clients)
+        print(f"\n[TERMINAL] Strategy 2: Selecting ONLY placed Multiple SELL Orders (Resting BUY order unselected)...")
+        exec_success = order_terminal.select_multiple_sell_orders_only_at_market(driver, symbol=symbol, client_codes=placed_clients)
         if not exec_success:
             print("[TERMINAL] Retrying without client code filter...")
-            exec_success = order_terminal.select_multiple_sell_and_one_buy_at_market(driver, symbol=symbol, client_codes=None)
+            exec_success = order_terminal.select_multiple_sell_orders_only_at_market(driver, symbol=symbol, client_codes=None)
     else:
         exec_success = order_terminal.execute_separated_buy_and_sell_at_market(driver, symbol=symbol)
 
