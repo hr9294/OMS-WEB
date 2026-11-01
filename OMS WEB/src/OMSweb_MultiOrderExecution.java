@@ -716,11 +716,57 @@ public class OMSweb_MultiOrderExecution {
                 Thread.sleep(800);
 
             } catch (Exception e) {
-                System.err.printf("✖ Failed to place Order #%d: %s%n", item.getId(), e.getMessage());
+                System.err.printf("✖ [ORDER FAILED] Order #%d (%s %s x %d @ %.2f): %s%n",
+                        item.getId(), item.getSide(), item.getClientCode(), item.getQuantity(), item.getRate(), e.getMessage());
+                System.out.println("  -> [RECOVERY] Skipping Order #" + item.getId() + " and safely proceeding to next order in queue...");
+
+                // 1. Dismiss any open native browser alerts
                 try {
-                    // Dismiss modal if open
-                    WebElement cancelBtn = driver.findElement(By.xpath("//button[@id='cnfirmCancelBtn'] | //button[normalize-space()='NO'] | //button[normalize-space()='Close']"));
-                    cancelBtn.click();
+                    org.openqa.selenium.Alert alert = driver.switchTo().alert();
+                    System.out.println("  -> [RECOVERY] Dismissed browser alert: " + alert.getText());
+                    alert.dismiss();
+                } catch (Exception ignored) {}
+
+                // 2. Close any open jQuery-Confirm modals and clean up overlays
+                try {
+                    js.executeScript(
+                        "try {" +
+                        "    if (window.jconfirm && window.jconfirm.instances) {" +
+                        "        for (var j = 0; j < window.jconfirm.instances.length; j++) {" +
+                        "            if (window.jconfirm.instances[j] && typeof window.jconfirm.instances[j].close === 'function') {" +
+                        "                window.jconfirm.instances[j].close();" +
+                        "            }" +
+                        "        }" +
+                        "    }" +
+                        "    var cancelBtn = document.querySelector('#cnfirmCancelBtn, button.btn-danger, .jconfirm-closeIcon, button[data-dismiss=modal]');" +
+                        "    if (cancelBtn) cancelBtn.click();" +
+                        "    var overlay = document.getElementById('context-menu-layer');" +
+                        "    if (overlay) overlay.remove();" +
+                        "    if (window.jQuery) { window.jQuery('.context-menu-list').hide(); }" +
+                        "    // Clear input fields so next order starts with clean state" +
+                        "    var sym = document.getElementById('order_instrument'); if (sym) sym.value = '';" +
+                        "    var cln = document.getElementById('order_client_code'); if (cln) cln.value = '';" +
+                        "    var qty = document.getElementById('order_qty'); if (qty) qty.value = '';" +
+                        "    var rate = document.getElementById('limit_order_rate'); if (rate) rate.value = '';" +
+                        "} catch(e) {}"
+                    );
+                } catch (Exception ignored) {}
+
+                // 3. Dismiss any remaining DOM cancel/close buttons
+                try {
+                    List<WebElement> cancelBtns = driver.findElements(
+                            By.xpath("//button[@id='cnfirmCancelBtn'] | //button[normalize-space()='NO'] | //button[normalize-space()='Close'] | //button[contains(@class,'jconfirm-closeIcon')]"));
+                    for (WebElement cb : cancelBtns) {
+                        if (cb.isDisplayed()) {
+                            try { js.executeScript("arguments[0].click();", cb); } catch (Exception ignored) {}
+                            break;
+                        }
+                    }
+                } catch (Exception ignored) {}
+
+                // 4. Settle DOM before continuing to next order
+                try {
+                    Thread.sleep(600);
                 } catch (Exception ignored) {}
             }
         }

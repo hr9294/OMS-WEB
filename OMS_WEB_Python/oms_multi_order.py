@@ -318,19 +318,48 @@ def run_multi_order_pipeline(driver: webdriver.Chrome) -> None:
     oms_trade.navigate_to_trade_page(driver)
     placed_count = 0
 
+    placed_orders = []
     for idx, item in enumerate(order_queue, 1):
         print(f"\n--- Placed Order [{idx}/{len(order_queue)}] ---")
-        ok = oms_trade.place_order(
-            driver=driver,
-            side=item.side,
-            client_code=item.client_code,
-            symbol=item.symbol,
-            qty=item.quantity,
-            rate=item.rate,
-            exchange=exchange
-        )
-        if ok:
-            placed_count += 1
+        try:
+            ok = oms_trade.place_order(
+                driver=driver,
+                side=item.side,
+                client_code=item.client_code,
+                symbol=item.symbol,
+                qty=item.quantity,
+                rate=item.rate,
+                exchange=exchange
+            )
+            if ok:
+                placed_count += 1
+                placed_orders.append({"client_code": item.client_code, "side": item.side, "symbol": item.symbol, "qty": item.quantity, "rate": item.rate})
+        except Exception as e:
+            print(f"✖ [ORDER FAILED] Order #{idx} ({item.side} {item.client_code} x {item.quantity} @ {item.rate}): {e}")
+            print(f"  -> [RECOVERY] Skipping Order #{idx} and proceeding to next order in queue...")
+            try:
+                driver.switch_to.alert.dismiss()
+            except Exception:
+                pass
+            try:
+                driver.execute_script("""
+                    try {
+                        if (window.jconfirm && window.jconfirm.instances) {
+                            for (var j = 0; j < window.jconfirm.instances.length; j++) {
+                                if (window.jconfirm.instances[j] && typeof window.jconfirm.instances[j].close === 'function') {
+                                    window.jconfirm.instances[j].close();
+                                }
+                            }
+                        }
+                        var btn = document.querySelector('#cnfirmCancelBtn, button.btn-danger, .jconfirm-closeIcon');
+                        if (btn) btn.click();
+                        var overlay = document.getElementById('context-menu-layer');
+                        if (overlay) overlay.remove();
+                        if (window.jQuery) { window.jQuery('.context-menu-list').hide(); }
+                    } catch(e) {}
+                """)
+            except Exception:
+                pass
         time.sleep(0.8)
 
     print(f"\n✔ Successfully submitted {placed_count}/{len(order_queue)} orders into the order book.")
