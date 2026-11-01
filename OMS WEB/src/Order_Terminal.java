@@ -453,7 +453,7 @@ public class Order_Terminal {
                             "r.classList.add('selected');" +
                             "r.classList.add('active');" +
                             "r.classList.add('order_highlight');" +
-                            "var cb = r.querySelector('input[type=\"checkbox\"]');" +
+                            "var cb = r.querySelector('input[type=checkbox]');" +
                             "if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); }",
                             row
                         );
@@ -521,7 +521,7 @@ public class Order_Terminal {
                 "    for (var i = 0; i < rows.length; i++) {" +
                 "        var r = rows[i];" +
                 "        r.classList.remove('selected', 'active', 'order_highlight');" +
-                "        var cb = r.querySelector('input[type=\"checkbox\"]');" +
+                "        var cb = r.querySelector('input[type=checkbox]');" +
                 "        if (cb && cb.checked) { cb.checked = false; cb.dispatchEvent(new Event('change', { bubbles: true })); }" +
                 "    }" +
                 "}"
@@ -652,7 +652,7 @@ public class Order_Terminal {
                             "r.classList.add('selected');" +
                             "r.classList.add('active');" +
                             "r.classList.add('order_highlight');" +
-                            "var cb = r.querySelector('input[type=\"checkbox\"]');" +
+                            "var cb = r.querySelector('input[type=checkbox]');" +
                             "if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); }",
                             row
                         );
@@ -841,7 +841,7 @@ public class Order_Terminal {
                 js.executeScript(
                     "var r = arguments[0];" +
                     "r.classList.add('selected', 'active', 'order_highlight');" +
-                    "var cb = r.querySelector('input[type=\"checkbox\"]');" +
+                    "var cb = r.querySelector('input[type=checkbox]');" +
                     "if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); }",
                     r
                 );
@@ -985,7 +985,7 @@ public class Order_Terminal {
                 js.executeScript(
                     "var r = arguments[0];" +
                     "r.classList.add('selected', 'active', 'order_highlight');" +
-                    "var cb = r.querySelector('input[type=\"checkbox\"]');" +
+                    "var cb = r.querySelector('input[type=checkbox]');" +
                     "if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); }",
                     r
                 );
@@ -1033,6 +1033,268 @@ public class Order_Terminal {
 
     public static boolean executeMultipleBuyAndOneSellAtMarket(WebDriver driver, String symbol, List<String> clientCodes) {
         List<WebElement> rows = selectMultipleBuyAndOneSellOrder(driver, symbol, clientCodes);
+        if (rows.isEmpty()) return false;
+        return executeSelectedAtMarket(driver, rows);
+    }
+
+    /**
+     * Selects ONLY the placed multiple BUY orders in the queue (leaves resting opposite SELL order unselected),
+     * right-clicks on the selection, and triggers 'Execute at Market' from the context menu.
+     */
+    public static List<WebElement> selectPlacedBuyOrdersOnly(WebDriver driver, String targetSymbol, List<String> clientCodes) {
+        navigateToOrderTerminal(driver);
+        List<WebElement> selected = new ArrayList<>();
+        try {
+            Thread.sleep(400);
+            clearSelection(driver);
+            Thread.sleep(200);
+
+            WebElement table = driver.findElement(TERMINAL_TABLE);
+            List<WebElement> rows = table.findElements(By.xpath(".//tbody//tr"));
+            List<WebElement> headers = table.findElements(By.xpath(".//thead//th"));
+            Actions actions = new Actions(driver);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            int sideColIdx = 7;
+            for (int i = 0; i < headers.size(); i++) {
+                String h = headers.get(i).getText().trim().toUpperCase();
+                if (h.equals("SIDE") || h.equals("B/S") || h.equals("ACTION")) {
+                    sideColIdx = i;
+                    break;
+                }
+            }
+
+            String cleanSym = (targetSymbol != null) ? targetSymbol.trim().toUpperCase() : "";
+            System.out.printf("[ORDER TERMINAL] Selecting ONLY PLACED MULTIPLE BUY ORDERS in queue for %s (Clients: %s)...%n",
+                    cleanSym.isEmpty() ? "ALL Symbols" : cleanSym,
+                    (clientCodes != null && !clientCodes.isEmpty()) ? String.join(", ", clientCodes) : "ANY");
+
+            List<String[]> selectedSummary = new ArrayList<>();
+            List<WebElement> buyRows = new ArrayList<>();
+
+            for (WebElement row : rows) {
+                try {
+                    if (!row.isDisplayed()) continue;
+                    List<WebElement> cells = row.findElements(By.xpath("./td"));
+                    if (cells.isEmpty()) continue;
+
+                    String rowText = row.getText().toUpperCase();
+                    if (!cleanSym.isEmpty() && !rowText.contains(cleanSym)) continue;
+                    if (!rowText.contains("ACCEPTED") && !rowText.contains("PARTIALLY")) continue;
+
+                    if (clientCodes != null && !clientCodes.isEmpty()) {
+                        boolean clientMatch = false;
+                        for (String cc : clientCodes) {
+                            if (rowText.contains(cc.trim().toUpperCase())) {
+                                clientMatch = true;
+                                break;
+                            }
+                        }
+                        if (!clientMatch) continue;
+                    }
+
+                    String rowSide = "";
+                    if (sideColIdx < cells.size()) {
+                        String cs = cells.get(sideColIdx).getText().trim().toUpperCase();
+                        if (cs.equals("BUY") || cs.equals("B")) rowSide = "BUY";
+                        else if (cs.equals("SELL") || cs.equals("S")) rowSide = "SELL";
+                    }
+                    if (rowSide.isEmpty()) {
+                        for (WebElement c : cells) {
+                            String ct = c.getText().trim().toUpperCase();
+                            if (ct.equals("BUY") || ct.equals("B")) { rowSide = "BUY"; break; }
+                            if (ct.equals("SELL") || ct.equals("S")) { rowSide = "SELL"; break; }
+                        }
+                    }
+                    if (rowSide.isEmpty()) {
+                        String rc = row.getDomAttribute("class");
+                        if (rc != null && (rc.contains("buy") || rc.contains("order-buy"))) rowSide = "BUY";
+                    }
+
+                    if ("BUY".equalsIgnoreCase(rowSide)) {
+                        buyRows.add(row);
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            for (WebElement r : buyRows) {
+                selected.add(r);
+                js.executeScript(
+                    "var r = arguments[0];" +
+                    "r.classList.add('selected', 'active', 'order_highlight');" +
+                    "var cb = r.querySelector('input[type=checkbox]');" +
+                    "if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); }",
+                    r
+                );
+                try {
+                    actions.keyDown(Keys.CONTROL).click(r).keyUp(Keys.CONTROL).perform();
+                } catch (Exception ignored) {}
+
+                String rowId = r.getDomAttribute("id");
+                List<WebElement> cells = r.findElements(By.xpath("./td"));
+                String orderId = (rowId != null && !rowId.isEmpty()) ? rowId : (cells.size() > 1 ? cells.get(1).getText().trim() : "-");
+                String clientCode = (cells.size() > 4 ? cells.get(4).getText().trim() : "-");
+                String sym = (cells.size() > 5 ? cells.get(5).getText().trim() : "-");
+                String side = (cells.size() > sideColIdx ? cells.get(sideColIdx).getText().trim() : "-");
+                String price = (cells.size() > 9 ? cells.get(9).getText().trim() : "-");
+                String qty = (cells.size() > 11 ? cells.get(11).getText().trim() : "-");
+                String status = (r.getText().toUpperCase().contains("PARTIALLY") ? "PARTIALLY FILLED" : "ACCEPTED");
+
+                selectedSummary.add(new String[]{ orderId, clientCode, sym, side, price, qty, status });
+            }
+
+            System.out.println();
+            System.out.println("+=======================================================================================================+");
+            System.out.printf("| SELECTED MULTIPLE BUY ORDERS ONLY (" + buyRows.size() + ") [Resting Opposite SELL order unselected]%-10s |%n", "");
+            System.out.println("+=======================================================================================================+");
+            System.out.printf("| %-4s | %-12s | %-10s | %-10s | %-6s | %-8s | %-8s | %-18s |%n",
+                    "#", "Order ID", "Client", "Symbol", "Side", "Price", "Qty", "Status");
+            System.out.println("+-------------------------------------------------------------------------------------------------------+");
+
+            for (int i = 0; i < selectedSummary.size(); i++) {
+                String[] s = selectedSummary.get(i);
+                System.out.printf("| %-4d | %-12s | %-10s | %-10s | %-6s | %-8s | %-8s | %-18s |%n",
+                        (i + 1), s[0], s[1], s[2], s[3], s[4], s[5], s[6]);
+            }
+            System.out.println("+=======================================================================================================+");
+
+        } catch (Exception e) {
+            System.out.println("[WARN: Select Placed Buy Orders Only] " + e.getMessage());
+        }
+        return selected;
+    }
+
+    public static boolean executeMultipleBuyOrdersOnlyAtMarket(WebDriver driver, String symbol, List<String> clientCodes) {
+        List<WebElement> rows = selectPlacedBuyOrdersOnly(driver, symbol, clientCodes);
+        if (rows.isEmpty()) return false;
+        return executeSelectedAtMarket(driver, rows);
+    }
+
+    public static List<WebElement> selectPlacedSellOrdersOnly(WebDriver driver, String targetSymbol, List<String> clientCodes) {
+        navigateToOrderTerminal(driver);
+        List<WebElement> selected = new ArrayList<>();
+        try {
+            Thread.sleep(400);
+            clearSelection(driver);
+            Thread.sleep(200);
+
+            WebElement table = driver.findElement(TERMINAL_TABLE);
+            List<WebElement> rows = table.findElements(By.xpath(".//tbody//tr"));
+            List<WebElement> headers = table.findElements(By.xpath(".//thead//th"));
+            Actions actions = new Actions(driver);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            int sideColIdx = 7;
+            for (int i = 0; i < headers.size(); i++) {
+                String h = headers.get(i).getText().trim().toUpperCase();
+                if (h.equals("SIDE") || h.equals("B/S") || h.equals("ACTION")) {
+                    sideColIdx = i;
+                    break;
+                }
+            }
+
+            String cleanSym = (targetSymbol != null) ? targetSymbol.trim().toUpperCase() : "";
+            System.out.printf("[ORDER TERMINAL] Selecting ONLY PLACED MULTIPLE SELL ORDERS in queue for %s (Clients: %s)...%n",
+                    cleanSym.isEmpty() ? "ALL Symbols" : cleanSym,
+                    (clientCodes != null && !clientCodes.isEmpty()) ? String.join(", ", clientCodes) : "ANY");
+
+            List<String[]> selectedSummary = new ArrayList<>();
+            List<WebElement> sellRows = new ArrayList<>();
+
+            for (WebElement row : rows) {
+                try {
+                    if (!row.isDisplayed()) continue;
+                    List<WebElement> cells = row.findElements(By.xpath("./td"));
+                    if (cells.isEmpty()) continue;
+
+                    String rowText = row.getText().toUpperCase();
+                    if (!cleanSym.isEmpty() && !rowText.contains(cleanSym)) continue;
+                    if (!rowText.contains("ACCEPTED") && !rowText.contains("PARTIALLY")) continue;
+
+                    if (clientCodes != null && !clientCodes.isEmpty()) {
+                        boolean clientMatch = false;
+                        for (String cc : clientCodes) {
+                            if (rowText.contains(cc.trim().toUpperCase())) {
+                                clientMatch = true;
+                                break;
+                            }
+                        }
+                        if (!clientMatch) continue;
+                    }
+
+                    String rowSide = "";
+                    if (sideColIdx < cells.size()) {
+                        String cs = cells.get(sideColIdx).getText().trim().toUpperCase();
+                        if (cs.equals("SELL") || cs.equals("S")) rowSide = "SELL";
+                        else if (cs.equals("BUY") || cs.equals("B")) rowSide = "BUY";
+                    }
+                    if (rowSide.isEmpty()) {
+                        for (WebElement c : cells) {
+                            String ct = c.getText().trim().toUpperCase();
+                            if (ct.equals("SELL") || ct.equals("S")) { rowSide = "SELL"; break; }
+                            if (ct.equals("BUY") || ct.equals("B")) { rowSide = "BUY"; break; }
+                        }
+                    }
+                    if (rowSide.isEmpty()) {
+                        String rc = row.getDomAttribute("class");
+                        if (rc != null && (rc.contains("sell") || rc.contains("order-sell"))) rowSide = "SELL";
+                    }
+
+                    if ("SELL".equalsIgnoreCase(rowSide)) {
+                        sellRows.add(row);
+                    }
+                } catch (Exception ignored) {}
+            }
+
+            for (WebElement r : sellRows) {
+                selected.add(r);
+                js.executeScript(
+                    "var r = arguments[0];" +
+                    "r.classList.add('selected', 'active', 'order_highlight');" +
+                    "var cb = r.querySelector('input[type=checkbox]');" +
+                    "if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); }",
+                    r
+                );
+                try {
+                    actions.keyDown(Keys.CONTROL).click(r).keyUp(Keys.CONTROL).perform();
+                } catch (Exception ignored) {}
+
+                String rowId = r.getDomAttribute("id");
+                List<WebElement> cells = r.findElements(By.xpath("./td"));
+                String orderId = (rowId != null && !rowId.isEmpty()) ? rowId : (cells.size() > 1 ? cells.get(1).getText().trim() : "-");
+                String clientCode = (cells.size() > 4 ? cells.get(4).getText().trim() : "-");
+                String sym = (cells.size() > 5 ? cells.get(5).getText().trim() : "-");
+                String side = (cells.size() > sideColIdx ? cells.get(sideColIdx).getText().trim() : "-");
+                String price = (cells.size() > 9 ? cells.get(9).getText().trim() : "-");
+                String qty = (cells.size() > 11 ? cells.get(11).getText().trim() : "-");
+                String status = (r.getText().toUpperCase().contains("PARTIALLY") ? "PARTIALLY FILLED" : "ACCEPTED");
+
+                selectedSummary.add(new String[]{ orderId, clientCode, sym, side, price, qty, status });
+            }
+
+            System.out.println();
+            System.out.println("+=======================================================================================================+");
+            System.out.printf("| SELECTED MULTIPLE SELL ORDERS ONLY (" + sellRows.size() + ") [Resting Opposite BUY order unselected]%-10s |%n", "");
+            System.out.println("+=======================================================================================================+");
+            System.out.printf("| %-4s | %-12s | %-10s | %-10s | %-6s | %-8s | %-8s | %-18s |%n",
+                    "#", "Order ID", "Client", "Symbol", "Side", "Price", "Qty", "Status");
+            System.out.println("+-------------------------------------------------------------------------------------------------------+");
+
+            for (int i = 0; i < selectedSummary.size(); i++) {
+                String[] s = selectedSummary.get(i);
+                System.out.printf("| %-4d | %-12s | %-10s | %-10s | %-6s | %-8s | %-8s | %-18s |%n",
+                        (i + 1), s[0], s[1], s[2], s[3], s[4], s[5], s[6]);
+            }
+            System.out.println("+=======================================================================================================+");
+
+        } catch (Exception e) {
+            System.out.println("[WARN: Select Placed Sell Orders Only] " + e.getMessage());
+        }
+        return selected;
+    }
+
+    public static boolean executeMultipleSellOrdersOnlyAtMarket(WebDriver driver, String symbol, List<String> clientCodes) {
+        List<WebElement> rows = selectPlacedSellOrdersOnly(driver, symbol, clientCodes);
         if (rows.isEmpty()) return false;
         return executeSelectedAtMarket(driver, rows);
     }

@@ -713,20 +713,32 @@ public class OMSweb_MultiOrderExecution {
             boolean executed = false;
 
             if (isMultipleBuy) {
-                System.out.println("\n[TERMINAL] >>> STRATEGY 1: SELECTING ONLY PLACED MULTIPLE BUY ORDERS AND ITS ONLY ONE SELL ORDER <<<");
-                System.out.printf("[TERMINAL] Row filtering active for Symbol: %s | Clients: %s%n", symbol, placedClients);
-                executed = Order_Terminal.executeMultipleBuyAndOneSellAtMarket(driver, symbol, placedClients);
+                System.out.println("\n[TERMINAL] >>> STRATEGY 1: SELECTING ONLY PLACED MULTIPLE BUY ORDERS IN QUEUE & RIGHT-CLICK 'EXECUTE AT MARKET' <<<");
+                List<String> buyOnlyClients = new ArrayList<>();
+                for (OrderItem o : placedOrders) {
+                    if (o.getSide() == OrderSide.BUY && !buyOnlyClients.contains(o.getClientCode())) {
+                        buyOnlyClients.add(o.getClientCode());
+                    }
+                }
+                System.out.printf("[TERMINAL] Row filtering active for Symbol: %s | BUY Clients: %s%n", symbol, buyOnlyClients);
+                executed = Order_Terminal.executeMultipleBuyOrdersOnlyAtMarket(driver, symbol, buyOnlyClients);
                 if (!executed) {
-                    System.out.println("[TERMINAL] Retrying selection across all accepted orders for symbol...");
-                    executed = Order_Terminal.executeMultipleBuyAndOneSellAtMarket(driver, symbol, null);
+                    System.out.println("[TERMINAL] Retrying selection across all accepted BUY orders for symbol...");
+                    executed = Order_Terminal.executeMultipleBuyOrdersOnlyAtMarket(driver, symbol, null);
                 }
             } else if (isMultipleSell) {
-                System.out.println("\n[TERMINAL] >>> STRATEGY 2: SELECTING ONLY PLACED MULTIPLE SELL ORDERS AND ITS ONLY ONE BUY ORDER <<<");
-                System.out.printf("[TERMINAL] Row filtering active for Symbol: %s | Clients: %s%n", symbol, placedClients);
-                executed = Order_Terminal.executeMultipleSellAndOneBuyAtMarket(driver, symbol, placedClients);
+                System.out.println("\n[TERMINAL] >>> STRATEGY 2: SELECTING ONLY PLACED MULTIPLE SELL ORDERS IN QUEUE & RIGHT-CLICK 'EXECUTE AT MARKET' <<<");
+                List<String> sellOnlyClients = new ArrayList<>();
+                for (OrderItem o : placedOrders) {
+                    if (o.getSide() == OrderSide.SELL && !sellOnlyClients.contains(o.getClientCode())) {
+                        sellOnlyClients.add(o.getClientCode());
+                    }
+                }
+                System.out.printf("[TERMINAL] Row filtering active for Symbol: %s | SELL Clients: %s%n", symbol, sellOnlyClients);
+                executed = Order_Terminal.executeMultipleSellOrdersOnlyAtMarket(driver, symbol, sellOnlyClients);
                 if (!executed) {
-                    System.out.println("[TERMINAL] Retrying selection across all accepted orders for symbol...");
-                    executed = Order_Terminal.executeMultipleSellAndOneBuyAtMarket(driver, symbol, null);
+                    System.out.println("[TERMINAL] Retrying selection across all accepted SELL orders for symbol...");
+                    executed = Order_Terminal.executeMultipleSellOrdersOnlyAtMarket(driver, symbol, null);
                 }
             } else {
                 System.out.println("\n[TERMINAL] Executing side-by-side: Multiple BUY orders ONLY, then Multiple SELL orders ONLY...");
@@ -741,9 +753,9 @@ public class OMSweb_MultiOrderExecution {
                 Thread.sleep(1500);
 
                 if (isMultipleBuy) {
-                    executed = Order_Terminal.executeMultipleBuyAndOneSellAtMarket(driver, symbol, null);
+                    executed = Order_Terminal.executeMultipleBuyOrdersOnlyAtMarket(driver, symbol, null);
                 } else if (isMultipleSell) {
-                    executed = Order_Terminal.executeMultipleSellAndOneBuyAtMarket(driver, symbol, null);
+                    executed = Order_Terminal.executeMultipleSellOrdersOnlyAtMarket(driver, symbol, null);
                 } else {
                     executed = Order_Terminal.executeSeparatedBuyAndSellAtMarket(driver);
                 }
