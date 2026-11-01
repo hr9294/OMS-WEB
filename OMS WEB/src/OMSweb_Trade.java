@@ -3463,61 +3463,75 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 	private static boolean confirmOrder(WebDriver driver, WebDriverWait wait, Scanner sc) throws InterruptedException {
-		System.out.println("[CONFIRMATION] Auto-confirming 'Confirm Execution' dialog [YES]...");
+		System.out.println("[CONFIRMATION] Instantly auto-confirming 'Confirm Execution' dialog [YES]...");
 		JavascriptExecutor js = (JavascriptExecutor) driver;
 
-		// Fast polling loop: up to 3 seconds (60 attempts x 50ms)
-		for (int attempt = 0; attempt < 60; attempt++) {
-			// A. Fast check via autoConfirmOrderOrCancellation
+		// Ultra-fast polling: up to 1.0 second (20 attempts x 50ms)
+		for (int attempt = 0; attempt < 20; attempt++) {
+			// A. Direct Native JavaScript Click (bypasses fixed-position offsetParent, animations, and overlays)
 			try {
-				if (autoConfirmOrderOrCancellation(driver, wait)) {
-					System.out.println("  ✔ [CONFIRMATION] Order confirmed automatically via autoConfirmOrderOrCancellation!");
+				Boolean clicked = (Boolean) js.executeScript(
+					"try {" +
+					"    var btn = document.getElementById('cnfirmConfirmBtn');" +
+					"    if (btn) {" +
+					"        btn.click();" +
+					"        if (window.jQuery) { $(btn).trigger('click'); }" +
+					"        return true;" +
+					"    }" +
+					"    var jcBtn = document.querySelector('.jconfirm-buttons button.btn-success, .jconfirm-box button.btn-success, .jconfirm button.btn-success, button.btn-success');" +
+					"    if (jcBtn) {" +
+					"        jcBtn.click();" +
+					"        if (window.jQuery) { $(jcBtn).trigger('click'); }" +
+					"        return true;" +
+					"    }" +
+					"    var all = document.querySelectorAll('button, a, div[role=\"button\"], span.btn, .btn');" +
+					"    for (var i = 0; i < all.length; i++) {" +
+					"        var t = (all[i].innerText || all[i].textContent || '').trim().toUpperCase();" +
+					"        if (t === 'YES' || t === 'CONFIRM') {" +
+					"            all[i].click();" +
+					"            if (window.jQuery) { $(all[i]).trigger('click'); }" +
+					"            return true;" +
+					"        }" +
+					"    }" +
+					"    if (window.jconfirm && window.jconfirm.instances && window.jconfirm.instances.length > 0) {" +
+					"        for (var k = 0; k < window.jconfirm.instances.length; k++) {" +
+					"            var inst = window.jconfirm.instances[k];" +
+					"            if (inst) {" +
+					"                if (inst.buttons) {" +
+					"                    var y = inst.buttons.yes || inst.buttons.YES || inst.buttons.confirm || inst.buttons.CONFIRM;" +
+					"                    if (y && typeof y.action === 'function') { y.action(); }" +
+					"                }" +
+					"                if (typeof inst.close === 'function') { inst.close(); }" +
+					"                return true;" +
+					"            }" +
+					"        }" +
+					"    }" +
+					"} catch(e) {}" +
+					"return false;"
+				);
+				if (Boolean.TRUE.equals(clicked)) {
+					System.out.println("  ✔ [CONFIRMATION] Confirmed order immediately: Clicked [YES] via JavaScript execution!");
 					return true;
 				}
 			} catch (Exception ignored) {}
 
-			// B. Direct search for visible YES button on Confirm Execution dialog (button, a, div, span)
+			// B. Selenium element click fallback
 			try {
 				List<WebElement> yesButtons = driver.findElements(By.xpath(
 					"//*[@id='cnfirmConfirmBtn'] | " +
 					"//button[normalize-space()='YES' or normalize-space()='Yes'] | " +
 					"//a[normalize-space()='YES' or normalize-space()='Yes'] | " +
-					"//*[contains(@class,'btn') and (normalize-space()='YES' or normalize-space()='Yes')] | " +
-					"//div[contains(@class,'modal') or contains(@class,'dialog') or contains(@class,'popup') or contains(@class,'confirm') or contains(@class,'jconfirm')]//*[normalize-space()='YES']"
+					"//*[contains(@class,'btn-success') and (normalize-space()='YES' or normalize-space()='Yes')]"
 				));
 				for (WebElement yb : yesButtons) {
-					if (yb.isDisplayed() && yb.isEnabled()) {
-						try {
-							js.executeScript("arguments[0].click();", yb);
-						} catch (Exception e) {
-							yb.click();
-						}
+					try {
+						js.executeScript("arguments[0].click();", yb);
 						System.out.println("  ✔ [CONFIRMATION] Clicked [YES] button on Confirm Execution dialog!");
 						return true;
+					} catch (Exception e) {
+						yb.click();
+						return true;
 					}
-				}
-			} catch (Exception ignored) {}
-
-			// C. JavaScript execution to find and click any visible YES button
-			try {
-				Boolean clicked = (Boolean) js.executeScript(
-					"var btn = document.getElementById('cnfirmConfirmBtn');" +
-					"if (btn && (btn.offsetParent !== null || btn.offsetWidth > 0 || btn.offsetHeight > 0)) { btn.click(); return true; }" +
-					"var btns = document.querySelectorAll('button, a, div.btn, span.btn');" +
-					"for (var i = 0; i < btns.length; i++) {" +
-					"    var txt = (btns[i].innerText || btns[i].textContent || '').trim().toUpperCase();" +
-					"    if (txt === 'YES' || txt === 'CONFIRM') {" +
-					"        if (btns[i].offsetParent !== null || btns[i].offsetWidth > 0 || btns[i].offsetHeight > 0) {" +
-					"            btns[i].click();" +
-					"            return true;" +
-					"        }" +
-					"    }" +
-					"}" +
-					"return false;"
-				);
-				if (Boolean.TRUE.equals(clicked)) {
-					System.out.println("  ✔ [CONFIRMATION] Confirmed order: Clicked [YES] via JavaScript execution!");
-					return true;
 				}
 			} catch (Exception ignored) {}
 

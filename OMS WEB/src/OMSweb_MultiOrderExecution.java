@@ -641,30 +641,38 @@ public class OMSweb_MultiOrderExecution {
                     js.executeScript("var btn = document.querySelector('.order_submit_btn, div.form-submit-btn-holder button'); if (btn) { $(btn).prop('disabled', false).removeAttr('disabled'); btn.click(); }");
                 }
 
-                // 6. Fast-Path Confirmation YES (Direct jQuery-Confirm / Alert / DOM in 40ms intervals, up to 2.5s)
+                // 6. Fast-Path Confirmation YES (Direct Native JS & DOM in 40ms intervals, up to 1.0s)
                 boolean confirmed = false;
-                for (int attempt = 0; attempt < 60; attempt++) {
-                    confirmed = OMSweb_Trade.autoConfirmOrderOrCancellation(driver, wait);
-                    if (confirmed) break;
-
+                for (int attempt = 0; attempt < 25; attempt++) {
                     try {
                         Boolean jsClicked = (Boolean) js.executeScript(
-                            "var btn = document.getElementById('cnfirmConfirmBtn');" +
-                            "if (btn && (btn.offsetParent !== null || btn.offsetWidth > 0 || btn.offsetHeight > 0)) { btn.click(); return true; }" +
+                            "try {" +
+                            "    var btn = document.getElementById('cnfirmConfirmBtn');" +
+                            "    if (btn) { btn.click(); if (window.jQuery) { $(btn).trigger('click'); } return true; }" +
+                            "    var jcBtn = document.querySelector('.jconfirm-buttons button.btn-success, .jconfirm-box button.btn-success, .jconfirm button.btn-success, button.btn-success');" +
+                            "    if (jcBtn) { jcBtn.click(); if (window.jQuery) { $(jcBtn).trigger('click'); } return true; }" +
+                            "    var all = document.querySelectorAll('button, a, div[role=\"button\"], span.btn, .btn');" +
+                            "    for (var i = 0; i < all.length; i++) {" +
+                            "        var t = (all[i].innerText || all[i].textContent || '').trim().toUpperCase();" +
+                            "        if (t === 'YES' || t === 'CONFIRM') {" +
+                            "            all[i].click(); if (window.jQuery) { $(all[i]).trigger('click'); } return true;" +
+                            "        }" +
+                            "    }" +
+                            "} catch(e) {}" +
                             "return false;"
                         );
                         if (Boolean.TRUE.equals(jsClicked)) { confirmed = true; break; }
                     } catch (Exception ignored) {}
 
-                    List<WebElement> confirmBtns = driver.findElements(
-                            By.xpath("//*[@id='cnfirmConfirmBtn'] | //button[normalize-space()='YES'] | //button[normalize-space()='Yes'] | //button[normalize-space()='Confirm'] | //div[contains(@class,'jconfirm-box') or contains(@class,'modal')]//*[contains(@class,'btn-success') or normalize-space()='YES']"));
-                    for (WebElement cb : confirmBtns) {
-                        if (cb.isDisplayed() && cb.isEnabled()) {
+                    try {
+                        List<WebElement> confirmBtns = driver.findElements(
+                                By.xpath("//*[@id='cnfirmConfirmBtn'] | //button[normalize-space()='YES'] | //a[normalize-space()='YES'] | //*[contains(@class,'btn-success') and (normalize-space()='YES' or normalize-space()='Yes')]"));
+                        for (WebElement cb : confirmBtns) {
                             js.executeScript("arguments[0].click();", cb);
                             confirmed = true;
                             break;
                         }
-                    }
+                    } catch (Exception ignored) {}
                     if (confirmed) break;
                     Thread.sleep(40);
                 }

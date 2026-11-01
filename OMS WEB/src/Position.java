@@ -933,23 +933,35 @@ public class Position {
 
             // Confirm
             boolean confirmed = false;
-            for (int attempt = 0; attempt < 40; attempt++) {
-                if (OMSweb_Trade.autoConfirmOrderOrCancellation(driver, wait)) {
-                    confirmed = true;
-                    break;
-                }
+            for (int attempt = 0; attempt < 25; attempt++) {
                 try {
-                    List<WebElement> ybs = driver.findElements(By.xpath("//button[normalize-space()='YES'] | //button[@id='cnfirmConfirmBtn']"));
+                    Boolean jsClicked = (Boolean) ((JavascriptExecutor) driver).executeScript(
+                        "try {" +
+                        "    var btn = document.getElementById('cnfirmConfirmBtn');" +
+                        "    if (btn) { btn.click(); if (window.jQuery) { $(btn).trigger('click'); } return true; }" +
+                        "    var all = document.querySelectorAll('button, a, div[role=\"button\"], span.btn, .btn');" +
+                        "    for (var i = 0; i < all.length; i++) {" +
+                        "        var t = (all[i].innerText || all[i].textContent || '').trim().toUpperCase();" +
+                        "        if (t === 'YES' || t === 'CONFIRM') {" +
+                        "            all[i].click(); if (window.jQuery) { $(all[i]).trigger('click'); } return true;" +
+                        "        }" +
+                        "    }" +
+                        "} catch(e) {}" +
+                        "return false;"
+                    );
+                    if (Boolean.TRUE.equals(jsClicked)) { confirmed = true; break; }
+                } catch (Exception ignored) {}
+
+                try {
+                    List<WebElement> ybs = driver.findElements(By.xpath("//*[@id='cnfirmConfirmBtn'] | //button[normalize-space()='YES']"));
                     for (WebElement yb : ybs) {
-                        if (yb.isDisplayed() && yb.isEnabled()) {
-                            yb.click();
-                            confirmed = true;
-                            break;
-                        }
+                        ((JavascriptExecutor) driver).executeScript("arguments[0].click();", yb);
+                        confirmed = true;
+                        break;
                     }
                 } catch (Exception ignored) {}
                 if (confirmed) break;
-                Thread.sleep(100);
+                Thread.sleep(40);
             }
             if (confirmed) {
                 System.out.println("[TRADE] Order confirmed successfully!");
