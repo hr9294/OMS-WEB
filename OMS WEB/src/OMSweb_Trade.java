@@ -676,7 +676,7 @@ public class OMSweb_Trade {
 
 				symbolInput.clear();
 
-				symbolInput.sendKeys(instrument);
+				installSymbolWhitespaceSanitizer(driver); String cleanInst = cleanSymbol(instrument); symbolInput.sendKeys(cleanInst);
 
 				wait.until(ExpectedConditions.presenceOfElementLocated(By.className("ui-autocomplete-input")));
 
@@ -993,6 +993,45 @@ public class OMSweb_Trade {
         return s.trim();
 
     }
+
+	public static void installSymbolWhitespaceSanitizer(WebDriver driver) {
+		if (driver == null) return;
+		try {
+			((JavascriptExecutor) driver).executeScript(
+				"try {" +
+				"    var sym = document.getElementById('order_instrument');" +
+				"    if (sym && !sym.dataset.cleanHook) {" +
+				"        sym.dataset.cleanHook = 'true';" +
+				"        var sanitize = function() { if (sym.value && /\\s/.test(sym.value)) { sym.value = sym.value.replace(/\\s+/g, ''); $(sym).trigger('input').trigger('change'); } };" +
+				"        sym.addEventListener('blur', sanitize);" +
+				"        sym.addEventListener('input', sanitize);" +
+				"        sym.addEventListener('change', sanitize);" +
+				"    }" +
+				"    var cln = document.getElementById('order_client_code');" +
+				"    if (cln && !cln.dataset.cleanHook) {" +
+				"        cln.dataset.cleanHook = 'true';" +
+				"        var cleanSymBeforeCln = function() {" +
+				"            var s = document.getElementById('order_instrument');" +
+				"            if (s && s.value && /\\s/.test(s.value)) { s.value = s.value.replace(/\\s+/g, ''); $(s).trigger('input').trigger('change'); }" +
+				"        };" +
+				"        cln.addEventListener('focus', cleanSymBeforeCln);" +
+				"        cln.addEventListener('click', cleanSymBeforeCln);" +
+				"    }" +
+				"    if (window.jQuery && !window._checkSaleableFilterInstalled) {" +
+				"        window._checkSaleableFilterInstalled = true;" +
+				"        window.jQuery.ajaxPrefilter(function(options) {" +
+				"            if (options.url && (options.url.indexOf('check_saleable') !== -1 || options.url.indexOf('checksaleable') !== -1)) {" +
+				"                options.url = options.url.replace(/symbol=([^&]*)/i, function(m, s) {" +
+				"                    return 'symbol=' + encodeURIComponent(decodeURIComponent(s).trim().replace(/\\s+/g, ''));" +
+				"                });" +
+				"            }" +
+				"        });" +
+				"    }" +
+				"} catch(e) {}"
+			);
+		} catch (Exception ignored) {}
+	}
+
 
 
 
@@ -2367,7 +2406,7 @@ public class OMSweb_Trade {
 
 		symbol.clear();
 
-		symbol.sendKeys(instrument);
+		installSymbolWhitespaceSanitizer(driver); String cleanInst2 = cleanSymbol(instrument); symbol.sendKeys(cleanInst2);
 
 		wait.until(ExpectedConditions.presenceOfElementLocated(By.className("ui-autocomplete-input")));
 

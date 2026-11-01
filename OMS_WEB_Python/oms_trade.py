@@ -112,6 +112,7 @@ def place_order(
     Submits a BUY or SELL order in the Order Entry Form.
     """
     side_clean = side.upper().strip()
+    install_symbol_whitespace_sanitizer(driver)
     sym_clean = oms_price.clean_symbol(symbol)
     wait = WebDriverWait(driver, 6)
 

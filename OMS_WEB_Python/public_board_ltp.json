@@ -3,33 +3,33 @@
     "symbol": "1JANATAMF",
     "company_name": "FIRST JANATA BANK MUTUAL FUND",
     "board": "PUBLIC",
-    "ltp": 1297.0,
+    "ltp": 1217.0,
     "ycp": 1297.0,
     "circuit_up": 1378.0,
     "circuit_down": 1216.0,
     "floor_price": 0.0,
     "open": 1220.0,
     "high": 1297.0,
-    "low": 1220.0,
-    "close": 1297.0,
-    "total_qty": 2401,
-    "last_update": "01/11/2026-03:09:25 PM"
+    "low": 1217.0,
+    "close": 1217.0,
+    "total_qty": 3408,
+    "last_update": "01/11/2026-03:37:53 PM"
   },
   "1STPRIMFMF": {
     "symbol": "1STPRIMFMF",
     "company_name": "PRIME FINANCE 1ST MUTUAL FUND",
     "board": "PUBLIC",
-    "ltp": 308.2,
+    "ltp": 309.0,
     "ycp": 308.2,
     "circuit_up": 335.1,
     "circuit_down": 281.3,
     "floor_price": 0.0,
     "open": 308.2,
-    "high": 308.2,
+    "high": 309.0,
     "low": 288.1,
-    "close": 308.2,
-    "total_qty": 1821,
-    "last_update": "01/11/2026-03:08:47 PM"
+    "close": 309.0,
+    "total_qty": 2452,
+    "last_update": "01/11/2026-03:39:28 PM"
   },
   "AAMRANET": {
     "symbol": "AAMRANET",
@@ -42,10 +42,10 @@
     "floor_price": 0.0,
     "open": 7123.0,
     "high": 7123.1,
-    "low": 7123.0,
+    "low": 7120.0,
     "close": 7123.1,
-    "total_qty": 7982,
-    "last_update": "01/11/2026-03:11:05 PM"
+    "total_qty": 10134,
+    "last_update": "01/11/2026-03:41:01 PM"
   },
   "AAMRATECH": {
     "symbol": "AAMRATECH",
@@ -56,12 +56,12 @@
     "circuit_up": 1423.7,
     "circuit_down": 1256.3,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 1340.0,
+    "high": 1340.0,
+    "low": 1340.0,
+    "close": 1340.0,
+    "total_qty": 1000,
+    "last_update": "01/11/2026-03:42:00 PM"
   },
   "ABB1STMF": {
     "symbol": "ABB1STMF",
@@ -77,39 +77,39 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ABBANK": {
     "symbol": "ABBANK",
     "company_name": "AB BANK LIMITED",
     "board": "PUBLIC",
-    "ltp": 30654.6,
+    "ltp": 31010.9,
     "ycp": 30654.6,
     "circuit_up": 31804.1,
     "circuit_down": 29505.1,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 31010.9,
+    "high": 31010.9,
+    "low": 31010.9,
+    "close": 31010.9,
+    "total_qty": 6,
+    "last_update": "01/11/2026-03:41:11 PM"
   },
   "ACFL": {
     "symbol": "ACFL",
     "company_name": "Aman Cotton Fibrous Limited",
     "board": "PUBLIC",
-    "ltp": 4019.8,
+    "ltp": 4100.2,
     "ycp": 4019.8,
     "circuit_up": 4220.7,
     "circuit_down": 3818.9,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 4100.2,
+    "high": 4100.2,
+    "low": 4100.2,
+    "close": 4100.2,
+    "total_qty": 1,
+    "last_update": "01/11/2026-03:29:50 PM"
   },
   "ACI": {
     "symbol": "ACI",
@@ -125,7 +125,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ACIFORMULA": {
     "symbol": "ACIFORMULA",
@@ -141,29 +141,29 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ACMELAB": {
     "symbol": "ACMELAB",
     "company_name": "The ACME Laboratories Limited",
     "board": "PUBLIC",
-    "ltp": 3200.0,
+    "ltp": 3264.0,
     "ycp": 3200.0,
     "circuit_up": 3360.0,
     "circuit_down": 3040.0,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 3264.0,
+    "high": 3264.0,
+    "low": 3264.0,
+    "close": 3264.0,
+    "total_qty": 2,
+    "last_update": "01/11/2026-03:39:29 PM"
   },
   "ACMEPL": {
     "symbol": "ACMEPL",
     "company_name": "ACME Pesticides Limited",
     "board": "PUBLIC",
-    "ltp": 1700.0,
+    "ltp": 1655.0,
     "ycp": 1700.0,
     "circuit_up": 1806.2,
     "circuit_down": 1593.8,
@@ -173,23 +173,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ACTIVEFINE": {
     "symbol": "ACTIVEFINE",
     "company_name": "ACTIVE FINE CHEMICALS LTD.",
     "board": "PUBLIC",
-    "ltp": 13350.0,
+    "ltp": 13617.0,
     "ycp": 13350.0,
     "circuit_up": 13850.6,
     "circuit_down": 12849.4,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 13617.0,
+    "high": 13617.0,
+    "low": 13617.0,
+    "close": 13617.0,
+    "total_qty": 15,
+    "last_update": "01/11/2026-03:30:12 PM"
   },
   "ADNTEL": {
     "symbol": "ADNTEL",
@@ -204,8 +204,8 @@
     "high": 1784.9,
     "low": 1784.9,
     "close": 1784.9,
-    "total_qty": 181,
-    "last_update": "01/11/2026-02:12:58 PM"
+    "total_qty": 281,
+    "last_update": "01/11/2026-03:19:21 PM"
   },
   "ADVENT": {
     "symbol": "ADVENT",
@@ -221,7 +221,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "AFCAGRO": {
     "symbol": "AFCAGRO",
@@ -237,7 +237,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "AFTABAUTO": {
     "symbol": "AFTABAUTO",
@@ -253,7 +253,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "AGNISYSL": {
     "symbol": "AGNISYSL",
@@ -268,8 +268,8 @@
     "high": 1941.1,
     "low": 1941.1,
     "close": 1941.1,
-    "total_qty": 40,
-    "last_update": "01/11/2026-02:53:54 PM"
+    "total_qty": 42,
+    "last_update": "01/11/2026-03:38:10 PM"
   },
   "AGRANINS": {
     "symbol": "AGRANINS",
@@ -285,7 +285,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "AIBL1STIMF": {
     "symbol": "AIBL1STIMF",
@@ -301,7 +301,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "AIL": {
     "symbol": "AIL",
@@ -317,7 +317,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ALARABANK": {
     "symbol": "ALARABANK",
@@ -333,7 +333,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "AL-HAJTEX": {
     "symbol": "AL-HAJTEX",
@@ -349,7 +349,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ALIF": {
     "symbol": "ALIF",
@@ -365,7 +365,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ALLTEX": {
     "symbol": "ALLTEX",
@@ -413,7 +413,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "AMCL(PRAN)": {
     "symbol": "AMCL(PRAN)",
@@ -429,7 +429,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ANLIMAYARN": {
     "symbol": "ANLIMAYARN",
@@ -445,7 +445,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ANWARGALV": {
     "symbol": "ANWARGALV",
@@ -461,7 +461,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "AOL": {
     "symbol": "AOL",
@@ -477,7 +477,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "APEXFOODS": {
     "symbol": "APEXFOODS",
@@ -493,7 +493,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "APEXFOOT": {
     "symbol": "APEXFOOT",
@@ -509,7 +509,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "APEXSPINN": {
     "symbol": "APEXSPINN",
@@ -525,7 +525,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "APEXTANRY": {
     "symbol": "APEXTANRY",
@@ -541,7 +541,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "APOLOISPAT": {
     "symbol": "APOLOISPAT",
@@ -557,7 +557,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ARAMIT": {
     "symbol": "ARAMIT",
@@ -573,7 +573,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ARAMITCEM": {
     "symbol": "ARAMITCEM",
@@ -589,7 +589,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ARGONDENIM": {
     "symbol": "ARGONDENIM",
@@ -604,8 +604,8 @@
     "high": 228.3,
     "low": 228.3,
     "close": 228.3,
-    "total_qty": 416,
-    "last_update": "01/11/2026-03:02:36 PM"
+    "total_qty": 916,
+    "last_update": "01/11/2026-03:31:27 PM"
   },
   "ASIAINS": {
     "symbol": "ASIAINS",
@@ -621,7 +621,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ASIAPACINS": {
     "symbol": "ASIAPACINS",
@@ -637,23 +637,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ASIATICLAB": {
     "symbol": "ASIATICLAB",
     "company_name": "Asiatic Laboratories Limited",
     "board": "PUBLIC",
-    "ltp": 111.6,
-    "ycp": 111.6,
-    "circuit_up": 122.7,
-    "circuit_down": 100.5,
+    "ltp": 108.0,
+    "ycp": 106.8,
+    "circuit_up": 117.4,
+    "circuit_down": 96.2,
     "floor_price": 0.0,
     "open": 0.0,
     "high": 0.0,
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-08:50:02 AM"
+    "last_update": "29/10/2026-02:08:39 PM"
   },
   "ATCSLGF": {
     "symbol": "ATCSLGF",
@@ -669,7 +669,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ATLASBANG": {
     "symbol": "ATLASBANG",
@@ -685,7 +685,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "AZIZPIPES": {
     "symbol": "AZIZPIPES",
@@ -701,7 +701,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "BANGAS": {
     "symbol": "BANGAS",
@@ -717,7 +717,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "BANKASIA": {
     "symbol": "BANKASIA",
@@ -733,7 +733,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "BARKAPOWER": {
     "symbol": "BARKAPOWER",
@@ -749,29 +749,29 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "BATASHOE": {
     "symbol": "BATASHOE",
     "company_name": "BATA SHOE COMPANY (BANGLADESH) LTD.",
     "board": "PUBLIC",
-    "ltp": 1580.0,
+    "ltp": 1611.6,
     "ycp": 1580.0,
     "circuit_up": 1678.7,
     "circuit_down": 1481.3,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 1611.6,
+    "high": 1611.6,
+    "low": 1611.6,
+    "close": 1611.6,
+    "total_qty": 100,
+    "last_update": "01/11/2026-03:29:30 PM"
   },
   "BATBC": {
     "symbol": "BATBC",
     "company_name": "BRITISH AMERICAN TOBACCO BANGLADESH COMPANY LIMITED",
     "board": "PUBLIC",
-    "ltp": 35455.8,
+    "ltp": 35457.0,
     "ycp": 35455.8,
     "circuit_up": 36785.3,
     "circuit_down": 34126.3,
@@ -781,7 +781,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "BAYLEASING": {
     "symbol": "BAYLEASING",
@@ -797,23 +797,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "BBS": {
     "symbol": "BBS",
     "company_name": "BD BUILDING SYSTEMS LTD.",
     "board": "PUBLIC",
-    "ltp": 300.0,
+    "ltp": 294.0,
     "ycp": 300.0,
     "circuit_up": 326.2,
     "circuit_down": 273.8,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 294.0,
+    "high": 294.0,
+    "low": 294.0,
+    "close": 294.0,
+    "total_qty": 330,
+    "last_update": "01/11/2026-03:30:31 PM"
   },
   "BBSCABLES": {
     "symbol": "BBSCABLES",
@@ -829,23 +829,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "BDAUTOCA": {
     "symbol": "BDAUTOCA",
     "company_name": "BANGLADESH AUTOCARS LIMITED",
     "board": "PUBLIC",
-    "ltp": 385.0,
+    "ltp": 392.7,
     "ycp": 385.0,
     "circuit_up": 418.6,
     "circuit_down": 351.4,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 392.7,
+    "high": 392.7,
+    "low": 392.7,
+    "close": 392.7,
+    "total_qty": 450,
+    "last_update": "01/11/2026-03:25:22 PM"
   },
   "BDCOM": {
     "symbol": "BDCOM",
@@ -877,7 +877,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "BDLAMPS": {
     "symbol": "BDLAMPS",
@@ -893,7 +893,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "BDSERVICE": {
     "symbol": "BDSERVICE",
@@ -909,23 +909,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "BDTHAI": {
     "symbol": "BDTHAI",
     "company_name": "BANGLADESH THAI ALUMINIUM LIMITED",
     "board": "PUBLIC",
-    "ltp": 2309.2,
+    "ltp": 2244.0,
     "ycp": 2309.2,
     "circuit_up": 2424.6,
     "circuit_down": 2193.8,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 2244.0,
+    "high": 2244.0,
+    "low": 2244.0,
+    "close": 2244.0,
+    "total_qty": 22,
+    "last_update": "01/11/2026-03:30:58 PM"
   },
   "BDTHAIFOOD": {
     "symbol": "BDTHAIFOOD",
@@ -941,7 +941,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "BDWELDING": {
     "symbol": "BDWELDING",
@@ -973,7 +973,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "BEACONPHAR": {
     "symbol": "BEACONPHAR",
@@ -989,23 +989,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "BENGALWTL": {
     "symbol": "BENGALWTL",
     "company_name": "BENGAL WINDSOR THERMOPLA. LTD.",
     "board": "PUBLIC",
-    "ltp": 55.0,
+    "ltp": 53.9,
     "ycp": 55.0,
     "circuit_up": 60.5,
     "circuit_down": 49.5,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 53.9,
+    "high": 53.9,
+    "low": 53.9,
+    "close": 53.9,
+    "total_qty": 50000,
+    "last_update": "01/11/2026-03:30:47 PM"
   },
   "BERGERPBL": {
     "symbol": "BERGERPBL",
@@ -1021,23 +1021,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "BESTHLDNG": {
     "symbol": "BESTHLDNG",
     "company_name": "Best Holdings PLC.",
     "board": "PUBLIC",
-    "ltp": 14.3,
-    "ycp": 14.3,
-    "circuit_up": 15.7,
-    "circuit_down": 12.9,
+    "ltp": 13.3,
+    "ycp": 13.5,
+    "circuit_up": 14.8,
+    "circuit_down": 12.2,
     "floor_price": 0.0,
     "open": 0.0,
     "high": 0.0,
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-08:50:02 AM"
+    "last_update": "29/10/2026-02:01:29 PM"
   },
   "BEXIMCO": {
     "symbol": "BEXIMCO",
@@ -1059,17 +1059,17 @@
     "symbol": "BGIC",
     "company_name": "BANGLADESH GENERAL INSURANCE COMPANY LIMITED",
     "board": "PUBLIC",
-    "ltp": 65.0,
+    "ltp": 63.7,
     "ycp": 65.0,
     "circuit_up": 71.5,
     "circuit_down": 58.5,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 63.7,
+    "high": 63.7,
+    "low": 63.7,
+    "close": 63.7,
+    "total_qty": 1034,
+    "last_update": "01/11/2026-03:32:11 PM"
   },
   "BIFC": {
     "symbol": "BIFC",
@@ -1085,39 +1085,39 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
-  "BNICL": {
-    "symbol": "BNICL",
-    "company_name": "Bangladesh National Insurance Company Limited",
+  "BNIPLC": {
+    "symbol": "BNIPLC",
+    "company_name": "BNIPLC",
     "board": "PUBLIC",
-    "ltp": 120.0,
-    "ycp": 120.0,
-    "circuit_up": 132.0,
-    "circuit_down": 108.0,
+    "ltp": 158.2,
+    "ycp": 160.1,
+    "circuit_up": 176.1,
+    "circuit_down": 144.1,
     "floor_price": 0.0,
     "open": 0.0,
     "high": 0.0,
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "29/10/2026-02:00:00 PM"
   },
   "BPML": {
     "symbol": "BPML",
     "company_name": "Bashundhara Paper Mills Limited",
     "board": "PUBLIC",
-    "ltp": 754.0,
+    "ltp": 769.1,
     "ycp": 754.0,
     "circuit_up": 810.5,
     "circuit_down": 697.5,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 769.1,
+    "high": 769.1,
+    "low": 769.1,
+    "close": 769.1,
+    "total_qty": 430,
+    "last_update": "01/11/2026-03:16:32 PM"
   },
   "BPPL": {
     "symbol": "BPPL",
@@ -1132,8 +1132,8 @@
     "high": 294.0,
     "low": 294.0,
     "close": 294.0,
-    "total_qty": 330,
-    "last_update": "01/11/2026-01:13:12 PM"
+    "total_qty": 530,
+    "last_update": "01/11/2026-03:34:58 PM"
   },
   "BRACBANK": {
     "symbol": "BRACBANK",
@@ -1155,33 +1155,33 @@
     "symbol": "BSC",
     "company_name": "BANGLADESH SHIPPING CORPORATION",
     "board": "PUBLIC",
-    "ltp": 14153.9,
+    "ltp": 14437.0,
     "ycp": 14153.9,
     "circuit_up": 14684.6,
     "circuit_down": 13623.2,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 14437.0,
+    "high": 14437.0,
+    "low": 14437.0,
+    "close": 14437.0,
+    "total_qty": 10,
+    "last_update": "01/11/2026-03:29:06 PM"
   },
-  "BSCCL": {
-    "symbol": "BSCCL",
-    "company_name": "BANGLADESH SUBMARINE CABLE CO. LTD.",
+  "BSCPLC": {
+    "symbol": "BSCPLC",
+    "company_name": "BSCPLC",
     "board": "PUBLIC",
-    "ltp": 660.0,
-    "ycp": 660.0,
-    "circuit_up": 709.5,
-    "circuit_down": 610.5,
+    "ltp": 142.5,
+    "ycp": 143.9,
+    "circuit_up": 158.2,
+    "circuit_down": 129.6,
     "floor_price": 0.0,
     "open": 0.0,
     "high": 0.0,
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "29/10/2026-02:00:00 PM"
   },
   "BSRMLTD": {
     "symbol": "BSRMLTD",
@@ -1197,7 +1197,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "BSRMSTEEL": {
     "symbol": "BSRMSTEEL",
@@ -1213,7 +1213,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "BXPHARMA": {
     "symbol": "BXPHARMA",
@@ -1229,7 +1229,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "BXSYNTH": {
     "symbol": "BXSYNTH",
@@ -1245,7 +1245,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-08:50:02 AM"
+    "last_update": "29/10/2026-02:00:01 AM"
   },
   "CAPITECGBF": {
     "symbol": "CAPITECGBF",
@@ -1277,7 +1277,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "CAPMIBBLMF": {
     "symbol": "CAPMIBBLMF",
@@ -1293,7 +1293,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "CENTRALINS": {
     "symbol": "CENTRALINS",
@@ -1325,23 +1325,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "CITYBANK": {
     "symbol": "CITYBANK",
     "company_name": "THE CITY BANK LIMITED",
     "board": "PUBLIC",
-    "ltp": 2000.0,
+    "ltp": 1960.0,
     "ycp": 2000.0,
     "circuit_up": 2125.0,
     "circuit_down": 1875.0,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 1960.0,
+    "high": 1960.0,
+    "low": 1960.0,
+    "close": 1960.0,
+    "total_qty": 41,
+    "last_update": "01/11/2026-03:41:06 PM"
   },
   "CITYGENINS": {
     "symbol": "CITYGENINS",
@@ -1357,7 +1357,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "CLICL": {
     "symbol": "CLICL",
@@ -1373,7 +1373,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "CNATEX": {
     "symbol": "CNATEX",
@@ -1405,7 +1405,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "CONTININS": {
     "symbol": "CONTININS",
@@ -1421,7 +1421,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "COPPERTECH": {
     "symbol": "COPPERTECH",
@@ -1453,7 +1453,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "CRYSTALINS": {
     "symbol": "CRYSTALINS",
@@ -1469,7 +1469,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "CVOPRL": {
     "symbol": "CVOPRL",
@@ -1485,23 +1485,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "DACCADYE": {
     "symbol": "DACCADYE",
     "company_name": "DACCA DYEING & MFG. CO. LTD.",
     "board": "PUBLIC",
-    "ltp": 98.9,
+    "ltp": 100.9,
     "ycp": 98.9,
     "circuit_up": 108.7,
     "circuit_down": 89.1,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 100.9,
+    "high": 100.9,
+    "low": 100.9,
+    "close": 100.9,
+    "total_qty": 10,
+    "last_update": "01/11/2026-03:35:35 PM"
   },
   "DAFODILCOM": {
     "symbol": "DAFODILCOM",
@@ -1517,7 +1517,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "DBH": {
     "symbol": "DBH",
@@ -1533,7 +1533,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "DBH1STMF": {
     "symbol": "DBH1STMF",
@@ -1549,7 +1549,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "DELTALIFE": {
     "symbol": "DELTALIFE",
@@ -1565,7 +1565,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "DELTASPINN": {
     "symbol": "DELTASPINN",
@@ -1597,23 +1597,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "DESHBANDHU": {
     "symbol": "DESHBANDHU",
     "company_name": "DESHBANDHU POLYMER LIMITED",
     "board": "PUBLIC",
-    "ltp": 345.0,
+    "ltp": 351.9,
     "ycp": 345.0,
     "circuit_up": 375.1,
     "circuit_down": 314.9,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 351.9,
+    "high": 351.9,
+    "low": 351.9,
+    "close": 351.9,
+    "total_qty": 100,
+    "last_update": "01/11/2026-03:23:56 PM"
   },
   "DGIC": {
     "symbol": "DGIC",
@@ -1629,7 +1629,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "DHAKABANK": {
     "symbol": "DHAKABANK",
@@ -1645,7 +1645,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "DHAKAINS": {
     "symbol": "DHAKAINS",
@@ -1661,7 +1661,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "DOMINAGE": {
     "symbol": "DOMINAGE",
@@ -1677,7 +1677,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "DOREENPWR": {
     "symbol": "DOREENPWR",
@@ -1693,7 +1693,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "DSHGARME": {
     "symbol": "DSHGARME",
@@ -1709,7 +1709,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "DSSL": {
     "symbol": "DSSL",
@@ -1724,8 +1724,8 @@
     "high": 503.9,
     "low": 503.9,
     "close": 503.9,
-    "total_qty": 450,
-    "last_update": "01/11/2026-03:15:46 PM"
+    "total_qty": 500,
+    "last_update": "01/11/2026-03:32:52 PM"
   },
   "DULAMIACOT": {
     "symbol": "DULAMIACOT",
@@ -1741,7 +1741,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "DUTCHBANGL": {
     "symbol": "DUTCHBANGL",
@@ -1757,7 +1757,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "EASTERNINS": {
     "symbol": "EASTERNINS",
@@ -1773,7 +1773,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "EASTLAND": {
     "symbol": "EASTLAND",
@@ -1789,23 +1789,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "EASTRNLUB": {
     "symbol": "EASTRNLUB",
     "company_name": "EASTERN LUBRICANTS BLENDERS LIMITED",
     "board": "PUBLIC",
-    "ltp": 2095.0,
+    "ltp": 2136.9,
     "ycp": 2095.0,
     "circuit_up": 2199.7,
     "circuit_down": 1990.3,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 2136.9,
+    "high": 2136.9,
+    "low": 2136.9,
+    "close": 2136.9,
+    "total_qty": 100,
+    "last_update": "01/11/2026-03:18:50 PM"
   },
   "EBL": {
     "symbol": "EBL",
@@ -1821,7 +1821,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "EBL1STMF": {
     "symbol": "EBL1STMF",
@@ -1837,7 +1837,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "EBLNRBMF": {
     "symbol": "EBLNRBMF",
@@ -1853,7 +1853,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ECABLES": {
     "symbol": "ECABLES",
@@ -1869,7 +1869,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "EGEN": {
     "symbol": "EGEN",
@@ -1901,13 +1901,13 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "EIL": {
     "symbol": "EIL",
     "company_name": "Express Insurance Limited",
     "board": "PUBLIC",
-    "ltp": 72.0,
+    "ltp": 72.1,
     "ycp": 72.0,
     "circuit_up": 79.2,
     "circuit_down": 64.8,
@@ -1917,7 +1917,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "EMERALDOIL": {
     "symbol": "EMERALDOIL",
@@ -1933,7 +1933,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ENVOYTEX": {
     "symbol": "ENVOYTEX",
@@ -1949,7 +1949,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "EPGL": {
     "symbol": "EPGL",
@@ -1981,7 +1981,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ETL": {
     "symbol": "ETL",
@@ -1996,8 +1996,8 @@
     "high": 255.0,
     "low": 255.0,
     "close": 255.0,
-    "total_qty": 380,
-    "last_update": "01/11/2026-03:15:05 PM"
+    "total_qty": 515,
+    "last_update": "01/11/2026-03:40:31 PM"
   },
   "EXIM1STMF": {
     "symbol": "EXIM1STMF",
@@ -2013,7 +2013,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "EXIMBANK": {
     "symbol": "EXIMBANK",
@@ -2029,7 +2029,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "FAMILYTEX": {
     "symbol": "FAMILYTEX",
@@ -2045,13 +2045,13 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "FARCHEM": {
     "symbol": "FARCHEM",
     "company_name": "FAR CHEMICAL INDUSTRIES LTD.",
     "board": "PUBLIC",
-    "ltp": 77.0,
+    "ltp": 76.3,
     "ycp": 77.0,
     "circuit_up": 84.7,
     "circuit_down": 69.3,
@@ -2061,7 +2061,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "FAREASTFIN": {
     "symbol": "FAREASTFIN",
@@ -2077,7 +2077,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "FAREASTLIF": {
     "symbol": "FAREASTLIF",
@@ -2093,7 +2093,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "FASFIN": {
     "symbol": "FASFIN",
@@ -2109,7 +2109,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "FBFIF": {
     "symbol": "FBFIF",
@@ -2125,7 +2125,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "FEDERALINS": {
     "symbol": "FEDERALINS",
@@ -2141,7 +2141,7 @@
     "low": 51.0,
     "close": 51.0,
     "total_qty": 290,
-    "last_update": "01/11/2026-03:15:29 PM"
+    "last_update": "01/11/2026-03:15:28 PM"
   },
   "FEKDIL": {
     "symbol": "FEKDIL",
@@ -2157,7 +2157,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "FINEFOODS": {
     "symbol": "FINEFOODS",
@@ -2173,7 +2173,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "FIRSTFIN": {
     "symbol": "FIRSTFIN",
@@ -2189,7 +2189,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "FIRSTSBANK": {
     "symbol": "FIRSTSBANK",
@@ -2205,23 +2205,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "FORTUNE": {
     "symbol": "FORTUNE",
     "company_name": "Fortune Shoes Limited",
     "board": "PUBLIC",
-    "ltp": 1670.0,
+    "ltp": 1703.4,
     "ycp": 1670.0,
     "circuit_up": 1774.3,
     "circuit_down": 1565.7,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 1703.4,
+    "high": 1703.4,
+    "low": 1703.4,
+    "close": 1703.4,
+    "total_qty": 430,
+    "last_update": "01/11/2026-03:16:05 PM"
   },
   "FUWANGCER": {
     "symbol": "FUWANGCER",
@@ -2237,7 +2237,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "FUWANGFOOD": {
     "symbol": "FUWANGFOOD",
@@ -2253,7 +2253,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "GBBPOWER": {
     "symbol": "GBBPOWER",
@@ -2269,7 +2269,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "GEMINISEA": {
     "symbol": "GEMINISEA",
@@ -2285,7 +2285,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "GENEXIL": {
     "symbol": "GENEXIL",
@@ -2301,7 +2301,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "GENNEXT": {
     "symbol": "GENNEXT",
@@ -2317,7 +2317,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "GHAIL": {
     "symbol": "GHAIL",
@@ -2333,7 +2333,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "GHCL": {
     "symbol": "GHCL",
@@ -2349,13 +2349,13 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "GIB": {
     "symbol": "GIB",
     "company_name": "Global Islami Bank PLC",
     "board": "PUBLIC",
-    "ltp": 1478.7,
+    "ltp": 1478.1,
     "ycp": 1478.7,
     "circuit_up": 1571.1,
     "circuit_down": 1386.3,
@@ -2365,7 +2365,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "GLDNJMF": {
     "symbol": "GLDNJMF",
@@ -2397,7 +2397,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "GOLDENSON": {
     "symbol": "GOLDENSON",
@@ -2413,7 +2413,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "GP": {
     "symbol": "GP",
@@ -2445,23 +2445,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "GQBALLPEN": {
     "symbol": "GQBALLPEN",
     "company_name": "GQ BALL PEN INDUSTRIES LIMITED",
     "board": "PUBLIC",
-    "ltp": 176.0,
+    "ltp": 179.6,
     "ycp": 176.0,
     "circuit_up": 193.6,
     "circuit_down": 158.4,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 179.6,
+    "high": 179.6,
+    "low": 179.6,
+    "close": 179.6,
+    "total_qty": 20,
+    "last_update": "01/11/2026-03:41:04 PM"
   },
   "GRAMEENS2": {
     "symbol": "GRAMEENS2",
@@ -2477,7 +2477,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "GREENDELMF": {
     "symbol": "GREENDELMF",
@@ -2493,7 +2493,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "GREENDELT": {
     "symbol": "GREENDELT",
@@ -2509,7 +2509,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "GSPFINANCE": {
     "symbol": "GSPFINANCE",
@@ -2525,7 +2525,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "HAKKANIPUL": {
     "symbol": "HAKKANIPUL",
@@ -2541,7 +2541,23 @@
     "low": 181.3,
     "close": 181.3,
     "total_qty": 560,
-    "last_update": "01/11/2026-02:16:56 PM"
+    "last_update": "01/11/2026-02:16:57 PM"
+  },
+  "HAMI": {
+    "symbol": "HAMI",
+    "company_name": "HAMI",
+    "board": "PUBLIC",
+    "ltp": 139.6,
+    "ycp": 139.5,
+    "circuit_up": 153.4,
+    "circuit_down": 125.6,
+    "floor_price": 0.0,
+    "open": 0.0,
+    "high": 0.0,
+    "low": 0.0,
+    "close": 0.0,
+    "total_qty": 0,
+    "last_update": "29/10/2026-02:07:11 PM"
   },
   "HEIDELBCEM": {
     "symbol": "HEIDELBCEM",
@@ -2557,7 +2573,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "HFL": {
     "symbol": "HFL",
@@ -2573,7 +2589,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "HRTEX": {
     "symbol": "HRTEX",
@@ -2589,7 +2605,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "HWAWELLTEX": {
     "symbol": "HWAWELLTEX",
@@ -2605,7 +2621,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "IBNSINA": {
     "symbol": "IBNSINA",
@@ -2621,7 +2637,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "IBP": {
     "symbol": "IBP",
@@ -2637,7 +2653,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ICB": {
     "symbol": "ICB",
@@ -2653,7 +2669,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ICB3RDNRB": {
     "symbol": "ICB3RDNRB",
@@ -2669,23 +2685,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ICBAGRANI1": {
     "symbol": "ICBAGRANI1",
     "company_name": "ICB AMCL First Agrani Bank Mutual Fund",
     "board": "PUBLIC",
-    "ltp": 9.8,
+    "ltp": 10.0,
     "ycp": 9.8,
     "circuit_up": 10.7,
     "circuit_down": 8.9,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 10.0,
+    "high": 10.0,
+    "low": 10.0,
+    "close": 10.0,
+    "total_qty": 760,
+    "last_update": "01/11/2026-03:24:53 PM"
   },
   "ICBAMCL2ND": {
     "symbol": "ICBAMCL2ND",
@@ -2701,7 +2717,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ICBEPMF1S1": {
     "symbol": "ICBEPMF1S1",
@@ -2717,7 +2733,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ICBIBANK": {
     "symbol": "ICBIBANK",
@@ -2733,23 +2749,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ICBSONALI1": {
     "symbol": "ICBSONALI1",
     "company_name": "ICB AMCL SONALI BANK LTD 1STMF",
     "board": "PUBLIC",
-    "ltp": 15.6,
+    "ltp": 16.0,
     "ycp": 15.6,
     "circuit_up": 17.1,
     "circuit_down": 14.1,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 16.0,
+    "high": 16.0,
+    "low": 16.0,
+    "close": 16.0,
+    "total_qty": 750,
+    "last_update": "01/11/2026-03:30:59 PM"
   },
   "ICICL": {
     "symbol": "ICICL",
@@ -2765,7 +2781,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "IDLC": {
     "symbol": "IDLC",
@@ -2781,7 +2797,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "IFADAUTOS": {
     "symbol": "IFADAUTOS",
@@ -2797,7 +2813,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "IFIC": {
     "symbol": "IFIC",
@@ -2813,7 +2829,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "IFIC1STMF": {
     "symbol": "IFIC1STMF",
@@ -2829,7 +2845,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "IFILISLMF1": {
     "symbol": "IFILISLMF1",
@@ -2845,7 +2861,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ILFSL": {
     "symbol": "ILFSL",
@@ -2861,7 +2877,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "IMAMBUTTON": {
     "symbol": "IMAMBUTTON",
@@ -2877,7 +2893,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "INDEXAGRO": {
     "symbol": "INDEXAGRO",
@@ -2893,7 +2909,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "INTECH": {
     "symbol": "INTECH",
@@ -2925,7 +2941,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "IPDC": {
     "symbol": "IPDC",
@@ -2941,7 +2957,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ISLAMIBANK": {
     "symbol": "ISLAMIBANK",
@@ -2957,7 +2973,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ISLAMICFIN": {
     "symbol": "ISLAMICFIN",
@@ -2973,7 +2989,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ISLAMIINS": {
     "symbol": "ISLAMIINS",
@@ -2989,7 +3005,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ISNLTD": {
     "symbol": "ISNLTD",
@@ -3005,7 +3021,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ITC": {
     "symbol": "ITC",
@@ -3037,7 +3053,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "JAMUNAOIL": {
     "symbol": "JAMUNAOIL",
@@ -3053,13 +3069,13 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "JANATAINS": {
     "symbol": "JANATAINS",
     "company_name": "JANATA INSURANCE COMPANY LIMITED",
     "board": "PUBLIC",
-    "ltp": 113.0,
+    "ltp": 112.9,
     "ycp": 113.0,
     "circuit_up": 124.3,
     "circuit_down": 101.7,
@@ -3069,7 +3085,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "JHRML": {
     "symbol": "JHRML",
@@ -3085,7 +3101,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "JMISMDL": {
     "symbol": "JMISMDL",
@@ -3101,7 +3117,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "JUTESPINN": {
     "symbol": "JUTESPINN",
@@ -3117,23 +3133,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "KARNAPHULI": {
     "symbol": "KARNAPHULI",
     "company_name": "KARNAPHULI INSURANCE COMPANY LIMITED",
     "board": "PUBLIC",
-    "ltp": 64.8,
+    "ltp": 66.1,
     "ycp": 64.8,
     "circuit_up": 71.2,
     "circuit_down": 58.4,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 66.1,
+    "high": 66.1,
+    "low": 66.1,
+    "close": 66.1,
+    "total_qty": 50,
+    "last_update": "01/11/2026-03:42:57 PM"
   },
   "KAY&QUE": {
     "symbol": "KAY&QUE",
@@ -3149,7 +3165,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "KBPPWBIL": {
     "symbol": "KBPPWBIL",
@@ -3181,7 +3197,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "KEYACOSMET": {
     "symbol": "KEYACOSMET",
@@ -3197,7 +3213,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "KOHINOOR": {
     "symbol": "KOHINOOR",
@@ -3213,7 +3229,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "KPCL": {
     "symbol": "KPCL",
@@ -3229,7 +3245,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "KPPL": {
     "symbol": "KPPL",
@@ -3245,7 +3261,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "KTL": {
     "symbol": "KTL",
@@ -3261,7 +3277,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "LANKABAFIN": {
     "symbol": "LANKABAFIN",
@@ -3293,23 +3309,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
-  "LHBL": {
-    "symbol": "LHBL",
-    "company_name": "LafargeHolcim Bangladesh Limited",
+  "LHB": {
+    "symbol": "LHB",
+    "company_name": "LHB",
     "board": "PUBLIC",
-    "ltp": 1244.4,
-    "ycp": 1220.0,
-    "circuit_up": 1296.2,
-    "circuit_down": 1143.8,
+    "ltp": 48.7,
+    "ycp": 49.2,
+    "circuit_up": 54.1,
+    "circuit_down": 44.3,
     "floor_price": 0.0,
-    "open": 1244.4,
-    "high": 1244.4,
-    "low": 1244.4,
-    "close": 1244.4,
-    "total_qty": 10,
-    "last_update": "01/11/2026-03:11:30 PM"
+    "open": 0.0,
+    "high": 0.0,
+    "low": 0.0,
+    "close": 0.0,
+    "total_qty": 0,
+    "last_update": "29/10/2026-02:09:58 PM"
   },
   "LIBRAINFU": {
     "symbol": "LIBRAINFU",
@@ -3331,33 +3347,33 @@
     "symbol": "LINDEBD",
     "company_name": "LINDE BANGLADESH LIMITED",
     "board": "PUBLIC",
-    "ltp": 2620.0,
+    "ltp": 2672.4,
     "ycp": 2620.0,
     "circuit_up": 2751.0,
     "circuit_down": 2489.0,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 2672.4,
+    "high": 2672.4,
+    "low": 2672.4,
+    "close": 2672.4,
+    "total_qty": 100,
+    "last_update": "01/11/2026-03:31:18 PM"
   },
   "LOVELLO": {
     "symbol": "LOVELLO",
     "company_name": "Taufika Foods and Lovello Ice-cream PLC",
     "board": "PUBLIC",
-    "ltp": 200.0,
+    "ltp": 204.0,
     "ycp": 200.0,
     "circuit_up": 217.5,
     "circuit_down": 182.5,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 204.0,
+    "high": 204.0,
+    "low": 204.0,
+    "close": 204.0,
+    "total_qty": 50,
+    "last_update": "01/11/2026-03:28:22 PM"
   },
   "LRBDL": {
     "symbol": "LRBDL",
@@ -3373,7 +3389,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "LRGLOBMF1": {
     "symbol": "LRGLOBMF1",
@@ -3389,7 +3405,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
+  },
+  "MAGURAPLEX": {
+    "symbol": "MAGURAPLEX",
+    "company_name": "MAGURAPLEX",
+    "board": "PUBLIC",
+    "ltp": 73.9,
+    "ycp": 76.0,
+    "circuit_up": 83.6,
+    "circuit_down": 68.4,
+    "floor_price": 0.0,
+    "open": 0.0,
+    "high": 0.0,
+    "low": 0.0,
+    "close": 0.0,
+    "total_qty": 0,
+    "last_update": "29/10/2026-02:09:21 PM"
   },
   "MAKSONSPIN": {
     "symbol": "MAKSONSPIN",
@@ -3405,7 +3437,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MALEKSPIN": {
     "symbol": "MALEKSPIN",
@@ -3421,7 +3453,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MARICO": {
     "symbol": "MARICO",
@@ -3437,7 +3469,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MATINSPINN": {
     "symbol": "MATINSPINN",
@@ -3453,7 +3485,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MBL1STMF": {
     "symbol": "MBL1STMF",
@@ -3469,7 +3501,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MEGCONMILK": {
     "symbol": "MEGCONMILK",
@@ -3485,7 +3517,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MEGHNACEM": {
     "symbol": "MEGHNACEM",
@@ -3501,7 +3533,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MEGHNAINS": {
     "symbol": "MEGHNAINS",
@@ -3517,7 +3549,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MEGHNALIFE": {
     "symbol": "MEGHNALIFE",
@@ -3533,7 +3565,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MEGHNAPET": {
     "symbol": "MEGHNAPET",
@@ -3549,7 +3581,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MERCANBANK": {
     "symbol": "MERCANBANK",
@@ -3565,7 +3597,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MERCINS": {
     "symbol": "MERCINS",
@@ -3597,7 +3629,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MHSML": {
     "symbol": "MHSML",
@@ -3629,7 +3661,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MIDLANDBNK": {
     "symbol": "MIDLANDBNK",
@@ -3645,7 +3677,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MIRACLEIND": {
     "symbol": "MIRACLEIND",
@@ -3661,7 +3693,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MIRAKHTER": {
     "symbol": "MIRAKHTER",
@@ -3677,7 +3709,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MITHUNKNIT": {
     "symbol": "MITHUNKNIT",
@@ -3693,7 +3725,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MJLBD": {
     "symbol": "MJLBD",
@@ -3709,7 +3741,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MLDYEING": {
     "symbol": "MLDYEING",
@@ -3724,24 +3756,24 @@
     "high": 138.6,
     "low": 133.0,
     "close": 133.0,
-    "total_qty": 3246,
-    "last_update": "01/11/2026-03:01:12 PM"
+    "total_qty": 5410,
+    "last_update": "01/11/2026-03:31:47 PM"
   },
   "MONNOAGML": {
     "symbol": "MONNOAGML",
     "company_name": "Monno Agro & General Machinery Limited",
     "board": "PUBLIC",
-    "ltp": 1432.0,
+    "ltp": 1460.7,
     "ycp": 1432.0,
     "circuit_up": 1521.5,
     "circuit_down": 1342.5,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 1460.7,
+    "high": 1460.7,
+    "low": 1460.7,
+    "close": 1460.7,
+    "total_qty": 50,
+    "last_update": "01/11/2026-03:27:32 PM"
   },
   "MONNOCERA": {
     "symbol": "MONNOCERA",
@@ -3757,7 +3789,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MONNOFABR": {
     "symbol": "MONNOFABR",
@@ -3773,7 +3805,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MONOSPOOL": {
     "symbol": "MONOSPOOL",
@@ -3789,7 +3821,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MPETROLEUM": {
     "symbol": "MPETROLEUM",
@@ -3805,7 +3837,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "MTB": {
     "symbol": "MTB",
@@ -3821,7 +3853,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "NAHEEACP": {
     "symbol": "NAHEEACP",
@@ -3837,7 +3869,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "NATLIFEINS": {
     "symbol": "NATLIFEINS",
@@ -3853,23 +3885,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "NAVANACNG": {
     "symbol": "NAVANACNG",
     "company_name": "NAVANA CNG LIMITED",
     "board": "PUBLIC",
-    "ltp": 116.0,
+    "ltp": 118.4,
     "ycp": 116.0,
     "circuit_up": 127.6,
     "circuit_down": 104.4,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 118.4,
+    "high": 118.4,
+    "low": 118.4,
+    "close": 118.4,
+    "total_qty": 280,
+    "last_update": "01/11/2026-03:16:55 PM"
   },
   "NAVANAPHAR": {
     "symbol": "NAVANAPHAR",
@@ -3885,7 +3917,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "NBL": {
     "symbol": "NBL",
@@ -3901,7 +3933,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "NCCBANK": {
     "symbol": "NCCBANK",
@@ -3917,7 +3949,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "NCCBLMF1": {
     "symbol": "NCCBLMF1",
@@ -3933,7 +3965,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "NEWLINE": {
     "symbol": "NEWLINE",
@@ -3949,7 +3981,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "NFML": {
     "symbol": "NFML",
@@ -3981,7 +4013,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "NITOLINS": {
     "symbol": "NITOLINS",
@@ -3997,7 +4029,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "NLI1STMF": {
     "symbol": "NLI1STMF",
@@ -4013,7 +4045,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-08:50:02 AM"
+    "last_update": "29/10/2026-02:00:01 AM"
   },
   "NORTHERN": {
     "symbol": "NORTHERN",
@@ -4029,7 +4061,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "NORTHRNINS": {
     "symbol": "NORTHRNINS",
@@ -4061,23 +4093,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "NRBBANK": {
     "symbol": "NRBBANK",
     "company_name": "NRB Bank PLC.",
     "board": "PUBLIC",
     "ltp": 6.7,
-    "ycp": 6.7,
-    "circuit_up": 7.3,
-    "circuit_down": 6.1,
+    "ycp": 6.8,
+    "circuit_up": 7.4,
+    "circuit_down": 6.2,
     "floor_price": 0.0,
     "open": 0.0,
     "high": 0.0,
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-08:50:02 AM"
+    "last_update": "29/10/2026-02:05:43 PM"
   },
   "NRBCBANK": {
     "symbol": "NRBCBANK",
@@ -4093,7 +4125,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "NTC": {
     "symbol": "NTC",
@@ -4109,7 +4141,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "NTLTUBES": {
     "symbol": "NTLTUBES",
@@ -4125,7 +4157,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "NURANI": {
     "symbol": "NURANI",
@@ -4141,7 +4173,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "OAL": {
     "symbol": "OAL",
@@ -4157,7 +4189,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "OIMEX": {
     "symbol": "OIMEX",
@@ -4173,7 +4205,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "OLYMPIC": {
     "symbol": "OLYMPIC",
@@ -4189,7 +4221,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ONEBANKLTD": {
     "symbol": "ONEBANKLTD",
@@ -4205,7 +4237,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
+  },
+  "ONEBANKPLC": {
+    "symbol": "ONEBANKPLC",
+    "company_name": "ONEBANKPLC",
+    "board": "PUBLIC",
+    "ltp": 7.0,
+    "ycp": 7.0,
+    "circuit_up": 7.7,
+    "circuit_down": 6.3,
+    "floor_price": 0.0,
+    "open": 0.0,
+    "high": 0.0,
+    "low": 0.0,
+    "close": 0.0,
+    "total_qty": 0,
+    "last_update": "29/10/2026-02:08:37 PM"
   },
   "ORIONINFU": {
     "symbol": "ORIONINFU",
@@ -4221,7 +4269,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ORIONPHARM": {
     "symbol": "ORIONPHARM",
@@ -4253,7 +4301,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PADMAOIL": {
     "symbol": "PADMAOIL",
@@ -4269,39 +4317,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
-  },
-  "PAPERPROC": {
-    "symbol": "PAPERPROC",
-    "company_name": "Paper Processing & Packaging Limited",
-    "board": "PUBLIC",
-    "ltp": 25.0,
-    "ycp": 25.0,
-    "circuit_up": 27.5,
-    "circuit_down": 22.5,
-    "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PARAMOUNT": {
     "symbol": "PARAMOUNT",
     "company_name": "PARAMOUNT INSURANCE CO. LTD.",
     "board": "PUBLIC",
-    "ltp": 110.0,
+    "ltp": 112.2,
     "ycp": 110.0,
     "circuit_up": 121.0,
     "circuit_down": 99.0,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 112.2,
+    "high": 112.2,
+    "low": 112.2,
+    "close": 112.2,
+    "total_qty": 300,
+    "last_update": "01/11/2026-03:32:31 PM"
   },
   "PDL": {
     "symbol": "PDL",
@@ -4317,7 +4349,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PENINSULA": {
     "symbol": "PENINSULA",
@@ -4333,7 +4365,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PEOPLESINS": {
     "symbol": "PEOPLESINS",
@@ -4349,23 +4381,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PF1STMF": {
     "symbol": "PF1STMF",
     "company_name": "PHOENIX FINANCE 1ST MUTUAL FUND",
     "board": "PUBLIC",
-    "ltp": 8.2,
+    "ltp": 8.3,
     "ycp": 8.0,
     "circuit_up": 8.8,
     "circuit_down": 7.2,
     "floor_price": 0.0,
     "open": 8.2,
-    "high": 8.2,
+    "high": 8.3,
     "low": 8.2,
-    "close": 8.2,
-    "total_qty": 750,
-    "last_update": "01/11/2026-02:52:57 PM"
+    "close": 8.3,
+    "total_qty": 2750,
+    "last_update": "01/11/2026-03:21:40 PM"
   },
   "PHARMAID": {
     "symbol": "PHARMAID",
@@ -4381,7 +4413,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PHENIXINS": {
     "symbol": "PHENIXINS",
@@ -4397,7 +4429,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PHOENIXFIN": {
     "symbol": "PHOENIXFIN",
@@ -4413,7 +4445,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PHPMF1": {
     "symbol": "PHPMF1",
@@ -4429,7 +4461,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PIONEERINS": {
     "symbol": "PIONEERINS",
@@ -4445,7 +4477,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PLFSL": {
     "symbol": "PLFSL",
@@ -4461,7 +4493,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "POPULAR1MF": {
     "symbol": "POPULAR1MF",
@@ -4477,7 +4509,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "POPULARLIF": {
     "symbol": "POPULARLIF",
@@ -4493,7 +4525,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "POWERGRID": {
     "symbol": "POWERGRID",
@@ -4509,7 +4541,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PRAGATIINS": {
     "symbol": "PRAGATIINS",
@@ -4525,7 +4557,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PRAGATILIF": {
     "symbol": "PRAGATILIF",
@@ -4541,7 +4573,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PREMIERBAN": {
     "symbol": "PREMIERBAN",
@@ -4557,7 +4589,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PREMIERCEM": {
     "symbol": "PREMIERCEM",
@@ -4573,7 +4605,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PREMIERLEA": {
     "symbol": "PREMIERLEA",
@@ -4605,7 +4637,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PRIMEBANK": {
     "symbol": "PRIMEBANK",
@@ -4621,7 +4653,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PRIMEFIN": {
     "symbol": "PRIMEFIN",
@@ -4637,7 +4669,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PRIMEINSUR": {
     "symbol": "PRIMEINSUR",
@@ -4653,7 +4685,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PRIMELIFE": {
     "symbol": "PRIMELIFE",
@@ -4669,7 +4701,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PRIMETEX": {
     "symbol": "PRIMETEX",
@@ -4685,7 +4717,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PROGRESLIF": {
     "symbol": "PROGRESLIF",
@@ -4701,7 +4733,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PROVATIINS": {
     "symbol": "PROVATIINS",
@@ -4717,13 +4749,13 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PTL": {
     "symbol": "PTL",
     "company_name": "Paramount Textile PLC.",
     "board": "PUBLIC",
-    "ltp": 821.0,
+    "ltp": 887.0,
     "ycp": 821.0,
     "circuit_up": 882.5,
     "circuit_down": 759.5,
@@ -4733,7 +4765,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PUBALIBANK": {
     "symbol": "PUBALIBANK",
@@ -4749,23 +4781,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "PURABIGEN": {
     "symbol": "PURABIGEN",
     "company_name": "PURABI GENERAL INSURANCE COMPANY LIMITED",
     "board": "PUBLIC",
-    "ltp": 55.0,
+    "ltp": 53.9,
     "ycp": 55.0,
     "circuit_up": 60.5,
     "circuit_down": 49.5,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "open": 56.1,
+    "high": 56.1,
+    "low": 53.9,
+    "close": 53.9,
+    "total_qty": 2150,
+    "last_update": "01/11/2026-03:36:34 PM"
   },
   "QUASEMIND": {
     "symbol": "QUASEMIND",
@@ -4781,7 +4813,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:32 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "QUEENSOUTH": {
     "symbol": "QUEENSOUTH",
@@ -4813,7 +4845,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "RAHIMTEXT": {
     "symbol": "RAHIMTEXT",
@@ -4829,7 +4861,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "RAKCERAMIC": {
     "symbol": "RAKCERAMIC",
@@ -4845,7 +4877,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "RANFOUNDRY": {
     "symbol": "RANFOUNDRY",
@@ -4861,7 +4893,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "RDFOOD": {
     "symbol": "RDFOOD",
@@ -4877,7 +4909,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "RECKITTBEN": {
     "symbol": "RECKITTBEN",
@@ -4893,7 +4925,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "REGENTTEX": {
     "symbol": "REGENTTEX",
@@ -4909,7 +4941,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "RELIANCE1": {
     "symbol": "RELIANCE1",
@@ -4925,23 +4957,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "RELIANCINS": {
     "symbol": "RELIANCINS",
     "company_name": "RELIANCE INSURANCE LIMITED",
     "board": "PUBLIC",
-    "ltp": 71.0,
+    "ltp": 69.5,
     "ycp": 71.0,
     "circuit_up": 78.1,
     "circuit_down": 63.9,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "open": 69.5,
+    "high": 69.5,
+    "low": 69.5,
+    "close": 69.5,
+    "total_qty": 500,
+    "last_update": "01/11/2026-03:32:25 PM"
   },
   "RENATA": {
     "symbol": "RENATA",
@@ -4957,7 +4989,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "RENWICKJA": {
     "symbol": "RENWICKJA",
@@ -4973,7 +5005,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "REPUBLIC": {
     "symbol": "REPUBLIC",
@@ -4989,7 +5021,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "RINGSHINE": {
     "symbol": "RINGSHINE",
@@ -5005,23 +5037,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
-  },
-  "RNSPIN": {
-    "symbol": "RNSPIN",
-    "company_name": "R. N. SPINNING MILLS LTD.",
-    "board": "PUBLIC",
-    "ltp": 15.4,
-    "ycp": 15.4,
-    "circuit_up": 16.9,
-    "circuit_down": 13.9,
-    "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "ROBI": {
     "symbol": "ROBI",
@@ -5037,7 +5053,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "RSRMSTEEL": {
     "symbol": "RSRMSTEEL",
@@ -5053,7 +5069,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "RUNNERAUTO": {
     "symbol": "RUNNERAUTO",
@@ -5069,7 +5085,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "RUPALIBANK": {
     "symbol": "RUPALIBANK",
@@ -5085,7 +5101,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "RUPALIINS": {
     "symbol": "RUPALIINS",
@@ -5101,7 +5117,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "RUPALILIFE": {
     "symbol": "RUPALILIFE",
@@ -5133,7 +5149,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SAIFPOWER": {
     "symbol": "SAIFPOWER",
@@ -5149,7 +5165,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SAIHAMCOT": {
     "symbol": "SAIHAMCOT",
@@ -5187,33 +5203,33 @@
     "symbol": "SALAMCRST",
     "company_name": "S. ALAM COLD ROLLED STEELS LTD.",
     "board": "PUBLIC",
-    "ltp": 32.0,
+    "ltp": 32.7,
     "ycp": 32.0,
     "circuit_up": 35.2,
     "circuit_down": 28.8,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "open": 32.7,
+    "high": 32.7,
+    "low": 32.7,
+    "close": 32.7,
+    "total_qty": 350,
+    "last_update": "01/11/2026-03:19:54 PM"
   },
-  "SALVOCHEM": {
-    "symbol": "SALVOCHEM",
-    "company_name": "SALVO CHEMICAL INDUSTRY LIMITED",
+  "SALVO": {
+    "symbol": "SALVO",
+    "company_name": "SALVO",
     "board": "PUBLIC",
-    "ltp": 163.9,
-    "ycp": 163.9,
-    "circuit_up": 180.2,
-    "circuit_down": 147.6,
+    "ltp": 28.2,
+    "ycp": 28.1,
+    "circuit_up": 30.9,
+    "circuit_down": 25.3,
     "floor_price": 0.0,
     "open": 0.0,
     "high": 0.0,
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "29/10/2026-02:06:23 PM"
   },
   "SAMATALETH": {
     "symbol": "SAMATALETH",
@@ -5229,7 +5245,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SAMORITA": {
     "symbol": "SAMORITA",
@@ -5261,7 +5277,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SAPORTL": {
     "symbol": "SAPORTL",
@@ -5293,7 +5309,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SBACBANK": {
     "symbol": "SBACBANK",
@@ -5309,39 +5325,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SEAPEARL": {
     "symbol": "SEAPEARL",
     "company_name": "Sea Pearl Beach Resort & Spa Limited",
     "board": "PUBLIC",
-    "ltp": 1535.0,
+    "ltp": 1565.7,
     "ycp": 1535.0,
     "circuit_up": 1630.9,
     "circuit_down": 1439.1,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
-  },
-  "SEBL1STMF": {
-    "symbol": "SEBL1STMF",
-    "company_name": "SOUTHEAST BANK 1ST MUTUAL FUND",
-    "board": "PUBLIC",
-    "ltp": 10.2,
-    "ycp": 10.2,
-    "circuit_up": 11.2,
-    "circuit_down": 9.2,
-    "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "open": 1565.7,
+    "high": 1565.7,
+    "low": 1565.7,
+    "close": 1565.7,
+    "total_qty": 2,
+    "last_update": "01/11/2026-03:42:21 PM"
   },
   "SEMLFBSLGF": {
     "symbol": "SEMLFBSLGF",
@@ -5357,7 +5357,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SEMLIBBLSF": {
     "symbol": "SEMLIBBLSF",
@@ -5373,7 +5373,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SEMLLECMF": {
     "symbol": "SEMLLECMF",
@@ -5389,7 +5389,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SHAHJABANK": {
     "symbol": "SHAHJABANK",
@@ -5407,6 +5407,22 @@
     "total_qty": 420,
     "last_update": "01/11/2026-03:05:41 PM"
   },
+  "SHARPIND": {
+    "symbol": "SHARPIND",
+    "company_name": "SHARPIND",
+    "board": "PUBLIC",
+    "ltp": 10.9,
+    "ycp": 11.3,
+    "circuit_up": 12.4,
+    "circuit_down": 10.2,
+    "floor_price": 0.0,
+    "open": 0.0,
+    "high": 0.0,
+    "low": 0.0,
+    "close": 0.0,
+    "total_qty": 0,
+    "last_update": "29/10/2026-02:09:40 PM"
+  },
   "SHASHADNIM": {
     "symbol": "SHASHADNIM",
     "company_name": "SHASHA DENIMS LIMITED",
@@ -5421,7 +5437,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SHEPHERD": {
     "symbol": "SHEPHERD",
@@ -5453,7 +5469,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SHYAMPSUG": {
     "symbol": "SHYAMPSUG",
@@ -5469,7 +5485,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SIBL": {
     "symbol": "SIBL",
@@ -5485,23 +5501,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SICL": {
     "symbol": "SICL",
-    "company_name": "Sikder Insurance Company Limited",
+    "company_name": "SIKDER INSURANCE PLC.",
     "board": "PUBLIC",
-    "ltp": 39.0,
-    "ycp": 39.0,
-    "circuit_up": 42.9,
-    "circuit_down": 35.1,
+    "ltp": 32.3,
+    "ycp": 30.5,
+    "circuit_up": 33.5,
+    "circuit_down": 27.5,
     "floor_price": 0.0,
     "open": 0.0,
     "high": 0.0,
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-08:50:02 AM"
+    "last_update": "29/10/2026-02:02:15 PM"
   },
   "SILCOPHL": {
     "symbol": "SILCOPHL",
@@ -5517,7 +5533,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SILVAPHL": {
     "symbol": "SILVAPHL",
@@ -5533,7 +5549,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SIMTEX": {
     "symbol": "SIMTEX",
@@ -5565,7 +5581,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SINOBANGLA": {
     "symbol": "SINOBANGLA",
@@ -5583,6 +5599,22 @@
     "total_qty": 520,
     "last_update": "01/11/2026-03:06:17 PM"
   },
+  "SIPLC": {
+    "symbol": "SIPLC",
+    "company_name": "SIPLC",
+    "board": "PUBLIC",
+    "ltp": 133.1,
+    "ycp": 132.4,
+    "circuit_up": 145.6,
+    "circuit_down": 119.2,
+    "floor_price": 0.0,
+    "open": 0.0,
+    "high": 0.0,
+    "low": 0.0,
+    "close": 0.0,
+    "total_qty": 0,
+    "last_update": "29/10/2026-02:03:21 PM"
+  },
   "SKICL": {
     "symbol": "SKICL",
     "company_name": "Sena Kalyan Insurance Company  Limited",
@@ -5597,7 +5629,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SKTRIMS": {
     "symbol": "SKTRIMS",
@@ -5613,23 +5645,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SONALIANSH": {
     "symbol": "SONALIANSH",
     "company_name": "SONALI AANSH INDUSTRIES LIMITED",
     "board": "PUBLIC",
-    "ltp": 1300.0,
+    "ltp": 1326.0,
     "ycp": 1300.0,
     "circuit_up": 1381.2,
     "circuit_down": 1218.8,
     "floor_price": 0.0,
     "open": 1300.0,
-    "high": 1300.0,
+    "high": 1326.0,
     "low": 1300.0,
-    "close": 1300.0,
-    "total_qty": 10,
-    "last_update": "01/11/2026-12:26:13 PM"
+    "close": 1326.0,
+    "total_qty": 60,
+    "last_update": "01/11/2026-03:19:26 PM"
   },
   "SONALILIFE": {
     "symbol": "SONALILIFE",
@@ -5645,7 +5677,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SONALIPAPR": {
     "symbol": "SONALIPAPR",
@@ -5661,7 +5693,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SONARBAINS": {
     "symbol": "SONARBAINS",
@@ -5693,7 +5725,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SOUTHEASTB": {
     "symbol": "SOUTHEASTB",
@@ -5709,23 +5741,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SPCERAMICS": {
     "symbol": "SPCERAMICS",
     "company_name": "SHINEPUKUR CERAMICS LIMITED",
     "board": "PUBLIC",
-    "ltp": 278.0,
+    "ltp": 283.6,
     "ycp": 278.0,
     "circuit_up": 302.3,
     "circuit_down": 253.7,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "open": 283.6,
+    "high": 283.6,
+    "low": 283.6,
+    "close": 283.6,
+    "total_qty": 280,
+    "last_update": "01/11/2026-03:17:19 PM"
   },
   "SPCL": {
     "symbol": "SPCL",
@@ -5741,7 +5773,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SQUARETEXT": {
     "symbol": "SQUARETEXT",
@@ -5756,8 +5788,8 @@
     "high": 355.6,
     "low": 355.6,
     "close": 355.6,
-    "total_qty": 100,
-    "last_update": "01/11/2026-03:03:28 PM"
+    "total_qty": 110,
+    "last_update": "01/11/2026-03:32:05 PM"
   },
   "SQURPHARMA": {
     "symbol": "SQURPHARMA",
@@ -5773,7 +5805,7 @@
     "low": 6400.0,
     "close": 6400.0,
     "total_qty": 2,
-    "last_update": "01/11/2026-11:25:16 AM"
+    "last_update": "01/11/2026-11:25:15 AM"
   },
   "SSSTEEL": {
     "symbol": "SSSTEEL",
@@ -5789,7 +5821,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "STANCERAM": {
     "symbol": "STANCERAM",
@@ -5805,7 +5837,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "STANDARINS": {
     "symbol": "STANDARINS",
@@ -5821,7 +5853,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "STANDBANKL": {
     "symbol": "STANDBANKL",
@@ -5837,7 +5869,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "STYLECRAFT": {
     "symbol": "STYLECRAFT",
@@ -5853,7 +5885,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SUMITPOWER": {
     "symbol": "SUMITPOWER",
@@ -5869,7 +5901,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "SUNLIFEINS": {
     "symbol": "SUNLIFEINS",
@@ -5885,7 +5917,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "TAKAFULINS": {
     "symbol": "TAKAFULINS",
@@ -5901,7 +5933,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "TALLUSPIN": {
     "symbol": "TALLUSPIN",
@@ -5917,7 +5949,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "TAMIJTEX": {
     "symbol": "TAMIJTEX",
@@ -5933,39 +5965,39 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "TECHNODRUG": {
     "symbol": "TECHNODRUG",
     "company_name": "Techno Drugs Ltd.",
     "board": "PUBLIC",
-    "ltp": 43.3,
-    "ycp": 43.3,
-    "circuit_up": 47.6,
-    "circuit_down": 39.0,
+    "ltp": 34.5,
+    "ycp": 33.5,
+    "circuit_up": 0.0,
+    "circuit_down": 0.0,
     "floor_price": 0.0,
     "open": 0.0,
     "high": 0.0,
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-08:50:02 AM"
+    "last_update": "29/10/2026-02:09:35 PM"
   },
   "TILIL": {
     "symbol": "TILIL",
     "company_name": "Trust Islami Life Insurance Limited",
     "board": "PUBLIC",
-    "ltp": 33.2,
+    "ltp": 32.5,
     "ycp": 33.2,
     "circuit_up": 36.5,
     "circuit_down": 29.9,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "open": 32.5,
+    "high": 32.5,
+    "low": 32.5,
+    "close": 32.5,
+    "total_qty": 3220,
+    "last_update": "01/11/2026-03:36:57 PM"
   },
   "TITASGAS": {
     "symbol": "TITASGAS",
@@ -5981,7 +6013,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "TOSRIFA": {
     "symbol": "TOSRIFA",
@@ -5996,8 +6028,8 @@
     "high": 22.5,
     "low": 21.5,
     "close": 21.6,
-    "total_qty": 2977,
-    "last_update": "01/11/2026-03:14:45 PM"
+    "total_qty": 6977,
+    "last_update": "01/11/2026-03:34:02 PM"
   },
   "TRUSTB1MF": {
     "symbol": "TRUSTB1MF",
@@ -6013,7 +6045,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "TRUSTBANK": {
     "symbol": "TRUSTBANK",
@@ -6029,7 +6061,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "TUNGHAI": {
     "symbol": "TUNGHAI",
@@ -6045,7 +6077,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "UCB": {
     "symbol": "UCB",
@@ -6077,7 +6109,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "UNIONBANK": {
     "symbol": "UNIONBANK",
@@ -6093,7 +6125,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "UNIONCAP": {
     "symbol": "UNIONCAP",
@@ -6109,7 +6141,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "UNIONINS": {
     "symbol": "UNIONINS",
@@ -6125,7 +6157,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:11 AM"
   },
   "UNIQUEHRL": {
     "symbol": "UNIQUEHRL",
@@ -6142,22 +6174,6 @@
     "close": 375.3,
     "total_qty": 238,
     "last_update": "01/11/2026-01:13:15 PM"
-  },
-  "UNITEDAIR": {
-    "symbol": "UNITEDAIR",
-    "company_name": "UNITED AIRWAYS (BD) LTD.",
-    "board": "PUBLIC",
-    "ltp": 10.9,
-    "ycp": 10.9,
-    "circuit_up": 11.9,
-    "circuit_down": 9.9,
-    "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
   },
   "UNITEDFIN": {
     "symbol": "UNITEDFIN",
@@ -6189,7 +6205,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:12 AM"
   },
   "UPGDCL": {
     "symbol": "UPGDCL",
@@ -6205,7 +6221,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:12 AM"
   },
   "USMANIAGL": {
     "symbol": "USMANIAGL",
@@ -6221,7 +6237,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:12 AM"
   },
   "UTTARABANK": {
     "symbol": "UTTARABANK",
@@ -6237,7 +6253,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:12 AM"
   },
   "UTTARAFIN": {
     "symbol": "UTTARAFIN",
@@ -6253,7 +6269,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:12 AM"
   },
   "VAMLBDMF1": {
     "symbol": "VAMLBDMF1",
@@ -6269,7 +6285,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:12 AM"
   },
   "VAMLRBBF": {
     "symbol": "VAMLRBBF",
@@ -6285,7 +6301,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:12 AM"
   },
   "VFSTDL": {
     "symbol": "VFSTDL",
@@ -6301,7 +6317,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:12 AM"
   },
   "WALTONHIL": {
     "symbol": "WALTONHIL",
@@ -6317,7 +6333,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:12 AM"
   },
   "WATACHEM": {
     "symbol": "WATACHEM",
@@ -6333,23 +6349,23 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:12 AM"
   },
   "WMSHIPYARD": {
     "symbol": "WMSHIPYARD",
     "company_name": "Western Marine Shipyard Limited",
     "board": "PUBLIC",
-    "ltp": 75.0,
+    "ltp": 73.5,
     "ycp": 75.0,
     "circuit_up": 82.5,
     "circuit_down": 67.5,
     "floor_price": 0.0,
-    "open": 0.0,
-    "high": 0.0,
-    "low": 0.0,
-    "close": 0.0,
-    "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "open": 73.5,
+    "high": 73.5,
+    "low": 73.5,
+    "close": 73.5,
+    "total_qty": 1280,
+    "last_update": "01/11/2026-03:34:16 PM"
   },
   "YPL": {
     "symbol": "YPL",
@@ -6365,7 +6381,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:12 AM"
   },
   "ZAHEENSPIN": {
     "symbol": "ZAHEENSPIN",
@@ -6381,7 +6397,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:12 AM"
   },
   "ZAHINTEX": {
     "symbol": "ZAHINTEX",
@@ -6397,7 +6413,7 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:12 AM"
   },
   "ZEALBANGLA": {
     "symbol": "ZEALBANGLA",
@@ -6413,6 +6429,6 @@
     "low": 0.0,
     "close": 0.0,
     "total_qty": 0,
-    "last_update": "01/11/2026-10:30:33 AM"
+    "last_update": "01/11/2026-10:58:12 AM"
   }
 }

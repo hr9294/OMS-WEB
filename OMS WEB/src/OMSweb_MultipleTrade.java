@@ -2505,74 +2505,56 @@ public class OMSweb_MultipleTrade {
 
 
     public static boolean confirmOrderWithRetry(WebDriver driver, WebDriverWait wait, JavascriptExecutor js) {
-
-        // 1. Try centralized robust confirmation (Alerts, all DOM modals, SWEETALERT, etc.)
-
-        boolean autoConfirmed = OMSweb_Trade.autoConfirmOrderOrCancellation(driver, wait);
-
-        if (autoConfirmed) return true;
-
-
-
-        // 2. Multi-attempt fallback with specific selectors and JS
-
-        int maxAttempts = 3;
-
-        for (int attempt = 0; attempt < maxAttempts; attempt++) {
-
+        // 1. Fast-Path: Robust auto-confirmation (jQuery-Confirm, alerts, DOM modals in 50ms intervals)
+        for (int attempt = 0; attempt < 10; attempt++) {
             try {
-
-                WebElement btn = wait.until(ExpectedConditions.elementToBeClickable(CONFIRM_YES_BUTTON));
-
-                btn.click();
-
-                try {
-
-                    wait.until(ExpectedConditions.invisibilityOfElementLocated(CONFIRM_YES_BUTTON));
-
-                } catch (Exception ignored) {}
-
-                return true;
-
-            } catch (Exception e) {
-
-                if (attempt == maxAttempts - 1) {
-
-                    try {
-
-                        Boolean res = (Boolean) js.executeScript(
-
-                            "var btn = document.querySelector('#cnfirmConfirmBtn, button.confirm-btn, .modal-footer .btn-primary, .modal-footer .btn-danger, #btn_confirm, #confirm_btn, #confirm_ok, #cancel_order_confirm');" +
-
-                            "if (btn && (btn.offsetParent !== null || btn.offsetWidth > 0 || btn.offsetHeight > 0)) { btn.click(); return true; }" +
-
-                            "var match = Array.from(document.querySelectorAll('button')).find(function(b) { var t = (b.innerText || b.textContent || '').trim().toUpperCase(); return t === 'YES' || t === 'CONFIRM' || t === 'OK' || t === 'CANCEL ORDER'; });" +
-
-                            "if (match && (match.offsetParent !== null || match.offsetWidth > 0 || match.offsetHeight > 0)) { match.click(); return true; }" +
-
-                            "return false;"
-
-                        );
-
-                        return Boolean.TRUE.equals(res);
-
-                    } catch (Exception ignored) {}
-
-                    return false;
-
+                if (OMSweb_Trade.autoConfirmOrderOrCancellation(driver, wait)) {
+                    return true;
                 }
-
-                try { Thread.sleep(150); } catch (InterruptedException ignored) {}
-
-            }
-
+            } catch (Exception ignored) {}
+            try { Thread.sleep(50); } catch (Exception ignored) {}
         }
 
+        // 2. Non-blocking element check using findElements (bypasses slow 6-second timeout)
+        try {
+            List<WebElement> confirmBtns = driver.findElements(CONFIRM_YES_BUTTON);
+            for (WebElement cb : confirmBtns) {
+                if (cb.isDisplayed()) {
+                    try {
+                        js.executeScript("arguments[0].click();", cb);
+                        return true;
+                    } catch (Exception ignored) {}
+                }
+            }
+        } catch (Exception ignored) {}
+
+        // 3. Fallback to JavaScript execution
+        try {
+            Boolean res = (Boolean) js.executeScript(
+                "try {" +
+                "    if (window.jconfirm && window.jconfirm.instances && window.jconfirm.instances.length > 0) {" +
+                "        for (var i = 0; i < window.jconfirm.instances.length; i++) {" +
+                "            var inst = window.jconfirm.instances[i];" +
+                "            if (inst && inst.buttons && inst.buttons.confirm && typeof inst.buttons.confirm.action === 'function') {" +
+                "                inst.buttons.confirm.action(); return true;" +
+                "            }" +
+                "            if (inst && inst.buttons && inst.buttons.yes && typeof inst.buttons.yes.action === 'function') {" +
+                "                inst.buttons.yes.action(); return true;" +
+                "            }" +
+                "        }" +
+                "    }" +
+                "    var btn = document.querySelector('#cnfirmConfirmBtn, button.confirm-btn, .modal-footer .btn-primary, .modal-footer .btn-danger, #btn_confirm, #confirm_btn, #confirm_ok, #cancel_order_confirm, .jconfirm button.btn-success, .jconfirm-box button.btn-success');" +
+                "    if (btn && (btn.offsetParent !== null || btn.offsetWidth > 0 || btn.offsetHeight > 0)) { btn.click(); return true; }" +
+                "    var match = Array.from(document.querySelectorAll('button')).find(function(b) { var t = (b.innerText || b.textContent || '').trim().toUpperCase(); return t === 'YES' || t === 'CONFIRM' || t === 'OK'; });" +
+                "    if (match && (match.offsetParent !== null || match.offsetWidth > 0 || match.offsetHeight > 0)) { match.click(); return true; }" +
+                "} catch(e) {}" +
+                "return false;"
+            );
+            if (Boolean.TRUE.equals(res)) return true;
+        } catch (Exception ignored) {}
+
         return false;
-
     }
-
-
 
     public static void resetOrderForm(WebDriver driver, JavascriptExecutor js) {
 
