@@ -25,6 +25,7 @@ import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 
 //import org.openqa.selenium.interactions.Actions;
+import org.openqa.selenium.interactions.Actions;
 
 import org.openqa.selenium.support.ui.ExpectedConditions;
 
@@ -657,6 +658,7 @@ public class OMSweb_Trade {
 				String cleanInst = cleanSymbol(instrument);
 				fillAndSelectAutocompleteSafely(driver, wait, By.id("order_instrument"), cleanInst, true);
 				System.out.println("Order Symbol selected: " + cleanInst);
+				ensureClientCodeRetained(driver, clientCode);
 
 
 
@@ -1017,8 +1019,68 @@ public class OMSweb_Trade {
 	 * 6. Brings floating trading windows to the front (zIndex = 9999).
 	 */
 	/**
+	 * Prioritizes locating visible input elements inside active WinBox/modal dialogs
+	 * before falling back to background elements or standard waits.
+	 */
+	public static WebElement findVisibleInputSafely(WebDriver driver, WebDriverWait wait, By locator) {
+		try {
+			List<WebElement> modalInputs = driver.findElements(By.xpath(
+				"//div[contains(@class,'wb-active') or contains(@class,'winbox') or contains(@class,'modal')]" +
+				"[not(contains(@style,'display: none'))]//input[@id='order_client_code' or @id='order_instrument']"
+			));
+			for (WebElement el : modalInputs) {
+				if (el.isDisplayed() && el.isEnabled()) {
+					String id = el.getAttribute("id");
+					if (id != null && locator.toString().contains(id)) {
+						return el;
+					}
+				}
+			}
+		} catch (Exception ignored) {}
+
+		try {
+			List<WebElement> candidates = driver.findElements(locator);
+			for (WebElement el : candidates) {
+				if (el.isDisplayed() && el.isEnabled()) {
+					return el;
+				}
+			}
+		} catch (Exception ignored) {}
+
+		return wait.until(ExpectedConditions.elementToBeClickable(locator));
+	}
+
+	/**
+	 * Ensures the Client Code input field retains its value and triggers validation
+	 * if a subsequent field selection or blur wiped the field.
+	 */
+	public static void ensureClientCodeRetained(WebDriver driver, String clientCode) {
+		if (driver == null || clientCode == null || clientCode.trim().isEmpty()) return;
+		try {
+			JavascriptExecutor js = (JavascriptExecutor) driver;
+			js.executeScript(
+				"var val = arguments[0].trim();" +
+				"var activeInputs = document.querySelectorAll('.winbox input#order_client_code, .wb-body input#order_client_code, input#order_client_code');" +
+				"for (var i = 0; i < activeInputs.length; i++) {" +
+				"    var inp = activeInputs[i];" +
+				"    if (!inp.value || inp.value.trim() === '') {" +
+				"        inp.value = val;" +
+				"        if (window.jQuery) {" +
+				"            $(inp).val(val).trigger('input').trigger('change');" +
+				"            var ac = $(inp).data('ui-autocomplete') || $(inp).data('autocomplete') || ($(inp).autocomplete ? $(inp).autocomplete('instance') : null);" +
+				"            if (ac) { ac.selectedItem = { value: val, label: val }; }" +
+				"        }" +
+				"    }" +
+				"}" +
+				"try { if (typeof verify_fields === 'function') verify_fields(); } catch(e){}",
+				clientCode
+			);
+		} catch (Exception ignored) {}
+	}
+
+	/**
 	 * Safely fills a jQuery UI autocomplete input (Client Code or Symbol) and confirms
-	 * selection, completely preventing menu overlap, race conditions, and screen freezing.
+	 * selection, completely preventing menu overlap, race conditions, screen freezing, and blur-clearing.
 	 */
 	public static void fillAndSelectAutocompleteSafely(WebDriver driver, WebDriverWait wait, By locator, String value, boolean isSymbol) {
 		if (driver == null || locator == null || value == null || value.trim().isEmpty()) return;
@@ -1029,9 +1091,31 @@ public class OMSweb_Trade {
 			// 1. Dismiss any lingering autocomplete from a prior field
 			try { js.executeScript("if (window.jQuery) { $('.ui-autocomplete').hide(); }"); } catch (Exception ignored) {}
 
-			WebElement input = wait.until(ExpectedConditions.elementToBeClickable(locator));
+			// 2. Find the active visible input element (modal prioritized)
+			WebElement input = findVisibleInputSafely(driver, wait, locator);
 			input.click();
-			Thread.sleep(120);
+			Thread.sleep(100);
+
+			// Install blur protector so no rogue blur event clears the input
+			try {
+				js.executeScript(
+					"var el = arguments[0]; var val = arguments[1];" +
+					"if (el && !el._blurProtectorInstalled) {" +
+					"    el._blurProtectorInstalled = true;" +
+					"    el._expectedVal = val;" +
+					"    el.addEventListener('blur', function() {" +
+					"        setTimeout(function() {" +
+					"            if (el && (!el.value || el.value.trim() === '')) {" +
+					"                el.value = el._expectedVal || val;" +
+					"                if (window.jQuery) { $(el).val(el.value).trigger('input').trigger('change'); }" +
+					"            }" +
+					"        }, 60);" +
+					"    });" +
+					"}" +
+					"if (el) el._expectedVal = val;",
+					input, cleanVal
+				);
+			} catch (Exception ignored) {}
 
 			// Clear thoroughly using Ctrl+A + Backspace + clear()
 			try {
@@ -1039,13 +1123,23 @@ public class OMSweb_Trade {
 				input.clear();
 			} catch (Exception ignored) {}
 
-			// 2. Type characters cleanly
+			// 3. Type characters cleanly and trigger autocomplete query immediately
 			input.sendKeys(cleanVal);
-			try { js.executeScript("$(arguments[0]).trigger('input');", input); } catch (Exception ignored) {}
+			try {
+				js.executeScript(
+					"var el = arguments[0]; var val = arguments[1];" +
+					"if (el && window.jQuery) {" +
+					"    $(el).trigger('input').trigger('keyup');" +
+					"    if ($(el).data('ui-autocomplete') && $(el).autocomplete) {" +
+					"        try { $(el).autocomplete('search', val); } catch(e){}" +
+					"    }" +
+					"}",
+					input, cleanVal
+				);
+			} catch (Exception ignored) {}
 
-			// 3. Dynamically wait for the autocomplete dropdown to render (up to 4.5s for client code, 2.5s for symbol)
-			// Polling every 100ms so fast responses return immediately without delay, while slow networks have ample time!
-			int maxWaitAttempts = isSymbol ? 25 : 45;
+			// 4. Dynamically wait for the autocomplete dropdown to render (up to 5s for client code, 2.5s for symbol)
+			int maxWaitAttempts = isSymbol ? 25 : 50;
 			boolean menuFound = false;
 
 			for (int a = 0; a < maxWaitAttempts; a++) {
@@ -1059,53 +1153,104 @@ public class OMSweb_Trade {
 				Thread.sleep(100);
 			}
 
-			// 4. Click the matching item from the rendered menu
-			boolean selectedViaJs = false;
+			// 5. Select the matching item using Triple-Redundancy:
+			// A. Real Selenium WebDriver click on the menu item
 			if (menuFound) {
-				Object clicked = js.executeScript(
-					"try {" +
-					"    var menu = $('.ui-autocomplete:visible');" +
-					"    if (!menu.length) return false;" +
-					"    var target = arguments[0].toUpperCase();" +
-					"    var isSym = arguments[1];" +
-					"    var matchedItem = null;" +
-					"    menu.find('li.ui-menu-item').each(function() {" +
-					"        var txt = $(this).text().trim().toUpperCase();" +
-					"        if (isSym) {" +
-					"            if (txt === target || txt.indexOf(target + '.PUBLIC') !== -1 || txt.startsWith(target + ' ')) {" +
-					"                matchedItem = $(this); return false;" +
-					"            }" +
-					"        } else {" +
-					"            if (txt.indexOf(target) !== -1 || txt.startsWith(target)) {" +
-					"                matchedItem = $(this); return false;" +
-					"            }" +
-					"        }" +
-					"    });" +
-					"    if (!matchedItem) matchedItem = menu.find('li.ui-menu-item').first();" +
-					"    if (matchedItem && matchedItem.length) {" +
-					"        var targetEl = matchedItem.find('a, div, .ui-menu-item-wrapper').first();" +
-					"        if (!targetEl.length) targetEl = matchedItem;" +
-					"        targetEl.trigger('mouseover').trigger('mouseenter').click();" +
-					"        return true;" +
-					"    }" +
-					"} catch(e) {}" +
-					"return false;",
-					cleanVal, isSymbol
-				);
-				selectedViaJs = Boolean.TRUE.equals(clicked);
-			}
-
-			// 5. Fallback if JS click didn't trigger: Send Arrow Down + Enter
-			if (!selectedViaJs) {
 				try {
-					input.sendKeys(Keys.ARROW_DOWN);
-					Thread.sleep(80);
-					input.sendKeys(Keys.ENTER);
+					List<WebElement> menuItems = driver.findElements(By.cssSelector(".ui-autocomplete:visible li.ui-menu-item"));
+					WebElement targetItem = null;
+					for (WebElement item : menuItems) {
+						String txt = item.getText();
+						if (txt != null && !txt.isEmpty()) {
+							String up = txt.toUpperCase();
+							if (isSymbol) {
+								if (up.equals(cleanVal.toUpperCase()) || up.contains(cleanVal.toUpperCase() + ".PUBLIC") || up.startsWith(cleanVal.toUpperCase() + " ")) {
+									targetItem = item;
+									break;
+								}
+							} else {
+								if (up.contains(cleanVal.toUpperCase()) || up.startsWith(cleanVal.toUpperCase())) {
+									targetItem = item;
+									break;
+								}
+							}
+						}
+					}
+					if (targetItem == null && !menuItems.isEmpty()) {
+						targetItem = menuItems.get(0);
+					}
+					if (targetItem != null && targetItem.isDisplayed()) {
+						try {
+							new Actions(driver).moveToElement(targetItem).click().perform();
+						} catch (Exception e1) {
+							targetItem.click();
+						}
+					}
 				} catch (Exception ignored) {}
 			}
 
-			// 6. Verification: Ensure field retained value; if cleared by blur, force-set and trigger change
-			Thread.sleep(150);
+			// B. Native Keyboard Arrow Down + Enter
+			try {
+				input.sendKeys(Keys.ARROW_DOWN);
+				Thread.sleep(80);
+				input.sendKeys(Keys.ENTER);
+			} catch (Exception ignored) {}
+
+			// C. Direct jQuery UI Widget API invocation in JavaScript (guarantees options.select callback runs & closes menu)
+			js.executeScript(
+				"try {" +
+				"    var el = arguments[0];" +
+				"    var val = arguments[1];" +
+				"    var isSym = arguments[2];" +
+				"    if (window.jQuery) {" +
+				"        var $inp = $(el);" +
+				"        var ac = $inp.data('ui-autocomplete') || $inp.data('autocomplete') || ($inp.autocomplete ? $inp.autocomplete('instance') : null);" +
+				"        var menu = $('.ui-autocomplete:visible');" +
+				"        var matchedItem = null;" +
+				"        var matchedData = null;" +
+				"        if (menu.length) {" +
+				"            menu.find('li.ui-menu-item').each(function() {" +
+				"                var data = $(this).data('ui-autocomplete-item') || $(this).data('item.autocomplete');" +
+				"                var txt = $(this).text().trim().toUpperCase();" +
+				"                if (isSym) {" +
+				"                    if (txt === val.toUpperCase() || txt.indexOf(val.toUpperCase() + '.PUBLIC') !== -1 || txt.startsWith(val.toUpperCase() + ' ')) {" +
+				"                        matchedItem = $(this); matchedData = data; return false;" +
+				"                    }" +
+				"                } else {" +
+				"                    if (txt.indexOf(val.toUpperCase()) !== -1 || txt.startsWith(val.toUpperCase())) {" +
+				"                        matchedItem = $(this); matchedData = data; return false;" +
+				"                    }" +
+				"                }" +
+				"            });" +
+				"            if (!matchedItem && menu.find('li.ui-menu-item').length) {" +
+				"                matchedItem = menu.find('li.ui-menu-item').first();" +
+				"                matchedData = matchedItem.data('ui-autocomplete-item') || matchedItem.data('item.autocomplete');" +
+				"            }" +
+				"        }" +
+				"        if (!matchedData && matchedItem && matchedItem.length) {" +
+				"            matchedData = { value: val, label: matchedItem.text().trim() };" +
+				"        }" +
+				"        if (!matchedData) {" +
+				"            matchedData = { value: val, label: val };" +
+				"        }" +
+				"        if (ac) {" +
+				"            ac.selectedItem = matchedData;" +
+				"            $inp.val(matchedData.value || val);" +
+				"            try { ac._trigger('select', { type: 'autocompleteselect' }, { item: matchedData }); } catch(e) {}" +
+				"            try { ac.close(); } catch(e) {}" +
+				"        }" +
+				"        if (!el.value || el.value.trim() === '') {" +
+				"            el.value = val;" +
+				"            $inp.val(val).trigger('input').trigger('change');" +
+				"        }" +
+				"        $('.ui-autocomplete').hide();" +
+				"    }" +
+				"} catch(e) {}",
+				input, cleanVal, isSymbol
+			);
+
+			// 6. Verification: Ensure field has the expected value; if empty, force it
+			Thread.sleep(100);
 			js.executeScript(
 				"var el = arguments[0]; var val = arguments[1];" +
 				"if (el && (!el.value || el.value.trim() === '')) {" +
@@ -1117,7 +1262,7 @@ public class OMSweb_Trade {
 			);
 
 			// 7. Settle time for client account AJAX details (BO, Name, Balance) to load without interruption
-			Thread.sleep(isSymbol ? 150 : 350);
+			Thread.sleep(isSymbol ? 150 : 500);
 
 		} catch (Exception e) {
 			try {
@@ -2630,6 +2775,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		installSymbolWhitespaceSanitizer(driver);
 		String cleanInst2 = cleanSymbol(instrument);
 		fillAndSelectAutocompleteSafely(driver, wait, By.id("order_instrument"), cleanInst2, true);
+		ensureClientCodeRetained(driver, clientCode);
 
 
 

@@ -1236,6 +1236,7 @@ public class OMSweb_MultipleTrade {
 
             // 4. Instrument / Symbol with safe autocomplete confirmation
             OMSweb_Trade.fillAndSelectAutocompleteSafely(driver, wait, ORDER_INSTRUMENT_INP, order.symbol, true);
+            OMSweb_Trade.ensureClientCodeRetained(driver, order.clientCode);
 
 
 
