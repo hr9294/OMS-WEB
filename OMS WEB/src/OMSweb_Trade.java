@@ -1022,55 +1022,107 @@ public class OMSweb_Trade {
 	 */
 	public static void fillAndSelectAutocompleteSafely(WebDriver driver, WebDriverWait wait, By locator, String value, boolean isSymbol) {
 		if (driver == null || locator == null || value == null || value.trim().isEmpty()) return;
+		String cleanVal = value.trim();
 		try {
 			JavascriptExecutor js = (JavascriptExecutor) driver;
-			// 1. Dismiss any lingering autocomplete from a previous field
+
+			// 1. Dismiss any lingering autocomplete from a prior field
 			try { js.executeScript("if (window.jQuery) { $('.ui-autocomplete').hide(); }"); } catch (Exception ignored) {}
 
-			WebElement input = wait.until(ExpectedConditions.visibilityOfElementLocated(locator));
+			WebElement input = wait.until(ExpectedConditions.elementToBeClickable(locator));
 			input.click();
-			input.clear();
-			input.sendKeys(value.trim());
+			Thread.sleep(120);
 
-			// 2. Allow autocomplete query to render (180ms)
-			Thread.sleep(180);
+			// Clear thoroughly using Ctrl+A + Backspace + clear()
+			try {
+				input.sendKeys(Keys.chord(Keys.CONTROL, "a"), Keys.BACK_SPACE);
+				input.clear();
+			} catch (Exception ignored) {}
 
-			// 3. Confirm and select matching item from the dropdown
+			// 2. Type characters cleanly
+			input.sendKeys(cleanVal);
+			try { js.executeScript("$(arguments[0]).trigger('input');", input); } catch (Exception ignored) {}
+
+			// 3. Dynamically wait for the autocomplete dropdown to render (up to 4.5s for client code, 2.5s for symbol)
+			// Polling every 100ms so fast responses return immediately without delay, while slow networks have ample time!
+			int maxWaitAttempts = isSymbol ? 25 : 45;
+			boolean menuFound = false;
+
+			for (int a = 0; a < maxWaitAttempts; a++) {
+				Object count = js.executeScript(
+					"return (window.jQuery ? $('.ui-autocomplete:visible li.ui-menu-item').length : 0);"
+				);
+				if (count instanceof Number && ((Number) count).intValue() > 0) {
+					menuFound = true;
+					break;
+				}
+				Thread.sleep(100);
+			}
+
+			// 4. Click the matching item from the rendered menu
+			boolean selectedViaJs = false;
+			if (menuFound) {
+				Object clicked = js.executeScript(
+					"try {" +
+					"    var menu = $('.ui-autocomplete:visible');" +
+					"    if (!menu.length) return false;" +
+					"    var target = arguments[0].toUpperCase();" +
+					"    var isSym = arguments[1];" +
+					"    var matchedItem = null;" +
+					"    menu.find('li.ui-menu-item').each(function() {" +
+					"        var txt = $(this).text().trim().toUpperCase();" +
+					"        if (isSym) {" +
+					"            if (txt === target || txt.indexOf(target + '.PUBLIC') !== -1 || txt.startsWith(target + ' ')) {" +
+					"                matchedItem = $(this); return false;" +
+					"            }" +
+					"        } else {" +
+					"            if (txt.indexOf(target) !== -1 || txt.startsWith(target)) {" +
+					"                matchedItem = $(this); return false;" +
+					"            }" +
+					"        }" +
+					"    });" +
+					"    if (!matchedItem) matchedItem = menu.find('li.ui-menu-item').first();" +
+					"    if (matchedItem && matchedItem.length) {" +
+					"        var targetEl = matchedItem.find('a, div, .ui-menu-item-wrapper').first();" +
+					"        if (!targetEl.length) targetEl = matchedItem;" +
+					"        targetEl.trigger('mouseover').trigger('mouseenter').click();" +
+					"        return true;" +
+					"    }" +
+					"} catch(e) {}" +
+					"return false;",
+					cleanVal, isSymbol
+				);
+				selectedViaJs = Boolean.TRUE.equals(clicked);
+			}
+
+			// 5. Fallback if JS click didn't trigger: Send Arrow Down + Enter
+			if (!selectedViaJs) {
+				try {
+					input.sendKeys(Keys.ARROW_DOWN);
+					Thread.sleep(80);
+					input.sendKeys(Keys.ENTER);
+				} catch (Exception ignored) {}
+			}
+
+			// 6. Verification: Ensure field retained value; if cleared by blur, force-set and trigger change
+			Thread.sleep(150);
 			js.executeScript(
-				"try {" +
-				"    var menu = $('.ui-autocomplete:visible');" +
-				"    if (menu.length) {" +
-				"        var target = arguments[0].toUpperCase();" +
-				"        var isSym = arguments[1];" +
-				"        var selected = false;" +
-				"        menu.find('li.ui-menu-item').each(function() {" +
-				"            var txt = $(this).text().trim().toUpperCase();" +
-				"            if (isSym && (txt === target || txt.indexOf(target + '.PUBLIC') !== -1)) {" +
-				"                var a = $(this).find('a'); (a.length ? a : $(this)).click();" +
-				"                selected = true;" +
-				"                return false;" +
-				"            } else if (!isSym && txt.indexOf(target) !== -1) {" +
-				"                var a = $(this).find('a'); (a.length ? a : $(this)).click();" +
-				"                selected = true;" +
-				"                return false;" +
-				"            }" +
-				"        });" +
-				"        if (!selected) {" +
-				"            var first = menu.find('li.ui-menu-item').first();" +
-				"            if (first.length) { var a = first.find('a'); (a.length ? a : first).click(); }" +
-				"        }" +
-				"    }" +
-				"    if (window.jQuery) { $('.ui-autocomplete').hide(); }" +
-				"} catch(e) {}",
-				value.trim(), isSymbol
+				"var el = arguments[0]; var val = arguments[1];" +
+				"if (el && (!el.value || el.value.trim() === '')) {" +
+				"    el.value = val;" +
+				"    if (window.jQuery) { $(el).val(val).trigger('input').trigger('change'); }" +
+				"}" +
+				"if (window.jQuery) { $('.ui-autocomplete').hide(); }",
+				input, cleanVal
 			);
 
-			// Trigger native events so app state updates
-			try { js.executeScript("$(arguments[0]).trigger('input').trigger('change');", input); } catch (Exception ignored) {}
-			Thread.sleep(100);
+			// 7. Settle time for client account AJAX details (BO, Name, Balance) to load without interruption
+			Thread.sleep(isSymbol ? 150 : 350);
+
 		} catch (Exception e) {
 			try {
 				WebElement input = driver.findElement(locator);
+				input.sendKeys(cleanVal);
 				input.sendKeys(Keys.ARROW_DOWN, Keys.ENTER);
 				((JavascriptExecutor) driver).executeScript("if (window.jQuery) { $('.ui-autocomplete').hide(); }");
 			} catch (Exception ignored) {}
