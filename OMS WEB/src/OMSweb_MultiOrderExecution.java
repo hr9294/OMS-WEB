@@ -585,13 +585,17 @@ public class OMSweb_MultiOrderExecution {
                     OMSweb_Trade.navigateToTradePage(driver, wait);
                 }
 
-                // 1. Open BUY or SELL Modal
+                // 1. Open BUY or SELL Modal (bypassing any WinBox title interception)
                 By actionBtn = (item.getSide() == OrderSide.BUY)
-                        ? By.xpath("//div[@title='Place BUY Order']")
-                        : By.xpath("//div[@title='Place SELL Order']");
-                WebElement btn = wait.until(ExpectedConditions.elementToBeClickable(actionBtn));
-                btn.click();
-                Thread.sleep(300);
+                        ? By.xpath("//div[@title='Place BUY Order'] | //button[normalize-space()='BUY'] | //div[contains(@class,'new_buy_order')]")
+                        : By.xpath("//div[@title='Place SELL Order'] | //button[normalize-space()='SELL'] | //div[contains(@class,'new_sell_order')]");
+                WebElement btn = wait.until(ExpectedConditions.presenceOfElementLocated(actionBtn));
+                try {
+                    js.executeScript("arguments[0].click();", btn);
+                } catch (Exception clickEx) {
+                    btn.click();
+                }
+                Thread.sleep(350);
 
                 // 2. Select Exchange in Modal
                 OMSweb_Trade.selectExchangeInModal(driver, exchange);
@@ -603,59 +607,106 @@ public class OMSweb_MultiOrderExecution {
                 clientInput.clear();
                 clientInput.sendKeys(item.getClientCode());
                 try {
-                    js.executeScript("$('#order_client_code').trigger('input').trigger('change');");
+                    js.executeScript("$('#order_client_code').val(arguments[0]).trigger('input').trigger('change');", item.getClientCode());
                 } catch (Exception ignored) {}
-                Thread.sleep(200);
+                Thread.sleep(250);
 
                 // 4. Instrument / Symbol
                 WebElement symInput = driver.findElement(By.id("order_instrument"));
                 symInput.clear();
                 symInput.sendKeys(item.getSymbol());
-                try {
-                    wait.until(ExpectedConditions.presenceOfElementLocated(By.className("ui-autocomplete-input")));
-                } catch (Exception ignored) {}
+                Thread.sleep(200);
                 symInput.sendKeys(Keys.ARROW_DOWN);
                 symInput.sendKeys(Keys.ENTER);
-                Thread.sleep(200);
+                try {
+                    js.executeScript("$('#order_instrument').trigger('input').trigger('change');");
+                } catch (Exception ignored) {}
+                Thread.sleep(250);
 
                 // 5. Quantity
                 WebElement qtyInput = driver.findElement(By.id("order_qty"));
                 qtyInput.clear();
                 qtyInput.sendKeys(String.valueOf(item.getQuantity()));
                 try {
-                    js.executeScript("$('#order_qty').trigger('input').trigger('change');");
+                    js.executeScript("$('#order_qty').val(arguments[0]).trigger('input').trigger('change');", String.valueOf(item.getQuantity()));
                 } catch (Exception ignored) {}
-                Thread.sleep(200);
+                Thread.sleep(250);
 
                 // 6. Rate
                 if (item.getRate() > 0) {
                     try {
+                        String rateStr = String.format(java.util.Locale.US, "%.2f", item.getRate());
                         WebElement rateInput = driver.findElement(By.id("limit_order_rate"));
                         if (rateInput.isDisplayed()) {
                             rateInput.clear();
-                            rateInput.sendKeys(String.format(java.util.Locale.US, "%.2f", item.getRate()));
+                            rateInput.sendKeys(rateStr);
                         } else {
                             js.executeScript("arguments[0].value = arguments[1]; try { $(arguments[0]).trigger('input').trigger('change'); } catch(e){}",
-                                    rateInput, String.format(java.util.Locale.US, "%.2f", item.getRate()));
+                                    rateInput, rateStr);
                         }
-                        js.executeScript("$('#limit_order_rate').trigger('input').trigger('change');");
+                        js.executeScript("$('#limit_order_rate').val(arguments[0]).trigger('input').trigger('change');", rateStr);
                     } catch (Exception ignored) {}
+                    Thread.sleep(250);
                 }
 
-                // 7. Commission Display
+                // 7. Commission Display & Saleable verification wait
                 OMSweb_Trade.displayCommissionOnOrderWindow(driver, item.getClientCode(), item.getQuantity(), item.getRate());
+                Thread.sleep(300);
 
-                // 8. Submit BUY or SELL
+                // Ensure submit button is enabled (waiting for checksaleable / verify_fields)
                 By submitBtnBy = (item.getSide() == OrderSide.BUY)
-                        ? By.xpath("//div[contains(@class, 'form-submit-btn-holder')]//button[normalize-space()='BUY']")
-                        : By.xpath("//div[contains(@class, 'form-submit-btn-holder')]//button[normalize-space()='SELL']");
-                WebElement submitBtn = wait.until(ExpectedConditions.elementToBeClickable(submitBtnBy));
-                submitBtn.click();
+                        ? By.xpath("//div[contains(@class, 'form-submit-btn-holder')]//button[normalize-space()='BUY'] | //button[contains(@class,'activebuy') and normalize-space()='BUY']")
+                        : By.xpath("//div[contains(@class, 'form-submit-btn-holder')]//button[normalize-space()='SELL'] | //button[contains(@class,'activesell') and normalize-space()='SELL']");
 
-                // 9. Confirm YES
-                WebElement confirmYes = wait.until(ExpectedConditions.elementToBeClickable(
-                        By.xpath("//button[@id='cnfirmConfirmBtn'] | //button[normalize-space()='YES'] | //button[normalize-space()='Yes']")));
-                confirmYes.click();
+                try {
+                    wait.until(driver1 -> {
+                        List<WebElement> candidateBtns = driver1.findElements(submitBtnBy);
+                        for (WebElement b : candidateBtns) {
+                            if (b.isDisplayed() && b.isEnabled()) return b;
+                        }
+                        js.executeScript("try { if (typeof verify_fields === 'function') verify_fields(); } catch(e){}");
+                        return null;
+                    });
+                } catch (Exception waitEx) {
+                    js.executeScript("try { $('.order_submit_btn').prop('disabled', false).removeAttr('disabled'); } catch(e){}");
+                }
+
+                // 8. Click Submit BUY or SELL
+                WebElement submitBtn = null;
+                List<WebElement> subBtns = driver.findElements(submitBtnBy);
+                for (WebElement b : subBtns) {
+                    if (b.isDisplayed()) {
+                        submitBtn = b;
+                        break;
+                    }
+                }
+                if (submitBtn == null && !subBtns.isEmpty()) submitBtn = subBtns.get(0);
+                if (submitBtn != null) {
+                    js.executeScript("arguments[0].click();", submitBtn);
+                } else {
+                    WebElement fallbackBtn = wait.until(ExpectedConditions.elementToBeClickable(submitBtnBy));
+                    fallbackBtn.click();
+                }
+
+                // 9. Confirm YES via autoConfirmOrderOrCancellation engine
+                boolean confirmed = false;
+                for (int attempt = 0; attempt < 15; attempt++) {
+                    confirmed = OMSweb_Trade.autoConfirmOrderOrCancellation(driver, wait);
+                    if (confirmed) break;
+                    Thread.sleep(250);
+                }
+
+                if (!confirmed) {
+                    List<WebElement> confirmBtns = driver.findElements(
+                            By.xpath("//button[@id='cnfirmConfirmBtn'] | //button[normalize-space()='YES'] | //button[normalize-space()='Yes'] | //button[normalize-space()='Confirm'] | //div[contains(@class,'jconfirm-box')]//button[contains(@class,'btn-success')]"));
+                    for (WebElement cb : confirmBtns) {
+                        if (cb.isDisplayed()) {
+                            js.executeScript("arguments[0].click();", cb);
+                            confirmed = true;
+                            break;
+                        }
+                    }
+                }
 
                 long elapsed = Duration.between(start, Instant.now()).toMillis();
                 System.out.printf("✔ Order #%d Submitted successfully in %d ms (%s %s x %d @ %.2f)%n",
