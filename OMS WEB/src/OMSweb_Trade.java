@@ -649,115 +649,81 @@ public class OMSweb_Trade {
 
 
 
-				// Fill Client Code with safe autocomplete confirmation
+				// 1. Fill Client Code with safe autocomplete confirmation
+				System.out.println(">>> [1/4] Entering Client Code: " + clientCode + " into Order Modal...");
 				By clientCodeModalLocator = By.xpath(
-					"//div[contains(@class,'winbox') or contains(@class,'wb-body') or contains(@class,'modal')]" +
-					"//input[contains(@placeholder,'Select Code') or contains(@placeholder,'Code') or @id='order_client_code'] | " +
-					"//input[@id='order_client_code']"
+					"//div[contains(@class,'winbox') or contains(@class,'wb-body') or contains(@class,'modal')][not(contains(@style,'display: none'))]" +
+					"//input[contains(@placeholder,'Select Code') or contains(@placeholder,'Code') or @id='order_client_code']"
 				);
 				fillAndSelectAutocompleteSafely(driver, wait, clientCodeModalLocator, clientCode, false);
 				ensureClientCodeRetained(driver, clientCode);
-				System.out.println("Client Code entered: " + clientCode);
+				System.out.println("  ✔ Client Code entered: " + clientCode);
+				Thread.sleep(800); // Visual pacing: user clearly sees Client Code entered first
 
-				// Fill Symbol with safe autocomplete confirmation
+				// 2. Fill Symbol with safe autocomplete confirmation
 				installSymbolWhitespaceSanitizer(driver);
 				String publicInst = toPublicSymbol(instrument);
+				System.out.println(">>> [2/4] Entering Symbol: " + instrument + " (Public Board: " + publicInst + ")...");
 				By instModalLocator = By.xpath(
-					"//div[contains(@class,'winbox') or contains(@class,'wb-body') or contains(@class,'modal')]" +
-					"//input[@id='order_instrument' or contains(@placeholder,'Symbol')] | " +
-					"//input[@id='order_instrument']"
+					"//div[contains(@class,'winbox') or contains(@class,'wb-body') or contains(@class,'modal')][not(contains(@style,'display: none'))]" +
+					"//input[@id='order_instrument' or contains(@placeholder,'Symbol')]"
 				);
 				fillAndSelectAutocompleteSafely(driver, wait, instModalLocator, publicInst, true);
-				System.out.println("Order Symbol selected: " + publicInst);
 				ensureSymbolBoardRetained(driver, publicInst);
 				ensureClientCodeRetained(driver, clientCode);
+				System.out.println("  ✔ Order Symbol selected: " + publicInst);
+				Thread.sleep(800); // Visual pacing: user clearly sees Symbol entered second
 
-
-
-				// Fill Qty
-
+				// 3. Fill Quantity
+				System.out.println(">>> [3/4] Entering Quantity: " + tradeQty + " and Rate: " + executedRate + "...");
 				WebElement qtyElem = driver.findElement(By.id("order_qty"));
-
 				qtyElem.clear();
-
 				qtyElem.sendKeys(String.valueOf(tradeQty));
-
 				try {
-
 					((JavascriptExecutor) driver).executeScript("$('#order_qty').trigger('input').trigger('change');");
-
 				} catch (Exception ignored) {}
-
-				System.out.println("Qty entered: " + tradeQty);
-
-
+				System.out.println("  ✔ Qty entered: " + tradeQty);
 
 				// Fill Rate (only for limit orders)
-
 				if (!isPriorityOrder && executedRate > 0) {
-
 					try {
-
 						WebElement rateInput = driver.findElement(By.id("limit_order_rate"));
-
 						if (rateInput.isDisplayed()) {
-
 							rateInput.clear();
-
 							rateInput.sendKeys(String.valueOf(executedRate));
-
 						} else {
-
 							((JavascriptExecutor) driver).executeScript(
-
 									"arguments[0].value = arguments[1]; try { $(arguments[0]).trigger('input').trigger('change'); } catch(e){}",
-
 									rateInput, String.valueOf(executedRate));
-
 						}
-
 						((JavascriptExecutor) driver).executeScript("$('#limit_order_rate').trigger('input').trigger('change');");
-
 					} catch (Exception ignored) {}
-
 				} else if (isPriorityOrder && executedRate <= 0.0) {
-
 					double mRate = getEnteredRate(driver);
-
 					if (mRate > 0.0) executedRate = mRate;
-
 				}
-
-
+				Thread.sleep(300);
 
 				// Display Commission on Buy and Sell window when client has commission
-
 				displayCommissionOnOrderWindow(driver, clientCode, tradeQty, executedRate);
 
+				// Final retention verification before submitting
+				ensureSymbolBoardRetained(driver, publicInst);
+				ensureClientCodeRetained(driver, clientCode);
+				Thread.sleep(500); // Visual pacing before order submit
 
-
-				// Submit Order
-
+				// 4. Submit Order
+				System.out.println(">>> [4/4] Submitting " + sideText + " order and awaiting Confirmation Dialog...");
 				WebElement header = driver.findElement(By.xpath("//div[@class='wb-title']"));
-
 				if (header.getText().toLowerCase().contains("buy")) {
-
 					driver.findElement(By.xpath(
-
 							"//div[@class='col pl-0 pr-0 td-btn mt-2 mb-2 form-inline form-submit-btn-holder text-center']//button[@type='button'][normalize-space()='BUY']"))
-
 							.click();
-
 				} else {
-
 					driver.findElement(By.xpath(
-
 							"//div[@class='col pl-0 pr-0 td-btn mt-2 mb-2 form-inline form-submit-btn-holder text-center']//button[@type='button'][normalize-space()='SELL']"))
-
 							.click();
-
 				}
-
 				System.out.println("Clicked " + sideText + " button.");
 
 
@@ -1110,11 +1076,13 @@ public class OMSweb_Trade {
 				"var activeInputs = document.querySelectorAll('.winbox input[placeholder*=\"Code\"], .wb-body input[placeholder*=\"Code\"], .winbox input#order_client_code, .wb-body input#order_client_code, #order_client_code, input[placeholder*=\"Select Code\"]');" +
 				"for (var i = 0; i < activeInputs.length; i++) {" +
 				"    var inp = activeInputs[i];" +
-				"    inp.value = val;" +
 				"    if (window.jQuery) {" +
-				"        $(inp).val(val).trigger('input').trigger('change');" +
 				"        var ac = $(inp).data('ui-autocomplete') || $(inp).data('autocomplete') || ($(inp).autocomplete ? $(inp).autocomplete('instance') : null);" +
-				"        if (ac) { ac.selectedItem = { value: val, label: val }; }" +
+				"        if (ac) { ac.selectedItem = { value: val, label: val, id: val }; }" +
+				"        inp.value = val;" +
+				"        $(inp).val(val).trigger('input');" +
+				"    } else {" +
+				"        inp.value = val;" +
 				"    }" +
 				"}" +
 				"try {" +
@@ -1248,11 +1216,10 @@ public class OMSweb_Trade {
 				} catch (Exception ignored) {}
 			}
 
-			// B. Native Keyboard Arrow Down + Enter
+			// B. Native Keyboard Arrow Down (without Enter, preventing premature form submit)
 			try {
 				input.sendKeys(Keys.ARROW_DOWN);
 				Thread.sleep(80);
-				input.sendKeys(Keys.ENTER);
 			} catch (Exception ignored) {}
 
 			// C. Direct jQuery UI Widget API invocation in JavaScript (guarantees options.select callback runs, closes menu & sets PUBLIC board)
@@ -3507,18 +3474,19 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			try {
 				if (autoConfirmOrderOrCancellation(driver, wait)) {
 					System.out.println("  ✔ [CONFIRMATION] Order confirmed automatically via autoConfirmOrderOrCancellation!");
-					Thread.sleep(500);
+					Thread.sleep(600);
 					return true;
 				}
 			} catch (Exception ignored) {}
 
-			// B. Direct search for visible "YES" button on Confirm Execution dialog
+			// B. Direct search for visible "YES" button on Confirm Execution dialog (button, a, div, span)
 			try {
 				List<WebElement> yesButtons = driver.findElements(By.xpath(
-					"//button[normalize-space()='YES'] | " +
-					"//button[normalize-space()='Yes'] | " +
-					"//button[@id='cnfirmConfirmBtn'] | " +
-					"//div[contains(@class,'modal') or contains(@class,'dialog') or contains(@class,'popup') or contains(@class,'confirm') or contains(@class,'jconfirm')]//button[normalize-space()='YES']"
+					"//*[@id='cnfirmConfirmBtn'] | " +
+					"//button[normalize-space()='YES' or normalize-space()='Yes'] | " +
+					"//a[normalize-space()='YES' or normalize-space()='Yes'] | " +
+					"//*[contains(@class,'btn') and (normalize-space()='YES' or normalize-space()='Yes')] | " +
+					"//div[contains(@class,'modal') or contains(@class,'dialog') or contains(@class,'popup') or contains(@class,'confirm') or contains(@class,'jconfirm')]//*[normalize-space()='YES']"
 				));
 				for (WebElement yb : yesButtons) {
 					if (yb.isDisplayed() && yb.isEnabled()) {
@@ -3528,7 +3496,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 							yb.click();
 						}
 						System.out.println("  ✔ [CONFIRMATION] Clicked [YES] button on Confirm Execution dialog!");
-						Thread.sleep(500);
+						Thread.sleep(600);
 						return true;
 					}
 				}
@@ -3537,7 +3505,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			// C. JavaScript execution to find and click any visible YES button
 			try {
 				Boolean clicked = (Boolean) js.executeScript(
-					"var btns = document.querySelectorAll('button, a.btn');" +
+					"var btns = document.querySelectorAll('#cnfirmConfirmBtn, button, a, div.btn, span.btn');" +
 					"for (var i = 0; i < btns.length; i++) {" +
 					"    var txt = (btns[i].innerText || btns[i].textContent || '').trim().toUpperCase();" +
 					"    if (txt === 'YES' || txt === 'CONFIRM') {" +
@@ -3551,7 +3519,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				);
 				if (Boolean.TRUE.equals(clicked)) {
 					System.out.println("  ✔ [CONFIRMATION] Confirmed order: Clicked [YES] via JavaScript execution!");
-					Thread.sleep(500);
+					Thread.sleep(600);
 					return true;
 				}
 			} catch (Exception ignored) {}
