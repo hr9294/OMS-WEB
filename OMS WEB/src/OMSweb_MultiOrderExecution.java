@@ -610,7 +610,7 @@ public class OMSweb_MultiOrderExecution {
                     "var qty = document.getElementById('order_qty'); if (qty) { qty.value = arguments[2]; $(qty).trigger('input').trigger('change'); }" +
                     "if (arguments[3] !== '') { var r = document.getElementById('limit_order_rate'); if (r) { r.value = arguments[3]; $(r).trigger('input').trigger('change'); } }" +
                     "try { if (typeof verify_fields === 'function') verify_fields(); $('.order_submit_btn').prop('disabled', false).removeAttr('disabled'); } catch(e){}",
-                    OMSweb_Trade.toPublicSymbol(item.getSymbol()), item.getClientCode(), String.valueOf(item.getQuantity()), rateStr
+                    toPublicSymbol(item.getSymbol()), item.getClientCode(), String.valueOf(item.getQuantity()), rateStr
                 );
 
                 // 4. Commission Display trigger
@@ -1272,6 +1272,16 @@ public class OMSweb_MultiOrderExecution {
             System.out.printf("| %-85s |%n", item.toString());
         }
         System.out.println("+---------------------------------------------------------------------------------------+");
+    }
+
+    public static String toPublicSymbol(String sym) {
+        if (sym == null) return "";
+        String s = sym.trim().toUpperCase().replaceAll("\\[[A-Z0-9]+\\]", "");
+        if (s.contains(".")) {
+            s = s.split("\\.")[0].trim();
+        }
+        if (s.isEmpty()) return "";
+        return s + ".PUBLIC";
     }
 
     public static String cleanSymbol(String sym) {

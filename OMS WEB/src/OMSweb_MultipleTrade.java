@@ -1235,7 +1235,7 @@ public class OMSweb_MultipleTrade {
             OMSweb_Trade.fillAndSelectAutocompleteSafely(driver, wait, CLIENT_CODE_INPUT, order.clientCode, false);
 
             // 4. Instrument / Symbol with safe autocomplete confirmation
-            String publicSymbol = OMSweb_Trade.toPublicSymbol(order.symbol);
+            String publicSymbol = toPublicSymbol(order.symbol);
             OMSweb_Trade.fillAndSelectAutocompleteSafely(driver, wait, ORDER_INSTRUMENT_INP, publicSymbol, true);
             OMSweb_Trade.ensureSymbolBoardRetained(driver, publicSymbol);
             OMSweb_Trade.ensureClientCodeRetained(driver, order.clientCode);
@@ -2005,6 +2005,16 @@ public class OMSweb_MultipleTrade {
     // 6B. CIRCUIT LIMIT & EXCEED DETECTION HELPERS
 
     // ==========================================
+
+    public static String toPublicSymbol(String sym) {
+        if (sym == null) return "";
+        String s = sym.trim().toUpperCase().replaceAll("\\[[A-Z0-9]+\\]", "");
+        if (s.contains(".")) {
+            s = s.split("\\.")[0].trim();
+        }
+        if (s.isEmpty()) return "";
+        return s + ".PUBLIC";
+    }
 
     public static List<String> discoverPublicSymbolsFromBrowser(WebDriver driver) {
 

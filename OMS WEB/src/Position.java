@@ -896,7 +896,7 @@ public class Position {
 
             // Fill Client Code & Symbol with safe autocomplete confirmation
             OMSweb_Trade.fillAndSelectAutocompleteSafely(driver, wait, By.id("order_client_code"), clientCode, false);
-            String publicSymbol = OMSweb_Trade.toPublicSymbol(symbol);
+            String publicSymbol = toPublicSymbol(symbol);
             OMSweb_Trade.fillAndSelectAutocompleteSafely(driver, wait, By.id("order_instrument"), publicSymbol, true);
             OMSweb_Trade.ensureSymbolBoardRetained(driver, publicSymbol);
             OMSweb_Trade.ensureClientCodeRetained(driver, clientCode);
@@ -1016,6 +1016,16 @@ public class Position {
     // =========================================================================
     // 9. UTILITIES
     // =========================================================================
+    public static String toPublicSymbol(String sym) {
+        if (sym == null) return "";
+        String s = sym.trim().toUpperCase().replaceAll("\\[[A-Z0-9]+\\]", "");
+        if (s.contains(".")) {
+            s = s.split("\\.")[0].trim();
+        }
+        if (s.isEmpty()) return "";
+        return s + ".PUBLIC";
+    }
+
     public static String cleanSymbol(String sym) {
         if (sym == null) return "";
         String s = sym.trim().toUpperCase();
