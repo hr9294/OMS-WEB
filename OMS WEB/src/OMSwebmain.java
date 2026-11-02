@@ -93,7 +93,7 @@ public class OMSwebmain {
             OMSweb_DBMarketData.printPublicBoardSummary("DSE", 50);
         } else if ("3".equals(engChoice)) {
             OMSweb_MultipleTrade.main(driver, sc);
-        } else if ("2".equals(engChoice)) {
+         } else if ("2".equals(engChoice)) {
             OMSweb_MultiOrderExecution.main(driver, sc);
         } else {
             // Standard Trade Page
