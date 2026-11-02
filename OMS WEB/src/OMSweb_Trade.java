@@ -589,329 +589,30 @@ public class OMSweb_Trade {
 
 
 
-				// [STEP 1] CAPTURE PRE-TRADE SNAPSHOT (DSE/CSE API -> UI FALLBACK)
+				// [STEP 1] CAPTURE PRE-TRADE REAL-TIME UI DOM SNAPSHOT (ALL 6 WIDGETS)
+				System.out.printf("%n[AUDIT] Capturing PRE-TRADE Real-Time UI Snapshot across 6 Widgets for Client: %s...%n", clientCode);
+				SixWidgetUiSnapshot preTradeSnap = capture6WidgetsUiSnapshot(driver, "PRE-TRADE BASELINE", clientCode, instrument, snapshotExchange);
+				displayExactWidgetRowData(preTradeSnap, "PRE-TRADE BASELINE - ALL 6 WIDGETS ALL ROWS");
 
-				System.out.printf("%n[PORTFOLIO] Capturing PRE-TRADE Snapshot for Client: %s...%n", clientCode);
-
-				navigateToPortfolioPage(driver, wait);
-
-				Map<String, String> beforeSnapshot = ClientPortfolio.getSnapshot(driver, clientCode, instrument, snapshotExchange);
-
-				System.out.println("[PORTFOLIO] Pre-Trade Snapshot Captured (Source: " + beforeSnapshot.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
-
-
-
-				Order_Summary.navigateToOrderSummary(driver);
-
-				Map<String, String> preOrderSummary = Order_Summary.getSnapshot(driver, clientCode, instrument, snapshotExchange);
-
-				System.out.println("[ORDER SUMMARY] Pre-Trade Snapshot Captured (Source: " + preOrderSummary.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
-
-
-
-				Account_Limits.navigateToAccountLimits(driver);
-
-				Map<String, String> preAccountLimits = Account_Limits.getSnapshot(driver, clientCode, snapshotExchange);
-
-				System.out.println("[ACCOUNT LIMITS] Pre-Trade Snapshot Captured (Source: " + preAccountLimits.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
-
-
-
-				Market_Depth.navigateToMarketDepth(driver);
-
-				Map<String, String> preDepth = Market_Depth.getSnapshot(driver, instrument, snapshotExchange);
-
-				System.out.println("[MARKET DEPTH] Pre-Trade Snapshot Captured (Source: " + preDepth.getOrDefault("DATA_SOURCE", "UNKNOWN") + ")");
-
-				if (clientCodes.size() == 1) {
-
-					Market_Depth.printDepthReport(instrument, preDepth);
-
-				}
-
-
-
-				Order_Terminal.navigateToOrderTerminal(driver);
-
-				Map<String, String> preOrderTerminal = Order_Terminal.getPreTradeSnapshot(driver, clientCode, instrument, snapshotExchange);
-
-				System.out.println("[ORDER TERMINAL] Pre-Trade Snapshot Captured (Source: " + preOrderTerminal.getOrDefault("DATA_SOURCE", "UNKNOWN") + ", Progress: 0%)");
-
-
-
-				// Return back to Trade Page if needed
-
-				if (!isAlreadyOnTradePage(driver)) {
-
-					System.out.println("[TRADE] Returning to Trade Page...");
-
-					restoreTradePageState(driver, instrument, clientCode);
-
-				}
-
-
-
-				// Open BUY or SELL modal
-
-				if (int_side == 1) {
-
-					WebElement buy = wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//div[@title='Place BUY Order']")));
-
-					buy.click();
-
-				} else {
-
-					WebElement sell = wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//div[@title='Place SELL Order']")));
-
-					sell.click();
-
-				}
-
-				Thread.sleep(300);
-
-
-
-				// Select Exchange / Priority in Modal
-
-				selectExchangeInModal(driver, exchange);
-
-				Thread.sleep(200);
-
-
-
-				// 1. Fill Client Code with safe autocomplete confirmation
-				System.out.println(">>> [1/4] Entering Client Code: " + clientCode + " into Order Modal...");
-				By clientCodeModalLocator = By.xpath(
-					"//div[contains(@class,'winbox') or contains(@class,'wb-body') or contains(@class,'modal')][not(contains(@style,'display: none'))]" +
-					"//input[contains(@placeholder,'Select Code') or contains(@placeholder,'Code') or @id='order_client_code']"
-				);
-				fillAndSelectAutocompleteSafely(driver, wait, clientCodeModalLocator, clientCode, false);
-				ensureClientCodeRetained(driver, clientCode);
-				System.out.println("  ✔ Client Code entered: " + clientCode);
-				Thread.sleep(300); // Visual pacing: user clearly sees Client Code entered first
-
-				// 2. Fill Symbol with safe autocomplete confirmation
-				installSymbolWhitespaceSanitizer(driver);
-				String publicInst = toPublicSymbol(instrument);
-				System.out.println(">>> [2/4] Entering Symbol: " + instrument + " (Public Board: " + publicInst + ")...");
-				By instModalLocator = By.xpath(
-					"//div[contains(@class,'winbox') or contains(@class,'wb-body') or contains(@class,'modal')][not(contains(@style,'display: none'))]" +
-					"//input[@id='order_instrument' or contains(@placeholder,'Symbol')]"
-				);
-				fillAndSelectAutocompleteSafely(driver, wait, instModalLocator, publicInst, true);
-				ensureSymbolBoardRetained(driver, publicInst);
-				ensureClientCodeRetained(driver, clientCode);
-				System.out.println("  ✔ Order Symbol selected: " + publicInst);
-				Thread.sleep(300); // Visual pacing: user clearly sees Symbol entered second
-
-				// 3. Fill Quantity
-				System.out.println(">>> [3/4] Entering Quantity: " + tradeQty + " and Rate: " + executedRate + "...");
-				WebElement qtyElem = driver.findElement(By.id("order_qty"));
-				qtyElem.clear();
-				qtyElem.sendKeys(String.valueOf(tradeQty));
-				try {
-					((JavascriptExecutor) driver).executeScript("$('#order_qty').trigger('input').trigger('change');");
-				} catch (Exception ignored) {}
-				System.out.println("  ✔ Qty entered: " + tradeQty);
-
-				// Fill Rate (only for limit orders)
-				if (!isPriorityOrder && executedRate > 0) {
-					try {
-						WebElement rateInput = driver.findElement(By.id("limit_order_rate"));
-						if (rateInput.isDisplayed()) {
-							rateInput.clear();
-							rateInput.sendKeys(String.valueOf(executedRate));
-						} else {
-							((JavascriptExecutor) driver).executeScript(
-									"arguments[0].value = arguments[1]; try { $(arguments[0]).trigger('input').trigger('change'); } catch(e){}",
-									rateInput, String.valueOf(executedRate));
-						}
-						((JavascriptExecutor) driver).executeScript("$('#limit_order_rate').trigger('input').trigger('change');");
-					} catch (Exception ignored) {}
-				} else if (isPriorityOrder && executedRate <= 0.0) {
-					double mRate = getEnteredRate(driver);
-					if (mRate > 0.0) executedRate = mRate;
-				}
-				Thread.sleep(150);
-
-				// Display Commission on Buy and Sell window when client has commission
-				displayCommissionOnOrderWindow(driver, clientCode, tradeQty, executedRate);
-
-				// Final retention verification before submitting
-				ensureSymbolBoardRetained(driver, publicInst);
-				ensureClientCodeRetained(driver, clientCode);
-				Thread.sleep(200); // Visual pacing before order submit
-
-				// 4. Submit Order
-				System.out.println(">>> [4/4] Submitting " + sideText + " order and awaiting Confirmation Dialog...");
-				WebElement header = driver.findElement(By.xpath("//div[@class='wb-title']"));
-				if (header.getText().toLowerCase().contains("buy")) {
-					driver.findElement(By.xpath(
-							"//div[@class='col pl-0 pr-0 td-btn mt-2 mb-2 form-inline form-submit-btn-holder text-center']//button[@type='button'][normalize-space()='BUY']"))
-							.click();
-				} else {
-					driver.findElement(By.xpath(
-							"//div[@class='col pl-0 pr-0 td-btn mt-2 mb-2 form-inline form-submit-btn-holder text-center']//button[@type='button'][normalize-space()='SELL']"))
-							.click();
-				}
-				System.out.println("Clicked " + sideText + " button.");
-
-
-
-				// Confirm Order
+				// Ensure Trade order form inputs are populated directly in-place without page reloading
+				fillOrderFields(driver, wait, instrument, String.valueOf(tradeQty), clientCode);
+				enterRateAndSubmit(driver, wait, sc, instrument, sideText);
 
 				if (!confirmOrder(driver, wait, sc)) {
-
 					System.out.printf("Order cancelled for client %s.%n", clientCode);
-
-					continue; // skip verification for cancelled order & move to next client
-
+					continue;
 				}
 
-
-
-				// [STEP 2] CAPTURE POST-TRADE SNAPSHOT & VERIFICATION
-
-				System.out.printf("%n[AUDIT] Capturing POST-TRADE Snapshot & Verification for Client: %s...%n", clientCode);
-
-
-
-				// 1. Visit Order Terminal first to detect order status, executed qty, and due qty
-
-				Order_Terminal.navigateToOrderTerminal(driver);
-
-				Order_Terminal.refresh(driver);
-
-				Map<String, String> postOrderTerminal = Order_Terminal.getSnapshot(driver, clientCode, instrument, snapshotExchange);
-
-
-
-				int executedQty = tradeQty;
-
-				int dueQty = 0;
-
-				String orderStatus = postOrderTerminal.getOrDefault("Status", "Filled");
-
-				try {
-
-					double eq = Double.parseDouble(postOrderTerminal.getOrDefault("Exec_Qty", "0").replaceAll("[^0-9.]", ""));
-
-					double dq = Double.parseDouble(postOrderTerminal.getOrDefault("Due_Qty", "0").replaceAll("[^0-9.]", ""));
-
-					if (eq > 0 || dq > 0) {
-
-						executedQty = (int) eq;
-
-						dueQty = (int) dq;
-
-					}
-
-				} catch (Exception ignored) {}
-
-
-
-				// 2. Capture Portfolio Snapshot & Client Info
-
-				navigateToPortfolioPage(driver, wait);
-
-				ClientPortfolio.refresh(driver);
-
-
-
-				Map<String, String> afterSnapshot = ClientPortfolio.getSnapshot(driver, clientCode, instrument, snapshotExchange);
-
-				Map<String, String> clientInfoAfter = ClientPortfolio.getClientDetails(driver, clientCode);
-
-
-
-				// Fallback: If Order Terminal didn't show Exec_Qty, check actual portfolio delta
-
-				if (executedQty == tradeQty && afterSnapshot != null && beforeSnapshot != null) {
-
-					try {
-
-						double oldQ = Double.parseDouble(beforeSnapshot.getOrDefault("total_qty", "0").replaceAll("[^0-9.]", ""));
-
-						double newQ = Double.parseDouble(afterSnapshot.getOrDefault("total_qty", "0").replaceAll("[^0-9.]", ""));
-
-						double diffQ = Math.abs(newQ - oldQ);
-
-						if (diffQ > 0 && diffQ < tradeQty) {
-
-							executedQty = (int) diffQ;
-
-							dueQty = tradeQty - executedQty;
-
-							orderStatus = "Partially Filled";
-
-						}
-
-					} catch (Exception ignored) {}
-
-				}
-
-
-
-				// Compare & Display Comprehensive Table with Portfolio & Cash Audit
-
-				ClientPortfolio.verify(beforeSnapshot, afterSnapshot, clientInfoBefore, clientInfoAfter, instrument, sideText, tradeQty, executedRate, exchange, executedQty, dueQty, orderStatus);
-
-
-
-				// Verify Order Summary
-
-				Order_Summary.navigateToOrderSummary(driver);
-
-				Order_Summary.refresh(driver);
-
-				Map<String, String> postOrderSummary = Order_Summary.getSnapshot(driver, clientCode, instrument, snapshotExchange);
-
-				Order_Summary.verify(preOrderSummary, postOrderSummary, instrument, sideText, tradeQty, executedRate, exchange, executedQty, dueQty);
-
-
-
-				// Account Limits
-
-				Account_Limits.navigateToAccountLimits(driver);
-
-				Account_Limits.refresh(driver);
-
-				Map<String, String> postAccountLimits = Account_Limits.getSnapshot(driver, clientCode, snapshotExchange);
-
-				Account_Limits.verify(preAccountLimits, postAccountLimits, sideText, tradeQty, executedRate, exchange, executedQty, dueQty);
-
-
-
-				// Audit Market Depth
-
-				Market_Depth.navigateToMarketDepth(driver);
-
-				Map<String, String> postDepth = Market_Depth.getSnapshot(driver, instrument, snapshotExchange);
-
-				Market_Depth.verify(preDepth, postDepth, instrument, sideText, tradeQty, executedRate, exchange);
-
-
-
-				// Audit Order Terminal
-
-				Order_Terminal.verify(preOrderTerminal, postOrderTerminal, instrument, sideText, tradeQty, executedRate, exchange);
-
-
-
-				// Click newly placed order row in Order Terminal
-
-				Order_Terminal.clickOrderRow(driver, postOrderTerminal.get("Order_ID"), clientCode, instrument);
-
-				// Return to Trade Page if needed
-
-				if (!isAlreadyOnTradePage(driver)) {
-
-					System.out.println("[TRADE] Returning to Trade Page...");
-
-					navigateToTradePage(driver, wait);
-
-				}
-
+				// Active DOM polling waiting for WebSocket order update without reloading
+				waitForTerminalDomStatus(driver, "Accepted", 3);
+
+				// [STEP 2] CAPTURE POST-TRADE REAL-TIME UI DOM SNAPSHOT (ALL 6 WIDGETS)
+				System.out.printf("%n[AUDIT] Capturing POST-TRADE Real-Time UI Snapshot across 6 Widgets for Client: %s...%n", clientCode);
+				SixWidgetUiSnapshot postTradeSnap = capture6WidgetsUiSnapshot(driver, "POST-TRADE REAL-TIME", clientCode, instrument, snapshotExchange);
+				displayExactWidgetRowData(postTradeSnap, "POST-TRADE REAL-TIME - ALL 6 WIDGETS ALL ROWS");
+
+				// Compare Pre vs Post in-place
+				compareAndReport6Widgets(preTradeSnap, postTradeSnap, "NORMAL TRADE REAL-TIME UI AUDIT (" + sideText + " " + tradeQty + " " + instrument + ")");
 			}
 
 			// ---------- After confirmation, ask to select an Order Status type ----------
@@ -1591,25 +1292,13 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 	public static void navigateToTradePage(WebDriver driver, WebDriverWait wait) {
 
 		try {
-
 			// Automatically dismiss any password breach or system modal before navigation
-
 			OMSweb_Login.pressOkAutomatically(driver);
 
-
-
-			// Check if already on Trade portal (marketwatch_symbol or order_instrument visible)
-
+			// Check if already on Trade portal - NEVER reload or click navbar if already present
 			if (isAlreadyOnTradePage(driver)) {
-
-				// Ensure docked Trade tab is focused without reloading the page
-
-				Order_Terminal.navigateToTrade(driver);
-
-				System.out.println("[NAV] Already on Trade page. Active tab verified without reloading.");
-
+				System.out.println("[NAV] Already on Trade portal. Keeping live real-time UI without reloading.");
 				return;
-
 			}
 
 
@@ -1703,31 +1392,22 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 	public static boolean isAlreadyOnTradePage(WebDriver driver) {
-
 		try {
-
 			JavascriptExecutor js = (JavascriptExecutor) driver;
-
 			Object res = js.executeScript(
-
-				"var el = document.getElementById('marketwatch_symbol') || document.getElementById('order_instrument');" +
-
-				"if (el && el.offsetParent !== null) return true;" +
-
-				"if (window.location.href.indexOf('trade_portal') !== -1) return true;" +
-
+				"var el = document.getElementById('marketwatch_symbol') || " +
+				"         document.getElementById('order_instrument') || " +
+				"         document.getElementById('order_terminal_table') || " +
+				"         document.querySelector('.lm_goldenlayout, .user_order_terminals');" +
+				"if (el) return true;" +
+				"var href = (window.location.href || '').toLowerCase();" +
+				"if (href.indexOf('trade') !== -1 || href.indexOf('live_orders') !== -1) return true;" +
 				"return false;"
-
 			);
-
 			return Boolean.TRUE.equals(res);
-
 		} catch (Exception e) {
-
 			return false;
-
 		}
-
 	}
 
 
@@ -3818,38 +3498,17 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 	}
 
 	public static void refreshAndSyncAllWidgets(WebDriver driver, String symbol, String clientCode, String exchange) {
+		// Pure real-time DOM synchronization without switching tabs or reloading pages!
 		try {
-			// Ensure default Turquoise color link is active across widgets
 			if (!isWidgetColorConfigured) {
 				applyColorToAllWidgets(driver, "Turquoise", "#42EADDFF");
 				isWidgetColorConfigured = true;
 				activeWidgetColorName = "Turquoise";
 				activeWidgetColorHex = "#42EADDFF";
 			}
-
-			// 1. Refresh Order Terminal so new orders render
-			Order_Terminal.navigateToOrderTerminal(driver);
-			Order_Terminal.refresh(driver);
-			Thread.sleep(300);
 		} catch (Exception ignored) {}
-
 		try {
-			// 2. Position Widget: search symbol to ensure all holding rows populate
-			Position.searchSymbolInPosition(driver, symbol, exchange);
-			Thread.sleep(300);
-		} catch (Exception ignored) {}
-
-		try {
-			// 3. Client Portfolio: refresh and ensure client loaded
-			ClientPortfolio.navigateToPortfolio(driver);
-			ClientPortfolio.refresh(driver);
-			Thread.sleep(300);
-		} catch (Exception ignored) {}
-
-		try {
-			// 4. Return back to Trade tab
-			Order_Terminal.navigateToTrade(driver);
-			Thread.sleep(300);
+			Thread.sleep(150);
 		} catch (Exception ignored) {}
 	}
 
@@ -4455,9 +4114,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 	}
 
 	public static void placeTradeOrderDirect(WebDriver driver, WebDriverWait wait, String side, String clientCode, String symbol, int qty, double rate) throws InterruptedException {
-		if (!isAlreadyOnTradePage(driver)) {
-			navigateToTradePage(driver, wait);
-		}
+		// Directly interact with order placement form in-place without page reloading
 		WebElement sideBtn = driver.findElement(By.xpath("//div[@title='Place " + side.toUpperCase() + " Order']"));
 		sideBtn.click();
 		Thread.sleep(250);
@@ -4488,9 +4145,8 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 	public static boolean cancelRestingOrderInTerminal(WebDriver driver, WebDriverWait wait, String clientCode, String symbol) {
 		try {
-			Order_Terminal.navigateToOrderTerminal(driver);
-			Order_Terminal.refresh(driver);
-			Thread.sleep(600);
+			// Find resting order directly in #order_terminal_table without reloading or tab-hopping
+			Thread.sleep(300);
 
 			WebElement firstRow = Order_Terminal.findOrderRow(driver, null, clientCode, symbol);
 			if (firstRow != null) {

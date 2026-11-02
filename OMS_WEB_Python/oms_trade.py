@@ -21,7 +21,24 @@ import order_terminal
 
 
 def navigate_to_trade_page(driver: webdriver.Chrome) -> None:
-    """Navigates to the Trade page via navbar or exchange icon."""
+    """Navigates to the Trade page ONLY IF not already on it. NEVER reloads if already on Trade!"""
+    try:
+        is_on_trade = driver.execute_script("""
+            var el = document.getElementById('marketwatch_symbol') || 
+                     document.getElementById('order_instrument') || 
+                     document.getElementById('order_terminal_table') || 
+                     document.querySelector('.lm_goldenlayout, .user_order_terminals');
+            if (el) return true;
+            var href = (window.location.href || '').toLowerCase();
+            if (href.indexOf('trade') !== -1 || href.indexOf('live_orders') !== -1) return true;
+            return false;
+        """)
+        if is_on_trade:
+            print("[NAV] Already on Trade portal. Keeping live real-time UI without reloading.")
+            return
+    except Exception:
+        pass
+
     try:
         trade_nav = driver.find_elements(
             By.XPATH, "//i[contains(@class, 'fa-exchange')] | //a[contains(@href, 'trade')] | //a[normalize-space()='Trade']"
@@ -33,7 +50,6 @@ def navigate_to_trade_page(driver: webdriver.Chrome) -> None:
     except Exception:
         pass
 
-    # Direct DOM click fallback
     driver.execute_script("""
     var el = document.querySelector('a[href*="trade"], i.fa-exchange, .nav-item[data-page="trade"]');
     if (el) el.click();
@@ -483,17 +499,24 @@ def normal_trade_flow(driver: webdriver.Chrome, instrument: str) -> None:
         rate_in = input(f"Enter Rate (default ref price {ref_price:.2f}): ").strip()
         rate = float(rate_in) if rate_in else ref_price
 
-        # Snapshot before
-        print(f"\n[PORTFOLIO] Querying baseline financial status for Client {client_code}...")
-        before_snap = client_portfolio.get_client_details(driver, client_code)
+        # Snapshot before (in-place real-time UI DOM without reloading)
+        print(f"\n[AUDIT] Capturing PRE-TRADE Real-Time UI Snapshot across 6 Widgets for Client: {client_code}...")
+        pre_snap = capture_6widgets_ui_snapshot(driver, "PRE-TRADE BASELINE", client_code, instrument, exchange)
+        display_exact_widget_row_data(pre_snap, "PRE-TRADE BASELINE - ALL 6 WIDGETS ALL ROWS")
 
-        # Place Order
+        # Place Order in-place
         place_order(driver, side_text, client_code, instrument, qty, rate, exchange)
 
-        # Snapshot after
-        time.sleep(1.5)
-        after_snap = client_portfolio.get_client_details(driver, client_code)
-        print(f"[PORTFOLIO] Updated Cash Limit: {after_snap.get('cash_limit', '0')} BDT | Mature Balance: {after_snap.get('mature_balance', '0')} BDT")
+        # Wait for WebSocket real-time update in Order Terminal without reloading
+        wait_for_terminal_dom_status(driver, "Accepted", 3.0)
+
+        # Snapshot after (in-place real-time UI DOM without reloading)
+        print(f"\n[AUDIT] Capturing POST-TRADE Real-Time UI Snapshot across 6 Widgets for Client: {client_code}...")
+        post_snap = capture_6widgets_ui_snapshot(driver, "POST-TRADE REAL-TIME", client_code, instrument, exchange)
+        display_exact_widget_row_data(post_snap, "POST-TRADE REAL-TIME - ALL 6 WIDGETS ALL ROWS")
+
+        # Reconcile and compare
+        compare_and_report_6widgets(pre_snap, post_snap, f"NORMAL TRADE REAL-TIME UI AUDIT ({side_text} {qty} {instrument})")
 
         again = input("\nDo you want to trade again? (1=YES / 0=NO, default 0): ").strip()
         if again != "1":
@@ -568,17 +591,8 @@ def refresh_and_sync_all_widgets(
     client_code: str,
     exchange: str = "DSE"
 ) -> None:
-    """Forces widget active rendering so DOM tables reflect real-time WebSocket state."""
-    try:
-        driver.execute_script("""
-            var otTab = document.querySelector('.lm_tab[title*=Order], .lm_tab[title*=Terminal]');
-            if (otTab) otTab.click();
-            var refreshBtn = document.querySelector('#order_terminal_refresh, button[id*=refresh]');
-            if (refreshBtn) refreshBtn.click();
-        """)
-    except Exception:
-        pass
-    time.sleep(0.3)
+    """Ensures real-time DOM is ready without reloading or switching pages."""
+    time.sleep(0.15)
 
 
 def capture_6widgets_ui_snapshot(

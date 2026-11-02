@@ -15,15 +15,15 @@ from config import SHARED_CLIENT_DATA_URL
 
 
 def navigate_to_portfolio(driver: webdriver.Chrome) -> None:
-    """Navigates to Client Portfolio widget."""
+    """Focuses Client Portfolio tab locally in layout without reloading page."""
     try:
         script = """
-        var el = document.querySelector('a[data-link*="client_portfolio"], a[href*="portfolio"], .lm_tab[title*="Portfolio"]');
-        if (el) { el.click(); return true; }
+        var tab = document.querySelector('.lm_tab[title*="Portfolio"], .lm_tab[title*="portfolio"]');
+        if (tab && !tab.classList.contains('lm_active')) { tab.click(); return true; }
         return false;
         """
         driver.execute_script(script)
-        time.sleep(0.5)
+        time.sleep(0.2)
     except Exception:
         pass
 

@@ -139,28 +139,18 @@ public class Order_Terminal {
 
     public static void navigateToTrade(WebDriver driver) {
         try {
+            if (OMSweb_Trade.isAlreadyOnTradePage(driver)) {
+                return; // Already on Trade page; NEVER reload or click navbar!
+            }
             JavascriptExecutor js = (JavascriptExecutor) driver;
             Boolean clicked = (Boolean) js.executeScript(
-                "// 1. If Trade form is already visible and active, do not touch router or reload\n" +
-                "var inst = document.getElementById('order_instrument');\n" +
-                "if (inst && inst.offsetParent !== null) { return true; }\n" +
-                "// 2. Click local docked Trade tab in layout without reloading page\n" +
                 "var tabs = Array.from(document.querySelectorAll('.lm_tab, li.lm_tab, div.lm_tab'));\n" +
                 "var tradeTab = tabs.find(function(t) { return (t.innerText || t.textContent || '').trim() === 'Trade'; });\n" +
                 "if (tradeTab && tradeTab.offsetParent !== null) { tradeTab.click(); return true; }\n" +
-                "// 3. Fallback only if not on trade portal URL\n" +
-                "if (window.location.href.indexOf('trade_portal') === -1) {\n" +
-                "    var link = document.querySelector('a[data-link=\"live_orders/trade_portal\"], a[title=\"Trade\"]');\n" +
-                "    if (link && link.offsetParent !== null) { link.click(); return true; }\n" +
-                "}\n" +
                 "return false;"
             );
             if (Boolean.TRUE.equals(clicked)) {
-                Thread.sleep(300);
-            } else {
-                WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(3));
-                wait.until(ExpectedConditions.elementToBeClickable(TRADE_TAB)).click();
-                Thread.sleep(300);
+                Thread.sleep(200);
             }
         } catch (Exception ignored) {}
     }

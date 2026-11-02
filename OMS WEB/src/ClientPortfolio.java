@@ -164,6 +164,9 @@ public class ClientPortfolio {
 
     public static void navigateToTrade(WebDriver driver) {
         try {
+            if (OMSweb_Trade.isAlreadyOnTradePage(driver)) {
+                return; // Already on Trade page; NEVER reload or click navbar!
+            }
             JavascriptExecutor js = (JavascriptExecutor) driver;
             Boolean clicked = (Boolean) js.executeScript(
                 "var link = document.querySelector('a[data-link=\"live_orders/trade_portal\"], a[title=\"Trade\"]');" +
