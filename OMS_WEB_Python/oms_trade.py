@@ -894,6 +894,7 @@ def capture_6widgets_ui_snapshot(
                     continue;
                 }
                 allRows.push(rowData);
+                break; // Only capture recent order data for selected symbol
             }
             if (allRows.length > 0) {
                 var top = allRows[0];
@@ -1108,41 +1109,41 @@ def display_exact_widget_row_data(snap: Dict[str, Any], title: str) -> None:
     print(f"| Timestamp: {ts:<104} |")
     print("+======================================================================================================================+")
 
-    # 1. ORDER TERMINAL (SELECTED SYMBOL ONLY - ALL COLUMNS)
-    print(f"\n>>> [1/6] ORDER TERMINAL - SELECTED SYMBOL ALL COLUMNS ({sym}):")
+    # 1. ORDER TERMINAL (SELECTED SYMBOL ONLY - RECENT ORDER ALL COLUMNS)
+    print(f"\n>>> [1/6] ORDER TERMINAL - SELECTED SYMBOL RECENT ORDER ({sym}):")
     ot_rows = snap.get("order_terminal_rows", [])
     if not ot_rows:
-        print(f"    (No active order rows rendered for symbol {sym} in #order_terminal_table)")
+        print(f"    (No active order row rendered for symbol {sym} in #order_terminal_table)")
     else:
-        for idx, r in enumerate(ot_rows, 1):
-            oid = str(r.get("Order ID", "-"))
-            otime = str(r.get("Order Time", "-"))
-            etime = str(r.get("Exec Time", "-"))
-            cl = str(r.get("Client Code", "-"))
-            s = str(r.get("Symbol", sym))
-            board = str(r.get("Board", "PUBLIC"))
-            side = str(r.get("Side", "-"))
-            otype = str(r.get("Type", "LIMIT"))
-            price = str(r.get("Price", r.get("Rate", "-")))
-            avg_p = str(r.get("Avg Price", "-"))
-            qty = str(r.get("Qty", "-"))
-            drib = str(r.get("Drib", "0"))
-            due = str(r.get("Due Qty", "-"))
-            exec_q = str(r.get("Exec Qty", "-"))
-            st = str(r.get("Status", "-"))
-            ex_type = str(r.get("Exec Type", "Normal"))
-            prog = str(r.get("Progress", "-"))
-            dlr = str(r.get("Dealer ID", "-"))
+        r = ot_rows[0]
+        oid = str(r.get("Order ID", "-"))
+        otime = str(r.get("Order Time", "-"))
+        etime = str(r.get("Exec Time", "-"))
+        cl = str(r.get("Client Code", "-"))
+        s = str(r.get("Symbol", sym))
+        board = str(r.get("Board", "PUBLIC"))
+        side = str(r.get("Side", "-"))
+        otype = str(r.get("Type", "LIMIT"))
+        price = str(r.get("Price", "-"))
+        avg_p = str(r.get("Avg Price", "-"))
+        qty = str(r.get("Qty", "-"))
+        drib = str(r.get("Drib", "0"))
+        due = str(r.get("Due Qty", "-"))
+        exec_qty = str(r.get("Exec Qty", "-"))
+        status = str(r.get("Status", "-"))
+        ex_type = str(r.get("Exec Type", "Normal"))
+        prog = str(r.get("Progress", "-"))
+        dlr = str(r.get("Dealer ID", "-"))
 
-            print(f"    Order #{idx} All Columns for {s}:")
-            print("      +----------------------------------------------------------------------------------------------------------------+")
-            print(f"      | Order ID   : {oid:<22} | Order Time : {otime:<22} | Exec Time  : {etime:<22} |")
-            print(f"      | Client Code: {cl:<22} | Symbol     : {s:<22} | Board      : {board:<22} |")
-            print(f"      | Side       : {side:<22} | Order Type : {otype:<22} | Price/Rate : {price:<22} |")
-            print(f"      | Avg Price  : {avg_p:<22} | Order Qty  : {qty:<22} | Drib Qty   : {drib:<22} |")
-            print(f"      | Due Qty    : {due:<22} | Exec Qty   : {exec_q:<22} | Status     : {st:<22} |")
-            print(f"      | Exec Type  : {ex_type:<22} | Progress   : {prog:<22} | Dealer ID  : {dlr:<22} |")
-            print("      +----------------------------------------------------------------------------------------------------------------+")
+        print(f"    Most Recent Order All Columns for {s}:")
+        print("      +----------------------------------------------------------------------------------------------------------------+")
+        print(f"      | Order ID   : {oid:<22} | Order Time : {otime:<22} | Exec Time  : {etime:<22} |")
+        print(f"      | Client Code: {cl:<22} | Symbol     : {s:<22} | Board      : {board:<22} |")
+        print(f"      | Side       : {side:<22} | Order Type : {otype:<22} | Price/Rate : {price:<22} |")
+        print(f"      | Avg Price  : {avg_p:<22} | Order Qty  : {qty:<22} | Drib Qty   : {drib:<22} |")
+        print(f"      | Due Qty    : {due:<22} | Exec Qty   : {exec_qty:<22} | Status     : {status:<22} |")
+        print(f"      | Exec Type  : {ex_type:<22} | Progress   : {prog:<22} | Dealer ID  : {dlr:<22} |")
+        print("      +----------------------------------------------------------------------------------------------------------------+")
 
     # 2. MARKET DEPTH (SELECTED SYMBOL ONLY - ALL QUOTES & 5-LEVEL BOOK)
     print(f"\n>>> [2/6] MARKET DEPTH - SELECTED SYMBOL ALL COLUMNS & 5-LEVEL BOOK ({sym}):")

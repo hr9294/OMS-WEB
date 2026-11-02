@@ -7504,6 +7504,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"    }" +
 
 				"    out.push(rowObj);" +
+				"    break;" +
 
 				"}" +
 
@@ -7565,19 +7566,12 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 			}
 
-			System.out.printf(" [3/6] Order Terminal (UI)   -> ID: %s | Status: %s | Exec: %s | Due: %s | Rate: %s (Selected Symbol Orders: %d)%n",
-
+			System.out.printf(" [3/6] Order Terminal (UI)   -> ID: %s | Status: %s | Exec: %s | Due: %s | Rate: %s (Selected Symbol Recent Order)%n",
 					snap.orderTerminalUi.getOrDefault("Order_ID", "-"),
-
 					getOrderTerminalVal(snap.orderTerminalUi, "Status", "status"),
-
 					getOrderTerminalVal(snap.orderTerminalUi, "Exec_Qty", "exec_qty"),
-
 					getOrderTerminalVal(snap.orderTerminalUi, "Due_Qty", "due_qty"),
-
-					getOrderTerminalVal(snap.orderTerminalUi, "Rate", "rate"),
-
-					snap.orderTerminalRows.size());
+					getOrderTerminalVal(snap.orderTerminalUi, "Rate", "rate"));
 
 		} catch (Exception e) {
 
@@ -7953,81 +7947,42 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 
-		// 1. ORDER TERMINAL (SELECTED SYMBOL ONLY - ALL COLUMNS)
-
-		System.out.printf("\n>>> [1/6] ORDER TERMINAL - SELECTED SYMBOL ALL COLUMNS (%s):%n", sym);
+		// 1. ORDER TERMINAL (SELECTED SYMBOL RECENT ORDER ONLY - ALL COLUMNS)
+		System.out.printf("\n>>> [1/6] ORDER TERMINAL - SELECTED SYMBOL RECENT ORDER (%s):%n", sym);
 
 		if (snap.orderTerminalRows.isEmpty()) {
-
-			System.out.printf("    (No active order rows rendered for symbol %s in #order_terminal_table)%n", sym);
-
+			System.out.printf("    (No active order row rendered for symbol %s in #order_terminal_table)%n", sym);
 		} else {
+			Map<String, String> r = snap.orderTerminalRows.get(0);
+			String oid = r.getOrDefault("Order ID", r.getOrDefault("order_id", "-"));
+			String otime = r.getOrDefault("Order Time", r.getOrDefault("order_time", "-"));
+			String etime = r.getOrDefault("Exec Time", r.getOrDefault("exec_time", "-"));
+			String cl = r.getOrDefault("Client Code", r.getOrDefault("client_code", "-"));
+			String s = r.getOrDefault("Symbol", r.getOrDefault("symbol", sym));
+			String board = r.getOrDefault("Board", r.getOrDefault("board", "PUBLIC"));
+			String side = r.getOrDefault("Side", r.getOrDefault("side", "-"));
+			String type = r.getOrDefault("Type", r.getOrDefault("type", "LIMIT"));
+			String price = r.getOrDefault("Price", r.getOrDefault("rate", "-"));
+			String avgP = r.getOrDefault("Avg Price", r.getOrDefault("avg_price", "-"));
+			String qty = r.getOrDefault("Qty", r.getOrDefault("qty", "-"));
+			String drib = r.getOrDefault("Drib", r.getOrDefault("drib", "0"));
+			String due = r.getOrDefault("Due Qty", r.getOrDefault("due_qty", "-"));
+			String exec = r.getOrDefault("Exec Qty", r.getOrDefault("exec_qty", "-"));
+			String status = r.getOrDefault("Status", r.getOrDefault("status", "-"));
+			String exType = r.getOrDefault("Exec Type", r.getOrDefault("exec_type", "Normal"));
+			String prog = r.getOrDefault("Progress", r.getOrDefault("progress", "-"));
+			String dlr = r.getOrDefault("Dealer ID", r.getOrDefault("dealer_id", "-"));
 
-			int rIdx = 1;
-
-			for (Map<String, String> r : snap.orderTerminalRows) {
-
-				String oid = r.getOrDefault("Order ID", r.getOrDefault("order_id", "-"));
-
-				String otime = r.getOrDefault("Order Time", r.getOrDefault("order_time", "-"));
-
-				String etime = r.getOrDefault("Exec Time", r.getOrDefault("exec_time", "-"));
-
-				String cl = r.getOrDefault("Client Code", r.getOrDefault("client_code", "-"));
-
-				String s = r.getOrDefault("Symbol", r.getOrDefault("symbol", sym));
-
-				String board = r.getOrDefault("Board", r.getOrDefault("board", "PUBLIC"));
-
-				String side = r.getOrDefault("Side", r.getOrDefault("side", "-"));
-
-				String type = r.getOrDefault("Type", r.getOrDefault("type", "LIMIT"));
-
-				String price = r.getOrDefault("Price", r.getOrDefault("rate", "-"));
-
-				String avgP = r.getOrDefault("Avg Price", r.getOrDefault("avg_price", "-"));
-
-				String qty = r.getOrDefault("Qty", r.getOrDefault("qty", "-"));
-
-				String drib = r.getOrDefault("Drib", r.getOrDefault("drib", "0"));
-
-				String due = r.getOrDefault("Due Qty", r.getOrDefault("due_qty", "-"));
-
-				String exec = r.getOrDefault("Exec Qty", r.getOrDefault("exec_qty", "-"));
-
-				String status = r.getOrDefault("Status", r.getOrDefault("status", "-"));
-
-				String exType = r.getOrDefault("Exec Type", r.getOrDefault("exec_type", "Normal"));
-
-				String prog = r.getOrDefault("Progress", r.getOrDefault("progress", "-"));
-
-				String dlr = r.getOrDefault("Dealer ID", r.getOrDefault("dealer_id", "-"));
-
-
-
-				System.out.printf("    Order #%d All Columns for %s:%n", rIdx++, s);
-
-				System.out.printf("      +----------------------------------------------------------------------------------------------------------------+%n");
-
-				System.out.printf("      | Order ID   : %-22s | Order Time : %-22s | Exec Time  : %-22s |%n", oid, otime, etime);
-
-				System.out.printf("      | Client Code: %-22s | Symbol     : %-22s | Board      : %-22s |%n", cl, s, board);
-
-				System.out.printf("      | Side       : %-22s | Order Type : %-22s | Price/Rate : %-22s |%n", side, type, price);
-
-				System.out.printf("      | Avg Price  : %-22s | Order Qty  : %-22s | Drib Qty   : %-22s |%n", avgP, qty, drib);
-
-				System.out.printf("      | Due Qty    : %-22s | Exec Qty   : %-22s | Status     : %-22s |%n", due, exec, status);
-
-				System.out.printf("      | Exec Type  : %-22s | Progress   : %-22s | Dealer ID  : %-22s |%n", exType, prog, dlr);
-
-				System.out.printf("      +----------------------------------------------------------------------------------------------------------------+%n");
-
-			}
-
+			System.out.printf("    Most Recent Order All Columns for %s:%n", s);
+			System.out.printf("      +----------------------------------------------------------------------------------------------------------------+%n");
+			System.out.printf("      | Order ID   : %-22s | Order Time : %-22s | Exec Time  : %-22s |%n", oid, otime, etime);
+			System.out.printf("      | Client Code: %-22s | Symbol     : %-22s | Board      : %-22s |%n", cl, s, board);
+			System.out.printf("      | Side       : %-22s | Order Type : %-22s | Price/Rate : %-22s |%n", side, type, price);
+			System.out.printf("      | Avg Price  : %-22s | Order Qty  : %-22s | Drib Qty   : %-22s |%n", avgP, qty, drib);
+			System.out.printf("      | Due Qty    : %-22s | Exec Qty   : %-22s | Status     : %-22s |%n", due, exec, status);
+			System.out.printf("      | Exec Type  : %-22s | Progress   : %-22s | Dealer ID  : %-22s |%n", exType, prog, dlr);
+			System.out.printf("      +----------------------------------------------------------------------------------------------------------------+%n");
 		}
-
-
 
 		// 2. MARKET DEPTH (SELECTED SYMBOL ONLY - ALL QUOTES & 5-LEVEL BOOK)
 
@@ -8377,9 +8332,11 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		System.out.println("\n>>> PRE vs POST ROW COMPARISON AUDIT:");
 
-		System.out.printf("    * Order Terminal Rows : Pre = %d rows | Post = %d rows%n",
-
-				prev.orderTerminalRows.size(), curr.orderTerminalRows.size());
+		System.out.printf("    * Order Terminal Recent Order: Pre = %s (Status: %s) | Post = %s (Status: %s)%n",
+				prev.orderTerminalUi.getOrDefault("Order_ID", "-"),
+				getOrderTerminalVal(prev.orderTerminalUi, "Status", "status"),
+				curr.orderTerminalUi.getOrDefault("Order_ID", "-"),
+				getOrderTerminalVal(curr.orderTerminalUi, "Status", "status"));
 
 		System.out.printf("    * Position Holder Rows: Pre = %d rows | Post = %d rows%n",
 
