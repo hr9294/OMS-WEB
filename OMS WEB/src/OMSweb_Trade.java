@@ -51,13 +51,8 @@ public class OMSweb_Trade {
 
 
 
-		// Navigate to Trade Page initially if not already on it
-
-		if (!isAlreadyOnTradePage(driver)) {
-
-			navigateToTradePage(driver, wait);
-
-		}
+		// Navigate to Trade Page initially (always forced on startup to guarantee Trade Portal opens)
+		navigateToTradePage(driver, wait, true);
 
 		// Automatically link all widgets to default Turquoise (#42EADDFF) on startup
 		if (!isWidgetColorConfigured) {
@@ -1283,12 +1278,16 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 
-		public static void navigateToTradePage(WebDriver driver, WebDriverWait wait) {
+	public static void navigateToTradePage(WebDriver driver, WebDriverWait wait) {
+		navigateToTradePage(driver, wait, false);
+	}
+
+	public static void navigateToTradePage(WebDriver driver, WebDriverWait wait, boolean force) {
 		try {
 			OMSweb_Login.pressOkAutomatically(driver);
 
-			// Check if already on Trade portal - NEVER reload or click navbar if already present
-			if (isAlreadyOnTradePage(driver)) {
+			// Check if already on Trade portal - NEVER reload or click navbar if already present unless force is requested
+			if (!force && isAlreadyOnTradePage(driver)) {
 				System.out.println("[NAV] Already on Trade portal. Keeping live real-time UI without reloading.");
 				return;
 			}
@@ -1310,28 +1309,59 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			} catch (Exception ignored) {}
 			System.out.printf("[NAV] %s detected on Dashboard. Navigating to Trade Portal...%n", userLabel);
 
-			// Try JS click on Trade portal link
+			// 1. Try JS click across all possible Trade portal link and icon representations
 			Boolean clicked = (Boolean) js.executeScript(
-				"var tradeLink = document.querySelector('a[data-link=\"live_orders/trade_portal\"]');" +
-				"if (tradeLink) {" +
-				"    tradeLink.click();" +
-				"    return true;" +
-				"}" +
-				"var links = document.querySelectorAll('.nav-item a, .sidebar a, nav a, ul li a');" +
-				"for (var i = 0; i < links.length; i++) {" +
-				"    var t = (links[i].getAttribute('title') || links[i].innerText || links[i].textContent || '').trim().toLowerCase();" +
-				"    if (t === 'trade' || t === 'trade portal') {" +
-				"        links[i].click();" +
-				"        return true;" +
-				"    }" +
-				"}" +
+				"// 1. Direct match on data-link attribute (any tag)\n" +
+				"var el = document.querySelector('[data-link=\"live_orders/trade_portal\"], [data-link*=\"trade_portal\"], [data-link*=\"trade\"]');\n" +
+				"if (el) {\n" +
+				"    if (window.$) window.$(el).trigger('click');\n" +
+				"    el.click();\n" +
+				"    return true;\n" +
+				"}\n" +
+				"// 2. Click fa-exchange icon directly or its clickable container\n" +
+				"var icon = document.querySelector('i.fa-exchange, [class*=\"fa-exchange\"]');\n" +
+				"if (icon) {\n" +
+				"    var clickable = icon.closest('a, li, button, div.nav-item, div') || icon;\n" +
+				"    if (window.$) window.$(clickable).trigger('click');\n" +
+				"    clickable.click();\n" +
+				"    try { icon.click(); } catch (e) {}\n" +
+				"    return true;\n" +
+				"}\n" +
+				"// 3. GoldenLayout Trade tab if present\n" +
+				"var tabs = Array.from(document.querySelectorAll('.lm_tab, li.lm_tab, div.lm_tab'));\n" +
+				"var tradeTab = tabs.find(function(t) {\n" +
+				"    var title = (t.getAttribute('title') || t.innerText || t.textContent || '').trim().toLowerCase();\n" +
+				"    return title === 'trade' || title.indexOf('trade') !== -1;\n" +
+				"});\n" +
+				"if (tradeTab) {\n" +
+				"    if (window.$) window.$(tradeTab).trigger('click');\n" +
+				"    tradeTab.click();\n" +
+				"    return true;\n" +
+				"}\n" +
+				"// 4. Any navigation link or button with text/title 'Trade' or 'Trade Portal'\n" +
+				"var links = Array.from(document.querySelectorAll('.nav-item a, .sidebar a, nav a, ul li a, .nav-item, a, button'));\n" +
+				"var found = links.find(function(l) {\n" +
+				"    var t = (l.getAttribute('title') || l.getAttribute('data-original-title') || l.innerText || l.textContent || '').trim().toLowerCase();\n" +
+				"    return t === 'trade' || t === 'trade portal';\n" +
+				"});\n" +
+				"if (found) {\n" +
+				"    if (window.$) window.$(found).trigger('click');\n" +
+				"    found.click();\n" +
+				"    return true;\n" +
+				"}\n" +
 				"return false;"
 			);
 
+			// 2. Fallback to standard Selenium wait and click if JS click wasn't confirmed
 			if (!Boolean.TRUE.equals(clicked)) {
 				try {
 					WebElement tradepage = wait.until(ExpectedConditions.elementToBeClickable(
-						By.xpath("//a[@data-link='live_orders/trade_portal'] | //a[@title='Trade'] | //a[@data-original-title='Trade'] | //i[contains(@class,'fa-exchange')]/ancestor::a[1] | //a[normalize-space()='Trade']")));
+						By.xpath("//i[contains(@class,'fa-exchange')] | " +
+								"//*[@data-link='live_orders/trade_portal' or contains(@data-link,'trade')] | " +
+								"//a[@title='Trade' or @data-original-title='Trade' or normalize-space()='Trade'] | " +
+								"//div[contains(@class,'lm_tab') and contains(.,'Trade')] | " +
+								"//li[contains(@class,'lm_tab') and contains(.,'Trade')] | " +
+								"//button[normalize-space()='Trade']")));
 					tradepage.click();
 				} catch (Exception ex) {
 					System.out.println("[NAV] Fallback click notice: " + ex.getMessage());
@@ -1354,18 +1384,19 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		}
 	}
 
-
-
 	public static boolean isAlreadyOnTradePage(WebDriver driver) {
 		try {
 			JavascriptExecutor js = (JavascriptExecutor) driver;
 			Object res = js.executeScript(
-				"var mw = document.getElementById('marketwatch_symbol');" +
-				"var oi = document.getElementById('order_instrument');" +
-				"var ot = document.getElementById('order_terminal_table');" +
-				"if (mw || oi || ot) return true;" +
 				"var href = (window.location.href || '').toLowerCase();" +
 				"if (href.indexOf('trade_portal') !== -1) return true;" +
+				"var activeTab = document.querySelector('li.lm_tab.lm_active[title*=\"Trade\"], div.lm_tab.lm_active[title*=\"Trade\"], .nav-item.active [data-link*=\"trade\"], a.active[data-link*=\"trade\"]');" +
+				"if (activeTab) return true;" +
+				"var mw = document.getElementById('marketwatch_symbol');" +
+				"var isMwVis = mw && (mw.offsetParent !== null || mw.offsetWidth > 0 || (mw.getClientRects && mw.getClientRects().length > 0));" +
+				"var buyBtn = document.querySelector('[title=\"Place BUY Order\"], .new_buy_order, button.btn-buy');" +
+				"var isBuyVis = buyBtn && (buyBtn.offsetParent !== null || buyBtn.offsetWidth > 0);" +
+				"if (isMwVis && isBuyVis) return true;" +
 				"return false;"
 			);
 			return Boolean.TRUE.equals(res);

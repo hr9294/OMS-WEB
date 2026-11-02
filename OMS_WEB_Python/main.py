@@ -58,9 +58,9 @@ def main() -> None:
 
         mode = args.mode
         if not mode:
-            # 1. FIRST OPEN THE TRADE PAGE
+            # 1. FIRST OPEN THE TRADE PAGE (Force navigation on initial startup)
             print("\n[UFTFAST OMS] 1. Opening Trade Page...")
-            oms_trade.navigate_to_trade_page(driver)
+            oms_trade.navigate_to_trade_page(driver, force=True)
 
             # 2. THEN SELECT WIDGET COLOR LINK
             print("[UFTFAST OMS] 2. Configuring Widget Color Link...")

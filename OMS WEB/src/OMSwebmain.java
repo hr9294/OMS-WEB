@@ -69,9 +69,9 @@ public class OMSwebmain {
 
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
 
-        // 1. FIRST OPEN THE TRADE PAGE
+        // 1. FIRST OPEN THE TRADE PAGE (Force navigation to guarantee Trade Portal opens)
         System.out.println("\n[UFTFAST OMS] 1. Opening Trade Page...");
-        OMSweb_Trade.navigateToTradePage(driver, wait);
+        OMSweb_Trade.navigateToTradePage(driver, wait, true);
 
         // 2. THEN SELECT WIDGET COLOR LINK
         System.out.println("[UFTFAST OMS] 2. Configuring Widget Color Link...");

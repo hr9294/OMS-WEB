@@ -20,40 +20,90 @@ import position
 import order_terminal
 
 
-def navigate_to_trade_page(driver: webdriver.Chrome) -> None:
-    """Navigates to the Trade page ONLY IF not already on it. NEVER reloads if already on Trade!"""
+def navigate_to_trade_page(driver: webdriver.Chrome, force: bool = False) -> None:
+    """Navigates to the Trade page ONLY IF not already on it unless force=True. NEVER reloads if already on Trade!"""
+    if not force:
+        try:
+            is_on_trade = driver.execute_script("""
+                var href = (window.location.href || '').toLowerCase();
+                if (href.indexOf('trade_portal') !== -1) return true;
+                var activeTab = document.querySelector('li.lm_tab.lm_active[title*="Trade"], div.lm_tab.lm_active[title*="Trade"], .nav-item.active [data-link*="trade"], a.active[data-link*="trade"]');
+                if (activeTab) return true;
+                var mw = document.getElementById('marketwatch_symbol');
+                var isMwVis = mw && (mw.offsetParent !== null || mw.offsetWidth > 0 || (mw.getClientRects && mw.getClientRects().length > 0));
+                var buyBtn = document.querySelector('[title="Place BUY Order"], .new_buy_order, button.btn-buy');
+                var isBuyVis = buyBtn && (buyBtn.offsetParent !== null || buyBtn.offsetWidth > 0);
+                if (isMwVis && isBuyVis) return true;
+                return false;
+            """)
+            if is_on_trade:
+                print("[NAV] Already on Trade portal. Keeping live real-time UI without reloading.")
+                return
+        except Exception:
+            pass
+
+    clicked = False
     try:
-        is_on_trade = driver.execute_script("""
-            var mw = document.getElementById('marketwatch_symbol');
-            var oi = document.getElementById('order_instrument');
-            var ot = document.getElementById('order_terminal_table');
-            if (mw || oi || ot) return true;
-            var href = (window.location.href || '').toLowerCase();
-            if (href.indexOf('trade_portal') !== -1) return true;
+        clicked = bool(driver.execute_script("""
+            var el = document.querySelector('[data-link="live_orders/trade_portal"], [data-link*="trade_portal"], [data-link*="trade"]');
+            if (el) {
+                if (window.$) window.$(el).trigger('click');
+                el.click();
+                return true;
+            }
+            var icon = document.querySelector('i.fa-exchange, [class*="fa-exchange"]');
+            if (icon) {
+                var clickable = icon.closest('a, li, button, div.nav-item, div') || icon;
+                if (window.$) window.$(clickable).trigger('click');
+                clickable.click();
+                try { icon.click(); } catch (e) {}
+                return true;
+            }
+            var tabs = Array.from(document.querySelectorAll('.lm_tab, li.lm_tab, div.lm_tab'));
+            var tradeTab = tabs.find(function(t) {
+                var title = (t.getAttribute('title') || t.innerText || t.textContent || '').trim().toLowerCase();
+                return title === 'trade' || title.indexOf('trade') !== -1;
+            });
+            if (tradeTab) {
+                if (window.$) window.$(tradeTab).trigger('click');
+                tradeTab.click();
+                return true;
+            }
+            var links = Array.from(document.querySelectorAll('.nav-item a, .sidebar a, nav a, ul li a, .nav-item, a, button'));
+            var found = links.find(function(l) {
+                var t = (l.getAttribute('title') || l.getAttribute('data-original-title') || l.innerText || l.textContent || '').trim().toLowerCase();
+                return t === 'trade' || t === 'trade portal';
+            });
+            if (found) {
+                if (window.$) window.$(found).trigger('click');
+                found.click();
+                return true;
+            }
             return false;
-        """)
-        if is_on_trade:
-            print("[NAV] Already on Trade portal. Keeping live real-time UI without reloading.")
-            return
+        """))
     except Exception:
-        pass
+        clicked = False
 
-    try:
-        trade_nav = driver.find_elements(
-            By.XPATH, "//i[contains(@class, 'fa-exchange')] | //a[contains(@href, 'trade')] | //a[normalize-space()='Trade']"
-        )
-        if trade_nav and trade_nav[0].is_displayed():
-            trade_nav[0].click()
-            time.sleep(1.0)
-            return
-    except Exception:
-        pass
+    if not clicked:
+        try:
+            trade_nav = driver.find_elements(
+                By.XPATH,
+                "//i[contains(@class, 'fa-exchange')] | "
+                "//*[@data-link='live_orders/trade_portal' or contains(@data-link,'trade')] | "
+                "//a[@title='Trade' or @data-original-title='Trade' or normalize-space()='Trade'] | "
+                "//div[contains(@class,'lm_tab') and contains(.,'Trade')] | "
+                "//li[contains(@class,'lm_tab') and contains(.,'Trade')] | "
+                "//button[normalize-space()='Trade']"
+            )
+            for el in trade_nav:
+                if el.is_displayed():
+                    el.click()
+                    break
+        except Exception:
+            pass
 
-    driver.execute_script("""
-    var el = document.querySelector('a[href*="trade"], i.fa-exchange, .nav-item[data-page="trade"]');
-    if (el) el.click();
-    """)
     time.sleep(1.0)
+    print("[NAV] Trade Portal loaded successfully.")
 
 
 def enter_instrument(driver: webdriver.Chrome, symbol: str) -> None:
