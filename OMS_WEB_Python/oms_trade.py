@@ -1453,7 +1453,7 @@ def run_sequential_buy_lifecycle_audit(
 
     # [STAGE 1] Accepted Order
     print("\n>>> [STAGE 1/5] PLACING ACCEPTED BUY ORDER (Rate below LTP)...")
-    accepted_rate = max(1.0, round(ref_price * 0.95, 2))
+    accepted_rate = ref_price
     print(f"    Placing BUY Limit: 10 shares @ {accepted_rate:.2f} (LTP is {ref_price:.2f}) for Client {buyer}")
     place_order(driver, "BUY", buyer, clean_sym, 10, accepted_rate, ex)
 
@@ -1499,7 +1499,7 @@ def run_sequential_buy_lifecycle_audit(
 
     # [STAGE 4] Cancelled Order
     print("\n>>> [STAGE 4/5] PLACING BUY ORDER AND CANCELLING IT IN ORDER TERMINAL...")
-    cancel_rate = max(1.0, accepted_rate - 1.0)
+    cancel_rate = accepted_rate
     print(f"    Placing resting BUY Limit: 10 shares @ {cancel_rate:.2f} to cancel...")
     place_order(driver, "BUY", buyer, clean_sym, 10, cancel_rate, ex)
     wait_for_terminal_dom_status(driver, "Accepted", 3.0)
