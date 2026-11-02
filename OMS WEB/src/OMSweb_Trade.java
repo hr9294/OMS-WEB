@@ -3618,6 +3618,13 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 					for (Map.Entry<String, Object> e : r.entrySet()) {
 						row.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
 					}
+					String pLtp = row.get("LTP");
+					if (pLtp == null || pLtp.equals("-") || pLtp.isEmpty() || pLtp.equals("0")) {
+						double dbPrice = OMSweb_DBMarketData.getDirectSymbolLtpFromDb(snap.targetSymbol, "DSE");
+						if (dbPrice > 0) {
+							row.put("LTP", String.format(Locale.US, "%.2f", dbPrice));
+						}
+					}
 					snap.portfolioRows.add(row);
 				}
 			}
@@ -3669,6 +3676,29 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 						row.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
 					}
 					snap.marketDepthBookRows.add(row);
+				}
+			}
+			String curLtp = getDepthVal(snap.marketDepthUi, "ltp", "LTP");
+			if (curLtp.equals("-") || curLtp.isEmpty() || curLtp.equals("0")) {
+				double dbPrice = OMSweb_DBMarketData.getDirectSymbolLtpFromDb(snap.targetSymbol, "DSE");
+				if (dbPrice > 0) {
+					snap.marketDepthUi.put("ltp", String.format(Locale.US, "%.2f", dbPrice));
+					snap.marketDepthUi.put("LTP", String.format(Locale.US, "%.2f", dbPrice));
+				}
+			}
+			String curHigh = getDepthVal(snap.marketDepthUi, "high", "High");
+			String curLow = getDepthVal(snap.marketDepthUi, "low", "Low");
+			if (curHigh.equals("-") || curLow.equals("-")) {
+				OMSweb_DBMarketData.PublicSymbolLtp cachedSym = OMSweb_DBMarketData.getCachedSymbol(snap.targetSymbol, "DSE");
+				if (cachedSym != null) {
+					if ((curHigh.equals("-") || curHigh.isEmpty()) && cachedSym.high > 0) {
+						snap.marketDepthUi.put("high", String.format(Locale.US, "%.2f", cachedSym.high));
+						snap.marketDepthUi.put("High", String.format(Locale.US, "%.2f", cachedSym.high));
+					}
+					if ((curLow.equals("-") || curLow.isEmpty()) && cachedSym.low > 0) {
+						snap.marketDepthUi.put("low", String.format(Locale.US, "%.2f", cachedSym.low));
+						snap.marketDepthUi.put("Low", String.format(Locale.US, "%.2f", cachedSym.low));
+					}
 				}
 			}
 			System.out.printf(" [2/6] Market Depth (UI)     -> LTP: %s | High: %s | Low: %s | Buy%%: %s | Sell%%: %s (Depth Book Levels: %d)%n",

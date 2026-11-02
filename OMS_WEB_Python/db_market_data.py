@@ -23,6 +23,8 @@ Configured for UFTFAST OMS / UFTCL UAT environment:
 import os
 import sys
 import json
+import socket
+import time
 import subprocess
 from typing import Dict, List, Optional, Any
 
@@ -66,18 +68,65 @@ _DSE_BBO_CACHE: Dict[str, Dict[str, Any]] = {}
 _CSE_BBO_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
+
+# Circuit Breaker & Fast Connectivity Monitor
+_LAST_DB_FAILURE_TIME = 0.0
+_DB_COOLDOWN_SEC = 60.0
+_DB_OFFLINE_NOTICE_LOGGED = False
+
+def is_db_circuit_open() -> bool:
+    global _LAST_DB_FAILURE_TIME
+    if _LAST_DB_FAILURE_TIME == 0.0:
+        return False
+    return (time.time() - _LAST_DB_FAILURE_TIME) < _DB_COOLDOWN_SEC
+
+def record_db_failure():
+    global _LAST_DB_FAILURE_TIME, _DB_OFFLINE_NOTICE_LOGGED
+    _LAST_DB_FAILURE_TIME = time.time()
+    if not _DB_OFFLINE_NOTICE_LOGGED:
+        _DB_OFFLINE_NOTICE_LOGGED = True
+        print(f"[DB INFO] Database (192.168.155.22:5445 / 10.20.8.29:5445) unreachable (requires office VPN / LAN).\n"
+              f"          Using local market cache & Depth API for 60s (0 ms lag).")
+
+def record_db_success():
+    global _LAST_DB_FAILURE_TIME, _DB_OFFLINE_NOTICE_LOGGED
+    _LAST_DB_FAILURE_TIME = 0.0
+    _DB_OFFLINE_NOTICE_LOGGED = False
+
+def is_host_reachable(host: str, port: int, timeout_sec: float = 0.15) -> bool:
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(timeout_sec)
+        res = s.connect_ex((host, port))
+        s.close()
+        return res == 0
+    except Exception:
+        return False
+
 def get_db_connection():
     """
     Creates and returns a PostgreSQL database connection with automatic failover.
     Tries Primary DB (192.168.155.22:5445) first; if any error occurs,
     automatically falls back to Secondary DB (10.20.8.29:5445).
+    Uses fast socket pre-check and circuit breaker to prevent offline lag.
     """
+    if is_db_circuit_open():
+        raise ConnectionError("DB Circuit open (cooldown active)")
+
     import psycopg2
     errors = []
+    any_reachable = False
 
     for ep in DB_ENDPOINTS:
         label = ep["label"]
         uri = ep["uri"]
+        host = ep["host"]
+        port = ep["port"]
+
+        if not is_host_reachable(host, port, 0.15):
+            continue
+        any_reachable = True
+
         # Strip '+psycopg2' scheme prefix if present
         if uri.startswith("postgresql+psycopg2://"):
             raw_uri = "postgresql://" + uri[len("postgresql+psycopg2://"):]
@@ -85,24 +134,28 @@ def get_db_connection():
             raw_uri = uri
 
         try:
-            conn = psycopg2.connect(raw_uri, connect_timeout=DB_CONFIG.get("timeout", 3))
+            conn = psycopg2.connect(raw_uri, connect_timeout=DB_CONFIG.get("timeout", 2))
+            record_db_success()
             return conn
         except Exception as e:
             errors.append(f"{label}: {e}")
             try:
                 conn = psycopg2.connect(
-                    host=ep["host"],
-                    port=ep["port"],
+                    host=host,
+                    port=port,
                     dbname=DB_CONFIG["dbname"],
                     user=DB_CONFIG["user"],
                     password=DB_CONFIG["password"],
-                    connect_timeout=DB_CONFIG.get("timeout", 3),
+                    connect_timeout=DB_CONFIG.get("timeout", 2),
                 )
+                record_db_success()
                 return conn
             except Exception as e2:
                 errors.append(f"{label} fallback params: {e2}")
 
-    raise ConnectionError(f"Failed to connect to both Primary and Secondary DBs: {'; '.join(errors)}")
+    if not any_reachable:
+        record_db_failure()
+    raise ConnectionError(f"Failed to connect to DBs: {'; '.join(errors) if errors else 'hosts unreachable'}")
 
 
 def is_strictly_public_equity(symbol: str, company_name: str = "", sector: str = "", symbol_instr: str = "") -> bool:
@@ -148,6 +201,17 @@ def fetch_ltp_from_db(exchange: str = "DSE", symbol: Optional[str] = None) -> Di
     results: Dict[str, Dict[str, Any]] = {}
     ex_clean = (exchange or "DSE").strip().upper()
     target_cache = _CSE_LTP_CACHE if ex_clean == "CSE" else _DSE_LTP_CACHE
+
+    if is_db_circuit_open():
+        cached = load_public_board_cache(CACHE_FILE)
+        if cached:
+            if not symbol:
+                target_cache.update(cached)
+            return {
+                k: v for k, v in cached.items()
+                if (not symbol or k == symbol.strip().upper()) and is_strictly_public_equity(k, v.get("company_name", ""), v.get("sector", ""), v.get("symbol_instr", ""))
+            }
+        return results
 
     if target_cache:
         if symbol:
@@ -239,6 +303,8 @@ def fetch_ltp_from_db(exchange: str = "DSE", symbol: Optional[str] = None) -> Di
     # Fallback to cache if offline
     cached = load_public_board_cache(CACHE_FILE)
     if cached:
+        if not symbol:
+            target_cache.update(cached)
         return {
             k: v for k, v in cached.items()
             if (not symbol or k == symbol.strip().upper()) and is_strictly_public_equity(k, v.get("company_name", ""), v.get("sector", ""), v.get("symbol_instr", ""))
@@ -271,6 +337,8 @@ def fetch_bbo_from_db(exchange: str = "DSE", symbol: Optional[str] = None) -> Di
     Table: dse_md_bbo / cse_md_bbo WHERE board = 'PUBLIC'
     """
     results: Dict[str, Dict[str, Any]] = {}
+    if is_db_circuit_open():
+        return results
     ex_clean = (exchange or "DSE").strip().upper()
     table_bbo = "cse_md_bbo" if ex_clean == "CSE" else "dse_md_bbo"
     table_sym = "cse_md_symbols" if ex_clean == "CSE" else "dse_md_symbols"
@@ -345,6 +413,8 @@ def fetch_mktdepth_from_db(exchange: str = "DSE", symbol: Optional[str] = None) 
     Table: dse_md_mktdepth / cse_md_mktdepth WHERE board = 'PUBLIC'
     """
     results: Dict[str, Dict[str, Any]] = {}
+    if is_db_circuit_open():
+        return results
     ex_clean = (exchange or "DSE").strip().upper()
     table_depth = "cse_md_mktdepth" if ex_clean == "CSE" else "dse_md_mktdepth"
     table_sym = "cse_md_symbols" if ex_clean == "CSE" else "dse_md_symbols"

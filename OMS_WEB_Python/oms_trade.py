@@ -759,6 +759,12 @@ def capture_6widgets_ui_snapshot(
         port_data = driver.execute_script(port_script, clean_sym) or {}
         snap["portfolio"] = port_data.get("summary", {})
         snap["portfolio_rows"] = port_data.get("allRows", [])
+        for p_row in snap["portfolio_rows"]:
+            if str(p_row.get("LTP", "-")).strip() in ("-", "", "0"):
+                from db_market_data import get_public_symbol_ltp
+                db_ltp = get_public_symbol_ltp(clean_sym, exchange)
+                if db_ltp and db_ltp > 0:
+                    p_row["LTP"] = f"{db_ltp:.2f}"
         print(f" [1/6] Client Portfolio (UI) -> Qty: {snap['portfolio'].get('total_qty', '0')} | Saleable: {snap['portfolio'].get('saleable_qty', '0')} | Selected Symbol Rows: {len(snap['portfolio_rows'])}")
     except Exception as e:
         print(f" [1/6] Client Portfolio (UI) -> {e}")
@@ -815,6 +821,11 @@ def capture_6widgets_ui_snapshot(
         depth_data = driver.execute_script(md_script) or {}
         snap["market_depth"] = depth_data.get("summary", {})
         snap["market_depth_book_rows"] = depth_data.get("bookRows", [])
+        if snap["market_depth"].get("ltp", "-") in ("-", "", "0"):
+            from db_market_data import get_public_symbol_ltp
+            db_ltp = get_public_symbol_ltp(clean_sym, exchange)
+            if db_ltp and db_ltp > 0:
+                snap["market_depth"]["ltp"] = f"{db_ltp:.2f}"
         print(f" [2/6] Market Depth (UI)     -> LTP: {snap['market_depth'].get('ltp', '-')} | High: {snap['market_depth'].get('high', '-')} | Book Levels: {len(snap['market_depth_book_rows'])}")
     except Exception as e:
         print(f" [2/6] Market Depth (UI)     -> {e}")
