@@ -521,16 +521,23 @@ public class OMSweb_Trade {
 
 
 
-				// Check saleable balance warning for SELL
-
+				// Check saleable balance warning for SELL; if insufficient, shift to another client!
 				Position.ClientPosition sellInfo = positionMap.get(clientCode);
-
-				if (sideText.equals("SELL") && sellInfo != null && sellInfo.getSaleableQty() > 0 && tradeQty > sellInfo.getSaleableQty()) {
-
-					System.out.printf("[WARN] Entered qty %d exceeds client %s's saleable balance (%,.0f)! Order may be rejected.%n",
-
-							tradeQty, clientCode, sellInfo.getSaleableQty());
-
+				if (sideText.equals("SELL")) {
+					if (sellInfo == null || sellInfo.getSaleableQty() < tradeQty) {
+						double currentSaleable = (sellInfo != null) ? sellInfo.getSaleableQty() : 0.0;
+						System.out.printf("[SALEABLE CHECK] Client %s has %.0f saleable shares of %s (needed %d).%n",
+								clientCode, currentSaleable, instrument, tradeQty);
+						Position.ClientPosition altClient = Position.findClientWithSaleable(driver, instrument, tradeQty, clientCode, exchange);
+						if (altClient != null && !altClient.getClientCode().equalsIgnoreCase(clientCode)) {
+							System.out.printf("  -> [AUTO-SHIFT] Shifting to Client %s who holds %,.0f saleable shares. Continuing execution without closing code!%n",
+									altClient.getClientCode(), altClient.getSaleableQty());
+							clientCode = altClient.getClientCode();
+							if (altClient.getSaleableQty() < tradeQty) {
+								tradeQty = (int) Math.max(1, altClient.getSaleableQty());
+							}
+						}
+					}
 				}
 
 

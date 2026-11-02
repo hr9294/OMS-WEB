@@ -55,9 +55,9 @@ public class OMSweb_MultiOrderExecution {
     public static class OrderItem {
         private final int id;
         private final OrderSide side;
-        private final String clientCode;
+        private String clientCode;
         private final String symbol;
-        private final int quantity;
+        private int quantity;
         private final double rate;
         private final boolean isOpposite;
         private String orderId = "-";
@@ -90,6 +90,8 @@ public class OMSweb_MultiOrderExecution {
         public void setExecQty(int execQty) { this.execQty = execQty; }
         public int getDueQty() { return dueQty; }
         public void setDueQty(int dueQty) { this.dueQty = dueQty; }
+        public void setClientCode(String clientCode) { this.clientCode = clientCode; }
+        public void setQuantity(int quantity) { this.quantity = quantity; }
 
         @Override
         public String toString() {
@@ -331,6 +333,24 @@ public class OMSweb_MultiOrderExecution {
                 double step = differentPrices ? (i * 0.50) : 0.0;
                 double rate = Math.max(0.10, Math.round((refPrice - spreadDelta - step) * 100.0) / 100.0);
                 queue.add(new OrderItem(itemCounter++, OrderSide.BUY, buyClient, symbol, qty, rate, false));
+            }
+
+            // Verify if chosen sell client has sufficient saleable shares; if not, shift to another client!
+            Position.ClientPosition bestSeller = Position.findClientWithSaleable(driver, symbol, totalBuyQty, sellClient, exchange);
+            if (bestSeller != null) {
+                if (!bestSeller.getClientCode().equalsIgnoreCase(sellClient)) {
+                    System.out.printf("%n[AUTO-SHIFT: SALEABLE CHECK] Client %s does not have %d saleable shares of %s.%n",
+                            sellClient, totalBuyQty, symbol);
+                    System.out.printf("  -> Automatically shifting SELL order to Client %s (Saleable: %,.0f shares)%n",
+                            bestSeller.getClientCode(), bestSeller.getSaleableQty());
+                    sellClient = bestSeller.getClientCode();
+                }
+                if (bestSeller.getSaleableQty() < totalBuyQty) {
+                    int safeQty = (int) Math.max(1, bestSeller.getSaleableQty());
+                    System.out.printf("  -> [ADJUST] Adjusted Opposite SELL order quantity from %d to %,d (max available saleable for %s)%n",
+                            totalBuyQty, safeQty, sellClient);
+                    totalBuyQty = safeQty;
+                }
             }
 
             // Opposite SELL order at UPPER price (> refPrice and well above the BUY orders)
@@ -582,6 +602,20 @@ public class OMSweb_MultiOrderExecution {
             OrderItem item = queue.get(i);
             Instant start = Instant.now();
             OMSweb_Trade.ensureUIUnlocked(driver);
+
+            // If this is a SELL order, proactively check and auto-shift client if saleable balance is insufficient
+            if (item.getSide() == OrderSide.SELL) {
+                Position.ClientPosition saleableCheck = Position.findClientWithSaleable(driver, item.getSymbol(), item.getQuantity(), item.getClientCode(), exchange);
+                if (saleableCheck != null && !saleableCheck.getClientCode().equalsIgnoreCase(item.getClientCode())) {
+                    String oldClient = item.getClientCode();
+                    item.setClientCode(saleableCheck.getClientCode());
+                    if (saleableCheck.getSaleableQty() < item.getQuantity()) {
+                        item.setQuantity((int) Math.max(1, saleableCheck.getSaleableQty()));
+                    }
+                    System.out.printf("  [AUTO-SHIFT: SALEABLE BALANCE] Client %s has insufficient saleable shares! Shifted SELL order to Client %s (Saleable: %,.0f, Order Qty: %d). Continuing without closing code!%n",
+                            oldClient, item.getClientCode(), saleableCheck.getSaleableQty(), item.getQuantity());
+                }
+            }
             System.out.printf("%n>>> Placing Order [%d/%d]: %s...%n", (i + 1), queue.size(), item);
 
             try {
@@ -1282,6 +1316,31 @@ public class OMSweb_MultiOrderExecution {
         }
         if (s.isEmpty()) return "";
         return s + ".PUBLIC";
+    }
+
+    
+    public static String checkSaleableUiWarning(WebDriver driver) {
+        if (driver == null) return null;
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            Object res = js.executeScript(
+                "try {" +
+                "    var texts = [];" +
+                "    var nodes = document.querySelectorAll('.jconfirm-content, .toast-message, .toastr, .alert, .swal2-html-container, .modal-body, .jconfirm-box');" +
+                "    for (var i = 0; i < nodes.length; i++) {" +
+                "        var t = (nodes[i].innerText || nodes[i].textContent || '').trim();" +
+                "        if (t.toLowerCase().includes('saleable') || t.toLowerCase().includes('insufficient') || t.toLowerCase().includes('quantity is less')) {" +
+                "            texts.push(t);" +
+                "        }" +
+                "    }" +
+                "    return texts.join(' | ');" +
+                "} catch(e) { return ''; }"
+            );
+            if (res != null && !String.valueOf(res).trim().isEmpty()) {
+                return String.valueOf(res).trim();
+            }
+        } catch (Exception ignored) {}
+        return null;
     }
 
     public static String cleanSymbol(String sym) {

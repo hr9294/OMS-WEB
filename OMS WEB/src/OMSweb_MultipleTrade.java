@@ -288,11 +288,11 @@ public class OMSweb_MultipleTrade {
 
         final OrderSide side;
 
-        final String clientCode;
+        String clientCode;
 
         final String symbol;
 
-        final int quantity;
+        int quantity;
 
         final double rate;
 
@@ -1196,6 +1196,19 @@ public class OMSweb_MultipleTrade {
 
         try {
             OMSweb_Trade.ensureUIUnlocked(driver);
+
+            // Auto-shift SELL order to another client if current client has insufficient saleable quantity
+            if (order.side == OrderSide.SELL) {
+                Position.ClientPosition bestSeller = Position.findClientWithSaleable(driver, order.symbol, order.quantity, order.clientCode, "DSE");
+                if (bestSeller != null && !bestSeller.getClientCode().equalsIgnoreCase(order.clientCode)) {
+                    System.out.printf("  [AUTO-SHIFT] Client %s does not have %d saleable shares of %s. Shifting to Client %s (Saleable: %,.0f shares)...%n",
+                            order.clientCode, order.quantity, order.symbol, bestSeller.getClientCode(), bestSeller.getSaleableQty());
+                    order.clientCode = bestSeller.getClientCode();
+                    if (bestSeller.getSaleableQty() < order.quantity) {
+                        order.quantity = (int) Math.max(1, bestSeller.getSaleableQty());
+                    }
+                }
+            }
 
             // Ensure on Trade Page
 

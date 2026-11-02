@@ -312,6 +312,19 @@ def place_order(
     sym_clean = oms_price.clean_symbol(symbol)
     wait = WebDriverWait(driver, 6)
 
+    # Proactively check saleable quantity for SELL orders; shift to another client if insufficient
+    if side_clean == "SELL":
+        try:
+            import position
+            best_seller = position.find_client_with_saleable(driver, sym_clean, qty, client_code, exchange)
+            if best_seller and best_seller.client_code.lower() != str(client_code).lower():
+                print(f"  [AUTO-SHIFT: SALEABLE BALANCE] Client {client_code} has insufficient saleable shares! Shifting to Client {best_seller.client_code} (Saleable: {best_seller.saleable_qty:,.0f}). Continuing without closing code!")
+                client_code = best_seller.client_code
+                if best_seller.saleable_qty < qty:
+                    qty = int(max(1, best_seller.saleable_qty))
+        except Exception:
+            pass
+
     print(f"\n[ORDER ENTRY] Placing {side_clean} order: Client={client_code} | {sym_clean} x {qty} @ {rate:.2f} ({exchange})")
 
     try:

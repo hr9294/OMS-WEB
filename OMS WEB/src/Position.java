@@ -608,6 +608,53 @@ public class Position {
         return list;
     }
 
+    
+    /**
+     * Finds a client holding sufficient saleable shares for a symbol.
+     * If preferredClient has >= requiredQty, returns preferredClient.
+     * Otherwise, searches all position holders for the symbol:
+     * - Returns the first holder with saleableQty >= requiredQty.
+     * - If none has >= requiredQty, returns the holder with the MAXIMUM saleableQty.
+     * - If no holders found, returns null.
+     */
+    public static ClientPosition findClientWithSaleable(WebDriver driver, String symbol, double requiredQty, String preferredClient, String exchange) {
+        List<ClientPosition> positions = fetchPositionsFromApi(driver, symbol, exchange);
+        if (positions == null || positions.isEmpty()) {
+            positions = extractFromDomTable(driver, cleanSymbol(symbol));
+        }
+        if (positions == null || positions.isEmpty()) {
+            return null;
+        }
+
+        ClientPosition preferred = null;
+        ClientPosition maxSaleable = null;
+        ClientPosition qualifying = null;
+
+        for (ClientPosition cp : positions) {
+            if (preferredClient != null && cp.getClientCode().equalsIgnoreCase(preferredClient.trim())) {
+                preferred = cp;
+            }
+            if (maxSaleable == null || cp.getSaleableQty() > maxSaleable.getSaleableQty()) {
+                maxSaleable = cp;
+            }
+            if (cp.getSaleableQty() >= requiredQty && qualifying == null) {
+                qualifying = cp;
+            }
+        }
+
+        if (preferred != null && preferred.getSaleableQty() >= requiredQty) {
+            return preferred;
+        }
+        if (qualifying != null) {
+            return qualifying;
+        }
+        return maxSaleable;
+    }
+
+    public static ClientPosition findClientWithSaleable(WebDriver driver, String symbol, double requiredQty, String exchange) {
+        return findClientWithSaleable(driver, symbol, requiredQty, null, exchange);
+    }
+
     public static List<ClientPosition> extractFromDomTable(WebDriver driver, String cleanSym) {
         List<ClientPosition> list = new ArrayList<>();
 

@@ -153,6 +153,18 @@ def build_order_queue(
             queue.append(OrderItem(item_counter, "BUY", buy_client, symbol, qty, rate, False))
             item_counter += 1
 
+        # Verify if chosen sell client has sufficient saleable shares; if not, shift to another client!
+        best_seller = position.find_client_with_saleable(driver, symbol, total_buy_qty, sell_client, exchange)
+        if best_seller:
+            if best_seller.client_code.lower() != sell_client.lower():
+                print(f"\n[AUTO-SHIFT: SALEABLE CHECK] Client {sell_client} does not have {total_buy_qty} saleable shares of {symbol}.")
+                print(f"  -> Automatically shifting SELL order to Client {best_seller.client_code} (Saleable: {best_seller.saleable_qty:,.0f} shares)")
+                sell_client = best_seller.client_code
+            if best_seller.saleable_qty < total_buy_qty:
+                safe_qty = int(max(1, best_seller.saleable_qty))
+                print(f"  -> [ADJUST] Adjusted Opposite SELL order quantity from {total_buy_qty} to {safe_qty:,} (max available saleable for {sell_client})")
+                total_buy_qty = safe_qty
+
         # Opposite SELL order at UPPER price (> ref_price)
         sell_rate = round(ref_price + spread_delta, 2)
         queue.append(OrderItem(item_counter, "SELL", sell_client, symbol, total_buy_qty, sell_rate, True))
@@ -322,6 +334,14 @@ def run_multi_order_pipeline(driver: webdriver.Chrome) -> None:
     for idx, item in enumerate(order_queue, 1):
         print(f"\n--- Placed Order [{idx}/{len(order_queue)}] ---")
         oms_trade.ensure_ui_unlocked(driver)
+        if item.side.upper() == "SELL":
+            saleable_check = position.find_client_with_saleable(driver, item.symbol, item.quantity, item.client_code, exchange)
+            if saleable_check and saleable_check.client_code.lower() != item.client_code.lower():
+                old_c = item.client_code
+                item.client_code = saleable_check.client_code
+                if saleable_check.saleable_qty < item.quantity:
+                    item.quantity = int(max(1, saleable_check.saleable_qty))
+                print(f"  [AUTO-SHIFT: SALEABLE BALANCE] Client {old_c} has insufficient saleable shares! Shifted SELL order to Client {item.client_code} (Saleable: {saleable_check.saleable_qty:,.0f}, Order Qty: {item.quantity}). Continuing without closing code!")
         try:
             ok = oms_trade.place_order(
                 driver=driver,

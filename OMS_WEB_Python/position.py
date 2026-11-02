@@ -176,3 +176,43 @@ def get_snapshot(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -
         "total_shares": f"{total_shares:,.0f}",
         "saleable_shares": f"{saleable_shares:,.0f}",
     }
+
+
+def find_client_with_saleable(
+    driver: webdriver.Chrome,
+    symbol: str,
+    required_qty: float,
+    preferred_client: Optional[str] = None,
+    exchange: str = "DSE"
+) -> Optional[ClientPosition]:
+    """
+    Finds a client holding sufficient saleable shares for a symbol.
+    If preferred_client has >= required_qty, returns preferred_client.
+    Otherwise, searches all position holders for the symbol:
+    - Returns the first holder with saleable_qty >= required_qty.
+    - If none has >= required_qty, returns the holder with the MAXIMUM saleable_qty.
+    - If no holders found, returns None.
+    """
+    positions = fetch_positions_from_api(driver, symbol, exchange)
+    if not positions:
+        positions = extract_from_dom_table(driver, oms_price.clean_symbol(symbol))
+    if not positions:
+        return None
+
+    preferred = None
+    max_saleable = None
+    qualifying = None
+
+    for cp in positions:
+        if preferred_client and cp.client_code.strip().lower() == str(preferred_client).strip().lower():
+            preferred = cp
+        if max_saleable is None or cp.saleable_qty > max_saleable.saleable_qty:
+            max_saleable = cp
+        if cp.saleable_qty >= required_qty and qualifying is None:
+            qualifying = cp
+
+    if preferred and preferred.saleable_qty >= required_qty:
+        return preferred
+    if qualifying:
+        return qualifying
+    return max_saleable
