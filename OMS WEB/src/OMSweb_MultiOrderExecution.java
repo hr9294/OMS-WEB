@@ -639,13 +639,14 @@ public class OMSweb_MultiOrderExecution {
                 // 3. Ultra-Fast Form Population via Native JS (Bypasses slow keystroke sendKeys & sleeps)
                 String rateStr = (item.getRate() > 0) ? String.format(java.util.Locale.US, "%.2f", item.getRate()) : "";
                 js.executeScript(
-                    "var sym = document.getElementById('order_instrument'); if (sym) { sym.value = arguments[0]; $(sym).trigger('input').trigger('change'); }" +
-                    "var cln = document.getElementById('order_client_code'); if (cln) { cln.value = arguments[1]; $(cln).trigger('input').trigger('change'); }" +
-                    "var qty = document.getElementById('order_qty'); if (qty) { qty.value = arguments[2]; $(qty).trigger('input').trigger('change'); }" +
-                    "if (arguments[3] !== '') { var r = document.getElementById('limit_order_rate'); if (r) { r.value = arguments[3]; $(r).trigger('input').trigger('change'); } }" +
-                    "try { if (typeof verify_fields === 'function') verify_fields(); $('.order_submit_btn').prop('disabled', false).removeAttr('disabled'); } catch(e){}",
+                    "var sym = document.getElementById('order_instrument'); if (sym) { sym.value = arguments[0]; if (window.jQuery) { $(sym).val(arguments[0]).trigger('change'); } }" +
+                    "var cln = document.getElementById('order_client_code'); if (cln) { cln.value = arguments[1]; if (window.jQuery) { $(cln).val(arguments[1]).trigger('change'); } }" +
+                    "var qty = document.getElementById('order_qty'); if (qty) { qty.value = arguments[2]; if (window.jQuery) { $(qty).val(arguments[2]).trigger('input').trigger('change'); } }" +
+                    "if (arguments[3] !== '') { var r = document.getElementById('limit_order_rate'); if (r) { r.value = arguments[3]; if (window.jQuery) { $(r).val(arguments[3]).trigger('input').trigger('change'); } } }" +
+                    "try { if (typeof verify_fields === 'function') verify_fields(); $('.order_submit_btn').prop('disabled', false).removeAttr('disabled'); $('.ui-autocomplete').hide().empty(); } catch(e){}",
                     toPublicSymbol(item.getSymbol()), item.getClientCode(), String.valueOf(item.getQuantity()), rateStr
                 );
+                OMSweb_Trade.dismissLingeringAutocomplete(driver);
 
                 // 4. Commission Display trigger
                 try {
@@ -716,6 +717,7 @@ public class OMSweb_MultiOrderExecution {
                         item.getId(), elapsed, item.getSide(), item.getClientCode(), item.getQuantity(), item.getRate());
 
                 placed.add(item);
+                OMSweb_Trade.dismissLingeringAutocomplete(driver);
                 Thread.sleep(150);
 
             } catch (Exception e) {

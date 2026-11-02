@@ -106,6 +106,32 @@ def navigate_to_trade_page(driver: webdriver.Chrome, force: bool = False) -> Non
     print("[NAV] Trade Portal loaded successfully.")
 
 
+def dismiss_lingering_autocomplete(driver: webdriver.Chrome) -> None:
+    """Dismisses and removes any lingering jQuery UI autocomplete dropdowns from DOM."""
+    try:
+        driver.execute_script("""
+            try {
+                if (window.jQuery) {
+                    $('.ui-autocomplete').hide().empty().remove();
+                    $('input.ui-autocomplete-input, #order_client_code, #order_instrument').each(function() {
+                        var ac = $(this).data('ui-autocomplete') || $(this).data('autocomplete');
+                        if (ac) {
+                            if (ac.searching) { clearTimeout(ac.searching); ac.searching = null; }
+                            try { ac.close(); } catch(e) {}
+                        }
+                    });
+                }
+                var menus = document.querySelectorAll('.ui-autocomplete, ul.ui-menu, .ui-menu-item');
+                for (var i = 0; i < menus.length; i++) {
+                    menus[i].style.display = 'none';
+                    try { menus[i].remove(); } catch(e) {}
+                }
+            } catch(e) {}
+        """)
+    except Exception:
+        pass
+
+
 def enter_instrument(driver: webdriver.Chrome, symbol: str) -> None:
     """Populates symbol into searchSymbol and marketwatch inputs with autocomplete enter."""
     sym = oms_price.clean_symbol(symbol or DEFAULT_SYMBOL)
@@ -486,10 +512,12 @@ def place_order(
         )
         confirm_btn.click()
         print(f"✔ [ORDER ENTRY] Order confirmed successfully for Client {client_code}.")
+        dismiss_lingering_autocomplete(driver)
         time.sleep(1.0)
         return True
     except Exception:
         # Check if auto-accepted without confirmation modal
+        dismiss_lingering_autocomplete(driver)
         time.sleep(0.5)
         return True
 

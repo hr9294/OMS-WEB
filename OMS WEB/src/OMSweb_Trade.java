@@ -784,6 +784,38 @@ public class OMSweb_Trade {
 	}
 
 	/**
+	 * Completely dismisses, closes, and removes any lingering jQuery UI autocomplete
+	 * dropdown menus (e.g. client code / client name or symbol dropdowns) from the screen.
+	 */
+	public static void dismissLingeringAutocomplete(WebDriver driver) {
+		if (driver == null) return;
+		try {
+			JavascriptExecutor js = (JavascriptExecutor) driver;
+			js.executeScript(
+				"try {\n" +
+				"    if (window.jQuery) {\n" +
+				"        window.jQuery('.ui-autocomplete').each(function() {\n" +
+				"            try { window.jQuery(this).hide().empty().remove(); } catch(e) {}\n" +
+				"        });\n" +
+				"        window.jQuery('input.ui-autocomplete-input, input#order_client_code, input#order_instrument').each(function() {\n" +
+				"            var ac = window.jQuery(this).data('ui-autocomplete') || window.jQuery(this).data('autocomplete') || (window.jQuery(this).autocomplete ? window.jQuery(this).autocomplete('instance') : null);\n" +
+				"            if (ac) {\n" +
+				"                if (ac.searching) { clearTimeout(ac.searching); ac.searching = null; }\n" +
+				"                try { ac.close(); } catch(e) {}\n" +
+				"            }\n" +
+				"        });\n" +
+				"    }\n" +
+				"    var menus = document.querySelectorAll('.ui-autocomplete, ul.ui-menu, .ui-menu-item');\n" +
+				"    for (var i = 0; i < menus.length; i++) {\n" +
+				"        menus[i].style.display = 'none';\n" +
+				"        try { menus[i].remove(); } catch(e) {}\n" +
+				"    }\n" +
+				"} catch(e) {}"
+			);
+		} catch (Exception ignored) {}
+	}
+
+	/**
 	 * Ensures the Client Code input field retains its value, reflects into active modal,
 	 * and updates account details (BO, Name, Balance).
 	 */
@@ -798,13 +830,18 @@ public class OMSweb_Trade {
 				"    var inp = activeInputs[i];" +
 				"    if (window.jQuery) {" +
 				"        var ac = $(inp).data('ui-autocomplete') || $(inp).data('autocomplete') || ($(inp).autocomplete ? $(inp).autocomplete('instance') : null);" +
-				"        if (ac) { ac.selectedItem = { value: val, label: val, id: val }; }" +
+				"        if (ac) {" +
+				"            if (ac.searching) { clearTimeout(ac.searching); ac.searching = null; }" +
+				"            ac.selectedItem = { value: val, label: val, id: val };" +
+				"            try { ac.close(); } catch(e) {}" +
+				"        }" +
 				"        inp.value = val;" +
-				"        $(inp).val(val).trigger('input');" +
+				"        $(inp).val(val).trigger('change');" +
 				"    } else {" +
 				"        inp.value = val;" +
 				"    }" +
 				"}" +
+				"if (window.jQuery) { $('.ui-autocomplete').hide().empty(); try { $('.ui-autocomplete').remove(); } catch(e) {} }" +
 				"try {" +
 				"    if (window.jQuery) {" +
 				"        $.getJSON('/shared/getclientdata/?cln_code=' + encodeURIComponent(val), function(d) {" +
@@ -825,6 +862,7 @@ public class OMSweb_Trade {
 				"try { if (typeof verify_fields === 'function') verify_fields(); } catch(e){}",
 				clientCode
 			);
+			dismissLingeringAutocomplete(driver);
 		} catch (Exception ignored) {}
 	}
 
@@ -981,33 +1019,36 @@ public class OMSweb_Trade {
 				"            matchedData = { value: val, label: val };" +
 				"        }" +
 				"        if (ac) {" +
+				"            if (ac.searching) { clearTimeout(ac.searching); ac.searching = null; }" +
 				"            ac.selectedItem = matchedData;" +
 				"            $inp.val(matchedData.value || val);" +
 				"            try { ac._trigger('select', { type: 'autocompleteselect' }, { item: matchedData }); } catch(e) {}" +
 				"            try { ac.close(); } catch(e) {}" +
 				"        }" +
 				"        el.value = val;" +
-				"        $inp.val(val).trigger('input').trigger('change');" +
-				"        $('.ui-autocomplete').hide();" +
+				"        $inp.val(val).trigger('change');" +
+				"        if (window.jQuery) { $('.ui-autocomplete').hide().empty(); try { $('.ui-autocomplete').remove(); } catch(e) {} }" +
 				"    }" +
 				"} catch(e) {}",
 				input, targetSymbolVal, isSymbol, typeVal
 			);
 
-			// 6. Verification: Ensure field has the expected value
-			Thread.sleep(100);
+			// 6. Verification: Ensure field has the expected value and no autocomplete lingers
+			Thread.sleep(80);
 			js.executeScript(
 				"var el = arguments[0]; var val = arguments[1]; var isSym = arguments[2];" +
 				"if (el) {" +
 				"    el.value = val;" +
-				"    if (window.jQuery) { $(el).val(val).trigger('input').trigger('change'); }" +
+				"    if (window.jQuery) { $(el).val(val).trigger('change'); }" +
 				"}" +
-				"if (window.jQuery) { $('.ui-autocomplete').hide(); }",
+				"if (window.jQuery) { $('.ui-autocomplete').hide().empty(); try { $('.ui-autocomplete').remove(); } catch(e) {} }",
 				input, targetSymbolVal, isSymbol
 			);
+			dismissLingeringAutocomplete(driver);
 
 			// 7. Settle time for client account AJAX details (BO, Name, Balance) or symbol market data to load
-			Thread.sleep(isSymbol ? 250 : 500);
+			Thread.sleep(isSymbol ? 200 : 400);
+			dismissLingeringAutocomplete(driver);
 
 		} catch (Exception e) {
 			try {
@@ -1015,10 +1056,11 @@ public class OMSweb_Trade {
 				input.sendKeys(typeVal);
 				input.sendKeys(Keys.ARROW_DOWN, Keys.ENTER);
 				((JavascriptExecutor) driver).executeScript(
-					"if (window.jQuery) { $('.ui-autocomplete').hide(); } " +
-					"arguments[0].value = arguments[1]; $(arguments[0]).val(arguments[1]).trigger('input').trigger('change');",
+					"if (window.jQuery) { $('.ui-autocomplete').hide().empty(); try { $('.ui-autocomplete').remove(); } catch(e) {} } " +
+					"arguments[0].value = arguments[1]; $(arguments[0]).val(arguments[1]).trigger('change');",
 					input, targetSymbolVal
 				);
+				dismissLingeringAutocomplete(driver);
 			} catch (Exception ignored) {}
 		}
 	}
@@ -2537,6 +2579,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		try { q = Integer.parseInt(qty.trim()); } catch (Exception ignored) {}
 
 		displayCommissionOnOrderWindow(driver, clientCode, q, 0.0);
+		dismissLingeringAutocomplete(driver);
 
 	}
 
@@ -2963,7 +3006,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 	private static void submitOrder(WebDriver driver, String side) throws InterruptedException {
-
+		dismissLingeringAutocomplete(driver);
 		WebElement header = driver.findElement(By.xpath("//div[@class='wb-title']"));
 
 		if (header.getText().toLowerCase().contains("buy")) {
@@ -2985,6 +3028,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		}
 
 		Thread.sleep(300);
+		dismissLingeringAutocomplete(driver);
 
 	}
 
@@ -3214,6 +3258,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				);
 				if (Boolean.TRUE.equals(clicked)) {
 					System.out.println("  ✔ [CONFIRMATION] Confirmed order immediately: Clicked [YES] via JavaScript execution!");
+					dismissLingeringAutocomplete(driver);
 					return true;
 				}
 			} catch (Exception ignored) {}
@@ -3230,9 +3275,11 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 					try {
 						js.executeScript("arguments[0].click();", yb);
 						System.out.println("  ✔ [CONFIRMATION] Clicked [YES] button on Confirm Execution dialog!");
+						dismissLingeringAutocomplete(driver);
 						return true;
 					} catch (Exception e) {
 						yb.click();
+						dismissLingeringAutocomplete(driver);
 						return true;
 					}
 				}
@@ -3242,6 +3289,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		}
 
 		System.out.println("  [CONFIRMATION] Note: Confirmation dialog closed or pre-accepted.");
+		dismissLingeringAutocomplete(driver);
 		return true;
 	}
 
@@ -4133,6 +4181,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		submitOrder(driver, side.toUpperCase());
 		confirmOrder(driver, wait, null);
+		dismissLingeringAutocomplete(driver);
 		Thread.sleep(1200);
 	}
 
