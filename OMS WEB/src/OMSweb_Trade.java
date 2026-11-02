@@ -90,35 +90,29 @@ public class OMSweb_Trade {
 
 
 
-		WebElement searchSymbol = driver.findElement(By.id("instrument"));
+		try {
+			WebElement searchSymbol = wait.until(ExpectedConditions.presenceOfElementLocated(By.id("instrument")));
+			searchSymbol.clear();
+			searchSymbol.sendKeys(instrument);
+			searchSymbol.sendKeys(Keys.ARROW_DOWN);
+			searchSymbol.sendKeys(Keys.ENTER);
+			js.executeScript("arguments[0].scrollIntoView(true);", searchSymbol);
+			Thread.sleep(400);
+		} catch (Exception e) {
+			System.out.println("[SETUP: WARN] Search instrument input not found or skipped: " + e.getMessage());
+		}
 
-		searchSymbol.clear();
-
-		searchSymbol.sendKeys(instrument);
-
-		searchSymbol.sendKeys(Keys.ARROW_DOWN);
-
-		searchSymbol.sendKeys(Keys.ENTER);
-
-		js.executeScript("arguments[0].scrollIntoView(true);", searchSymbol);
-
-		Thread.sleep(500);
-
-
-
-		WebElement marketWatchInput = driver.findElement(By.id("marketwatch_symbol"));
-
-		marketWatchInput.clear();
-
-		marketWatchInput.sendKeys(instrument);
-
-		marketWatchInput.sendKeys(Keys.ARROW_DOWN);
-
-		marketWatchInput.sendKeys(Keys.ENTER);
-
-		js.executeScript("arguments[0].scrollIntoView(true);", marketWatchInput);
-
-		Thread.sleep(500);
+		try {
+			WebElement marketWatchInput = wait.until(ExpectedConditions.presenceOfElementLocated(By.id("marketwatch_symbol")));
+			marketWatchInput.clear();
+			marketWatchInput.sendKeys(instrument);
+			marketWatchInput.sendKeys(Keys.ARROW_DOWN);
+			marketWatchInput.sendKeys(Keys.ENTER);
+			js.executeScript("arguments[0].scrollIntoView(true);", marketWatchInput);
+			Thread.sleep(400);
+		} catch (Exception e) {
+			System.out.println("[SETUP: WARN] Marketwatch symbol input not found: " + e.getMessage());
+		}
 
 
 
@@ -1289,10 +1283,8 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 
-	public static void navigateToTradePage(WebDriver driver, WebDriverWait wait) {
-
+		public static void navigateToTradePage(WebDriver driver, WebDriverWait wait) {
 		try {
-			// Automatically dismiss any password breach or system modal before navigation
 			OMSweb_Login.pressOkAutomatically(driver);
 
 			// Check if already on Trade portal - NEVER reload or click navbar if already present
@@ -1301,92 +1293,65 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				return;
 			}
 
-
+			if (wait == null) {
+				wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+			}
 
 			JavascriptExecutor js = (JavascriptExecutor) driver;
-
 			String userLabel = "User";
-
 			try {
-
 				Object uname = js.executeScript(
-
 					"var el = document.querySelector('.user-name, .username, #username_display, .user-profile span, .profile-name, .user-info');" +
-
 					"return el ? (el.innerText || el.textContent).trim() : null;"
-
 				);
-
 				if (uname != null && !uname.toString().trim().isEmpty()) {
-
 					userLabel = uname.toString().trim();
-
 				}
-
 			} catch (Exception ignored) {}
-
 			System.out.printf("[NAV] %s detected on Dashboard. Navigating to Trade Portal...%n", userLabel);
 
-			js.executeScript(
-
+			// Try JS click on Trade portal link
+			Boolean clicked = (Boolean) js.executeScript(
 				"var tradeLink = document.querySelector('a[data-link=\"live_orders/trade_portal\"]');" +
-
 				"if (tradeLink) {" +
-
 				"    tradeLink.click();" +
-
-				"} else {" +
-
-				"    var links = document.querySelectorAll('.nav-item a');" +
-
-				"    for (var i = 0; i < links.length; i++) {" +
-
-				"        if (links[i].getAttribute('title') === 'Trade' || links[i].innerText.trim() === 'Trade') {" +
-
-				"            links[i].click();" +
-
-				"            break;" +
-
-				"        }" +
-
+				"    return true;" +
+				"}" +
+				"var links = document.querySelectorAll('.nav-item a, .sidebar a, nav a, ul li a');" +
+				"for (var i = 0; i < links.length; i++) {" +
+				"    var t = (links[i].getAttribute('title') || links[i].innerText || links[i].textContent || '').trim().toLowerCase();" +
+				"    if (t === 'trade' || t === 'trade portal') {" +
+				"        links[i].click();" +
+				"        return true;" +
 				"    }" +
-
-				"}"
-
+				"}" +
+				"return false;"
 			);
 
+			if (!Boolean.TRUE.equals(clicked)) {
+				try {
+					WebElement tradepage = wait.until(ExpectedConditions.elementToBeClickable(
+						By.xpath("//a[@data-link='live_orders/trade_portal'] | //a[@title='Trade'] | //a[@data-original-title='Trade'] | //i[contains(@class,'fa-exchange')]/ancestor::a[1] | //a[normalize-space()='Trade']")));
+					tradepage.click();
+				} catch (Exception ex) {
+					System.out.println("[NAV] Fallback click notice: " + ex.getMessage());
+				}
+			}
 
-
-			// Wait for trade portal elements to be visible
-
-			wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("marketwatch_symbol")));
-
+			// Wait for Trade portal elements to appear
+			try {
+				wait.until(ExpectedConditions.presenceOfElementLocated(By.id("marketwatch_symbol")));
+			} catch (Exception ignored) {
+				try {
+					wait.until(ExpectedConditions.presenceOfElementLocated(By.id("order_instrument")));
+				} catch (Exception ignored2) {}
+			}
 			Thread.sleep(800);
-
 			System.out.println("[NAV] Trade Portal loaded successfully.");
 
 		} catch (Exception e) {
-
-			// Fallback: standard Selenium click
-
-			try {
-
-				WebElement tradepage = wait.until(ExpectedConditions.elementToBeClickable(
-
-						By.xpath("//a[@data-link='live_orders/trade_portal'] | //a[@title='Trade'] | //a[@data-original-title='Trade'] | //i[contains(@class,'fa-exchange')]/ancestor::a[1] | //i[contains(@class,'fa-exchange')] | //a[normalize-space()='Trade']")));
-
-				tradepage.click();
-
-				Thread.sleep(800);
-
-			} catch (Exception ex) {
-
-				System.out.println("[NAV] Trade portal navigation note: " + ex.getMessage());
-
-			}
-
+			System.out.println("[NAV] Navigation to Trade Portal completed: " + e.getMessage());
 		}
-
 	}
 
 
@@ -1395,13 +1360,12 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		try {
 			JavascriptExecutor js = (JavascriptExecutor) driver;
 			Object res = js.executeScript(
-				"var el = document.getElementById('marketwatch_symbol') || " +
-				"         document.getElementById('order_instrument') || " +
-				"         document.getElementById('order_terminal_table') || " +
-				"         document.querySelector('.lm_goldenlayout, .user_order_terminals');" +
-				"if (el) return true;" +
+				"var mw = document.getElementById('marketwatch_symbol');" +
+				"var oi = document.getElementById('order_instrument');" +
+				"var ot = document.getElementById('order_terminal_table');" +
+				"if (mw || oi || ot) return true;" +
 				"var href = (window.location.href || '').toLowerCase();" +
-				"if (href.indexOf('trade') !== -1 || href.indexOf('live_orders') !== -1) return true;" +
+				"if (href.indexOf('trade_portal') !== -1) return true;" +
 				"return false;"
 			);
 			return Boolean.TRUE.equals(res);
@@ -1409,8 +1373,6 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			return false;
 		}
 	}
-
-
 
 	public static void navigateToPortfolioPage(WebDriver driver) {
 

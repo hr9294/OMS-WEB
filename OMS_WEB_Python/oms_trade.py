@@ -24,13 +24,12 @@ def navigate_to_trade_page(driver: webdriver.Chrome) -> None:
     """Navigates to the Trade page ONLY IF not already on it. NEVER reloads if already on Trade!"""
     try:
         is_on_trade = driver.execute_script("""
-            var el = document.getElementById('marketwatch_symbol') || 
-                     document.getElementById('order_instrument') || 
-                     document.getElementById('order_terminal_table') || 
-                     document.querySelector('.lm_goldenlayout, .user_order_terminals');
-            if (el) return true;
+            var mw = document.getElementById('marketwatch_symbol');
+            var oi = document.getElementById('order_instrument');
+            var ot = document.getElementById('order_terminal_table');
+            if (mw || oi || ot) return true;
             var href = (window.location.href || '').toLowerCase();
-            if (href.indexOf('trade') !== -1 || href.indexOf('live_orders') !== -1) return true;
+            if (href.indexOf('trade_portal') !== -1) return true;
             return false;
         """)
         if is_on_trade:
