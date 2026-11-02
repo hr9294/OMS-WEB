@@ -581,7 +581,7 @@ public class OMSweb_Trade {
 				// [STEP 1] CAPTURE PRE-TRADE REAL-TIME UI DOM SNAPSHOT (ALL 6 WIDGETS)
 				System.out.printf("%n[AUDIT] Capturing PRE-TRADE Real-Time UI Snapshot across 6 Widgets for Client: %s...%n", clientCode);
 				SixWidgetUiSnapshot preTradeSnap = capture6WidgetsUiSnapshot(driver, "PRE-TRADE BASELINE", clientCode, instrument, snapshotExchange);
-				displayExactWidgetRowData(preTradeSnap, "PRE-TRADE BASELINE - ALL 6 WIDGETS ALL ROWS");
+				displayExactWidgetRowData(preTradeSnap, "PRE-TRADE BASELINE - SELECTED SYMBOL ALL COLUMNS");
 
 				// Ensure Trade order form inputs are populated directly in-place without page reloading
 				fillOrderFields(driver, wait, instrument, String.valueOf(tradeQty), clientCode);
@@ -598,7 +598,7 @@ public class OMSweb_Trade {
 				// [STEP 2] CAPTURE POST-TRADE REAL-TIME UI DOM SNAPSHOT (ALL 6 WIDGETS)
 				System.out.printf("%n[AUDIT] Capturing POST-TRADE Real-Time UI Snapshot across 6 Widgets for Client: %s...%n", clientCode);
 				SixWidgetUiSnapshot postTradeSnap = capture6WidgetsUiSnapshot(driver, "POST-TRADE REAL-TIME", clientCode, instrument, snapshotExchange);
-				displayExactWidgetRowData(postTradeSnap, "POST-TRADE REAL-TIME - ALL 6 WIDGETS ALL ROWS");
+				displayExactWidgetRowData(postTradeSnap, "POST-TRADE REAL-TIME - SELECTED SYMBOL ALL COLUMNS");
 
 				// Compare Pre vs Post in-place
 				compareAndReport6Widgets(preTradeSnap, postTradeSnap, "NORMAL TRADE REAL-TIME UI AUDIT (" + sideText + " " + tradeQty + " " + instrument + ")");
@@ -3493,6 +3493,8 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 	public static class SixWidgetUiSnapshot {
 		public String stageName = "";
 		public String timestamp = "";
+		public String targetSymbol = "";
+		public String targetClient = "";
 
 		// 1. Summary Maps
 		public Map<String, String> portfolioUi = new LinkedHashMap<>();
@@ -3502,7 +3504,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		public Map<String, String> accountLimitsUi = new LinkedHashMap<>();
 		public Map<String, String> positionTargetClient = new LinkedHashMap<>();
 
-		// 2. All Rows Lists (Pre and Post)
+		// 2. Filtered Rows Lists (Selected Symbol Only)
 		public List<Map<String, String>> orderTerminalRows = new ArrayList<>();
 		public List<Map<String, String>> portfolioRows = new ArrayList<>();
 		public List<Position.ClientPosition> positionUiHoldings = new ArrayList<>();
@@ -3529,7 +3531,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 					"return false;",
 					expectedStatusKeyword
 				);
-				if (Boolean.TRUE.equals(matched)) {
+			if (Boolean.TRUE.equals(matched)) {
 					return true;
 				}
 			} catch (Exception ignored) {}
@@ -3558,18 +3560,21 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		SixWidgetUiSnapshot snap = new SixWidgetUiSnapshot();
 		snap.stageName = stageName;
 		snap.timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date());
+		snap.targetSymbol = cleanSymbol(symbol);
+		snap.targetClient = (clientCode != null) ? clientCode.trim() : "";
 
 		System.out.println("\n--------------------------------------------------------------------------------");
-		System.out.printf(">>> CAPTURING REAL-TIME UI DOM SNAPSHOT [ALL 6 WIDGETS ALL ROWS] | Stage: %s%n", stageName);
-		System.out.printf("    Client: %s | Symbol: %s | Exchange: %s | Source: PURE BROWSER DOM (NO API)%n", clientCode, symbol, exchange);
+		System.out.printf(">>> CAPTURING REAL-TIME UI DOM SNAPSHOT [SELECTED SYMBOL ALL COLUMNS] | Stage: %s%n", stageName);
+		System.out.printf("    Target Symbol: %s | Client: %s | Exchange: %s | Source: PURE BROWSER DOM (NO API)%n", snap.targetSymbol, snap.targetClient, exchange);
 		System.out.println("--------------------------------------------------------------------------------");
 
 		JavascriptExecutor js = (JavascriptExecutor) driver;
 
-		// 1. Client Portfolio (UI DOM - Summary & All Rows)
+		// 1. Client Portfolio (UI DOM - Summary & Selected Symbol Rows with All Columns)
 		try {
 			snap.portfolioUi = ClientPortfolio.getUiSnapshot(driver, clientCode, symbol);
 			Object portRes = js.executeScript(
+				"var targetSym = (arguments[0] || '').trim().toUpperCase();" +
 				"var tbl = document.getElementById('symbol_position_table') || document.querySelector('table[id*=position]') || document.querySelector('table.symbol_position_table');" +
 				"if (!tbl) return [];" +
 				"var headers = Array.from(tbl.querySelectorAll('thead th, tr:first-child th')).map(function(h) { return h.innerText.trim(); });" +
@@ -3578,14 +3583,33 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"for (var i = 0; i < rows.length; i++) {" +
 				"    var cells = rows[i].querySelectorAll('td');" +
 				"    if (cells.length === 0) continue;" +
+				"    var rowSym = (cells[0] ? cells[0].innerText.trim() : '').toUpperCase();" +
+				"    var cleanRowSym = rowSym.replace(/\\[.*?\\]/g, '').split('.')[0].trim();" +
+				"    if (targetSym.length > 0 && cleanRowSym !== targetSym && rowSym.indexOf(targetSym) === -1) {" +
+				"        continue;" +
+				"    }" +
 				"    var rowObj = {};" +
-				"    for (var j = 0; j < cells.length && j < headers.length; j++) {" +
-				"        var h = headers[j] || ('col_' + j);" +
+				"    for (var j = 0; j < cells.length; j++) {" +
+				"        var h = (j < headers.length && headers[j] && headers[j].length > 0) ? headers[j] : ('col_' + j);" +
 				"        rowObj[h] = cells[j].innerText.trim();" +
+				"    }" +
+				"    for (var k = 0; k < headers.length && k < cells.length; k++) {" +
+				"        var ht = headers[k].toUpperCase();" +
+				"        var val = cells[k].innerText.trim();" +
+				"        if (ht.indexOf('SYMBOL') !== -1) rowObj['Symbol'] = val;" +
+				"        else if (ht.indexOf('TOTAL') !== -1 && ht.indexOf('QTY') !== -1) rowObj['Total Qty'] = val;" +
+				"        else if (ht.indexOf('SALE') !== -1) rowObj['Saleable Qty'] = val;" +
+				"        else if (ht.indexOf('AVG') !== -1) rowObj['Avg Cost'] = val;" +
+				"        else if (ht.indexOf('TOTAL') !== -1 && ht.indexOf('COST') !== -1) rowObj['Total Cost'] = val;" +
+				"        else if (ht === 'LTP' || ht.indexOf('PRICE') !== -1 || ht.indexOf('RATE') !== -1) rowObj['LTP'] = val;" +
+				"        else if (ht.indexOf('VALUE') !== -1) rowObj['Value'] = val;" +
+				"        else if (ht.indexOf('GAIN %') !== -1 || ht.indexOf('GAIN%') !== -1) rowObj['Gain %'] = val;" +
+				"        else if (ht.indexOf('GAIN') !== -1) rowObj['Gain'] = val;" +
 				"    }" +
 				"    out.push(rowObj);" +
 				"}" +
-				"return out;"
+				"return out;",
+				snap.targetSymbol
 			);
 			if (portRes instanceof List) {
 				List<Map<String, Object>> rawList = (List<Map<String, Object>>) portRes;
@@ -3597,7 +3621,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 					snap.portfolioRows.add(row);
 				}
 			}
-			System.out.printf(" [1/6] Client Portfolio (UI) -> Qty: %s | Saleable: %s | Avg Cost: %s | Value: %s (Total Rows: %d)%n",
+			System.out.printf(" [1/6] Client Portfolio (UI) -> Qty: %s | Saleable: %s | Avg Cost: %s | Value: %s (Selected Symbol Rows: %d)%n",
 					snap.portfolioUi.getOrDefault("total_qty", "0"),
 					snap.portfolioUi.getOrDefault("saleable_qty", "0"),
 					snap.portfolioUi.getOrDefault("avg_cost", "0"),
@@ -3651,17 +3675,18 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 					getDepthVal(snap.marketDepthUi, "ltp", "LTP"),
 					getDepthVal(snap.marketDepthUi, "high", "High"),
 					getDepthVal(snap.marketDepthUi, "low", "Low"),
-					snap.marketDepthUi.getOrDefault("Buy_Percent", "-"),
-					snap.marketDepthUi.getOrDefault("Sell_Percent", "-"),
-					snap.marketDepthBookRows.size());
+				snap.marketDepthUi.getOrDefault("Buy_Percent", "-"),
+				snap.marketDepthUi.getOrDefault("Sell_Percent", "-"),
+				snap.marketDepthBookRows.size());
 		} catch (Exception e) {
 			System.out.println(" [2/6] Market Depth (UI)     -> " + e.getMessage());
 		}
 
-		// 3. Order Terminal (UI DOM - Summary & ALL Order Rows)
+		// 3. Order Terminal (UI DOM - Summary & Selected Symbol Order Rows With All Columns)
 		try {
 			snap.orderTerminalUi = Order_Terminal.getUiSnapshot(driver, symbol, clientCode);
 			Object termRes = js.executeScript(
+				"var targetSym = (arguments[0] || '').trim().toUpperCase();" +
 				"var tbl = document.getElementById('order_terminal_table') || document.querySelector('table.order_terminal_table') || document.querySelector('table[id*=market_table]');" +
 				"if (!tbl) return [];" +
 				"var headers = Array.from(tbl.querySelectorAll('thead th, tr:first-child th')).map(function(h) { return h.innerText.trim(); });" +
@@ -3671,21 +3696,49 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"    var cells = rows[i].querySelectorAll('td');" +
 				"    if (cells.length < 3) continue;" +
 				"    var rowObj = {};" +
-				"    for (var j = 0; j < cells.length && j < headers.length; j++) {" +
-				"        var h = headers[j] || ('col_' + j);" +
+				"    for (var j = 0; j < cells.length; j++) {" +
+				"        var h = (j < headers.length && headers[j] && headers[j].length > 0) ? headers[j] : ('col_' + j);" +
 				"        rowObj[h] = cells[j].innerText.trim();" +
+				"    }" +
+				"    for (var k = 0; k < headers.length && k < cells.length; k++) {" +
+				"        var ht = headers[k].toUpperCase();" +
+				"        var val = cells[k].innerText.trim();" +
+				"        if (ht.indexOf('ORDER ID') !== -1 || ht === 'OID') rowObj['Order ID'] = val;" +
+				"        else if (ht.indexOf('ORDER TIME') !== -1) rowObj['Order Time'] = val;" +
+				"        else if (ht.indexOf('EXEC TIME') !== -1 || ht === 'ETM') rowObj['Exec Time'] = val;" +
+				"        else if (ht.indexOf('CLIENT') !== -1 || ht === 'CODE') rowObj['Client Code'] = val;" +
+				"        else if (ht.indexOf('SYMBOL') !== -1) rowObj['Symbol'] = val;" +
+				"        else if (ht.indexOf('BOARD') !== -1) rowObj['Board'] = val;" +
+				"        else if (ht.indexOf('SIDE') !== -1 || ht === 'B/S') rowObj['Side'] = val;" +
+				"        else if (ht.indexOf('TYPE') !== -1 && ht.indexOf('EXEC') === -1) rowObj['Type'] = val;" +
+				"        else if (ht.indexOf('PRICE') !== -1 || ht.indexOf('RATE') !== -1) rowObj['Price'] = val;" +
+				"        else if (ht.indexOf('AVG') !== -1) rowObj['Avg Price'] = val;" +
+				"        else if (ht === 'QTY' || ht.indexOf('ORDER QTY') !== -1) rowObj['Qty'] = val;" +
+				"        else if (ht.indexOf('DRIB') !== -1 || ht.indexOf('DRIP') !== -1) rowObj['Drib'] = val;" +
+				"        else if (ht.indexOf('DUE') !== -1) rowObj['Due Qty'] = val;" +
+				"        else if (ht.indexOf('EXEC QTY') !== -1 || ht === 'EXECQTY') rowObj['Exec Qty'] = val;" +
+				"        else if (ht.indexOf('STATUS') !== -1 && ht.indexOf('EXEC') === -1) rowObj['Status'] = val;" +
+				"        else if (ht.indexOf('EXEC TYPE') !== -1 || ht === 'EXECTYPE') rowObj['Exec Type'] = val;" +
+				"        else if (ht.indexOf('PROGRESS') !== -1) rowObj['Progress'] = val;" +
+				"        else if (ht.indexOf('DEALER') !== -1) rowObj['Dealer ID'] = val;" +
 				"    }" +
 				"    if (!rowObj['Order ID'] && cells.length > 1) rowObj['Order ID'] = cells[1].innerText.trim();" +
 				"    if (!rowObj['Client Code'] && cells.length > 2) rowObj['Client Code'] = cells[2].innerText.trim();" +
 				"    if (!rowObj['Symbol'] && cells.length > 3) rowObj['Symbol'] = cells[3].innerText.trim();" +
 				"    if (!rowObj['Side'] && cells.length > 4) rowObj['Side'] = cells[4].innerText.trim();" +
-				"    if (!rowObj['Rate'] && cells.length > 5) rowObj['Rate'] = cells[5].innerText.trim();" +
+				"    if (!rowObj['Price'] && cells.length > 5) rowObj['Price'] = cells[5].innerText.trim();" +
 				"    if (!rowObj['Exec Qty'] && cells.length > 6) rowObj['Exec Qty'] = cells[6].innerText.trim();" +
 				"    if (!rowObj['Due Qty'] && cells.length > 7) rowObj['Due Qty'] = cells[7].innerText.trim();" +
 				"    if (!rowObj['Status'] && cells.length > 8) rowObj['Status'] = cells[8].innerText.trim();" +
+				"    var rowSym = (rowObj['Symbol'] || '').trim().toUpperCase();" +
+				"    var cleanRowSym = rowSym.replace(/\\[.*?\\]/g, '').split('.')[0].trim();" +
+				"    if (targetSym.length > 0 && cleanRowSym !== targetSym && rowSym.indexOf(targetSym) === -1) {" +
+				"        continue;" +
+				"    }" +
 				"    out.push(rowObj);" +
 				"}" +
-				"return out;"
+				"return out;",
+				snap.targetSymbol
 			);
 			if (termRes instanceof List) {
 				List<Map<String, Object>> rawList = (List<Map<String, Object>>) termRes;
@@ -3697,7 +3750,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 					snap.orderTerminalRows.add(row);
 				}
 			}
-			System.out.printf(" [3/6] Order Terminal (UI)   -> ID: %s | Status: %s | Exec: %s | Due: %s | Rate: %s (Total Terminal Orders: %d)%n",
+			System.out.printf(" [3/6] Order Terminal (UI)   -> ID: %s | Status: %s | Exec: %s | Due: %s | Rate: %s (Selected Symbol Orders: %d)%n",
 					snap.orderTerminalUi.getOrDefault("Order_ID", "-"),
 					getOrderTerminalVal(snap.orderTerminalUi, "Status", "status"),
 					getOrderTerminalVal(snap.orderTerminalUi, "Exec_Qty", "exec_qty"),
@@ -3708,7 +3761,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			System.out.println(" [3/6] Order Terminal (UI)   -> " + e.getMessage());
 		}
 
-		// 4. Order Summary (UI DOM - Summary & All Breakdown Rows)
+		// 4. Order Summary (UI DOM - Summary & Breakdown Rows)
 		try {
 			snap.orderSummaryUi = Order_Summary.getUiSnapshot(driver, symbol);
 			Object sumRes = js.executeScript(
@@ -3722,7 +3775,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"        if (cells.length > 0) {" +
 				"            var rowObj = {};" +
 				"            for (var j = 0; j < cells.length; j++) {" +
-				"                var h = (j < headers.length && headers[j]) ? headers[j] : ('col_' + j);" +
+				"                var h = (j < headers.length && headers[j] && headers[j].length > 0) ? headers[j] : ('col_' + j);" +
 				"                rowObj[h] = cells[j].innerText.trim();" +
 				"            }" +
 				"            out.push(rowObj);" +
@@ -3773,7 +3826,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"        if (cells.length > 0) {" +
 				"            var rowObj = {};" +
 				"            for (var j = 0; j < cells.length; j++) {" +
-				"                var h = (j < headers.length && headers[j]) ? headers[j] : ('col_' + j);" +
+				"                var h = (j < headers.length && headers[j] && headers[j].length > 0) ? headers[j] : ('col_' + j);" +
 				"                rowObj[h] = cells[j].innerText.trim();" +
 				"            }" +
 				"            res.cashRows.push(rowObj);" +
@@ -3830,14 +3883,17 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			System.out.println(" [5/6] Account Limits (UI)   -> " + e.getMessage());
 		}
 
-		// 6. Position (UI DOM - Target Client & ALL Position Rows)
+		// 6. Position (UI DOM - Target Client & Selected Symbol Position Rows)
 		try {
-			snap.positionUiHoldings = Position.getUiSnapshot(driver, symbol, exchange);
+			List<Position.ClientPosition> allPositions = Position.getUiSnapshot(driver, symbol, exchange);
 			Position.ClientPosition matched = null;
-			for (Position.ClientPosition cp : snap.positionUiHoldings) {
-				if (cp.getClientCode().equalsIgnoreCase(clientCode.trim())) {
+			for (Position.ClientPosition cp : allPositions) {
+				String cpSym = cleanSymbol(cp.getSymbol());
+				if (cpSym.equalsIgnoreCase(snap.targetSymbol) || cp.getSymbol().toUpperCase().contains(snap.targetSymbol)) {
+					snap.positionUiHoldings.add(cp);
+				}
+				if (cp.getClientCode().equalsIgnoreCase(snap.targetClient)) {
 					matched = cp;
-					break;
 				}
 			}
 			if (matched != null) {
@@ -3848,14 +3904,14 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				snap.positionTargetClient.put("total_cost", String.format(Locale.US, "%.2f", matched.getTotalCost()));
 				snap.positionTargetClient.put("value", String.format(Locale.US, "%.2f", matched.getMktValue()));
 			} else {
-				snap.positionTargetClient.put("client_code", clientCode);
+				snap.positionTargetClient.put("client_code", snap.targetClient);
 				snap.positionTargetClient.put("total_qty", "0");
 				snap.positionTargetClient.put("saleable_qty", "0");
 				snap.positionTargetClient.put("avg_cost", "0.00");
 				snap.positionTargetClient.put("total_cost", "0.00");
 				snap.positionTargetClient.put("value", "0.00");
 			}
-			System.out.printf(" [6/6] Position Widget (UI)  -> Target Qty: %s | Saleable: %s | Avg Cost: %s | Value: %s (ALL Position Rows: %d)%n",
+			System.out.printf(" [6/6] Position Widget (UI)  -> Target Qty: %s | Saleable: %s | Avg Cost: %s | Value: %s (Selected Symbol Rows: %d)%n",
 					snap.positionTargetClient.get("total_qty"),
 					snap.positionTargetClient.get("saleable_qty"),
 					snap.positionTargetClient.get("avg_cost"),
@@ -3869,45 +3925,56 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 	}
 
 	public static void displayExactWidgetRowData(SixWidgetUiSnapshot snap, String title) {
+		String sym = (snap.targetSymbol != null && !snap.targetSymbol.isEmpty()) ? snap.targetSymbol : "SELECTED SYMBOL";
+		String client = (snap.targetClient != null && !snap.targetClient.isEmpty()) ? snap.targetClient : "-";
+
 		System.out.println("\n+======================================================================================================================+");
-		System.out.printf("| EXACT REAL-TIME UI DOM ROW DATA: %-79s |%n", title);
-		System.out.printf("| Stage: %-50s | Timestamp: %-41s |%n", snap.stageName, snap.timestamp);
+		System.out.printf("| SELECTED SYMBOL REAL-TIME UI DATA (ALL COLUMNS): %-65s |%n", title);
+		System.out.printf("| Target Symbol: %-25s | Client: %-20s | Stage: %-30s |%n", sym, client, snap.stageName);
+		System.out.printf("| Timestamp: %-104s |%n", snap.timestamp);
 		System.out.println("+======================================================================================================================+");
 
-		// 1. ORDER TERMINAL ALL ROWS
-		System.out.println("\n>>> [1/6] ORDER TERMINAL ALL ROWS IN DOM TABLE:");
+		// 1. ORDER TERMINAL (SELECTED SYMBOL ONLY - ALL COLUMNS)
+		System.out.printf("\n>>> [1/6] ORDER TERMINAL - SELECTED SYMBOL ALL COLUMNS (%s):%n", sym);
 		if (snap.orderTerminalRows.isEmpty()) {
-			System.out.println("    (No active order rows rendered in #order_terminal_table)");
+			System.out.printf("    (No active order rows rendered for symbol %s in #order_terminal_table)%n", sym);
 		} else {
-			System.out.printf("    +-----+------------+------------+--------+--------+---------+---------+---------+-------------------+%n");
-			System.out.printf("    | #   | Order ID   | Client     | Symbol | Side   | Rate    | ExecQty | DueQty  | Status            |%n");
-			System.out.printf("    +-----+------------+------------+--------+--------+---------+---------+---------+-------------------+%n");
 			int rIdx = 1;
 			for (Map<String, String> r : snap.orderTerminalRows) {
-				String id = r.getOrDefault("Order ID", r.getOrDefault("order_id", "-"));
+				String oid = r.getOrDefault("Order ID", r.getOrDefault("order_id", "-"));
+				String otime = r.getOrDefault("Order Time", r.getOrDefault("order_time", "-"));
+				String etime = r.getOrDefault("Exec Time", r.getOrDefault("exec_time", "-"));
 				String cl = r.getOrDefault("Client Code", r.getOrDefault("client_code", "-"));
-				String sym = r.getOrDefault("Symbol", r.getOrDefault("symbol", "-"));
+				String s = r.getOrDefault("Symbol", r.getOrDefault("symbol", sym));
+				String board = r.getOrDefault("Board", r.getOrDefault("board", "PUBLIC"));
 				String side = r.getOrDefault("Side", r.getOrDefault("side", "-"));
-				String rate = r.getOrDefault("Rate", r.getOrDefault("rate", "-"));
-				String exec = r.getOrDefault("Exec Qty", r.getOrDefault("exec_qty", "-"));
+				String type = r.getOrDefault("Type", r.getOrDefault("type", "LIMIT"));
+				String price = r.getOrDefault("Price", r.getOrDefault("rate", "-"));
+				String avgP = r.getOrDefault("Avg Price", r.getOrDefault("avg_price", "-"));
+				String qty = r.getOrDefault("Qty", r.getOrDefault("qty", "-"));
+				String drib = r.getOrDefault("Drib", r.getOrDefault("drib", "0"));
 				String due = r.getOrDefault("Due Qty", r.getOrDefault("due_qty", "-"));
-				String st = r.getOrDefault("Status", r.getOrDefault("status", "-"));
+				String exec = r.getOrDefault("Exec Qty", r.getOrDefault("exec_qty", "-"));
+				String status = r.getOrDefault("Status", r.getOrDefault("status", "-"));
+				String exType = r.getOrDefault("Exec Type", r.getOrDefault("exec_type", "Normal"));
+				String prog = r.getOrDefault("Progress", r.getOrDefault("progress", "-"));
+				String dlr = r.getOrDefault("Dealer ID", r.getOrDefault("dealer_id", "-"));
 
-				if (id.length() > 10) id = id.substring(0, 8) + "..";
-				if (cl.length() > 10) cl = cl.substring(0, 8) + "..";
-				if (sym.length() > 6) sym = sym.substring(0, 5) + "..";
-				if (side.length() > 6) side = side.substring(0, 5) + "..";
-				if (st.length() > 17) st = st.substring(0, 15) + "..";
-
-				System.out.printf("    | %-3d | %-10s | %-10s | %-6s | %-6s | %-7s | %-7s | %-7s | %-17s |%n",
-						rIdx++, id, cl, sym, side, rate, exec, due, st);
+				System.out.printf("    Order #%d All Columns for %s:%n", rIdx++, s);
+				System.out.printf("      +----------------------------------------------------------------------------------------------------------------+%n");
+				System.out.printf("      | Order ID   : %-22s | Order Time : %-22s | Exec Time  : %-22s |%n", oid, otime, etime);
+				System.out.printf("      | Client Code: %-22s | Symbol     : %-22s | Board      : %-22s |%n", cl, s, board);
+				System.out.printf("      | Side       : %-22s | Order Type : %-22s | Price/Rate : %-22s |%n", side, type, price);
+				System.out.printf("      | Avg Price  : %-22s | Order Qty  : %-22s | Drib Qty   : %-22s |%n", avgP, qty, drib);
+				System.out.printf("      | Due Qty    : %-22s | Exec Qty   : %-22s | Status     : %-22s |%n", due, exec, status);
+				System.out.printf("      | Exec Type  : %-22s | Progress   : %-22s | Dealer ID  : %-22s |%n", exType, prog, dlr);
+				System.out.printf("      +----------------------------------------------------------------------------------------------------------------+%n");
 			}
-			System.out.printf("    +-----+------------+------------+--------+--------+---------+---------+---------+-------------------+%n");
 		}
 
-		// 2. MARKET DEPTH 5-LEVEL BOOK ROWS
-		System.out.println("\n>>> [2/6] MARKET DEPTH REAL-TIME 5-LEVEL ORDER BOOK & QUOTES:");
-		System.out.printf("    LTP: %s | High: %s | Low: %s | Buy%%: %s | Sell%%: %s%n",
+		// 2. MARKET DEPTH (SELECTED SYMBOL ONLY - ALL QUOTES & 5-LEVEL BOOK)
+		System.out.printf("\n>>> [2/6] MARKET DEPTH - SELECTED SYMBOL ALL COLUMNS & 5-LEVEL BOOK (%s):%n", sym);
+		System.out.printf("    Summary Quotes -> LTP: %s | High: %s | Low: %s | Buy%%: %s | Sell%%: %s%n",
 				getDepthVal(snap.marketDepthUi, "ltp", "LTP"),
 				getDepthVal(snap.marketDepthUi, "high", "High"),
 				getDepthVal(snap.marketDepthUi, "low", "Low"),
@@ -3934,27 +4001,28 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			System.out.printf("    +-----+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+%n");
 		}
 
-		// 3. POSITION WIDGET ALL CLIENT HOLDING ROWS
-		System.out.println("\n>>> [3/6] POSITION WIDGET ALL CLIENT HOLDING ROWS IN DOM:");
+		// 3. POSITION WIDGET (SELECTED SYMBOL ONLY - ALL COLUMNS)
+		System.out.printf("\n>>> [3/6] POSITION WIDGET - SELECTED SYMBOL ALL COLUMNS (%s):%n", sym);
 		if (snap.positionUiHoldings.isEmpty()) {
-			System.out.println("    (No position rows rendered for this symbol)");
+			System.out.printf("    (No position rows rendered for symbol %s in DOM)%n", sym);
 		} else {
-			System.out.printf("    +-----+------------+--------+-----------+--------------+------------+--------------+--------------+------------+%n");
-			System.out.printf("    | #   | Client     | Symbol | Total Qty | Saleable Qty | Avg Cost   | Total Cost   | Market Value | Gain (BDT) |%n");
-			System.out.printf("    +-----+------------+--------+-----------+--------------+------------+--------------+--------------+------------+%n");
+			System.out.printf("    +-----+------------+--------+-----------+--------------+------------+--------------+------------+--------------+------------+%n");
+			System.out.printf("    | #   | Client     | Symbol | Total Qty | Saleable Qty | Avg Cost   | Total Cost   | Mkt Rate   | Market Value | Gain (BDT) |%n");
+			System.out.printf("    +-----+------------+--------+-----------+--------------+------------+--------------+------------+--------------+------------+%n");
 			int pIdx = 1;
 			for (Position.ClientPosition cp : snap.positionUiHoldings) {
-				System.out.printf("    | %-3d | %-10s | %-6s | %-9.0f | %-12.0f | %-10.2f | %-12.2f | %-12.2f | %-+10.2f |%n",
+				System.out.printf("    | %-3d | %-10s | %-6s | %-9.0f | %-12.0f | %-10.2f | %-12.2f | %-10.2f | %-12.2f | %-+10.2f |%n",
 						pIdx++, cp.getClientCode(), cp.getSymbol(), cp.getTotalQty(), cp.getSaleableQty(),
-						cp.getAvgCost(), cp.getTotalCost(), cp.getMktValue(), cp.getGain());
+						cp.getAvgCost(), cp.getTotalCost(), cp.getMktRate(), cp.getMktValue(), cp.getGain());
 			}
-			System.out.printf("    +-----+------------+--------+-----------+--------------+------------+--------------+--------------+------------+%n");
+			System.out.printf("    +-----+------------+--------+-----------+--------------+------------+--------------+------------+--------------+------------+%n");
 		}
 
-		// 4. CLIENT PORTFOLIO ALL ROWS
-		System.out.println("\n>>> [4/6] CLIENT PORTFOLIO ALL ROWS IN DOM:");
+		// 4. CLIENT PORTFOLIO (SELECTED SYMBOL ONLY - ALL COLUMNS)
+		System.out.printf("\n>>> [4/6] CLIENT PORTFOLIO - SELECTED SYMBOL ALL COLUMNS (%s):%n", sym);
 		if (snap.portfolioRows.isEmpty()) {
-			System.out.printf("    Target Client Portfolio Summary -> Qty: %s | Saleable: %s | Avg Cost: %s | Total Cost: %s | Value: %s%n",
+			System.out.printf("    Target Client (%s) Portfolio -> Symbol: %s | Total Qty: %s | Saleable: %s | Avg Cost: %s | Total Cost: %s | Value: %s%n",
+					client, sym,
 					snap.portfolioUi.getOrDefault("total_qty", "0"),
 					snap.portfolioUi.getOrDefault("saleable_qty", "0"),
 					snap.portfolioUi.getOrDefault("avg_cost", "0.00"),
@@ -3962,11 +4030,11 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 					snap.portfolioUi.getOrDefault("value", "0.00"));
 		} else {
 			System.out.printf("    +-----+------------+-----------+--------------+------------+--------------+------------+--------------+------------+%n");
-			System.out.printf("    | #   | Symbol     | Total Qty | Saleable Qty | Avg Cost   | Total Cost   | LTP        | Value        | Gain %%     |%n");
+			System.out.printf("    | #   | Symbol     | Total Qty | Saleable Qty | Avg Cost   | Total Cost   | LTP        | Market Value | Gain %%     |%n");
 			System.out.printf("    +-----+------------+-----------+--------------+------------+--------------+------------+--------------+------------+%n");
 			int pfIdx = 1;
 			for (Map<String, String> pr : snap.portfolioRows) {
-				String s = pr.getOrDefault("Symbol", pr.getOrDefault("symbol", "-"));
+				String s = pr.getOrDefault("Symbol", pr.getOrDefault("symbol", sym));
 				String tq = pr.getOrDefault("Total Qty", pr.getOrDefault("total_qty", "-"));
 				String sq = pr.getOrDefault("Saleable Qty", pr.getOrDefault("saleable_qty", "-"));
 				String ac = pr.getOrDefault("Avg Cost", pr.getOrDefault("avg_cost", "-"));
@@ -3980,21 +4048,21 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			System.out.printf("    +-----+------------+-----------+--------------+------------+--------------+------------+--------------+------------+%n");
 		}
 
-		// 5. ACCOUNT LIMITS CASH & CAPITAL TABLES
-		System.out.println("\n>>> [5/6] ACCOUNT LIMITS CASH & CAPITAL TABLES IN DOM:");
+		// 5. ACCOUNT LIMITS (TARGET CLIENT - ALL FINANCIAL COLUMNS)
+		System.out.printf("\n>>> [5/6] ACCOUNT LIMITS - TARGET CLIENT FINANCIAL COLUMNS (%s):%n", client);
 		System.out.printf("    Remaining Cash: %s | Blocked Cash (Day Order): %s | Total Transaction: %s%n",
 				snap.accountLimitsUi.getOrDefault("Remaining_Cash", "-"),
 				snap.accountLimitsUi.getOrDefault("Cash_Day_Order", "-"),
 				snap.accountLimitsUi.getOrDefault("Total_Transaction", "-"));
 		if (!snap.accountLimitsCashRows.isEmpty()) {
-			System.out.println("    Cash Table Rows: " + snap.accountLimitsCashRows);
+			System.out.println("    Cash Table Columns: " + snap.accountLimitsCashRows);
 		}
 		if (!snap.accountLimitsCapitalRows.isEmpty()) {
-			System.out.println("    Capital Table Rows: " + snap.accountLimitsCapitalRows);
+			System.out.println("    Capital Table Columns: " + snap.accountLimitsCapitalRows);
 		}
 
-		// 6. ORDER SUMMARY ROWS & BREAKDOWN
-		System.out.println("\n>>> [6/6] ORDER SUMMARY METRICS & BREAKDOWN IN DOM:");
+		// 6. ORDER SUMMARY (ALL METRICS & BREAKDOWN COLUMNS)
+		System.out.printf("\n>>> [6/6] ORDER SUMMARY - ALL METRICS & BREAKDOWN COLUMNS (%s):%n", sym);
 		System.out.printf("    Total Orders: %s | Executed Orders: %s | Buy Qty: %s | Buy Turnover: %s | Sell Turnover: %s%n",
 				snap.orderSummaryUi.getOrDefault("Total_Orders", "-"),
 				snap.orderSummaryUi.getOrDefault("Executed_Orders", "-"),
@@ -4002,7 +4070,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				getOrderSummaryVal(snap.orderSummaryUi, "Buy_Turnover", "Buy_turnover"),
 				getOrderSummaryVal(snap.orderSummaryUi, "Sell_Turnover", "Sell_turnover"));
 		if (!snap.orderSummaryRows.isEmpty()) {
-			System.out.println("    Order Summary Rows: " + snap.orderSummaryRows);
+			System.out.println("    Summary Breakdown Columns: " + snap.orderSummaryRows);
 		}
 		System.out.println("------------------------------------------------------------------------------------------------------------------------\n");
 	}
@@ -4339,7 +4407,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		refreshAndSyncAllWidgets(driver, cleanSym, buyer, ex);
 		SixWidgetUiSnapshot baseline = capture6WidgetsUiSnapshot(driver, "0. BASELINE PRE-TRADE (FIRST DATA)", buyer, cleanSym, ex);
 		SixWidgetUiSnapshot firstData = baseline;
-		displayExactWidgetRowData(baseline, "PRE-TRADE BASELINE [FIRST DATA] - ALL 6 WIDGETS ALL ROWS");
+		displayExactWidgetRowData(baseline, "PRE-TRADE BASELINE [FIRST DATA] - SELECTED SYMBOL ALL COLUMNS");
 
 		// ---------------------------------------------------------------------
 		// STAGE 1 (ACCEPTED ORDER): Place BUY limit order below LTP -> Check with Baseline
@@ -4354,7 +4422,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		refreshAndSyncAllWidgets(driver, cleanSym, buyer, ex);
 
 		SixWidgetUiSnapshot stage1Accepted = capture6WidgetsUiSnapshot(driver, "1. ACCEPTED BUY ORDER", buyer, cleanSym, ex);
-		displayExactWidgetRowData(stage1Accepted, "STAGE 1 [ACCEPTED ORDER] - ALL 6 WIDGETS ALL ROWS");
+		displayExactWidgetRowData(stage1Accepted, "STAGE 1 [ACCEPTED ORDER] - SELECTED SYMBOL ALL COLUMNS");
 		compareAndReport6Widgets(baseline, stage1Accepted, "STAGE 1 [ACCEPTED ORDER] vs BASELINE (PRE-TRADE UI)");
 
 		// ---------------------------------------------------------------------
@@ -4373,7 +4441,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		refreshAndSyncAllWidgets(driver, cleanSym, buyer, ex);
 
 		SixWidgetUiSnapshot stage2PartiallyFilled = capture6WidgetsUiSnapshot(driver, "2. PARTIALLY FILLED BUY ORDER", buyer, cleanSym, ex);
-		displayExactWidgetRowData(stage2PartiallyFilled, "STAGE 2 [PARTIALLY FILLED ORDER] - ALL 6 WIDGETS ALL ROWS");
+		displayExactWidgetRowData(stage2PartiallyFilled, "STAGE 2 [PARTIALLY FILLED ORDER] - SELECTED SYMBOL ALL COLUMNS");
 		compareAndReport6Widgets(stage1Accepted, stage2PartiallyFilled, "STAGE 2 [PARTIALLY FILLED] vs STAGE 1 [ACCEPTED] (UI DATA)");
 
 		// ---------------------------------------------------------------------
@@ -4392,7 +4460,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		refreshAndSyncAllWidgets(driver, cleanSym, buyer, ex);
 
 		SixWidgetUiSnapshot stage3Filled = capture6WidgetsUiSnapshot(driver, "3. 100% FILLED BUY ORDER", buyer, cleanSym, ex);
-		displayExactWidgetRowData(stage3Filled, "STAGE 3 [FILLED ORDER] - ALL 6 WIDGETS ALL ROWS");
+		displayExactWidgetRowData(stage3Filled, "STAGE 3 [FILLED ORDER] - SELECTED SYMBOL ALL COLUMNS");
 		compareAndReport6Widgets(stage2PartiallyFilled, stage3Filled, "STAGE 3 [FILLED] vs STAGE 2 [PARTIALLY FILLED] (UI DATA)");
 
 		// ---------------------------------------------------------------------
@@ -4413,7 +4481,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		refreshAndSyncAllWidgets(driver, cleanSym, buyer, ex);
 
 		SixWidgetUiSnapshot stage4Cancelled = capture6WidgetsUiSnapshot(driver, "4. CANCELLED BUY ORDER", buyer, cleanSym, ex);
-		displayExactWidgetRowData(stage4Cancelled, "STAGE 4 [CANCELLED ORDER] - ALL 6 WIDGETS ALL ROWS");
+		displayExactWidgetRowData(stage4Cancelled, "STAGE 4 [CANCELLED ORDER] - SELECTED SYMBOL ALL COLUMNS");
 		compareAndReport6Widgets(stage3Filled, stage4Cancelled, "STAGE 4 [CANCELLED] vs STAGE 3 [FILLED] (UI DOM CHANGES)");
 
 		// ---------------------------------------------------------------------
@@ -4432,7 +4500,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		refreshAndSyncAllWidgets(driver, cleanSym, buyer, ex);
 
 		SixWidgetUiSnapshot stage5Rejected = capture6WidgetsUiSnapshot(driver, "5. REJECTED BUY ORDER", buyer, cleanSym, ex);
-		displayExactWidgetRowData(stage5Rejected, "STAGE 5 [REJECTED ORDER] - ALL 6 WIDGETS ALL ROWS");
+		displayExactWidgetRowData(stage5Rejected, "STAGE 5 [REJECTED ORDER] - SELECTED SYMBOL ALL COLUMNS");
 
 		// Compare REJECTED with FIRST DATA (Baseline pre-trade UI data):
 		System.out.println("\n========================================================================================");
@@ -4451,7 +4519,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		System.out.println("| Stage 4 [CANCELLED]       : PASSED - Cancelled in Terminal, blocked cash released.     |");
 		System.out.println("| Stage 5 [REJECTED]        : PASSED - Cleanly rejected, verified vs FIRST DATA.         |");
 		System.out.println("| Data Fidelity Constraint  : PASSED - 100% Real-Time Browser UI DOM (Zero API calls).   |");
-		System.out.println("| Widget All Rows Audit     : PASSED - Complete Pre & Post All Rows displayed for all 6. |");
+		System.out.println("| Widget All Rows Audit     : PASSED - Complete Pre & Post All Columns for selected symbol. |");
 		System.out.println("| Default Color Channel     : PASSED - All 6 widgets synced to Turquoise (#42EADDFF).    |");
 		System.out.println("+========================================================================================+\n");
 	}
