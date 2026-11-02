@@ -2606,28 +2606,43 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		double parsedRate = 0.0;
 
 		if (rate.isEmpty()) {
-
 			double ltp = fetchLTP(driver, wait, instrument);
-
 			double autoRate = side.equalsIgnoreCase("BUY") ? ltp - 0.1 : ltp + 0.1;
-
 			rate = String.format(java.util.Locale.US, "%.2f", autoRate);
-
 			parsedRate = autoRate;
-
-			System.out.println("Auto-fetched LTP: " + ltp + " -> Rate: " + rate);
-
+			System.out.println("Auto-fetched Rate: " + rate);
 		} else {
-
 			try {
-
 				parsedRate = Double.parseDouble(rate.replaceAll("[^0-9.]", ""));
-
 			} catch (Exception ignored) {}
-
 			System.out.println("Manual " + side + " Rate entered: " + rate);
-
 		}
+
+		// Circuit Guard: If entered/auto rate exceeds price limit, take YCP or between (SH, SL) / (CH, CL)
+		try {
+			Map<String, String> depth = Market_Depth.getSnapshot(driver, cleanSymbol(instrument), "DSE");
+			if (depth != null && !depth.isEmpty()) {
+				double sh = parseNumSafe(depth.get("SH")); if (sh <= 0) sh = parseNumSafe(depth.get("CH"));
+				double sl = parseNumSafe(depth.get("SL")); if (sl <= 0) sl = parseNumSafe(depth.get("CL"));
+				double ycp = parseNumSafe(depth.get("YCP")); if (ycp <= 0) ycp = parseNumSafe(depth.get("Close"));
+
+				boolean limitExceeded = (sh > 0 && parsedRate > sh) || (sl > 0 && parsedRate < sl);
+				if (limitExceeded) {
+					System.out.printf("[CIRCUIT GUARD] Order rate %.2f exceeds price limits [%.2f, %.2f] for %s!%n",
+							parsedRate, sl, sh, cleanSymbol(instrument));
+					if (ycp > 0 && (sh <= 0 || ycp <= sh) && (sl <= 0 || ycp >= sl)) {
+						parsedRate = ycp;
+						rate = String.format(Locale.US, "%.2f", parsedRate);
+						System.out.printf("[RATE CORRECTION] Corrected to Market Depth safe YCP: %.2f BDT%n", parsedRate);
+					} else if (sh > 0 && sl > 0) {
+						parsedRate = Math.round(((sh + sl) / 2.0) * 10.0) / 10.0;
+						rate = String.format(Locale.US, "%.2f", parsedRate);
+						System.out.printf("[RATE CORRECTION] Corrected to price between (SH, SL) [%.2f, %.2f]: %.2f BDT%n",
+								sl, sh, parsedRate);
+					}
+				}
+			}
+		} catch (Exception ignored) {}
 
 
 
@@ -2747,66 +2762,65 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		String ex = (exchange != null && !exchange.isEmpty()) ? exchange : "DSE";
 
-
-
-		// Tier 0: Direct PostgreSQL Database Table (dse_md_ltp / cse_md_ltp WHERE board = 'PUBLIC')
-		try {
-			double dbPrice = OMSweb_DBMarketData.getDirectSymbolLtpFromDb(cleanSym, ex);
-			if (dbPrice > 0) {
-				System.out.printf("[MARKET PRICE: DB Table] Resolved Public Board LTP for %s: %.2f BDT (%s_md_ltp)%n",
-						cleanSym, dbPrice, ex.toLowerCase());
-				return dbPrice;
-			}
-		} catch (Exception ignored) {}
-
-
+		// NOTE: Direct DB LTP fetch disabled per requirement (LTP sourced from Market Depth / UI).
 
 		// Tier 1: Market Depth Snapshot API (Queries Admin Shared API / QuantBD Token API / DOM)
-
 		try {
-
 			Map<String, String> depth = Market_Depth.getSnapshot(driver, cleanSym, ex);
-
 			if (depth != null && !depth.isEmpty()) {
-
 				double ltp = parseNumSafe(depth.get("Last"));
-
-				if (ltp > 0) {
-
-					System.out.printf("[MARKET PRICE] Fetched LTP for %s: %.2f BDT (Source: %s)%n",
-
-							cleanSym, ltp, depth.getOrDefault("DATA_SOURCE", "Market Depth API"));
-
-					return ltp;
-
-				}
+				if (ltp <= 0) ltp = parseNumSafe(depth.get("LTP"));
 
 				double ycp = parseNumSafe(depth.get("YCP"));
+				if (ycp <= 0) ycp = parseNumSafe(depth.get("Close"));
+
+				double sh = parseNumSafe(depth.get("SH"));
+				if (sh <= 0) sh = parseNumSafe(depth.get("CH"));
+
+				double sl = parseNumSafe(depth.get("SL"));
+				if (sl <= 0) sl = parseNumSafe(depth.get("CL"));
+
+				// Check if LTP exceeds circuit price limit bounds (SH, SL) / (CH, CL)
+				boolean limitExceeded = (sh > 0 && ltp > sh) || (sl > 0 && ltp < sl);
+
+				if (ltp > 0 && !limitExceeded) {
+					System.out.printf("[MARKET PRICE] Fetched LTP within circuit limits for %s: %.2f BDT (Source: %s)%n",
+							cleanSym, ltp, depth.getOrDefault("DATA_SOURCE", "Market Depth API"));
+					return ltp;
+				}
+
+				if (limitExceeded) {
+					System.out.printf("[CIRCUIT GUARD] LTP (%.2f) exceeds price limits [%.2f, %.2f] for %s!%n",
+							ltp, sl, sh, cleanSym);
+				}
+
+				// Price limit exceeded or LTP <= 0 -> Take YCP or between (SH, SL) / (CH, CL)
+				if (ycp > 0 && (sh <= 0 || ycp <= sh) && (sl <= 0 || ycp >= sl)) {
+					System.out.printf("[MARKET PRICE] Resolved safe YCP from Market Depth for %s: %.2f BDT (Source: %s)%n",
+							cleanSym, ycp, depth.getOrDefault("DATA_SOURCE", "Market Depth API"));
+					return ycp;
+				}
+
+				if (sh > 0 && sl > 0) {
+					double safeBetween = Math.round(((sh + sl) / 2.0) * 10.0) / 10.0;
+					System.out.printf("[MARKET PRICE] Price limit exceeded. Taking safe price between (SH, SL) [%.2f, %.2f] for %s: %.2f BDT%n",
+							sl, sh, cleanSym, safeBetween);
+					return safeBetween;
+				}
 
 				if (ycp > 0) {
-
 					System.out.printf("[MARKET PRICE] LTP is 0/unavailable. Fallback to YCP for %s: %.2f BDT (Source: %s)%n",
-
 							cleanSym, ycp, depth.getOrDefault("DATA_SOURCE", "Market Depth API"));
-
 					return ycp;
-
 				}
 
 				double close = parseNumSafe(depth.get("Close"));
-
 				if (close > 0) {
-
 					System.out.printf("[MARKET PRICE] LTP/YCP unavailable. Fallback to Close price for %s: %.2f BDT (Source: %s)%n",
-
 							cleanSym, close, depth.getOrDefault("DATA_SOURCE", "Market Depth API"));
-
 					return close;
-
 				}
-
 			}
-
 		} catch (Exception e) {
 
 			System.out.println("[WARN: Depth Price Query] " + e.getMessage());
@@ -3618,13 +3632,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 					for (Map.Entry<String, Object> e : r.entrySet()) {
 						row.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
 					}
-					String pLtp = row.get("LTP");
-					if (pLtp == null || pLtp.equals("-") || pLtp.isEmpty() || pLtp.equals("0")) {
-						double dbPrice = OMSweb_DBMarketData.getDirectSymbolLtpFromDb(snap.targetSymbol, "DSE");
-						if (dbPrice > 0) {
-							row.put("LTP", String.format(Locale.US, "%.2f", dbPrice));
-						}
-					}
+					
 					snap.portfolioRows.add(row);
 				}
 			}
@@ -3676,29 +3684,6 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 						row.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
 					}
 					snap.marketDepthBookRows.add(row);
-				}
-			}
-			String curLtp = getDepthVal(snap.marketDepthUi, "ltp", "LTP");
-			if (curLtp.equals("-") || curLtp.isEmpty() || curLtp.equals("0")) {
-				double dbPrice = OMSweb_DBMarketData.getDirectSymbolLtpFromDb(snap.targetSymbol, "DSE");
-				if (dbPrice > 0) {
-					snap.marketDepthUi.put("ltp", String.format(Locale.US, "%.2f", dbPrice));
-					snap.marketDepthUi.put("LTP", String.format(Locale.US, "%.2f", dbPrice));
-				}
-			}
-			String curHigh = getDepthVal(snap.marketDepthUi, "high", "High");
-			String curLow = getDepthVal(snap.marketDepthUi, "low", "Low");
-			if (curHigh.equals("-") || curLow.equals("-")) {
-				OMSweb_DBMarketData.PublicSymbolLtp cachedSym = OMSweb_DBMarketData.getCachedSymbol(snap.targetSymbol, "DSE");
-				if (cachedSym != null) {
-					if ((curHigh.equals("-") || curHigh.isEmpty()) && cachedSym.high > 0) {
-						snap.marketDepthUi.put("high", String.format(Locale.US, "%.2f", cachedSym.high));
-						snap.marketDepthUi.put("High", String.format(Locale.US, "%.2f", cachedSym.high));
-					}
-					if ((curLow.equals("-") || curLow.isEmpty()) && cachedSym.low > 0) {
-						snap.marketDepthUi.put("low", String.format(Locale.US, "%.2f", cachedSym.low));
-						snap.marketDepthUi.put("Low", String.format(Locale.US, "%.2f", cachedSym.low));
-					}
 				}
 			}
 			System.out.printf(" [2/6] Market Depth (UI)     -> LTP: %s | High: %s | Low: %s | Buy%%: %s | Sell%%: %s (Depth Book Levels: %d)%n",
@@ -3780,6 +3765,22 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 					snap.orderTerminalRows.add(row);
 				}
 			}
+			if (!snap.orderTerminalRows.isEmpty()) {
+				Map<String, String> topRow = snap.orderTerminalRows.get(0);
+				snap.orderTerminalUi.put("Order_ID", topRow.getOrDefault("Order ID", "-"));
+				snap.orderTerminalUi.put("Status", topRow.getOrDefault("Status", "-"));
+				snap.orderTerminalUi.put("Exec_Qty", topRow.getOrDefault("Exec Qty", "0"));
+				snap.orderTerminalUi.put("Due_Qty", topRow.getOrDefault("Due Qty", "0"));
+				snap.orderTerminalUi.put("Rate", topRow.getOrDefault("Price", "-"));
+				snap.orderTerminalUi.put("Symbol", topRow.getOrDefault("Symbol", snap.targetSymbol));
+			} else {
+				snap.orderTerminalUi.put("Order_ID", "-");
+				snap.orderTerminalUi.put("Status", "-");
+				snap.orderTerminalUi.put("Exec_Qty", "0");
+				snap.orderTerminalUi.put("Due_Qty", "0");
+				snap.orderTerminalUi.put("Rate", "-");
+				snap.orderTerminalUi.put("Symbol", snap.targetSymbol);
+			}
 			System.out.printf(" [3/6] Order Terminal (UI)   -> ID: %s | Status: %s | Exec: %s | Due: %s | Rate: %s (Selected Symbol Orders: %d)%n",
 					snap.orderTerminalUi.getOrDefault("Order_ID", "-"),
 					getOrderTerminalVal(snap.orderTerminalUi, "Status", "status"),
@@ -3803,6 +3804,8 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"    for (var i = 0; i < rows.length; i++) {" +
 				"        var cells = rows[i].querySelectorAll('td');" +
 				"        if (cells.length > 0) {" +
+				"            var rowText = rows[i].innerText.trim().toUpperCase();" +
+				"            if (targetSym.length > 0 && !rowText.includes(targetSym) && rows.length > 1) continue;" +
 				"            var rowObj = {};" +
 				"            for (var j = 0; j < cells.length; j++) {" +
 				"                var h = (j < headers.length && headers[j] && headers[j].length > 0) ? headers[j] : ('col_' + j);" +

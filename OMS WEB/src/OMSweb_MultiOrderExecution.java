@@ -174,12 +174,8 @@ public class OMSweb_MultiOrderExecution {
 
         System.out.printf("[SETUP] Target Symbol: %s on Exchange: %s%n", symbol, exchange);
 
-        // Fetch current Market reference price (LTP) directly from DB with Primary -> Secondary failover
-        double refPrice = OMSweb_DBMarketData.getDirectSymbolLtpFromDb(symbol, exchange);
-        if (refPrice <= 0) {
-            System.out.println("[MARKET] DB query returned 0. Falling back to Market Watch / Depth API...");
-            refPrice = OMSweb_Trade.fetchPriceLtpOrYcp(driver, wait, symbol, exchange);
-        }
+        // Fetch current Market reference price (LTP) from Market Depth / Watch per user request
+        double refPrice = OMSweb_Trade.fetchPriceLtpOrYcp(driver, wait, symbol, exchange);
         System.out.printf("[MARKET] Reference Price (LTP) for %s is %.2f BDT (Base for Limit Pricing)%n", symbol, refPrice);
 
         // Configure Strategy

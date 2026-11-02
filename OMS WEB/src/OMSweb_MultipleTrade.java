@@ -1959,13 +1959,7 @@ public class OMSweb_MultipleTrade {
 
         String cleanSym = (symbol != null) ? symbol.trim().toUpperCase() : "";
 
-        // Priority 1: Direct DB / Cache LTP lookup with failover & circuit breaker
-        try {
-            double dbPrice = OMSweb_DBMarketData.getDirectSymbolLtpFromDb(cleanSym, "DSE");
-            if (dbPrice > 0) {
-                return dbPrice;
-            }
-        } catch (Exception ignored) {}
+        // Direct DB LTP lookup bypassed per user request
 
         double realisticFallback = REALISTIC_PRICES.getOrDefault(cleanSym, 100.00);
 

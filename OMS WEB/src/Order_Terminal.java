@@ -1656,8 +1656,9 @@ public class Order_Terminal {
                         break;
                     }
                 }
-                if (targetRow == null && !rows.isEmpty()) {
-                    targetRow = rows.get(0); // fallback to most recent row
+                if (targetRow == null) {
+                    // Do NOT fall back to rows.get(0) of an unrelated symbol! Only show selected symbol data.
+                    return data;
                 }
 
                 if (targetRow != null) {
@@ -1752,13 +1753,6 @@ public class Order_Terminal {
         String block = null;
         if (m.find()) {
             block = m.group(0);
-        } else {
-            // Check if any order exists in items
-            Pattern anyItemPattern = Pattern.compile("\"items\"\\s*:\\s*\\[\\s*(\\{[^{}]+\\})");
-            Matcher anyM = anyItemPattern.matcher(json);
-            if (anyM.find()) {
-                block = anyM.group(1);
-            }
         }
 
         if (block != null) {

@@ -42,15 +42,7 @@ def fetch_price_ltp_or_ycp(
     sym = clean_symbol(symbol)
     ex = (exchange or "DSE").upper()
 
-    # Tier 0: Direct PostgreSQL DB Table (dse_md_ltp / cse_md_ltp WHERE board = 'PUBLIC')
-    try:
-        from db_market_data import get_public_symbol_ltp
-        db_ltp = get_public_symbol_ltp(sym, ex)
-        if db_ltp and db_ltp > 0:
-            print(f"[MARKET PRICE: DB Table] Resolved Public Board LTP: {float(db_ltp):.2f} BDT for {sym} (dse_md_ltp)")
-            return float(db_ltp)
-    except Exception:
-        pass
+    # Direct DB LTP lookup bypassed per user request
 
     # Tier 1: Market Depth API
     try:
@@ -71,16 +63,32 @@ def fetch_price_ltp_or_ycp(
         api_res = driver.execute_script(api_script, sym, ex)
         if api_res:
             data = json.loads(api_res)
-            # Check ltp
-            ltp = parse_float(data.get("ltp") or data.get("LTP") or data.get("last_traded_price"))
-            if ltp > 0:
-                print(f"[MARKET PRICE] Resolved LTP from Market Depth API: {ltp:.2f} BDT for {sym}")
+            sdata = data.get("symbol_data", {}) if isinstance(data.get("symbol_data"), dict) else data
+            ltp = parse_float(sdata.get("ltp") or sdata.get("LTP") or sdata.get("last_traded_price") or sdata.get("Last"))
+            ycp = parse_float(sdata.get("ycp") or sdata.get("YCP") or sdata.get("close") or sdata.get("close_price") or sdata.get("Close"))
+            sh = parse_float(sdata.get("circuit_up") or sdata.get("SH") or sdata.get("CH") or sdata.get("cu"))
+            sl = parse_float(sdata.get("circuit_down") or sdata.get("SL") or sdata.get("CL") or sdata.get("cd"))
+
+            limit_exceeded = (sh > 0 and ltp > sh) or (sl > 0 and ltp < sl)
+            if ltp > 0 and not limit_exceeded:
+                print(f"[MARKET PRICE] Resolved LTP within circuit limits from Market Depth API: {ltp:.2f} BDT for {sym}")
                 return ltp
 
-            # Check ycp
-            ycp = parse_float(data.get("ycp") or data.get("YCP") or data.get("close") or data.get("close_price"))
+            if limit_exceeded:
+                print(f"[CIRCUIT GUARD] Market Depth LTP ({ltp:.2f}) exceeds price limits [{sl:.2f}, {sh:.2f}] for {sym}!")
+
+            # Price limit exceeded or LTP <= 0 -> Take YCP or between (SH, SL) / (CH, CL)
+            if ycp > 0 and (sh <= 0 or ycp <= sh) and (sl <= 0 or ycp >= sl):
+                print(f"[MARKET PRICE] Price limit exceeded. Resolved safe YCP from Market Depth API: {ycp:.2f} BDT for {sym}")
+                return ycp
+
+            if sh > 0 and sl > 0:
+                safe_between = round((sh + sl) / 2.0, 1)
+                print(f"[MARKET PRICE] Price limit exceeded. Taking safe price between (SH, SL) [{sl:.2f}, {sh:.2f}] for {sym}: {safe_between:.2f} BDT")
+                return safe_between
+
             if ycp > 0:
-                print(f"[MARKET PRICE] LTP unavailable. Resolved YCP from Market Depth API: {ycp:.2f} BDT for {sym}")
+                print(f"[MARKET PRICE] Fallback to YCP from Market Depth API: {ycp:.2f} BDT for {sym}")
                 return ycp
     except Exception as e:
         print(f"[MARKET PRICE: Tier 1 API Warn] {e}")

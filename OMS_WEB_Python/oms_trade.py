@@ -418,6 +418,25 @@ def place_order(
         except Exception:
             pass
 
+    # Circuit Guard: If rate exceeds price limits [SL, SH], take YCP or between (SH, SL)
+    try:
+        from market_depth import get_snapshot
+        depth = get_snapshot(driver, sym_clean, exchange)
+        if depth:
+            sh = oms_price.parse_float(depth.get("SH") or depth.get("CH"))
+            sl = oms_price.parse_float(depth.get("SL") or depth.get("CL"))
+            ycp = oms_price.parse_float(depth.get("YCP") or depth.get("Close"))
+            if (sh > 0 and rate > sh) or (sl > 0 and rate < sl):
+                print(f"  [CIRCUIT GUARD] Order rate {rate:.2f} exceeds price limits [{sl:.2f}, {sh:.2f}] for {sym_clean}!")
+                if ycp > 0 and (sh <= 0 or ycp <= sh) and (sl <= 0 or ycp >= sl):
+                    rate = ycp
+                    print(f"  [RATE CORRECTION] Taking Market Depth safe YCP: {rate:.2f} BDT")
+                elif sh > 0 and sl > 0:
+                    rate = round((sh + sl) / 2.0, 1)
+                    print(f"  [RATE CORRECTION] Taking safe price between (SH, SL) [{sl:.2f}, {sh:.2f}]: {rate:.2f} BDT")
+    except Exception:
+        pass
+
     print(f"\n[ORDER ENTRY] Placing {side_clean} order: Client={client_code} | {sym_clean} x {qty} @ {rate:.2f} ({exchange})")
 
     try:
@@ -759,12 +778,7 @@ def capture_6widgets_ui_snapshot(
         port_data = driver.execute_script(port_script, clean_sym) or {}
         snap["portfolio"] = port_data.get("summary", {})
         snap["portfolio_rows"] = port_data.get("allRows", [])
-        for p_row in snap["portfolio_rows"]:
-            if str(p_row.get("LTP", "-")).strip() in ("-", "", "0"):
-                from db_market_data import get_public_symbol_ltp
-                db_ltp = get_public_symbol_ltp(clean_sym, exchange)
-                if db_ltp and db_ltp > 0:
-                    p_row["LTP"] = f"{db_ltp:.2f}"
+        
         print(f" [1/6] Client Portfolio (UI) -> Qty: {snap['portfolio'].get('total_qty', '0')} | Saleable: {snap['portfolio'].get('saleable_qty', '0')} | Selected Symbol Rows: {len(snap['portfolio_rows'])}")
     except Exception as e:
         print(f" [1/6] Client Portfolio (UI) -> {e}")
@@ -821,11 +835,7 @@ def capture_6widgets_ui_snapshot(
         depth_data = driver.execute_script(md_script) or {}
         snap["market_depth"] = depth_data.get("summary", {})
         snap["market_depth_book_rows"] = depth_data.get("bookRows", [])
-        if snap["market_depth"].get("ltp", "-") in ("-", "", "0"):
-            from db_market_data import get_public_symbol_ltp
-            db_ltp = get_public_symbol_ltp(clean_sym, exchange)
-            if db_ltp and db_ltp > 0:
-                snap["market_depth"]["ltp"] = f"{db_ltp:.2f}"
+        
         print(f" [2/6] Market Depth (UI)     -> LTP: {snap['market_depth'].get('ltp', '-')} | High: {snap['market_depth'].get('high', '-')} | Book Levels: {len(snap['market_depth_book_rows'])}")
     except Exception as e:
         print(f" [2/6] Market Depth (UI)     -> {e}")
@@ -899,8 +909,26 @@ def capture_6widgets_ui_snapshot(
         return { summary: summary, allRows: allRows };
         """
         term_data = driver.execute_script(term_script, clean_sym) or {}
-        snap["order_terminal"] = term_data.get("summary", {})
         snap["order_terminal_rows"] = term_data.get("allRows", [])
+        if snap["order_terminal_rows"]:
+            top = snap["order_terminal_rows"][0]
+            snap["order_terminal"] = {
+                "order_id": top.get("Order ID", "-"),
+                "status": top.get("Status", "-"),
+                "exec_qty": top.get("Exec Qty", "0"),
+                "due_qty": top.get("Due Qty", "0"),
+                "rate": top.get("Price", "-"),
+                "symbol": top.get("Symbol", clean_sym)
+            }
+        else:
+            snap["order_terminal"] = {
+                "order_id": "-",
+                "status": "-",
+                "exec_qty": "0",
+                "due_qty": "0",
+                "rate": "-",
+                "symbol": clean_sym
+            }
         print(f" [3/6] Order Terminal (UI)   -> ID: {snap['order_terminal'].get('order_id', '-')} | Status: {snap['order_terminal'].get('status', '-')} | Exec: {snap['order_terminal'].get('exec_qty', '-')} | Due: {snap['order_terminal'].get('due_qty', '-')} | Selected Symbol Orders: {len(snap['order_terminal_rows'])}")
     except Exception as e:
         print(f" [3/6] Order Terminal (UI)   -> {e}")
