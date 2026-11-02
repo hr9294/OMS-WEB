@@ -91,20 +91,21 @@ def apply_color_to_all_widgets(
 
 
 def run_widget_color_selection(driver: webdriver.Chrome) -> None:
-    """Interactive prompt to select widget color link (1-6, or Enter to skip)."""
+    """Interactive prompt to select widget color link (1-6, default 1 [Turquoise])."""
     print("\n=== Widget Color Link ===")
-    print("1.Turquoise 2.Yellow 3.Orange")
+    print("1.Turquoise (Default) 2.Yellow 3.Orange")
     print("4.Green 5.Red 6.Pink")
-    user_inp = input("Enter choice (1-6, or Enter to skip): ").strip()
+    user_inp = input("Enter choice (1-6, default 1 [Turquoise]): ").strip()
     if not user_inp:
-        print("[WIDGET COLOR] Color selection skipped by user.")
-        return
+        user_inp = "1"
 
     try:
         choice = int(user_inp)
         if 1 <= choice <= 6:
             apply_color_to_all_widgets(driver, choice)
         else:
-            print("[WIDGET COLOR] Invalid choice. Skipped.")
+            print("[WIDGET COLOR] Invalid choice, defaulting to 1 (Turquoise).")
+            apply_color_to_all_widgets(driver, 1)
     except ValueError:
-        print("[WIDGET COLOR] Invalid number. Skipped.")
+        print("[WIDGET COLOR] Invalid input, defaulting to 1 (Turquoise).")
+        apply_color_to_all_widgets(driver, 1)
