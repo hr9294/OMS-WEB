@@ -5,6 +5,8 @@ import java.time.Duration;
 import java.util.Date;
 
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 import java.util.Locale;
 
@@ -1187,8 +1189,11 @@ public class OMSweb_Trade {
 
 
 				// Active DOM polling waiting for WebSocket order update without reloading
-
 				waitForTerminalDomStatus(driver, "Accepted", 3);
+
+				// Extract and display that accepted order data directly from Order Terminal table
+				Map<String, String> actionOrder = fetchTerminalOrderForAction(driver, clientCode, instrument, "accept");
+				printActionOrderTerminalTable("NORMAL TRADE [ACCEPTED ORDER] - REAL-TIME ORDER RECORD", actionOrder);
 
 
 
@@ -2376,6 +2381,172 @@ public class OMSweb_Trade {
 
 		return false;
 
+	}
+
+	public static Map<String, String> fetchTerminalOrderForAction(WebDriver driver, String clientCode, String symbol, String expectedStatusKeyword) {
+		Map<String, String> order = new LinkedHashMap<>();
+		if (driver == null) return order;
+		try {
+			JavascriptExecutor js = (JavascriptExecutor) driver;
+			String cleanSym = cleanSymbol(symbol).toUpperCase();
+			String cleanClient = (clientCode != null) ? clientCode.trim() : "";
+			String statusKw = (expectedStatusKeyword != null) ? expectedStatusKeyword.trim().toLowerCase() : "";
+
+			Object res = js.executeScript(
+				"var cleanSym = arguments[0]; var cleanClient = arguments[1]; var statusKw = arguments[2];" +
+				"var tbl = document.getElementById('order_terminal_table') || document.querySelector('table.order_terminal_table') || document.querySelector('table[id*=market_table]');" +
+				"if (!tbl) return null;" +
+				"var headers = Array.from(tbl.querySelectorAll('thead th, tr:first-child th')).map(function(h) { return h.innerText.trim(); });" +
+				"var rows = tbl.querySelectorAll('tbody tr');" +
+				"var matchedRow = null;" +
+				"for (var i = 0; i < rows.length; i++) {" +
+				"    var r = rows[i];" +
+				"    var rowText = (r.innerText || '').toLowerCase();" +
+				"    if (statusKw.length > 0 && !rowText.includes(statusKw)) continue;" +
+				"    if (cleanClient.length > 0 && !rowText.includes(cleanClient.toLowerCase())) continue;" +
+				"    if (cleanSym.length > 0 && !rowText.toUpperCase().includes(cleanSym)) continue;" +
+				"    matchedRow = r; break;" +
+				"}" +
+				"if (!matchedRow && statusKw.length > 0) {" +
+				"    for (var i = 0; i < rows.length; i++) {" +
+				"        var r = rows[i];" +
+				"        var rowText = (r.innerText || '').toLowerCase();" +
+				"        if (rowText.includes(statusKw)) { matchedRow = r; break; }" +
+				"    }" +
+				"}" +
+				"if (!matchedRow && rows.length > 0) matchedRow = rows[0];" +
+				"if (!matchedRow) return null;" +
+				"var cells = matchedRow.querySelectorAll('td');" +
+				"if (cells.length === 0) return null;" +
+				"var rowObj = {};" +
+				"for (var j = 0; j < cells.length; j++) {" +
+				"    var h = (j < headers.length && headers[j] && headers[j].length > 0) ? headers[j] : ('col_' + j);" +
+				"    rowObj[h] = cells[j].innerText.trim();" +
+				"}" +
+				"for (var k = 0; k < headers.length && k < cells.length; k++) {" +
+				"    var ht = headers[k].toUpperCase();" +
+				"    var val = cells[k].innerText.trim();" +
+				"    if (ht.indexOf('ORDER ID') !== -1 || ht === 'OID') rowObj['Order ID'] = val;" +
+				"    else if (ht.indexOf('ORDER TIME') !== -1) rowObj['Order Time'] = val;" +
+				"    else if (ht.indexOf('EXEC TIME') !== -1 || ht === 'ETM') rowObj['Exec Time'] = val;" +
+				"    else if (ht.indexOf('CLIENT') !== -1 || ht === 'CODE') rowObj['Client Code'] = val;" +
+				"    else if (ht.indexOf('SYMBOL') !== -1) rowObj['Symbol'] = val;" +
+				"    else if (ht.indexOf('BOARD') !== -1) rowObj['Board'] = val;" +
+				"    else if (ht.indexOf('SIDE') !== -1 || ht === 'B/S') rowObj['Side'] = val;" +
+				"    else if (ht.indexOf('TYPE') !== -1 && ht.indexOf('EXEC') === -1) rowObj['Type'] = val;" +
+				"    else if (ht.indexOf('PRICE') !== -1 || ht.indexOf('RATE') !== -1) rowObj['Price'] = val;" +
+				"    else if (ht.indexOf('AVG') !== -1) rowObj['Avg Price'] = val;" +
+				"    else if (ht === 'QTY' || ht.indexOf('ORDER QTY') !== -1) rowObj['Qty'] = val;" +
+				"    else if (ht.indexOf('DRIB') !== -1 || ht.indexOf('DRIP') !== -1) rowObj['Drib'] = val;" +
+				"    else if (ht.indexOf('DUE') !== -1) rowObj['Due Qty'] = val;" +
+				"    else if (ht.indexOf('EXEC QTY') !== -1 || ht === 'EXECQTY') rowObj['Exec Qty'] = val;" +
+				"    else if (ht.indexOf('STATUS') !== -1 && ht.indexOf('EXEC') === -1) rowObj['Status'] = val;" +
+				"    else if (ht.indexOf('EXEC TYPE') !== -1 || ht === 'EXECTYPE') rowObj['Exec Type'] = val;" +
+				"    else if (ht.indexOf('PROGRESS') !== -1) rowObj['Progress'] = val;" +
+				"    else if (ht.indexOf('DEALER') !== -1) rowObj['Dealer ID'] = val;" +
+				"}" +
+				"if (!rowObj['Order ID'] && cells.length > 1) rowObj['Order ID'] = cells[1].innerText.trim();" +
+				"if (!rowObj['Client Code'] && cells.length > 2) rowObj['Client Code'] = cells[2].innerText.trim();" +
+				"if (!rowObj['Symbol'] && cells.length > 3) rowObj['Symbol'] = cells[3].innerText.trim();" +
+				"if (!rowObj['Side'] && cells.length > 4) rowObj['Side'] = cells[4].innerText.trim();" +
+				"if (!rowObj['Price'] && cells.length > 5) rowObj['Price'] = cells[5].innerText.trim();" +
+				"if (!rowObj['Exec Qty'] && cells.length > 6) rowObj['Exec Qty'] = cells[6].innerText.trim();" +
+				"if (!rowObj['Due Qty'] && cells.length > 7) rowObj['Due Qty'] = cells[7].innerText.trim();" +
+				"if (!rowObj['Status'] && cells.length > 8) rowObj['Status'] = cells[8].innerText.trim();" +
+				"return rowObj;",
+				cleanSym, cleanClient, statusKw
+			);
+
+			if (res instanceof Map) {
+				Map<?, ?> raw = (Map<?, ?>) res;
+				for (Map.Entry<?, ?> e : raw.entrySet()) {
+					order.put(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
+				}
+			}
+		} catch (Exception ignored) {}
+		return order;
+	}
+
+	public static void printActionOrderTerminalTable(String actionTitle, Map<String, String> r) {
+		System.out.println("\n+==================================================================================================================================================+");
+		System.out.printf("| >>> ORDER TERMINAL ACTION DATA: %-97s |%n", actionTitle);
+		System.out.println("+==================================================================================================================================================+");
+		if (r == null || r.isEmpty()) {
+			System.out.println("| (No matching Order Terminal record found in DOM table)                                                                                           |");
+			System.out.println("+==================================================================================================================================================+");
+			return;
+		}
+
+		String oid = r.getOrDefault("Order ID", r.getOrDefault("order_id", "-"));
+		String otime = r.getOrDefault("Order Time", r.getOrDefault("order_time", "-"));
+		String cl = r.getOrDefault("Client Code", r.getOrDefault("client_code", "-"));
+		String s = r.getOrDefault("Symbol", r.getOrDefault("symbol", "-"));
+		String side = r.getOrDefault("Side", r.getOrDefault("side", "-"));
+		String type = r.getOrDefault("Type", r.getOrDefault("type", "LIMIT"));
+		String price = r.getOrDefault("Price", r.getOrDefault("rate", "-"));
+		String qty = r.getOrDefault("Qty", r.getOrDefault("qty", "-"));
+		String exec = r.getOrDefault("Exec Qty", r.getOrDefault("exec_qty", "0"));
+		String due = r.getOrDefault("Due Qty", r.getOrDefault("due_qty", "0"));
+		String status = r.getOrDefault("Status", r.getOrDefault("status", "-"));
+		String exType = r.getOrDefault("Exec Type", r.getOrDefault("exec_type", "Normal"));
+		String prog = r.getOrDefault("Progress", r.getOrDefault("progress", "-"));
+
+		System.out.printf("| %-12s | %-10s | %-11s | %-10s | %-6s | %-6s | %-12s | %-9s | %-9s | %-8s | %-15s | %-9s | %-8s |%n",
+				"Order ID", "Time", "Client", "Symbol", "Side", "Type", "Price", "Total Qty", "Exec Qty", "Due Qty", "Status", "Exec Type", "Progress");
+		System.out.println("+--------------+------------+-------------+------------+--------+--------+--------------+-----------+-----------+----------+-----------------+-----------+----------+");
+		System.out.printf("| %-12s | %-10s | %-11s | %-10s | %-6s | %-6s | %-12s | %-9s | %-9s | %-8s | %-15s | %-9s | %-8s |%n",
+				oid, otime, cl, s, side, type, price, qty, exec, due, status, exType, prog);
+		System.out.println("+--------------+------------+-------------+------------+--------+--------+--------------+-----------+-----------+----------+-----------------+-----------+----------+");
+	}
+
+	public static void printListOfMapsAsTable(List<Map<String, String>> rows, String indent) {
+		if (rows == null || rows.isEmpty()) {
+			System.out.println(indent + "(No records rendered in DOM table)");
+			return;
+		}
+		Set<String> headers = new LinkedHashSet<>();
+		for (Map<String, String> r : rows) {
+			headers.addAll(r.keySet());
+		}
+		if (headers.isEmpty()) return;
+
+		Map<String, Integer> colWidths = new LinkedHashMap<>();
+		for (String h : headers) {
+			int max = h.length();
+			for (Map<String, String> r : rows) {
+				String v = r.getOrDefault(h, "");
+				if (v != null && v.length() > max) max = v.length();
+			}
+			colWidths.put(h, Math.min(Math.max(max, 6), 35));
+		}
+
+		StringBuilder sep = new StringBuilder(indent + "+");
+		for (String h : headers) {
+			int w = colWidths.get(h);
+			for (int i = 0; i < w + 2; i++) sep.append("-");
+			sep.append("+");
+		}
+
+		System.out.println(sep);
+		StringBuilder hdrLine = new StringBuilder(indent + "|");
+		for (String h : headers) {
+			int w = colWidths.get(h);
+			hdrLine.append(" ").append(String.format("%-" + w + "s", h)).append(" |");
+		}
+		System.out.println(hdrLine);
+		System.out.println(sep);
+
+		for (Map<String, String> r : rows) {
+			StringBuilder rowLine = new StringBuilder(indent + "|");
+			for (String h : headers) {
+				int w = colWidths.get(h);
+				String val = r.getOrDefault(h, "-");
+				if (val.length() > w) val = val.substring(0, w - 1) + ".";
+				rowLine.append(" ").append(String.format("%-" + w + "s", val)).append(" |");
+			}
+			System.out.println(rowLine);
+		}
+		System.out.println(sep);
 	}
 
 
@@ -7515,7 +7686,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"    }" +
 
 				"    out.push(rowObj);" +
-				"    break;" +
+				"    if (out.length >= 10) break;" +
 
 				"}" +
 
@@ -7939,264 +8110,165 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 	public static void displayExactWidgetRowData(SixWidgetUiSnapshot snap, String title) {
-
 		String sym = (snap.targetSymbol != null && !snap.targetSymbol.isEmpty()) ? snap.targetSymbol : "SELECTED SYMBOL";
-
 		String client = (snap.targetClient != null && !snap.targetClient.isEmpty()) ? snap.targetClient : "-";
 
+		System.out.println("\n+==================================================================================================================================================+");
+		System.out.printf("| REAL-TIME 6-WIDGET UI DOM AUDIT TABLE: %-81s |%n", title);
+		System.out.printf("| Target Symbol: %-25s | Client: %-20s | Stage: %-52s |%n", sym, client, snap.stageName);
+		System.out.printf("| Timestamp: %-133s |%n", snap.timestamp);
+		System.out.println("+==================================================================================================================================================+");
 
-
-		System.out.println("\n+======================================================================================================================+");
-
-		System.out.printf("| SELECTED SYMBOL REAL-TIME UI DATA (ALL COLUMNS): %-65s |%n", title);
-
-		System.out.printf("| Target Symbol: %-25s | Client: %-20s | Stage: %-30s |%n", sym, client, snap.stageName);
-
-		System.out.printf("| Timestamp: %-104s |%n", snap.timestamp);
-
-		System.out.println("+======================================================================================================================+");
-
-
-
-		// 1. ORDER TERMINAL (SELECTED SYMBOL RECENT ORDER ONLY - ALL COLUMNS)
-		System.out.printf("\n>>> [1/6] ORDER TERMINAL - SELECTED SYMBOL RECENT ORDER (%s):%n", sym);
-
+		// 1. ORDER TERMINAL (SELECTED SYMBOL ORDERS - ALL COLUMNS IN TABLE VIEW)
+		System.out.printf("\n>>> [1/6] ORDER TERMINAL - SELECTED SYMBOL ORDERS (%s):%n", sym);
 		if (snap.orderTerminalRows.isEmpty()) {
 			System.out.printf("    (No active order row rendered for symbol %s in #order_terminal_table)%n", sym);
 		} else {
-			Map<String, String> r = snap.orderTerminalRows.get(0);
-			String oid = r.getOrDefault("Order ID", r.getOrDefault("order_id", "-"));
-			String otime = r.getOrDefault("Order Time", r.getOrDefault("order_time", "-"));
-			String etime = r.getOrDefault("Exec Time", r.getOrDefault("exec_time", "-"));
-			String cl = r.getOrDefault("Client Code", r.getOrDefault("client_code", "-"));
-			String s = r.getOrDefault("Symbol", r.getOrDefault("symbol", sym));
-			String board = r.getOrDefault("Board", r.getOrDefault("board", "PUBLIC"));
-			String side = r.getOrDefault("Side", r.getOrDefault("side", "-"));
-			String type = r.getOrDefault("Type", r.getOrDefault("type", "LIMIT"));
-			String price = r.getOrDefault("Price", r.getOrDefault("rate", "-"));
-			String avgP = r.getOrDefault("Avg Price", r.getOrDefault("avg_price", "-"));
-			String qty = r.getOrDefault("Qty", r.getOrDefault("qty", "-"));
-			String drib = r.getOrDefault("Drib", r.getOrDefault("drib", "0"));
-			String due = r.getOrDefault("Due Qty", r.getOrDefault("due_qty", "-"));
-			String exec = r.getOrDefault("Exec Qty", r.getOrDefault("exec_qty", "-"));
-			String status = r.getOrDefault("Status", r.getOrDefault("status", "-"));
-			String exType = r.getOrDefault("Exec Type", r.getOrDefault("exec_type", "Normal"));
-			String prog = r.getOrDefault("Progress", r.getOrDefault("progress", "-"));
-			String dlr = r.getOrDefault("Dealer ID", r.getOrDefault("dealer_id", "-"));
-
-			System.out.printf("    Most Recent Order All Columns for %s:%n", s);
-			System.out.printf("      +----------------------------------------------------------------------------------------------------------------+%n");
-			System.out.printf("      | Order ID   : %-22s | Order Time : %-22s | Exec Time  : %-22s |%n", oid, otime, etime);
-			System.out.printf("      | Client Code: %-22s | Symbol     : %-22s | Board      : %-22s |%n", cl, s, board);
-			System.out.printf("      | Side       : %-22s | Order Type : %-22s | Price/Rate : %-22s |%n", side, type, price);
-			System.out.printf("      | Avg Price  : %-22s | Order Qty  : %-22s | Drib Qty   : %-22s |%n", avgP, qty, drib);
-			System.out.printf("      | Due Qty    : %-22s | Exec Qty   : %-22s | Status     : %-22s |%n", due, exec, status);
-			System.out.printf("      | Exec Type  : %-22s | Progress   : %-22s | Dealer ID  : %-22s |%n", exType, prog, dlr);
-			System.out.printf("      +----------------------------------------------------------------------------------------------------------------+%n");
+			System.out.println("    +--------------+------------+-------------+------------+--------+--------+--------------+-----------+-----------+----------+-----------------+-----------+----------+");
+			System.out.printf("    | %-12s | %-10s | %-11s | %-10s | %-6s | %-6s | %-12s | %-9s | %-9s | %-8s | %-15s | %-9s | %-8s |%n",
+					"Order ID", "Time", "Client", "Symbol", "Side", "Type", "Price", "Total Qty", "Exec Qty", "Due Qty", "Status", "Exec Type", "Progress");
+			System.out.println("    +--------------+------------+-------------+------------+--------+--------+--------------+-----------+-----------+----------+-----------------+-----------+----------+");
+			for (Map<String, String> r : snap.orderTerminalRows) {
+				String oid = r.getOrDefault("Order ID", r.getOrDefault("order_id", "-"));
+				String otime = r.getOrDefault("Order Time", r.getOrDefault("order_time", "-"));
+				String cl = r.getOrDefault("Client Code", r.getOrDefault("client_code", "-"));
+				String s = r.getOrDefault("Symbol", r.getOrDefault("symbol", sym));
+				String side = r.getOrDefault("Side", r.getOrDefault("side", "-"));
+				String type = r.getOrDefault("Type", r.getOrDefault("type", "LIMIT"));
+				String price = r.getOrDefault("Price", r.getOrDefault("rate", "-"));
+				String qty = r.getOrDefault("Qty", r.getOrDefault("qty", "-"));
+				String exec = r.getOrDefault("Exec Qty", r.getOrDefault("exec_qty", "-"));
+				String due = r.getOrDefault("Due Qty", r.getOrDefault("due_qty", "-"));
+				String status = r.getOrDefault("Status", r.getOrDefault("status", "-"));
+				String exType = r.getOrDefault("Exec Type", r.getOrDefault("exec_type", "Normal"));
+				String prog = r.getOrDefault("Progress", r.getOrDefault("progress", "-"));
+				System.out.printf("    | %-12s | %-10s | %-11s | %-10s | %-6s | %-6s | %-12s | %-9s | %-9s | %-8s | %-15s | %-9s | %-8s |%n",
+						oid, otime, cl, s, side, type, price, qty, exec, due, status, exType, prog);
+			}
+			System.out.println("    +--------------+------------+-------------+------------+--------+--------+--------------+-----------+-----------+----------+-----------------+-----------+----------+");
 		}
 
 		// 2. MARKET DEPTH (SELECTED SYMBOL ONLY - ALL QUOTES & 5-LEVEL BOOK)
-
-		System.out.printf("\n>>> [2/6] MARKET DEPTH - SELECTED SYMBOL ALL COLUMNS & 5-LEVEL BOOK (%s):%n", sym);
-
-		System.out.printf("    Summary Quotes -> LTP: %s | High: %s | Low: %s | Buy%%: %s | Sell%%: %s%n",
-
+		System.out.printf("\n>>> [2/6] MARKET DEPTH - SELECTED SYMBOL SUMMARY QUOTES & 5-LEVEL BOOK (%s):%n", sym);
+		System.out.println("    +-----------------+-----------------+-----------------+-------------------------+-------------------------+");
+		System.out.printf("    | %-15s | %-15s | %-15s | %-23s | %-23s |%n", "LTP (BDT)", "High (BDT)", "Low (BDT)", "Total Buy Volume %", "Total Sell Volume %");
+		System.out.println("    +-----------------+-----------------+-----------------+-------------------------+-------------------------+");
+		System.out.printf("    | %-15s | %-15s | %-15s | %-23s | %-23s |%n",
 				getDepthVal(snap.marketDepthUi, "ltp", "LTP"),
-
 				getDepthVal(snap.marketDepthUi, "high", "High"),
-
 				getDepthVal(snap.marketDepthUi, "low", "Low"),
-
 				snap.marketDepthUi.getOrDefault("Buy_Percent", "-"),
-
 				snap.marketDepthUi.getOrDefault("Sell_Percent", "-"));
+		System.out.println("    +-----------------+-----------------+-----------------+-------------------------+-------------------------+");
 
 		if (snap.marketDepthBookRows.isEmpty()) {
-
-			System.out.println("    (Market Depth book rows not rendered)");
-
+			System.out.println("    (Market Depth book rows not rendered in DOM)");
 		} else {
-
-			System.out.printf("    +-----+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+%n");
-
-			System.out.printf("    | Lvl | Bid Orders  | Bid Cum Qty | Bid Qty     | Bid Price   | Ask Price   | Ask Qty     | Ask Cum Qty | Ask Orders  |%n");
-
-			System.out.printf("    +-----+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+%n");
-
+			System.out.println("    +-----+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+");
+			System.out.printf("    | %-3s | %-11s | %-11s | %-11s | %-11s | %-11s | %-11s | %-11s | %-11s |%n",
+					"Lvl", "Bid Orders", "Bid Cum Qty", "Bid Qty", "Bid Price", "Ask Price", "Ask Qty", "Ask Cum Qty", "Ask Orders");
+			System.out.println("    +-----+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+");
 			for (Map<String, String> row : snap.marketDepthBookRows) {
-
 				System.out.printf("    | %-3s | %-11s | %-11s | %-11s | %-11s | %-11s | %-11s | %-11s | %-11s |%n",
-
 						row.getOrDefault("Level", "-"),
-
 						row.getOrDefault("Bid_Orders", "-"),
-
 						row.getOrDefault("Bid_Cum_Qty", "-"),
-
 						row.getOrDefault("Bid_Qty", "-"),
-
 						row.getOrDefault("Bid_Price", "-"),
-
 						row.getOrDefault("Ask_Price", "-"),
-
 						row.getOrDefault("Ask_Qty", "-"),
-
 						row.getOrDefault("Ask_Cum_Qty", "-"),
-
 						row.getOrDefault("Ask_Orders", "-"));
-
 			}
-
-			System.out.printf("    +-----+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+%n");
-
+			System.out.println("    +-----+-------------+-------------+-------------+-------------+-------------+-------------+-------------+-------------+");
 		}
-
-
 
 		// 3. POSITION WIDGET (SELECTED SYMBOL ONLY - ALL COLUMNS)
-
 		System.out.printf("\n>>> [3/6] POSITION WIDGET - SELECTED SYMBOL ALL COLUMNS (%s):%n", sym);
-
 		if (snap.positionUiHoldings.isEmpty()) {
-
 			System.out.printf("    (No position rows rendered for symbol %s in DOM)%n", sym);
-
 		} else {
-
-			System.out.printf("    +-----+------------+--------+-----------+--------------+------------+--------------+------------+--------------+------------+%n");
-
-			System.out.printf("    | #   | Client     | Symbol | Total Qty | Saleable Qty | Avg Cost   | Total Cost   | Mkt Rate   | Market Value | Gain (BDT) |%n");
-
-			System.out.printf("    +-----+------------+--------+-----------+--------------+------------+--------------+------------+--------------+------------+%n");
-
+			System.out.println("    +-----+------------+--------+-----------+--------------+------------+--------------+------------+--------------+------------+");
+			System.out.printf("    | %-3s | %-10s | %-6s | %-9s | %-12s | %-10s | %-12s | %-10s | %-12s | %-10s |%n",
+					"#", "Client", "Symbol", "Total Qty", "Saleable Qty", "Avg Cost", "Total Cost", "Mkt Rate", "Market Value", "Gain (BDT)");
+			System.out.println("    +-----+------------+--------+-----------+--------------+------------+--------------+------------+--------------+------------+");
 			int pIdx = 1;
-
 			for (Position.ClientPosition cp : snap.positionUiHoldings) {
-
 				System.out.printf("    | %-3d | %-10s | %-6s | %-9.0f | %-12.0f | %-10.2f | %-12.2f | %-10.2f | %-12.2f | %-+10.2f |%n",
-
 						pIdx++, cp.getClientCode(), cp.getSymbol(), cp.getTotalQty(), cp.getSaleableQty(),
-
 						cp.getAvgCost(), cp.getTotalCost(), cp.getMktRate(), cp.getMktValue(), cp.getGain());
-
 			}
-
-			System.out.printf("    +-----+------------+--------+-----------+--------------+------------+--------------+------------+--------------+------------+%n");
-
+			System.out.println("    +-----+------------+--------+-----------+--------------+------------+--------------+------------+--------------+------------+");
 		}
-
-
 
 		// 4. CLIENT PORTFOLIO (SELECTED SYMBOL ONLY - ALL COLUMNS)
-
 		System.out.printf("\n>>> [4/6] CLIENT PORTFOLIO - SELECTED SYMBOL ALL COLUMNS (%s):%n", sym);
-
+		System.out.println("    +-----+------------+-----------+--------------+------------+--------------+------------+--------------+------------+");
+		System.out.printf("    | %-3s | %-10s | %-9s | %-12s | %-10s | %-12s | %-10s | %-12s | %-10s |%n",
+				"#", "Symbol", "Total Qty", "Saleable Qty", "Avg Cost", "Total Cost", "LTP", "Market Value", "Gain %");
+		System.out.println("    +-----+------------+-----------+--------------+------------+--------------+------------+--------------+------------+");
 		if (snap.portfolioRows.isEmpty()) {
-
-			System.out.printf("    Target Client (%s) Portfolio -> Symbol: %s | Total Qty: %s | Saleable: %s | Avg Cost: %s | Total Cost: %s | Value: %s%n",
-
-					client, sym,
-
-					snap.portfolioUi.getOrDefault("total_qty", "0"),
-
-					snap.portfolioUi.getOrDefault("saleable_qty", "0"),
-
-					snap.portfolioUi.getOrDefault("avg_cost", "0.00"),
-
-					snap.portfolioUi.getOrDefault("total_cost", "0.00"),
-
-					snap.portfolioUi.getOrDefault("value", "0.00"));
-
+			String tq = snap.portfolioUi.getOrDefault("total_qty", "0");
+			String sq = snap.portfolioUi.getOrDefault("saleable_qty", "0");
+			String ac = snap.portfolioUi.getOrDefault("avg_cost", "0.00");
+			String tc = snap.portfolioUi.getOrDefault("total_cost", "0.00");
+			String val = snap.portfolioUi.getOrDefault("value", "0.00");
+			String ltp = getDepthVal(snap.marketDepthUi, "ltp", "LTP");
+			System.out.printf("    | %-3d | %-10s | %-9s | %-12s | %-10s | %-12s | %-10s | %-12s | %-10s |%n",
+					1, sym, tq, sq, ac, tc, ltp, val, "0.00%");
 		} else {
-
-			System.out.printf("    +-----+------------+-----------+--------------+------------+--------------+------------+--------------+------------+%n");
-
-			System.out.printf("    | #   | Symbol     | Total Qty | Saleable Qty | Avg Cost   | Total Cost   | LTP        | Market Value | Gain %%     |%n");
-
-			System.out.printf("    +-----+------------+-----------+--------------+------------+--------------+------------+--------------+------------+%n");
-
 			int pfIdx = 1;
-
 			for (Map<String, String> pr : snap.portfolioRows) {
-
 				String s = pr.getOrDefault("Symbol", pr.getOrDefault("symbol", sym));
-
 				String tq = pr.getOrDefault("Total Qty", pr.getOrDefault("total_qty", "-"));
-
 				String sq = pr.getOrDefault("Saleable Qty", pr.getOrDefault("saleable_qty", "-"));
-
 				String ac = pr.getOrDefault("Avg Cost", pr.getOrDefault("avg_cost", "-"));
-
 				String tc = pr.getOrDefault("Total Cost", pr.getOrDefault("total_cost", "-"));
-
 				String ltp = pr.getOrDefault("LTP", pr.getOrDefault("ltp", "-"));
-
 				String val = pr.getOrDefault("Value", pr.getOrDefault("value", "-"));
-
 				String gp = pr.getOrDefault("Gain %", pr.getOrDefault("gain_percent", "-"));
-
 				System.out.printf("    | %-3d | %-10s | %-9s | %-12s | %-10s | %-12s | %-10s | %-12s | %-10s |%n",
-
 						pfIdx++, s, tq, sq, ac, tc, ltp, val, gp);
-
 			}
-
-			System.out.printf("    +-----+------------+-----------+--------------+------------+--------------+------------+--------------+------------+%n");
-
 		}
+		System.out.println("    +-----+------------+-----------+--------------+------------+--------------+------------+--------------+------------+");
 
-
-
-		// 5. ACCOUNT LIMITS (TARGET CLIENT - ALL FINANCIAL COLUMNS)
-
+		// 5. ACCOUNT LIMITS (TARGET CLIENT - ALL FINANCIAL COLUMNS IN TABLE VIEW)
 		System.out.printf("\n>>> [5/6] ACCOUNT LIMITS - TARGET CLIENT FINANCIAL COLUMNS (%s):%n", client);
-
-		System.out.printf("    Remaining Cash: %s | Blocked Cash (Day Order): %s | Total Transaction: %s%n",
-
+		System.out.println("    +---------------------------+---------------------------+---------------------------+");
+		System.out.printf("    | %-25s | %-25s | %-25s |%n", "Remaining Cash (BDT)", "Blocked Cash (Day Order)", "Total Transaction (BDT)");
+		System.out.println("    +---------------------------+---------------------------+---------------------------+");
+		System.out.printf("    | %-25s | %-25s | %-25s |%n",
 				snap.accountLimitsUi.getOrDefault("Remaining_Cash", "-"),
-
 				snap.accountLimitsUi.getOrDefault("Cash_Day_Order", "-"),
-
 				snap.accountLimitsUi.getOrDefault("Total_Transaction", "-"));
-
+		System.out.println("    +---------------------------+---------------------------+---------------------------+");
 		if (!snap.accountLimitsCashRows.isEmpty()) {
-
-			System.out.println("    Cash Table Columns: " + snap.accountLimitsCashRows);
-
+			System.out.println("    Account Limits Cash Table Breakdown:");
+			printListOfMapsAsTable(snap.accountLimitsCashRows, "    ");
 		}
-
 		if (!snap.accountLimitsCapitalRows.isEmpty()) {
-
-			System.out.println("    Capital Table Columns: " + snap.accountLimitsCapitalRows);
-
+			System.out.println("    Account Limits Capital Table Breakdown:");
+			printListOfMapsAsTable(snap.accountLimitsCapitalRows, "    ");
 		}
 
-
-
-		// 6. ORDER SUMMARY (ALL METRICS & BREAKDOWN COLUMNS)
-
+		// 6. ORDER SUMMARY (ALL METRICS & BREAKDOWN COLUMNS IN TABLE VIEW)
 		System.out.printf("\n>>> [6/6] ORDER SUMMARY - ALL METRICS & BREAKDOWN COLUMNS (%s):%n", sym);
-
-		System.out.printf("    Total Orders: %s | Executed Orders: %s | Buy Qty: %s | Buy Turnover: %s | Sell Turnover: %s%n",
-
+		System.out.println("    +--------------+-----------------+------------+------------------+------------------+");
+		System.out.printf("    | %-12s | %-15s | %-10s | %-16s | %-16s |%n", "Total Orders", "Executed Orders", "Buy Qty", "Buy Turnover", "Sell Turnover");
+		System.out.println("    +--------------+-----------------+------------+------------------+------------------+");
+		System.out.printf("    | %-12s | %-15s | %-10s | %-16s | %-16s |%n",
 				snap.orderSummaryUi.getOrDefault("Total_Orders", "-"),
-
 				snap.orderSummaryUi.getOrDefault("Executed_Orders", "-"),
-
 				getOrderSummaryVal(snap.orderSummaryUi, "Buy_Qty", "Buy_qty"),
-
 				getOrderSummaryVal(snap.orderSummaryUi, "Buy_Turnover", "Buy_turnover"),
-
 				getOrderSummaryVal(snap.orderSummaryUi, "Sell_Turnover", "Sell_turnover"));
-
+		System.out.println("    +--------------+-----------------+------------+------------------+------------------+");
 		if (!snap.orderSummaryRows.isEmpty()) {
-
-			System.out.println("    Summary Breakdown Columns: " + snap.orderSummaryRows);
-
+			System.out.println("    Order Summary Category Breakdown Table:");
+			printListOfMapsAsTable(snap.orderSummaryRows, "    ");
 		}
-
 		System.out.println("------------------------------------------------------------------------------------------------------------------------\n");
-
 	}
 
 
@@ -8889,8 +8961,11 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 		System.out.println("    Waiting for Accepted order to reflect in Order Terminal DOM...");
-
 		waitForTerminalDomStatus(driver, "accept", 4);
+
+		// Extract and display THAT accepted order data directly from Order Terminal
+		Map<String, String> s1Order = fetchTerminalOrderForAction(driver, buyer, cleanSym, "accept");
+		printActionOrderTerminalTable("STAGE 1 [ACCEPTED ORDER] - REAL-TIME ORDER RECORD", s1Order);
 
 		refreshAndSyncAllWidgets(driver, cleanSym, buyer, ex);
 
@@ -8927,8 +9002,11 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 		System.out.println("    Waiting for Partially Filled execution to reflect in Order Terminal DOM...");
-
 		waitForTerminalDomStatus(driver, "partial", 4);
+
+		// Extract and display THAT partially filled order data directly from Order Terminal
+		Map<String, String> s2Order = fetchTerminalOrderForAction(driver, buyer, cleanSym, "partial");
+		printActionOrderTerminalTable("STAGE 2 [PARTIALLY FILLED ORDER] - REAL-TIME ORDER RECORD", s2Order);
 
 		refreshAndSyncAllWidgets(driver, cleanSym, buyer, ex);
 
@@ -8965,8 +9043,11 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 		System.out.println("    Waiting for 100% Filled execution to reflect in Order Terminal DOM...");
-
 		waitForTerminalDomStatus(driver, "fill", 4);
+
+		// Extract and display THAT filled order data directly from Order Terminal
+		Map<String, String> s3Order = fetchTerminalOrderForAction(driver, buyer, cleanSym, "fill");
+		printActionOrderTerminalTable("STAGE 3 [100% FILLED ORDER] - REAL-TIME ORDER RECORD", s3Order);
 
 		refreshAndSyncAllWidgets(driver, cleanSym, buyer, ex);
 
@@ -9010,6 +9091,10 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		waitForTerminalDomStatus(driver, "cancel", 4);
 
+		// Extract and display THAT cancelled order data directly from Order Terminal
+		Map<String, String> s4Order = fetchTerminalOrderForAction(driver, buyer, cleanSym, "cancel");
+		printActionOrderTerminalTable("STAGE 4 [CANCELLED ORDER] - REAL-TIME ORDER RECORD", s4Order);
+
 		refreshAndSyncAllWidgets(driver, cleanSym, buyer, ex);
 
 
@@ -9045,8 +9130,11 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		}
 
 		dismissRejectionAlert(driver);
-
 		waitForTerminalDomStatus(driver, "reject", 3);
+
+		// Extract and display THAT rejected order data directly from Order Terminal
+		Map<String, String> s5Order = fetchTerminalOrderForAction(driver, buyer, cleanSym, "reject");
+		printActionOrderTerminalTable("STAGE 5 [REJECTED ORDER] - REAL-TIME ORDER RECORD", s5Order);
 
 		refreshAndSyncAllWidgets(driver, cleanSym, buyer, ex);
 
