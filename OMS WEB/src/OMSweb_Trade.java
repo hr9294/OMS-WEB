@@ -104,9 +104,10 @@ public class OMSweb_Trade {
 
 
 
-		// Navigate to Trade Page initially (always forced on startup to guarantee Trade Portal opens)
-
-		navigateToTradePage(driver, wait, true);
+		// Navigate to Trade Page initially only if not already on it (prevents double navigation / reload)
+		if (!isAlreadyOnTradePage(driver)) {
+			navigateToTradePage(driver, wait, false);
+		}
 
 
 
