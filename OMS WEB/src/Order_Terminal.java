@@ -30,9 +30,8 @@ public class Order_Terminal {
             "//a[normalize-space()='Order Terminal'] | //div[@title='Order Terminal']");
 
     private static final By TRADE_TAB = By.xpath(
-            "//div[contains(@class,'lm_tab') and contains(.,'Trade')] | " +
-            "//li[contains(@class,'lm_tab') and (.//span[contains(text(),'Trade')] or contains(.,'Trade'))] | " +
-            "//i[contains(@class,'fa-exchange')] | //a[normalize-space()='Trade']");
+            "//div[contains(@class,'lm_tab') and (contains(.,'Trade') or @title='Trade')] | " +
+            "//li[contains(@class,'lm_tab') and (.//span[contains(text(),'Trade')] or contains(.,'Trade') or @title='Trade')]");
 
     // Filter Bar in Order Terminal Header
     private static final By INPUT_CODE   = By.xpath("//input[contains(@id,'order_terminal_code') or @placeholder='Search Code']");
@@ -139,17 +138,31 @@ public class Order_Terminal {
 
     public static void navigateToTrade(WebDriver driver) {
         try {
-            if (OMSweb_Trade.isAlreadyOnTradePage(driver)) {
-                return; // Already on Trade page; NEVER reload or click navbar!
-            }
             JavascriptExecutor js = (JavascriptExecutor) driver;
+            Boolean alreadyVisible = (Boolean) js.executeScript(
+                "var inst = document.getElementById('order_instrument');" +
+                "return inst && inst.offsetParent !== null;"
+            );
+            if (Boolean.TRUE.equals(alreadyVisible)) return;
+
             Boolean clicked = (Boolean) js.executeScript(
-                "var tabs = Array.from(document.querySelectorAll('.lm_tab, li.lm_tab, div.lm_tab'));\n" +
-                "var tradeTab = tabs.find(function(t) { return (t.innerText || t.textContent || '').trim() === 'Trade'; });\n" +
-                "if (tradeTab && tradeTab.offsetParent !== null) { tradeTab.click(); return true; }\n" +
+                "var tabs = Array.from(document.querySelectorAll('.lm_tab, li.lm_tab, div.lm_tab'));" +
+                "var tradeTab = tabs.find(function(t) {" +
+                "    var title = (t.getAttribute('title') || t.innerText || t.textContent || '').trim().toLowerCase();" +
+                "    return title === 'trade' || title.indexOf('trade') !== -1;" +
+                "});" +
+                "if (tradeTab && tradeTab.offsetParent !== null) {" +
+                "    tradeTab.click();" +
+                "    return true;" +
+                "}" +
                 "return false;"
             );
             if (Boolean.TRUE.equals(clicked)) {
+                Thread.sleep(200);
+            } else {
+                WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(3));
+                WebElement tab = wait.until(ExpectedConditions.elementToBeClickable(TRADE_TAB));
+                tab.click();
                 Thread.sleep(200);
             }
         } catch (Exception ignored) {}

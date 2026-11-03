@@ -29,8 +29,8 @@ public class Market_Depth {
             "//a[normalize-space()='Market Depth'] | //div[@title='Market Depth']");
 
     private static final By TRADE_TAB = By.xpath(
-            "//div[contains(@class,'lm_tab') and contains(.,'Trade')] | " +
-            "//i[contains(@class,'fa-exchange')] | //a[normalize-space()='Trade']");
+            "//div[contains(@class,'lm_tab') and (contains(.,'Trade') or @title='Trade')] | " +
+            "//li[contains(@class,'lm_tab') and (.//span[contains(text(),'Trade')] or contains(.,'Trade') or @title='Trade')]");
 
     // Symbol Input in Market Depth Header
     private static final By INPUT_DEPTH_SYMBOL = By.xpath(
@@ -91,10 +91,33 @@ public class Market_Depth {
 
     public static void navigateToTrade(WebDriver driver) {
         try {
-            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(4));
-            WebElement tab = wait.until(ExpectedConditions.elementToBeClickable(TRADE_TAB));
-            tab.click();
-            Thread.sleep(600);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            Boolean alreadyVisible = (Boolean) js.executeScript(
+                "var inst = document.getElementById('order_instrument');" +
+                "return inst && inst.offsetParent !== null;"
+            );
+            if (Boolean.TRUE.equals(alreadyVisible)) return;
+
+            Boolean clicked = (Boolean) js.executeScript(
+                "var tabs = Array.from(document.querySelectorAll('.lm_tab, li.lm_tab, div.lm_tab'));" +
+                "var tradeTab = tabs.find(function(t) {" +
+                "    var title = (t.getAttribute('title') || t.innerText || t.textContent || '').trim().toLowerCase();" +
+                "    return title === 'trade' || title.indexOf('trade') !== -1;" +
+                "});" +
+                "if (tradeTab && tradeTab.offsetParent !== null) {" +
+                "    tradeTab.click();" +
+                "    return true;" +
+                "}" +
+                "return false;"
+            );
+            if (Boolean.TRUE.equals(clicked)) {
+                Thread.sleep(200);
+            } else {
+                WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(3));
+                WebElement tab = wait.until(ExpectedConditions.elementToBeClickable(TRADE_TAB));
+                tab.click();
+                Thread.sleep(200);
+            }
         } catch (Exception ignored) {}
     }
 
