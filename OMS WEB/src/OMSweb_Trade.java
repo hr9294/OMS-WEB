@@ -199,27 +199,8 @@ public class OMSweb_Trade {
 
 
 
-		try {
-
-			WebElement marketWatchInput = wait.until(ExpectedConditions.presenceOfElementLocated(By.id("marketwatch_symbol")));
-
-			marketWatchInput.clear();
-
-			marketWatchInput.sendKeys(instrument);
-
-			marketWatchInput.sendKeys(Keys.ARROW_DOWN);
-
-			marketWatchInput.sendKeys(Keys.ENTER);
-
-			js.executeScript("arguments[0].scrollIntoView(true);", marketWatchInput);
-
-			Thread.sleep(400);
-
-		} catch (Exception e) {
-
-			System.out.println("[SETUP: WARN] Marketwatch symbol input not found: " + e.getMessage());
-
-		}
+		// Establish Market Watch widget connectivity
+		Market_Watch.connectWidget(driver, instrument, "DSE");
 
 
 
@@ -1162,7 +1143,10 @@ public class OMSweb_Trade {
 
 				// [STEP 1] CAPTURE PRE-TRADE REAL-TIME UI DOM SNAPSHOT (ALL 6 WIDGETS)
 
-				System.out.printf("%n[AUDIT] Capturing PRE-TRADE Real-Time UI Snapshot across 6 Widgets for Client: %s...%n", clientCode);
+				// Establish Market Watch widget connectivity
+				Market_Watch.connectWidget(driver, instrument, snapshotExchange);
+
+				System.out.printf("%n[AUDIT] Capturing PRE-TRADE Real-Time UI Snapshot across 7 Widgets (inc. Market Watch) for Client: %s...%n", clientCode);
 
 				SixWidgetUiSnapshot preTradeSnap = capture6WidgetsUiSnapshot(driver, "PRE-TRADE BASELINE", clientCode, instrument, snapshotExchange);
 
@@ -7218,6 +7202,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		public Map<String, String> accountLimitsUi = new LinkedHashMap<>();
 
 		public Map<String, String> positionTargetClient = new LinkedHashMap<>();
+		public Map<String, String> marketWatchUi = new LinkedHashMap<>();
 
 
 
@@ -7236,6 +7221,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		public List<Map<String, String>> accountLimitsCapitalRows = new ArrayList<>();
 
 		public List<Map<String, String>> orderSummaryRows = new ArrayList<>();
+		public List<Map<String, String>> marketWatchRows = new ArrayList<>();
 
 	}
 
@@ -7308,8 +7294,8 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				activeWidgetColorName = "Turquoise";
 
 				activeWidgetColorHex = "#42EADDFF";
-
 			}
+			Market_Watch.connectWidget(driver, symbol, exchange);
 
 		} catch (Exception ignored) {}
 
@@ -8083,7 +8069,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 			}
 
-			System.out.printf(" [6/6] Position Widget (UI)  -> Target Qty: %s | Saleable: %s | Avg Cost: %s | Value: %s (Selected Symbol Rows: %d)%n",
+			System.out.printf(" [6/7] Position Widget (UI)  -> Target Qty: %s | Saleable: %s | Avg Cost: %s | Value: %s (Selected Symbol Rows: %d)%n",
 
 					snap.positionTargetClient.get("total_qty"),
 
@@ -8097,7 +8083,41 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		} catch (Exception e) {
 
-			System.out.println(" [6/6] Position Widget (UI)  -> " + e.getMessage());
+			System.out.println(" [6/7] Position Widget (UI)  -> " + e.getMessage());
+
+		}
+
+
+
+		// 7. Market Watch (UI DOM - Target Symbol Row with all 20 columns)
+
+		try {
+
+			snap.marketWatchUi = Market_Watch.getUiSnapshot(driver, snap.targetSymbol);
+
+			if (snap.marketWatchUi != null && !snap.marketWatchUi.isEmpty()) {
+
+				snap.marketWatchRows.add(snap.marketWatchUi);
+
+			}
+
+			System.out.printf(" [7/7] Market Watch (UI)    -> Symbol: %s | LTP: %s | Vol: %s | BID: %s | ASK: %s | Chg: %s%n",
+
+					snap.marketWatchUi.getOrDefault("Symbol", snap.targetSymbol),
+
+					snap.marketWatchUi.getOrDefault("LTP", "-"),
+
+					snap.marketWatchUi.getOrDefault("Vol", "-"),
+
+					snap.marketWatchUi.getOrDefault("BID", "-"),
+
+					snap.marketWatchUi.getOrDefault("ASK", "-"),
+
+					snap.marketWatchUi.getOrDefault("Chg", "-"));
+
+		} catch (Exception e) {
+
+			System.out.println(" [7/7] Market Watch (UI)    -> " + e.getMessage());
 
 		}
 
@@ -8114,7 +8134,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		String client = (snap.targetClient != null && !snap.targetClient.isEmpty()) ? snap.targetClient : "-";
 
 		System.out.println("\n+==================================================================================================================================================+");
-		System.out.printf("| REAL-TIME 6-WIDGET UI DOM AUDIT TABLE: %-81s |%n", title);
+		System.out.printf("| REAL-TIME 7-WIDGET UI DOM AUDIT TABLE (INC. MARKET WATCH): %-81s |%n", title);
 		System.out.printf("| Target Symbol: %-25s | Client: %-20s | Stage: %-52s |%n", sym, client, snap.stageName);
 		System.out.printf("| Timestamp: %-133s |%n", snap.timestamp);
 		System.out.println("+==================================================================================================================================================+");
@@ -8253,7 +8273,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		}
 
 		// 6. ORDER SUMMARY (ALL METRICS & BREAKDOWN COLUMNS IN TABLE VIEW)
-		System.out.printf("\n>>> [6/6] ORDER SUMMARY - ALL METRICS & BREAKDOWN COLUMNS (%s):%n", sym);
+		System.out.printf("\n>>> [6/7] ORDER SUMMARY - ALL METRICS & BREAKDOWN COLUMNS (%s):%n", sym);
 		System.out.println("    +--------------+-----------------+------------+------------------+------------------+");
 		System.out.printf("    | %-12s | %-15s | %-10s | %-16s | %-16s |%n", "Total Orders", "Executed Orders", "Buy Qty", "Buy Turnover", "Sell Turnover");
 		System.out.println("    +--------------+-----------------+------------+------------------+------------------+");
@@ -8268,6 +8288,15 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			System.out.println("    Order Summary Category Breakdown Table:");
 			printListOfMapsAsTable(snap.orderSummaryRows, "    ");
 		}
+
+		// 7. MARKET WATCH (SELECTED SYMBOL ONLY - ALL 20 COLUMNS IN TABLE VIEW)
+		System.out.printf("\n>>> [7/7] MARKET WATCH - SELECTED SYMBOL ALL 20 COLUMNS (%s):%n", sym);
+		if (snap.marketWatchRows.isEmpty() && (snap.marketWatchUi == null || snap.marketWatchUi.isEmpty())) {
+			System.out.printf("    (No Market Watch row rendered for symbol %s in #marketwatch_table)%n", sym);
+		} else {
+			List<Map<String, String>> mwList = !snap.marketWatchRows.isEmpty() ? snap.marketWatchRows : java.util.Collections.singletonList(snap.marketWatchUi);
+			Market_Watch.printMarketWatchRows(mwList, "MARKET WATCH LIVE DOM ROW (" + sym + ")");
+		}
 		System.out.println("------------------------------------------------------------------------------------------------------------------------\n");
 	}
 
@@ -8277,7 +8306,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		System.out.println("\n+======================================================================================================================+");
 
-		System.out.printf("| 6-WIDGET REAL-TIME UI AUDIT COMPARISON: %-73s |%n", comparisonTitle);
+		System.out.printf("| 7-WIDGET REAL-TIME UI AUDIT COMPARISON (INC. MARKET WATCH): %-73s |%n", comparisonTitle);
 
 		System.out.printf("| Previous: %-45s | Current: %-47s |%n", prev.stageName, curr.stageName);
 
@@ -8407,6 +8436,32 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 				curr.positionTargetClient.getOrDefault("avg_cost", "0.00"), false);
 
+
+
+		printComparisonRow("Market Watch", "LTP",
+
+				prev.marketWatchUi.getOrDefault("LTP", "-"),
+
+				curr.marketWatchUi.getOrDefault("LTP", "-"), false);
+
+		printComparisonRow("Market Watch", "Vol",
+
+				prev.marketWatchUi.getOrDefault("Vol", "-"),
+
+				curr.marketWatchUi.getOrDefault("Vol", "-"), false);
+
+		printComparisonRow("Market Watch", "BID / ASK",
+
+				prev.marketWatchUi.getOrDefault("BID", "-") + " / " + prev.marketWatchUi.getOrDefault("ASK", "-"),
+
+				curr.marketWatchUi.getOrDefault("BID", "-") + " / " + curr.marketWatchUi.getOrDefault("ASK", "-"), false);
+
+		printComparisonRow("Market Watch", "Turnover",
+
+				prev.marketWatchUi.getOrDefault("Turnover", "-"),
+
+				curr.marketWatchUi.getOrDefault("Turnover", "-"), false);
+
 		System.out.println("+----------------------+--------------------------+--------------------+--------------------+---------------------------+");
 
 
@@ -8432,6 +8487,12 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		System.out.printf("    * Market Depth Levels : Pre = %d lvls | Post = %d lvls%n",
 
 				prev.marketDepthBookRows.size(), curr.marketDepthBookRows.size());
+
+		System.out.printf("    * Market Watch Rows   : Pre = %d rows | Post = %d rows (LTP: %s -> %s)%n",
+
+				prev.marketWatchRows.size(), curr.marketWatchRows.size(),
+
+				prev.marketWatchUi.getOrDefault("LTP", "-"), curr.marketWatchUi.getOrDefault("LTP", "-"));
 
 		System.out.println("========================================================================================================================\n");
 
@@ -8888,6 +8949,12 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			navigateToTradePage(driver, wait);
 
 		}
+
+
+
+		// Establish Market Watch widget connectivity
+
+		Market_Watch.connectWidget(driver, cleanSym, ex);
 
 
 

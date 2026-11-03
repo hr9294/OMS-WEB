@@ -163,14 +163,8 @@ public class OMSweb_MultiOrderExecution {
             Thread.sleep(400);
         } catch (Exception ignored) {}
 
-        try {
-            WebElement mwInput = driver.findElement(By.id("marketwatch_symbol"));
-            mwInput.clear();
-            mwInput.sendKeys(symbol);
-            mwInput.sendKeys(Keys.ARROW_DOWN);
-            mwInput.sendKeys(Keys.ENTER);
-            Thread.sleep(500);
-        } catch (Exception ignored) {}
+        // Connect Market Watch widget
+        Market_Watch.connectWidget(driver, symbol, exchange);
 
         System.out.printf("[SETUP] Target Symbol: %s on Exchange: %s%n", symbol, exchange);
 

@@ -109,6 +109,7 @@ public class OMSwebmain {
         // Account_Limits.main(driver, sc);
         // Market_Depth.main(driver, sc);
         // Order_Terminal.main(driver, sc);
+        // Market_Watch.main(driver, sc);
         //OMSweb_MultiOrderExecution.main()driver,sc;
 
         System.out.println("\n[UFTFAST OMS] Trade session completed. Exiting application.");
