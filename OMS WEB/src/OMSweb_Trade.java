@@ -1115,11 +1115,10 @@ public class OMSweb_Trade {
 
 
 
-				Map<String, String> clientInfoBefore = ClientPortfolio.getClientDetails(driver, clientCode);
-
-
-
-				if (!clientInfoBefore.isEmpty()) {
+				Map<String, String> clientInfoBefore = isDefaultClient(clientCode) ? new HashMap<>() : ClientPortfolio.getClientDetails(driver, clientCode);
+				if (isDefaultClient(clientCode)) {
+					System.out.printf("[CLIENT INFO: %s] Default Client Account (BO check bypassed)%n", clientCode);
+				} else if (!clientInfoBefore.isEmpty()) {
 
 
 
@@ -1687,40 +1686,6 @@ public class OMSweb_Trade {
 
 				"if (window.jQuery) { $('.ui-autocomplete').hide().empty(); try { $('.ui-autocomplete').remove(); } catch(e) {} }" +
 
-				"try {" +
-
-				"    if (window.jQuery) {" +
-
-				"        $.getJSON('/shared/getclientdata/?cln_code=' + encodeURIComponent(val), function(d) {" +
-
-				"            if (d) {" +
-
-				"                var bo = d.cln_bo || '';" +
-
-				"                var name = d.cln_name || '';" +
-
-				"                var bal = d.b_limit || d.rem_mature_balance || d.mature_balance || '';" +
-
-				"                $('.winbox, .wb-body').find('*').each(function() {" +
-
-				"                    var txt = $(this).text().trim();" +
-
-				"                    if (txt === 'BO:' && bo) { $(this).html('BO: <span style=\"color:#00DB86;font-weight:bold;\">' + bo + '</span>'); }" +
-
-				"                    if (txt === 'Name:' && name) { $(this).html('Name: <span style=\"color:#FFB800;font-weight:bold;\">' + name + '</span>'); }" +
-
-				"                    if (txt === 'Balance:' && bal) { $(this).html('Balance: <span style=\"color:#00DB86;font-weight:bold;\">' + Number(bal).toLocaleString('en-IN') + '</span>'); }" +
-
-				"                });" +
-
-				"            }" +
-
-				"        });" +
-
-				"    }" +
-
-				"} catch(e) {}" +
-
 				"try { if (typeof verify_fields === 'function') verify_fields(); } catch(e){}",
 
 				clientCode
@@ -1759,7 +1724,46 @@ public class OMSweb_Trade {
 
 			JavascriptExecutor js = (JavascriptExecutor) driver;
 
+			// FAST PATH FOR DEFAULT CLIENT (No BO check):
+			if (!isSymbol && isDefaultClient(cleanVal)) {
+				try {
+					Boolean alreadySet = (Boolean) js.executeScript(
+						"var val = arguments[0].trim();" +
+						"var inp = document.querySelector('.winbox input#order_client_code, .wb-body input#order_client_code, #order_client_code, input[placeholder*=\"Select Code\"], input[placeholder*=\"Code\"]');" +
+						"if (inp && inp.value && inp.value.trim() === val) { return true; }" +
+						"if (inp) { inp.value = val; if (window.jQuery) { $(inp).val(val).trigger('change'); } return true; }" +
+						"return false;",
+						cleanVal
+					);
+					if (Boolean.TRUE.equals(alreadySet)) {
+						dismissLingeringAutocomplete(driver);
+						return;
+					}
+				} catch (Exception ignored) {}
+			}
 
+			// FAST PATH FOR SYMBOL:
+			if (isSymbol) {
+				try {
+					Boolean symbolAlreadySet = (Boolean) js.executeScript(
+						"var target = arguments[0].toUpperCase();" +
+						"var base = arguments[1].toUpperCase();" +
+						"var inp = document.querySelector('.winbox input#order_instrument, .wb-body input#order_instrument, #order_instrument');" +
+						"if (inp && inp.value) {" +
+						"    var v = inp.value.trim().toUpperCase();" +
+						"    if (v === target || v === base || v.startsWith(base + '.')) {" +
+						"        inp.value = target; if (window.jQuery) { $(inp).val(target).trigger('change'); } return true;" +
+						"    }" +
+						"}" +
+						"return false;",
+						targetSymbolVal, typeVal
+					);
+					if (Boolean.TRUE.equals(symbolAlreadySet)) {
+						dismissLingeringAutocomplete(driver);
+						return;
+					}
+				} catch (Exception ignored) {}
+			}
 
 			// 1. Dismiss any lingering autocomplete from a prior field
 
@@ -1827,7 +1831,7 @@ public class OMSweb_Trade {
 
 			// 4. Dynamically wait for the autocomplete dropdown to render (up to 5s for client code, 3s for symbol)
 
-			int maxWaitAttempts = isSymbol ? 30 : 50;
+			int maxWaitAttempts = isSymbol ? 15 : 20;
 
 			boolean menuFound = false;
 
@@ -1849,7 +1853,7 @@ public class OMSweb_Trade {
 
 				}
 
-				Thread.sleep(100);
+				Thread.sleep(30);
 
 			}
 
@@ -2095,9 +2099,8 @@ public class OMSweb_Trade {
 
 
 
-			// 7. Settle time for client account AJAX details (BO, Name, Balance) or symbol market data to load
-
-			Thread.sleep(isSymbol ? 200 : 400);
+			// 7. Settle time
+			Thread.sleep(40);
 
 			dismissLingeringAutocomplete(driver);
 
@@ -4667,7 +4670,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 
-				if (commRate <= 0.0) {
+				if (commRate <= 0.0 && !isDefaultClient(cleanCode)) {
 
 
 
@@ -6085,7 +6088,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 
-		Thread.sleep(300);
+		Thread.sleep(100);
 
 		dismissLingeringAutocomplete(driver);
 
@@ -6647,6 +6650,13 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 	public static volatile String activeWidgetColorHex = null;
 	public static volatile double lastAcceptedPrice = 0.0;
+	public static final String DEFAULT_CLIENT_CODE = "23986";
+
+	public static boolean isDefaultClient(String clientCode) {
+		if (clientCode == null) return true;
+		String c = clientCode.trim();
+		return c.isEmpty() || c.equals(DEFAULT_CLIENT_CODE);
+	}
 
 
 
@@ -7102,7 +7112,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 			} catch (Exception ignored) {}
 
-			try { Thread.sleep(300); } catch (Exception ignored) {}
+			try { Thread.sleep(60); } catch (Exception ignored) {}
 
 		}
 
@@ -8495,7 +8505,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		sideBtn.click();
 
-		Thread.sleep(250);
+		Thread.sleep(80);
 
 
 
@@ -8543,7 +8553,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		dismissLingeringAutocomplete(driver);
 
-		Thread.sleep(1200);
+		Thread.sleep(150);
 
 	}
 
@@ -8555,7 +8565,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 			// Find resting order directly in #order_terminal_table without reloading or tab-hopping
 
-			Thread.sleep(300);
+			Thread.sleep(100);
 
 
 
@@ -8595,7 +8605,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 				);
 
-				Thread.sleep(500);
+				Thread.sleep(150);
 
 			}
 
@@ -8693,7 +8703,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 				autoConfirmOrderOrCancellation(driver, wait);
 
-				Thread.sleep(800);
+				Thread.sleep(200);
 
 				return true;
 
@@ -8906,7 +8916,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		placeTradeOrderDirect(driver, wait, "SELL", seller, cleanSym, 10, ltp);
 
-		Thread.sleep(1000);
+		Thread.sleep(200);
 
 
 
@@ -8944,7 +8954,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		placeTradeOrderDirect(driver, wait, "SELL", seller, cleanSym, 10, ltp);
 
-		Thread.sleep(1000);
+		Thread.sleep(200);
 
 
 
@@ -8984,7 +8994,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		placeTradeOrderDirect(driver, wait, "BUY", buyer, cleanSym, 10, cancelRate);
 
-		Thread.sleep(1200);
+		Thread.sleep(250);
 
 
 
