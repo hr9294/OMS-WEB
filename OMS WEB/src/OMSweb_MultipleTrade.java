@@ -1421,14 +1421,27 @@ public class OMSweb_MultipleTrade {
     }
 
     public static double fetchPriceSafely(WebDriver driver, WebDriverWait wait, String symbol) {
-        String cleanSym = (symbol != null) ? symbol.trim().toUpperCase() : "";
+        return fetchPriceSafely(driver, wait, symbol, activeExchange);
+    }
 
-        // Direct DB LTP lookup bypassed per user request
+    public static double fetchPriceSafely(WebDriver driver, WebDriverWait wait, String symbol, String exchange) {
+        String cleanSym = (symbol != null) ? symbol.trim().toUpperCase() : "";
+        String ex = (exchange != null && !exchange.isEmpty()) ? exchange : activeExchange;
+
+        // 1. Direct PostgreSQL Market DB Query (cse_md_ltp / dse_md_ltp) - DB FIRST
+        try {
+            OMSweb_Trade.MarketPriceBand dbBand = OMSweb_Trade.fetchMarketDbPriceBand(cleanSym, ex, driver);
+            if (dbBand != null && dbBand.safeRate > 0) {
+                System.out.printf("  [MARKET DB FIRST] Sourced price for %s on %s directly from DB: %.2f BDT (LTP=%.2f, YCP=%.2f)%n",
+                        cleanSym, ex, dbBand.safeRate, dbBand.ltp, dbBand.ycp);
+                return dbBand.safeRate;
+            }
+        } catch (Exception ignored) {}
 
         double realisticFallback = REALISTIC_PRICES.getOrDefault(cleanSym, 100.00);
 
         try {
-            double price = OMSweb_Trade.fetchPriceLtpOrYcp(driver, wait, cleanSym, "DSE");
+            double price = OMSweb_Trade.fetchPriceLtpOrYcp(driver, wait, cleanSym, ex);
 
             // Circuit filter safety guard: if scraped price is suspiciously low (< 10.0 BDT or < 40% of known base),
 
