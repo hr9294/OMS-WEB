@@ -1459,8 +1459,8 @@ public class Position {
 
         // Determine top recommended symbol
         CseTradeableSymbol topRec = symbols.get(0);
-        // If SELL, prefer a symbol that actually has saleable shares in Position widget!
-        if ("SELL".equalsIgnoreCase(sideText)) {
+        // If SELL or BOTH, prefer a symbol that actually has saleable shares in Position widget!
+        if (sideText != null && (sideText.toUpperCase().contains("SELL") || sideText.toUpperCase().contains("BOTH"))) {
             for (CseTradeableSymbol s : symbols) {
                 if (s.getTotalSaleableQty() > 0) {
                     topRec = s;
@@ -1474,8 +1474,8 @@ public class Position {
         System.out.printf("  - Enter row # (1-%d)%n", Math.min(20, symbols.size()));
         System.out.printf("  - Or enter symbol name directly (e.g. %s)%n", recSym);
         System.out.printf("  - Or press ENTER to accept recommended [#1: %s]%n", recSym);
-        System.out.print("Enter Choice (default #" + recSym + " in 4s): ");
-        String choice = readLineWithTimeout(sc, recSym, 4).toUpperCase();
+        System.out.print("Enter Choice (default #" + recSym + " in 3s): ");
+        String choice = readLineWithTimeout(sc, recSym, 3).toUpperCase();
         String chosenSym = recSym;
 
         if (!choice.isEmpty()) {

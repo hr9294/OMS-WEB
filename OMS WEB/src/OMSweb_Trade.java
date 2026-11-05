@@ -357,6 +357,16 @@ public class OMSweb_Trade {
 		System.out.printf("%n[ORDER] Opening %s Window for %s on CSE...%n", sideText, instrument);
 		showFrontendBanner(driver, "[CSE TRADE] Opening " + sideText + " Order Window for " + instrument + "...", themeColor);
 
+		// Dismiss any lingering open modal or autocomplete before opening
+		dismissLingeringAutocomplete(driver);
+		try {
+			((JavascriptExecutor) driver).executeScript(
+				"var closes = document.querySelectorAll('.wb-close, .winbox .wb-close, .modal .close, button.close, div.wb-header .close');" +
+				"for (var i = 0; i < closes.length; i++) { closes[i].click(); }"
+			);
+			Thread.sleep(300);
+		} catch (Exception ignored) {}
+
 		By actionBtnLoc = By.xpath(String.format("//div[@title='Place %s Order']", sideText));
 		WebElement actionBtn = wait.until(ExpectedConditions.elementToBeClickable(actionBtnLoc));
 		highlightElement(driver, actionBtn, themeColor);
@@ -479,6 +489,15 @@ public class OMSweb_Trade {
 		String termShot = isSell ? "cse_trade_frontend_sell_order_terminal.png" : "cse_trade_frontend_order_terminal.png";
 		saveScreenshot(driver, termShot);
 
+		// Cleanly close the order window so subsequent actions and terminal view are clean
+		try {
+			((JavascriptExecutor) driver).executeScript(
+				"var closes = document.querySelectorAll('.wb-close, .winbox .wb-close, .modal .close, button.close, div.wb-header .close');" +
+				"for (var i = 0; i < closes.length; i++) { closes[i].click(); }"
+			);
+			Thread.sleep(300);
+		} catch (Exception ignored) {}
+
 		if (actionOrder != null && !actionOrder.isEmpty()) {
 			System.out.println("\n=======================================================");
 			System.out.printf("  CSE %s ORDER PLACED: %s %d %s @ %s BDT%n",
@@ -514,22 +533,28 @@ public class OMSweb_Trade {
 		showFrontendBanner(driver, "[CSE TRADE] Setting Active Exchange to Chittagong Stock Exchange (CSE)...", "#3b82f6");
 
 		System.out.println("\n=== SELECT TRADE ACTION FOR CSE ===");
-		System.out.println("1. SELL (Sell Order Window & Execution) [Default]");
-		System.out.println("2. BUY  (Buy Order Window & Execution)");
-		System.out.println("3. BOTH (Sequential BUY & SELL Execution)");
-		System.out.print("Enter choice (1=SELL / 2=BUY / 3=BOTH, default=1 in 4s): ");
-		String sideInput = readLineWithTimeout(sc, "1", 4);
+		System.out.println("1. BOTH BUY & SELL Execution [Default]");
+		System.out.println("2. BUY Order Only");
+		System.out.println("3. SELL Order Only");
+		System.out.print("Enter choice (1=BOTH / 2=BUY / 3=SELL, default=1 in 3s): ");
+		String sideInput = readLineWithTimeout(sc, "1", 3);
 
-		if ("3".equals(sideInput) || "BOTH".equalsIgnoreCase(sideInput)) {
-			System.out.println("\n>>> [1/2] EXECUTING CSE BUY ORDER...");
-			executeSingleCseTrade(driver, sc, "BUY", "ACFL");
-			Thread.sleep(1500);
-			System.out.println("\n>>> [2/2] EXECUTING CSE SELL ORDER...");
-			executeSingleCseTrade(driver, sc, "SELL", "ACFL");
-		} else if ("2".equals(sideInput) || "BUY".equalsIgnoreCase(sideInput)) {
-			executeSingleCseTrade(driver, sc, "BUY", "ACFL");
+		if ("2".equals(sideInput) || "BUY".equalsIgnoreCase(sideInput)) {
+			System.out.println("\n>>> EXECUTING CSE BUY ORDER...");
+			String chosenSymbol = Position.promptAndSelectCseTradeableSymbol(driver, sc, "BUY", "BBS");
+			executeSingleCseTrade(driver, sc, "BUY", chosenSymbol);
+		} else if ("3".equals(sideInput) || "SELL".equalsIgnoreCase(sideInput)) {
+			System.out.println("\n>>> EXECUTING CSE SELL ORDER...");
+			String chosenSymbol = Position.promptAndSelectCseTradeableSymbol(driver, sc, "SELL", "BBS");
+			executeSingleCseTrade(driver, sc, "SELL", chosenSymbol);
 		} else {
-			executeSingleCseTrade(driver, sc, "SELL", "ACFL");
+			// Default 1: BOTH BUY and SELL
+			String chosenSymbol = Position.promptAndSelectCseTradeableSymbol(driver, sc, "BOTH BUY & SELL", "BBS");
+			System.out.printf("%n>>> [STAGE 1/2] EXECUTING CSE BUY ORDER FOR %s...%n", chosenSymbol);
+			executeSingleCseTrade(driver, sc, "BUY", chosenSymbol);
+			Thread.sleep(1500);
+			System.out.printf("%n>>> [STAGE 2/2] EXECUTING CSE SELL ORDER FOR %s...%n", chosenSymbol);
+			executeSingleCseTrade(driver, sc, "SELL", chosenSymbol);
 		}
 
 		System.out.println("\nNormal Trade execution on CSE completed successfully!");
