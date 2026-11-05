@@ -61,8 +61,6 @@ public class OMSwebmain {
         System.out.println("Welcome to The UFTFAST Order Management System Application");
 
         Scanner sc = new Scanner(System.in);
-        
-        
 
         // Login
         OMSweb_Login.main(driver, sc);
@@ -77,40 +75,33 @@ public class OMSwebmain {
         System.out.println("[UFTFAST OMS] 2. Configuring Widget Color Link...");
         OMSweb_Trade.runWidgetColorSelection(driver, sc);
 
-        
-        
         // 3. THEN TRADE EXECUTION OPTION
         System.out.println("\n[UFTFAST OMS] 3. Select Trading Execution Option:");
         System.out.println("  1. Standard Trade & 6-Widget Verification [Default]");
         System.out.println("  2. Multi-Order Execution, Right-Click 'Execute at Market' & Real-time 6-Widget Audit");
         System.out.println("  3. High-Speed Multi-Trade Engine (2-Min Simultaneous: Accepted, Filled, Partial, Cancel)");
-        System.out.println("  4. Collect & View Live Public Board Symbols & LTPs from Database Table (dse_md_ltp)");
-        System.out.print("Enter Choice (1, 2, 3, or 4, default=1): ");
+        System.out.print("Enter Choice (1, 2, or 3, default=1): ");
         String engChoice = sc.nextLine().trim();
 
         // 4. THEN OTHERS
-        if ("4".equals(engChoice)) {
-            OMSweb_DBMarketData.printPublicBoardSummary("DSE", 50);
-        } else if ("3".equals(engChoice)) {
+        if ("3".equals(engChoice)) {
             OMSweb_MultipleTrade.main(driver, sc);
-         } else if ("2".equals(engChoice)) {
+        } else if ("2".equals(engChoice)) {
             OMSweb_MultiOrderExecution.main(driver, sc);
         } else {
             // Standard Trade Page
             OMSweb_Trade.main(driver, sc);
         }
 
-        
         // OMSweb_MultipleTrade.main(driver, sc);
         // Position.main(driver, sc);
         // ClientPortfolio.main(driver, sc);
-       
         // Order_Summary.main(driver, sc);
         // Account_Limits.main(driver, sc);
         // Market_Depth.main(driver, sc);
         // Order_Terminal.main(driver, sc);
         // Market_Watch.main(driver, sc);
-        //OMSweb_MultiOrderExecution.main()driver,sc;
+        // OMSweb_MultiOrderExecution.main()driver,sc;
 
         System.out.println("\n[UFTFAST OMS] Trade session completed. Exiting application.");
         sc.close();

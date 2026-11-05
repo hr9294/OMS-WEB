@@ -601,7 +601,7 @@ public class Market_Watch {
         for (By b : locators) {
             try {
                 WebElement el = driver.findElement(b);
-                String v = el.getAttribute("value");
+                String v = el.getDomAttribute("value");
                 if (v != null && !v.trim().isEmpty()) return v.trim();
                 String t = el.getText();
                 if (t != null && !t.trim().isEmpty()) return t.trim();

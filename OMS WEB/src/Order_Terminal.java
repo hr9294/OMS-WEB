@@ -457,8 +457,7 @@ public class Order_Terminal {
                             "r.classList.add('active');" +
                             "r.classList.add('order_highlight');" +
                             "var cb = r.querySelector('input[type=checkbox]');" +
-                            "if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); }",
-                            row
+                            "if (cb && !cb.checked) { cb.checked = true; cb.dispatchEvent(new Event('change', { bubbles: true })); }"
                         );
 
                         // Multi-select with CTRL key
@@ -507,10 +506,6 @@ public class Order_Terminal {
         return selected;
     }
 
-    /**
-     * Convenience method: Filters Order Terminal for Accepted and Partially Filled orders,
-     * then selects all of them.
-     */
     /**
      * Clears any active row selection and unchecks all row checkboxes in the Order Terminal.
      */
@@ -705,13 +700,11 @@ public class Order_Terminal {
     }
 
     /**
-     * Multi-selects multiple BUY orders only (Accepted / Partially Filled).
-     */
-    /**
      * Extracts Order Terminal snapshot specifically from the backend REST API.
      */
     public static Map<String, String> getApiSnapshot(WebDriver driver, String clientCode, String symbol, String preferredExchange) {
         String cleanSymbol = cleanSymbol(symbol);
+
         try {
             String adminUrl = String.format("/live_orders/market_orders_compact/?order_client_code=%s&order_symbol=%s&limit=50&page=1", clientCode, cleanSymbol);
             String json = executeBrowserFetch(driver, adminUrl);
@@ -1959,7 +1952,7 @@ public class Order_Terminal {
         System.out.println("+===============================================================================================================================================================+");
     }
 
-        public static String cleanSymbol(String sym) {
+    public static String cleanSymbol(String sym) {
         if (sym == null) return "";
         String s = sym.trim().toUpperCase();
         s = s.replaceAll("\\[[A-Z0-9]+\\]", "");

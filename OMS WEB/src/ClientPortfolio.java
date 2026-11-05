@@ -210,7 +210,7 @@ public class ClientPortfolio {
                 "}",
                 clientCode
             );
-            Thread.sleep(1500);
+            Thread.sleep(200);
         } catch (Exception ignored) {}
     }
 
@@ -405,17 +405,37 @@ public class ClientPortfolio {
             JavascriptExecutor js = (JavascriptExecutor) driver;
             Object res = js.executeScript(
                 "var sym = arguments[0].trim().toUpperCase();" +
-                "var tbl = document.getElementById('symbol_position_table') || document.querySelector('table[id*=position]') || document.querySelector('table.symbol_position_table');" +
+                "function norm(s){return (s||'').trim().toUpperCase().replace(/\\[.*?\\]/g,'').replace(/\\(.*?\\)/g,'').split(/[\\s.-]/)[0].trim();}" +
+                "var tbl = null;" +
+                "var allT = document.querySelectorAll('table');" +
+                "for (var t = 0; t < allT.length; t++) {" +
+                "    var ht = (allT[t].innerText || '').toUpperCase();" +
+                "    if (ht.indexOf('SYMBOL') !== -1 && (ht.indexOf('TOTAL QTY') !== -1 || ht.indexOf('TOTALQTY') !== -1) && (ht.indexOf('SALEABLE') !== -1 || ht.indexOf('AVG COST') !== -1)) {" +
+                "        tbl = allT[t]; break;" +
+                "    }" +
+                "}" +
+                "if (!tbl) { tbl = document.querySelector('div[id*=\"portfolio\"] table, #account-portfolio table, table.portfolio_table, table[id*=\"portfolio\"], div[class*=\"portfolio\"] table') || document.getElementById('symbol_position_table'); }" +
+
                 "if (!tbl) return null;" +
                 "var headers = Array.from(tbl.querySelectorAll('thead th, tr:first-child th')).map(function(h) { return h.innerText.trim(); });" +
                 "var rows = tbl.querySelectorAll('tbody tr');" +
                 "if (rows.length === 0) return { _empty: true };" +
                 "for (var i = 0; i < rows.length; i++) {" +
                 "    var cells = rows[i].querySelectorAll('td');" +
-                "    if (cells.length > 0 && cells[0].innerText.trim().toUpperCase() === sym) {" +
+                "    var rowSym = (cells.length > 0 && cells[0]) ? cells[0].innerText.trim().toUpperCase() : '';" +
+                "    if (rowSym === sym || norm(rowSym) === norm(sym) || (norm(sym).length > 0 && rowSym.indexOf(norm(sym)) !== -1) || (norm(rowSym).length > 0 && sym.indexOf(norm(rowSym)) !== -1)) {" +
                 "        var obj = {};" +
                 "        for (var j = 0; j < cells.length && j < headers.length; j++) {" +
                 "            if (headers[j]) obj[headers[j]] = cells[j].innerText.trim();" +
+                "        }" +
+                "        for (var k = 0; k < headers.length && k < cells.length; k++) {" +
+                "            var ht = headers[k].toUpperCase(); var v = cells[k].innerText.trim();" +
+                "            if (ht.indexOf('TOTAL') !== -1 && ht.indexOf('QTY') !== -1) obj['total_qty'] = v;" +
+                "            else if (ht.indexOf('SALE') !== -1) obj['saleable_qty'] = v;" +
+                "            else if (ht.indexOf('AVG') !== -1) obj['avg_cost'] = v;" +
+                "            else if (ht.indexOf('TOTAL') !== -1 && ht.indexOf('COST') !== -1) obj['total_cost'] = v;" +
+                "            else if (ht === 'MKT RATE' || ht === 'LTP' || ht.indexOf('RATE') !== -1) obj['ltp'] = v;" +
+                "            else if (ht.indexOf('VALUE') !== -1) obj['value'] = v;" +
                 "        }" +
                 "        return obj;" +
                 "    }" +

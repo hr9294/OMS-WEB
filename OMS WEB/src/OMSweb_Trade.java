@@ -80,6 +80,9 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 
 public class OMSweb_Trade {
 
+	public static String activeExchange = "DSE";
+
+
 
 
 
@@ -139,15 +142,14 @@ public class OMSweb_Trade {
 
 
 
-		System.out.print("\nEnter Symbol (default GP): ");
-
-
+		System.out.print("\nEnter Symbol (default GP, or type 'CSE' for Chittagong Stock Exchange): ");
 
 		String instrument = sc.nextLine().trim();
 
-
-
-		if (instrument.isEmpty() || instrument.matches("\\d+")) {
+		if (instrument.equalsIgnoreCase("CSE") || instrument.equalsIgnoreCase("C")) {
+			activeExchange = "CSE";
+			instrument = Position.promptAndSelectCseTradeableSymbol(driver, sc, "BUY", "ACFL");
+		} else if (instrument.isEmpty() || instrument.matches("\\d+")) {
 
 
 
@@ -592,11 +594,10 @@ public class OMSweb_Trade {
 
 			} else if (exInput.equalsIgnoreCase("2") || exInput.equalsIgnoreCase("CSE")) {
 
-
-
 				exchange = "CSE";
-
-
+				activeExchange = "CSE";
+				// Fetch CSE tradeable symbols from DB (cse_md_ltp) and Position widget
+				instrument = Position.promptAndSelectCseTradeableSymbol(driver, sc, sideText, instrument);
 
 			} else {
 
@@ -2418,8 +2419,10 @@ public class OMSweb_Trade {
 				"    else if (ht.indexOf('BOARD') !== -1) rowObj['Board'] = val;" +
 				"    else if (ht.indexOf('SIDE') !== -1 || ht === 'B/S') rowObj['Side'] = val;" +
 				"    else if (ht.indexOf('TYPE') !== -1 && ht.indexOf('EXEC') === -1) rowObj['Type'] = val;" +
-				"    else if (ht.indexOf('PRICE') !== -1 || ht.indexOf('RATE') !== -1) rowObj['Price'] = val;" +
-				"    else if (ht.indexOf('AVG') !== -1) rowObj['Avg Price'] = val;" +
+				"    else if (ht.indexOf('AVG') !== -1 || ht.indexOf('AVERAGE') !== -1) rowObj['Avg Price'] = val;" +
+				"    else if (ht.indexOf('EXEC') !== -1 && (ht.indexOf('PRICE') !== -1 || ht.indexOf('RATE') !== -1)) rowObj['Exec Price'] = val;" +
+				"    else if (ht === 'PRICE' || ht === 'RATE' || ht.indexOf('ORDER RATE') !== -1 || ht.indexOf('LIMIT RATE') !== -1 || ((ht.indexOf('PRICE') !== -1 || ht.indexOf('RATE') !== -1) && ht.indexOf('AVG') === -1)) rowObj['Price'] = val;" +
+
 				"    else if (ht === 'QTY' || ht.indexOf('ORDER QTY') !== -1) rowObj['Qty'] = val;" +
 				"    else if (ht.indexOf('DRIB') !== -1 || ht.indexOf('DRIP') !== -1) rowObj['Drib'] = val;" +
 				"    else if (ht.indexOf('DUE') !== -1) rowObj['Due Qty'] = val;" +
@@ -2433,7 +2436,7 @@ public class OMSweb_Trade {
 				"if (!rowObj['Client Code'] && cells.length > 2) rowObj['Client Code'] = cells[2].innerText.trim();" +
 				"if (!rowObj['Symbol'] && cells.length > 3) rowObj['Symbol'] = cells[3].innerText.trim();" +
 				"if (!rowObj['Side'] && cells.length > 4) rowObj['Side'] = cells[4].innerText.trim();" +
-				"if (!rowObj['Price'] && cells.length > 5) rowObj['Price'] = cells[5].innerText.trim();" +
+				"if (!rowObj['Price'] || rowObj['Price'] === '0.00' || rowObj['Price'] === '0') { for (var c = 0; c < cells.length; c++) { var ct = cells[c].innerText.trim(); if (/^\\d+(\\.\\d+)?$/.test(ct) && parseFloat(ct) > 0 && c !== 0 && c !== 1) { rowObj['Price'] = ct; break; } } }" +
 				"if (!rowObj['Exec Qty'] && cells.length > 6) rowObj['Exec Qty'] = cells[6].innerText.trim();" +
 				"if (!rowObj['Due Qty'] && cells.length > 7) rowObj['Due Qty'] = cells[7].innerText.trim();" +
 				"if (!rowObj['Status'] && cells.length > 8) rowObj['Status'] = cells[8].innerText.trim();" +
@@ -3159,10 +3162,13 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 
+
+
+
+
+
+
 			WebElement rateInput = driver.findElement(By.id("limit_order_rate"));
-
-
-
 			String val = rateInput.getDomProperty("value");
 
 
@@ -4113,7 +4119,11 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 
-		WebElement rateInput = driver.findElement(By.id("limit_order_rate"));
+
+
+
+
+
 
 
 
@@ -4121,7 +4131,8 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 
-			if (rateInput.isDisplayed()) {
+			WebElement rateInput = driver.findElement(By.id("limit_order_rate"));
+			if (rateInput != null && rateInput.isDisplayed()) {
 
 
 
@@ -5251,11 +5262,10 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 	private static void fillOrderFields(WebDriver driver, WebDriverWait wait, String instrument, String qty,
 
-
-
 			String clientCode) throws InterruptedException {
 
-
+		selectExchangeInModal(driver, activeExchange);
+		Thread.sleep(150);
 
 		fillAndSelectAutocompleteSafely(driver, wait, By.id("order_client_code"), clientCode, false);
 
@@ -5331,6 +5341,8 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 
+	private static WebElement rateInput = null;
+
 	private static double handleRate(WebDriver driver, WebDriverWait wait, Scanner sc, String instrument, String side)
 
 
@@ -5339,7 +5351,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 
-		WebElement rateInput = null;
+
 
 
 
@@ -5401,7 +5413,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		try {
 
-			Map<String, String> depth = Market_Depth.getSnapshot(driver, cleanSymbol(instrument), "DSE");
+			Map<String, String> depth = Market_Depth.getSnapshot(driver, cleanSymbol(instrument), activeExchange);
 
 			if (depth != null && !depth.isEmpty()) {
 
@@ -5461,7 +5473,8 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 
-				if (rateInput.isDisplayed()) {
+				WebElement rateInput = driver.findElement(By.id("limit_order_rate"));
+			if (rateInput != null && rateInput.isDisplayed()) {
 
 
 
@@ -7347,9 +7360,18 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 			Object portRes = js.executeScript(
 
-				"var targetSym = (arguments.length > 0 && arguments[0] ? String(arguments[0]) : '').trim().toUpperCase();" +
+				"var targetSym = (arguments.length > 0 && arguments[0] ? String(arguments[0]) : '').trim().toUpperCase();" + "function norm(s){return (s||'').trim().toUpperCase().replace(/\\[.*?\\]/g,'').replace(/\\(.*?\\)/g,'').split(/[\\s.-]/)[0].trim();}" +
 
-				"var tbl = document.getElementById('symbol_position_table') || document.querySelector('table[id*=position]') || document.querySelector('table.symbol_position_table');" +
+
+				"var tbl = null;" +
+				"var allT = document.querySelectorAll('table');" +
+				"for (var t = 0; t < allT.length; t++) {" +
+				"    var ht = (allT[t].innerText || '').toUpperCase();" +
+				"    if (ht.indexOf('SYMBOL') !== -1 && (ht.indexOf('TOTAL QTY') !== -1 || ht.indexOf('TOTALQTY') !== -1) && (ht.indexOf('SALEABLE') !== -1 || ht.indexOf('AVG COST') !== -1)) {" +
+				"        tbl = allT[t]; break;" +
+				"    }" +
+				"}" +
+				"if (!tbl) { tbl = document.querySelector('div[id*=\"portfolio\"] table, #account-portfolio table, table.portfolio_table, table[id*=\"portfolio\"], div[class*=\"portfolio\"] table') || document.getElementById('symbol_position_table'); }" +
 
 				"if (!tbl) return [];" +
 
@@ -7367,9 +7389,10 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 				"    var rowSym = (cells[0] ? cells[0].innerText.trim() : '').toUpperCase();" +
 
-				"    var cleanRowSym = rowSym.replace(/\\[.*?\\]/g, '').split('.')[0].trim();" +
+				"    var cleanRowSym = norm(rowSym);" +
+				"    var cleanTarget = norm(targetSym);" +
 
-				"    if (targetSym.length > 0 && cleanRowSym !== targetSym && rowSym.indexOf(targetSym) === -1) {" +
+				"    if (cleanTarget.length > 0 && cleanRowSym !== cleanTarget && rowSym.indexOf(cleanTarget) === -1 && targetSym.indexOf(cleanRowSym) === -1) {" +
 
 				"        continue;" +
 
@@ -7438,6 +7461,12 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 					
 
 					snap.portfolioRows.add(row);
+					snap.portfolioUi.put("total_qty", row.getOrDefault("Total Qty", row.getOrDefault("total_qty", "0")));
+					snap.portfolioUi.put("saleable_qty", row.getOrDefault("Saleable Qty", row.getOrDefault("Saleable", row.getOrDefault("saleable_qty", "0"))));
+					snap.portfolioUi.put("avg_cost", row.getOrDefault("Avg Cost", row.getOrDefault("avg_cost", "0.00")));
+					snap.portfolioUi.put("total_cost", row.getOrDefault("Total Cost", row.getOrDefault("total_cost", "0.00")));
+					snap.portfolioUi.put("value", row.getOrDefault("Value", row.getOrDefault("Mkt Value", row.getOrDefault("value", "0.00"))));
+					snap.portfolioUi.put("ltp", row.getOrDefault("LTP", row.getOrDefault("Mkt Rate", row.getOrDefault("ltp", "0.00"))));
 
 				}
 
@@ -7573,7 +7602,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 			Object termRes = js.executeScript(
 
-				"var targetSym = (arguments.length > 0 && arguments[0] ? String(arguments[0]) : '').trim().toUpperCase();" +
+				"var targetSym = (arguments.length > 0 && arguments[0] ? String(arguments[0]) : '').trim().toUpperCase();" + "function norm(s){return (s||'').trim().toUpperCase().replace(/\\[.*?\\]/g,'').replace(/\\(.*?\\)/g,'').split(/[\\s.-]/)[0].trim();}" +
 
 				"var tbl = document.getElementById('order_terminal_table') || document.querySelector('table.order_terminal_table') || document.querySelector('table[id*=market_table]');" +
 
@@ -7623,9 +7652,11 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 				"        else if (ht.indexOf('TYPE') !== -1 && ht.indexOf('EXEC') === -1) rowObj['Type'] = val;" +
 
-				"        else if (ht.indexOf('PRICE') !== -1 || ht.indexOf('RATE') !== -1) rowObj['Price'] = val;" +
+				"        else if (ht.indexOf('AVG') !== -1 || ht.indexOf('AVERAGE') !== -1) rowObj['Avg Price'] = val;" +
+				"        else if (ht.indexOf('EXEC') !== -1 && (ht.indexOf('PRICE') !== -1 || ht.indexOf('RATE') !== -1)) rowObj['Exec Price'] = val;" +
+				"        else if (ht === 'PRICE' || ht === 'RATE' || ht.indexOf('ORDER RATE') !== -1 || ht.indexOf('LIMIT RATE') !== -1 || ((ht.indexOf('PRICE') !== -1 || ht.indexOf('RATE') !== -1) && ht.indexOf('AVG') === -1)) rowObj['Price'] = val;" +
 
-				"        else if (ht.indexOf('AVG') !== -1) rowObj['Avg Price'] = val;" +
+
 
 				"        else if (ht === 'QTY' || ht.indexOf('ORDER QTY') !== -1) rowObj['Qty'] = val;" +
 
@@ -7653,7 +7684,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 				"    if (!rowObj['Side'] && cells.length > 4) rowObj['Side'] = cells[4].innerText.trim();" +
 
-				"    if (!rowObj['Price'] && cells.length > 5) rowObj['Price'] = cells[5].innerText.trim();" +
+				"    if (!rowObj['Price'] || rowObj['Price'] === '0.00' || rowObj['Price'] === '0') { for (var c = 0; c < cells.length; c++) { var ct = cells[c].innerText.trim(); if (/^\\d+(\\.\\d+)?$/.test(ct) && parseFloat(ct) > 0 && c !== 0 && c !== 1) { rowObj['Price'] = ct; break; } } }" +
 
 				"    if (!rowObj['Exec Qty'] && cells.length > 6) rowObj['Exec Qty'] = cells[6].innerText.trim();" +
 
@@ -7663,9 +7694,10 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 				"    var rowSym = (rowObj['Symbol'] || '').trim().toUpperCase();" +
 
-				"    var cleanRowSym = rowSym.replace(/\\[.*?\\]/g, '').split('.')[0].trim();" +
+				"    var cleanRowSym = norm(rowSym);" +
+				"    var cleanTarget = norm(targetSym);" +
 
-				"    if (targetSym.length > 0 && cleanRowSym !== targetSym && rowSym.indexOf(targetSym) === -1) {" +
+				"    if (cleanTarget.length > 0 && cleanRowSym !== cleanTarget && rowSym.indexOf(cleanTarget) === -1 && targetSym.indexOf(cleanRowSym) === -1) {" +
 
 				"        continue;" +
 
@@ -7757,7 +7789,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 			Object sumRes = js.executeScript(
 
-				"var targetSym = (arguments.length > 0 && arguments[0] ? String(arguments[0]) : '').trim().toUpperCase();" +
+				"var targetSym = (arguments.length > 0 && arguments[0] ? String(arguments[0]) : '').trim().toUpperCase();" + "function norm(s){return (s||'').trim().toUpperCase().replace(/\\[.*?\\]/g,'').replace(/\\(.*?\\)/g,'').split(/[\\s.-]/)[0].trim();}" +
 
 				"var tbl = document.getElementById('order_summary_table') || document.querySelector('table[id*=summary]');" +
 
@@ -8643,16 +8675,23 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 		fillOrderFields(driver, wait, symbol, String.valueOf(qty), clientCode);
-
-
-
-		WebElement rateInput = driver.findElement(By.id("limit_order_rate"));
-
 		String rateFormatted = String.format(Locale.US, "%.2f", rate);
+
+
+
+
+
+
+
+
+
+
+
 
 		try {
 
-			if (rateInput.isDisplayed()) {
+			WebElement rateInput = driver.findElement(By.id("limit_order_rate"));
+			if (rateInput != null && rateInput.isDisplayed()) {
 
 				rateInput.clear();
 
@@ -8679,6 +8718,19 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		}
 
 
+
+		try {
+			((JavascriptExecutor) driver).executeScript(
+				"var val = arguments[0];" +
+				"var rateInputs = document.querySelectorAll('.winbox #limit_order_rate, .wb-body #limit_order_rate, #limit_order_rate, input[name*=\"rate\"]');" +
+				"for (var i = 0; i < rateInputs.length; i++) {" +
+				"    rateInputs[i].value = val;" +
+				"    if (window.jQuery) { $(rateInputs[i]).val(val).trigger('input').trigger('change').trigger('keyup'); }" +
+				"}",
+				rateFormatted
+			);
+		} catch (Exception ignored) {}
+		displayCommissionOnOrderWindow(driver, clientCode, qty, rate);
 
 		submitOrder(driver, side.toUpperCase());
 
@@ -8962,8 +9014,31 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		if (ltp <= 0.0) ltp = 100.0;
 
-		double acceptedRate = ltp;
-		System.out.printf("[PRICE ENGINE] Real-time accepted reference price for %s: %.2f BDT%n", cleanSym, acceptedRate);
+		Map<String, String> depthSnapshot = Market_Depth.getSnapshot(driver, cleanSym, ex);
+		double bestBid = parseNumSafe(depthSnapshot.get("Best_Bid_Price"));
+		if (bestBid <= 0.0) bestBid = parseNumSafe(depthSnapshot.get("Bid"));
+		double bestAsk = parseNumSafe(depthSnapshot.get("Best_Ask_Price"));
+		if (bestAsk <= 0.0) bestAsk = parseNumSafe(depthSnapshot.get("Ask"));
+		double bestAskQty = parseNumSafe(depthSnapshot.get("Best_Ask_Qty"));
+		double slCircuit = parseNumSafe(depthSnapshot.get("SL"));
+		if (slCircuit <= 0.0) slCircuit = parseNumSafe(depthSnapshot.get("CL"));
+		if (slCircuit <= 0.0) slCircuit = Math.round(ltp * 0.90 * 10.0) / 10.0;
+
+		double safeAcceptedRate;
+		if (bestBid > 0.0 && bestBid < ltp) {
+			safeAcceptedRate = Math.round((bestBid * 0.96) * 10.0) / 10.0;
+		} else {
+			safeAcceptedRate = Math.round((ltp * 0.95) * 10.0) / 10.0;
+		}
+		if (slCircuit > 0.0 && safeAcceptedRate <= slCircuit) {
+			safeAcceptedRate = Math.round((slCircuit + 2.0) * 10.0) / 10.0;
+		}
+		if (bestAsk > 0.0 && safeAcceptedRate >= bestAsk) {
+			safeAcceptedRate = Math.round((bestAsk * 0.95) * 10.0) / 10.0;
+		}
+		double acceptedRate = safeAcceptedRate;
+		System.out.printf("[PRICE ENGINE] Real-time non-executing accepted price for %s: %.2f BDT (LTP=%.2f, Bid=%.2f, Ask=%.2f, SL=%.2f)%n",
+				cleanSym, acceptedRate, ltp, bestBid, bestAsk, slCircuit);
 
 
 
@@ -9054,17 +9129,29 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		System.out.println("\n>>> [STAGE 2/5] PLACING PARTIALLY FILLED BUY ORDER (Matching 10/20 shares)...");
 
-		System.out.printf("    A. Counterparty Client %s places SELL: 10 shares @ %.2f%n", seller, ltp);
+		int s2OppositeAskQty = (int) bestAskQty;
+		double s2Rate = (bestAsk > 0.0) ? bestAsk : ltp;
+		int s2BuyQty = (s2OppositeAskQty > 0) ? (s2OppositeAskQty + 10) : 20;
+		if (s2OppositeAskQty > 0) {
+			System.out.printf("    [OPPOSITE ORDER DETECTED] Market has %d resting Ask shares @ %.2f. Buying %d shares to guarantee Partial Fill (10 Due).%n",
+					s2OppositeAskQty, s2Rate, s2BuyQty);
+		}
 
-		placeTradeOrderDirect(driver, wait, "SELL", seller, cleanSym, 10, ltp);
+		if (s2OppositeAskQty <= 0) {
+			System.out.printf("    A. Counterparty Client %s places SELL: 10 shares @ %.2f%n", seller, s2Rate);
+			placeTradeOrderDirect(driver, wait, "SELL", seller, cleanSym, 10, s2Rate);
+			Thread.sleep(200);
+		}
+
+
 
 		Thread.sleep(200);
 
 
 
-		System.out.printf("    B. Target Client %s places BUY: 20 shares @ %.2f (10 match, 10 remain due)%n", buyer, ltp);
+		System.out.printf("    B. Target Client %s places BUY: %d shares @ %.2f (matches resting orders, 10 remain due)%n", buyer, s2BuyQty, s2Rate);
 
-		placeTradeOrderDirect(driver, wait, "BUY", buyer, cleanSym, 20, ltp);
+		placeTradeOrderDirect(driver, wait, "BUY", buyer, cleanSym, s2BuyQty, s2Rate);
 
 
 
@@ -9095,17 +9182,21 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		System.out.println("\n>>> [STAGE 3/5] PLACING 100% FILLED BUY ORDER (Matching 10/10 shares)...");
 
-		System.out.printf("    A. Counterparty Client %s places SELL: 10 shares @ %.2f%n", seller, ltp);
+		if (s2OppositeAskQty <= 0) {
+			System.out.printf("    A. Counterparty Client %s places SELL: 10 shares @ %.2f%n", seller, s2Rate);
+			placeTradeOrderDirect(driver, wait, "SELL", seller, cleanSym, 10, s2Rate);
+			Thread.sleep(200);
+		}
 
-		placeTradeOrderDirect(driver, wait, "SELL", seller, cleanSym, 10, ltp);
+
 
 		Thread.sleep(200);
 
 
 
-		System.out.printf("    B. Target Client %s places BUY: 10 shares @ %.2f (100%% fill)%n", buyer, ltp);
+		System.out.printf("    B. Target Client %s places BUY: 10 shares @ %.2f (100%% fill)%n", buyer, s2Rate);
 
-		placeTradeOrderDirect(driver, wait, "BUY", buyer, cleanSym, 10, ltp);
+		placeTradeOrderDirect(driver, wait, "BUY", buyer, cleanSym, 10, s2Rate);
 
 
 

@@ -79,62 +79,151 @@ public class OMSweb_MultipleTrade {
     public static volatile String ACTIVE_DB_HOST = PRIMARY_DB_HOST;
     public static volatile int    ACTIVE_DB_PORT = PRIMARY_DB_PORT;
     public static volatile String MARKETDATA_DB_URI = PRIMARY_DB_URI;
+    public static volatile String activeExchange = "DSE";
+
+    // ==========================================
+    // 0. SELF-CONTAINED DATABASE & LTP METHODS
+    // ==========================================
+    public static class PublicSymbolLtp {
+        public String symbol;
+        public String companyName;
+        public String board = "PUBLIC";
+        public double ltp;
+        public double ycp;
+        public double circuitUp;
+        public double circuitDown;
+        public double floorPrice;
+        public double open;
+        public double high;
+        public double low;
+        public double close;
+        public long   totalQty;
+        public String lastUpdate;
+
+        public PublicSymbolLtp(String symbol, String companyName, double ltp, double ycp,
+                               double circuitUp, double circuitDown, double floorPrice,
+                               double open, double high, double low, double close,
+                               long totalQty, String lastUpdate) {
+            this.symbol = symbol;
+            this.companyName = companyName;
+            this.board = "PUBLIC";
+            this.ltp = ltp;
+            this.ycp = ycp;
+            this.circuitUp = circuitUp;
+            this.circuitDown = circuitDown;
+            this.floorPrice = floorPrice;
+            this.open = open;
+            this.high = high;
+            this.low = low;
+            this.close = close;
+            this.totalQty = totalQty;
+            this.lastUpdate = lastUpdate;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("%s [LTP: %.2f | YCP: %.2f | SH: %.2f | SL: %.2f]", symbol, ltp, ycp, circuitUp, circuitDown);
+        }
+    }
+
+    private static volatile long lastDbFailureTime = 0L;
+    private static final long DB_COOLDOWN_MS = 60_000L;
+
+    public static boolean isDbCircuitOpen() {
+        if (lastDbFailureTime == 0L) return false;
+        return (System.currentTimeMillis() - lastDbFailureTime) < DB_COOLDOWN_MS;
+    }
+
+    public static void recordDbFailure() {
+        lastDbFailureTime = System.currentTimeMillis();
+    }
+
+    public static void recordDbSuccess() {
+        lastDbFailureTime = 0L;
+    }
+
+    public static boolean isHostReachable(String host, int port, int timeoutMs) {
+        try (java.net.Socket socket = new java.net.Socket()) {
+            socket.connect(new java.net.InetSocketAddress(host, port), timeoutMs);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static PublicSymbolLtp getCachedSymbol(String symbol, String exchange) {
+        return null;
+    }
 
     public static Connection getJdbcConnection() {
-        return OMSweb_DBMarketData.getJdbcConnection();
+        if (isDbCircuitOpen()) return null;
+        if (isHostReachable(PRIMARY_DB_HOST, PRIMARY_DB_PORT, 150)) {
+            try {
+                Class.forName("org.postgresql.Driver");
+                String url = String.format(Locale.US, "jdbc:postgresql://%s:%d/%s?connectTimeout=2&socketTimeout=3",
+                        PRIMARY_DB_HOST, PRIMARY_DB_PORT, DB_NAME);
+                Properties props = new Properties();
+                props.setProperty("user", DB_USER);
+                props.setProperty("password", DB_PASSWORD);
+                return DriverManager.getConnection(url, props);
+            } catch (Exception ignored) {}
+        }
+        return null;
     }
 
-    /**
-     * Direct query on dse_md_ltp / cse_md_ltp with Primary -> Secondary failover.
-     * Returns live Public Board LTP in ~10-15 ms.
-     */
     public static double getDirectSymbolLtpFromDb(String symbol, String exchange) {
-        return OMSweb_DBMarketData.getDirectSymbolLtpFromDb(symbol, exchange);
+        if (symbol == null || symbol.trim().isEmpty()) return 0.0;
+        String cleanSym = symbol.trim().toUpperCase();
+        if (cleanSym.contains(".")) cleanSym = cleanSym.substring(0, cleanSym.indexOf('.'));
+
+        String table = "CSE".equalsIgnoreCase(exchange) ? "cse_md_ltp" : "dse_md_ltp";
+        String sql = "SELECT ltp FROM " + table + " WHERE symbol = ? AND board = 'PUBLIC' AND ltp IS NOT NULL AND ltp > 0 LIMIT 1";
+
+        String[][] dbs = {
+            { PRIMARY_DB_HOST, String.valueOf(PRIMARY_DB_PORT) },
+            { SECONDARY_DB_HOST, String.valueOf(SECONDARY_DB_PORT) }
+        };
+
+        for (String[] db : dbs) {
+            if (!isHostReachable(db[0], Integer.parseInt(db[1]), 150)) continue;
+            try {
+                Class.forName("org.postgresql.Driver");
+                String url = String.format(Locale.US, "jdbc:postgresql://%s:%s/%s?connectTimeout=2&socketTimeout=3", db[0], db[1], DB_NAME);
+                Properties props = new Properties();
+                props.setProperty("user", DB_USER);
+                props.setProperty("password", DB_PASSWORD);
+                try (Connection conn = DriverManager.getConnection(url, props);
+                     PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setString(1, cleanSym);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (rs.next()) return rs.getDouble("ltp");
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+        return 0.0;
     }
 
-    /**
-     * Direct query on dse_md_ltp / cse_md_ltp for circuit limits with Primary -> Secondary failover
-     * and smart circuit breaker.
-     * Returns CircuitLimits (SH/CH, SL/CL) in ~10-15 ms (or 0 ms from cache if offline).
-     */
     public static CircuitLimits getDirectCircuitLimitsFromDb(String symbol, String exchange) {
         if (symbol == null || symbol.trim().isEmpty()) return null;
         String cleanSym = symbol.trim().toUpperCase();
-        if (cleanSym.contains(".")) {
-            cleanSym = cleanSym.substring(0, cleanSym.indexOf('.'));
-        }
+        if (cleanSym.contains(".")) cleanSym = cleanSym.substring(0, cleanSym.indexOf('.'));
 
-        if (OMSweb_DBMarketData.isDbCircuitOpen()) {
-            OMSweb_DBMarketData.PublicSymbolLtp cached = OMSweb_DBMarketData.getCachedSymbol(cleanSym, exchange);
-            if (cached != null) {
-                double ltp = cached.ltp;
-                double up = cached.circuitUp;
-                double down = cached.circuitDown;
-                if (up <= 0 && ltp > 0) up = Math.round(ltp * 1.10 * 100.0) / 100.0;
-                if (down <= 0 && ltp > 0) down = Math.round(ltp * 0.90 * 100.0) / 100.0;
-                if (up > 0 || down > 0) {
-                    return new CircuitLimits(up, down, up, down, ltp);
-                }
-            }
-            return null;
-        }
+        if (isDbCircuitOpen()) return null;
 
         String table = "CSE".equalsIgnoreCase(exchange) ? "cse_md_ltp" : "dse_md_ltp";
         String sql = "SELECT ltp, circuit_up, circuit_down FROM " + table + " WHERE symbol = ? AND board = 'PUBLIC' AND ltp IS NOT NULL AND ltp > 0 LIMIT 1";
 
         String[][] dbs = {
-            { PRIMARY_DB_HOST, String.valueOf(PRIMARY_DB_PORT), "Primary (" + PRIMARY_DB_HOST + ")" },
-            { SECONDARY_DB_HOST, String.valueOf(SECONDARY_DB_PORT), "Secondary (" + SECONDARY_DB_HOST + ")" }
+            { PRIMARY_DB_HOST, String.valueOf(PRIMARY_DB_PORT) },
+            { SECONDARY_DB_HOST, String.valueOf(SECONDARY_DB_PORT) }
         };
 
         boolean anyReachable = false;
         for (String[] db : dbs) {
             String host = db[0];
             int port = Integer.parseInt(db[1]);
-            String label = db[2];
-            if (!OMSweb_DBMarketData.isHostReachable(host, port, 150)) {
-                continue;
-            }
+            if (!isHostReachable(host, port, 150)) continue;
             anyReachable = true;
             try {
                 Class.forName("org.postgresql.Driver");
@@ -142,8 +231,6 @@ public class OMSweb_MultipleTrade {
                 Properties props = new Properties();
                 props.setProperty("user", DB_USER);
                 props.setProperty("password", DB_PASSWORD);
-                props.setProperty("connectTimeout", "2");
-                props.setProperty("socketTimeout", "3");
                 try (Connection conn = DriverManager.getConnection(url, props);
                      PreparedStatement ps = conn.prepareStatement(sql)) {
                     ps.setString(1, cleanSym);
@@ -155,36 +242,63 @@ public class OMSweb_MultipleTrade {
                             if (up <= 0 && ltp > 0) up = Math.round(ltp * 1.10 * 100.0) / 100.0;
                             if (down <= 0 && ltp > 0) down = Math.round(ltp * 0.90 * 100.0) / 100.0;
                             if (up > 0 || down > 0) {
-                                OMSweb_DBMarketData.recordDbSuccess();
+                                recordDbSuccess();
                                 return new CircuitLimits(up, down, up, down, ltp);
                             }
                         }
                     }
                 }
-            } catch (Throwable t) {
-                System.err.printf("[WARN: MULTITRADE DB CIRCUITS] Query for %s failed on %s: %s. Trying fallback...%n", cleanSym, label, t.getMessage());
-            }
+            } catch (Throwable ignored) {}
         }
-
-        if (!anyReachable) {
-            OMSweb_DBMarketData.recordDbFailure();
-        }
-
-        OMSweb_DBMarketData.PublicSymbolLtp cached = OMSweb_DBMarketData.getCachedSymbol(cleanSym, exchange);
-        if (cached != null) {
-            double ltp = cached.ltp;
-            double up = cached.circuitUp;
-            double down = cached.circuitDown;
-            if (up <= 0 && ltp > 0) up = Math.round(ltp * 1.10 * 100.0) / 100.0;
-            if (down <= 0 && ltp > 0) down = Math.round(ltp * 0.90 * 100.0) / 100.0;
-            if (up > 0 || down > 0) {
-                return new CircuitLimits(up, down, up, down, ltp);
-            }
-        }
+        if (!anyReachable) recordDbFailure();
         return null;
     }
 
+    public static List<String> getPublicSymbols(String exchange) {
+        List<String> list = new ArrayList<>();
+        String table = "CSE".equalsIgnoreCase(exchange) ? "cse_md_ltp" : "dse_md_ltp";
+        String sql = "SELECT DISTINCT symbol FROM " + table + " WHERE board = 'PUBLIC' AND ltp IS NOT NULL AND ltp > 0 ORDER BY symbol ASC";
+        try (Connection conn = getJdbcConnection()) {
+            if (conn != null) {
+                try (PreparedStatement ps = conn.prepareStatement(sql);
+                     ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) list.add(rs.getString("symbol"));
+                }
+            }
+        } catch (Exception ignored) {}
+        return list.isEmpty() ? ALL_PUBLIC_SYMBOLS : list;
+    }
 
+    public static Map<String, PublicSymbolLtp> fetchPublicBoardLtp(String exchange) {
+        Map<String, PublicSymbolLtp> map = new HashMap<>();
+        boolean isCse = "CSE".equalsIgnoreCase(exchange);
+        String table = isCse ? "cse_md_ltp" : "dse_md_ltp";
+        String compCol = isCse ? "COALESCE(sector, symbol) AS company_name" : "company_name";
+        String sql = "SELECT symbol, " + compCol + ", ltp, ycp, circuit_up, circuit_down, floor_price, open, high, low, close, total_qty, last_update " +
+                     "FROM " + table + " WHERE board = 'PUBLIC' AND ltp IS NOT NULL AND ltp > 0";
+        try (Connection conn = getJdbcConnection()) {
+            if (conn != null) {
+                try (PreparedStatement ps = conn.prepareStatement(sql);
+                     ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String sym = rs.getString("symbol");
+                        map.put(sym, new PublicSymbolLtp(
+                            sym, rs.getString("company_name"), rs.getDouble("ltp"), rs.getDouble("ycp"),
+                            rs.getDouble("circuit_up"), rs.getDouble("circuit_down"), rs.getDouble("floor_price"),
+                            rs.getDouble("open"), rs.getDouble("high"), rs.getDouble("low"), rs.getDouble("close"),
+                            rs.getLong("total_qty"), rs.getString("last_update")
+                        ));
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return map;
+    }
+
+    public static void printPublicBoardSummary(String exchange, int limit) {
+        Map<String, PublicSymbolLtp> map = fetchPublicBoardLtp(exchange);
+        System.out.printf("[MARKET DATA] Total Public Board Symbols retrieved: %d%n", map.size());
+    }
 
     // ==========================================
 
@@ -242,7 +356,7 @@ public class OMSweb_MultipleTrade {
 
         try {
 
-            List<String> dbSyms = OMSweb_DBMarketData.getPublicSymbols("DSE");
+            List<String> dbSyms = getPublicSymbols("DSE");
 
             if (dbSyms != null && !dbSyms.isEmpty()) {
 
@@ -578,9 +692,22 @@ public class OMSweb_MultipleTrade {
 
 
 
-        // 2. Multi-Symbol Basket Selection (All Public Symbols from DB Table)
+        // 0. Exchange Selection
+        System.out.println("\n[HFT CONFIG: 0. EXCHANGE ROUTING]");
+        System.out.println("  1. DSE (Dhaka Stock Exchange - Default)");
+        System.out.println("  2. CSE (Chittagong Stock Exchange)");
+        System.out.print("Select Exchange (1 or 2, default=1): ");
+        String exChoice = sc.nextLine().trim();
+        activeExchange = ("2".equals(exChoice) || exChoice.equalsIgnoreCase("CSE")) ? "CSE" : "DSE";
+        System.out.printf(">> [ACTIVE EXCHANGE] %s Gateway Selected%n", activeExchange);
 
-        List<String> activePublicSymbols = getPublicSymbolsBasket();
+        // 2. Multi-Symbol Basket Selection
+        List<String> activePublicSymbols = "CSE".equalsIgnoreCase(activeExchange) ? getPublicSymbols("CSE") : getPublicSymbolsBasket();
+
+        if ("CSE".equalsIgnoreCase(activeExchange)) {
+            System.out.println("\n[CSE TRADE ROUTING] Tradeable Symbols resolved from DB (cse_md_ltp) & Position Widget:");
+            Position.printCseTradeableSymbolsTable(Position.getCseTradeableSymbols(driver), 20);
+        }
 
         System.out.println("\n[HFT CONFIG: 1. SYMBOLS BASKET]");
 
@@ -608,7 +735,7 @@ public class OMSweb_MultipleTrade {
 
         if (symInput.equalsIgnoreCase("DB")) {
 
-            OMSweb_DBMarketData.printPublicBoardSummary("DSE", 35);
+            if ("CSE".equalsIgnoreCase(activeExchange)) { Position.printCseTradeableSymbolsTable(Position.getCseTradeableSymbols(driver), 35); } else { printPublicBoardSummary("DSE", 35); }
 
             System.out.print("Enter Choice (press ENTER for ALL Public Symbols): ");
 
@@ -848,7 +975,7 @@ public class OMSweb_MultipleTrade {
 
         Map<String, CircuitLimits> symbolCircuits = new LinkedHashMap<>();
 
-        Map<String, OMSweb_DBMarketData.PublicSymbolLtp> dbPublicQuotes = OMSweb_DBMarketData.fetchPublicBoardLtp("DSE");
+        Map<String, PublicSymbolLtp> dbPublicQuotes = fetchPublicBoardLtp(activeExchange);
 
         int dbHitCount = 0;
 
@@ -860,7 +987,7 @@ public class OMSweb_MultipleTrade {
 
             String cleanSym = sym.trim().toUpperCase();
 
-            OMSweb_DBMarketData.PublicSymbolLtp rec = dbPublicQuotes.get(cleanSym);
+            PublicSymbolLtp rec = dbPublicQuotes.get(cleanSym);
 
             double price;
 
@@ -1238,7 +1365,7 @@ public class OMSweb_MultipleTrade {
 
             // 2. Select Exchange in Modal
 
-            OMSweb_Trade.selectExchangeInModal(driver, "DSE");
+            OMSweb_Trade.selectExchangeInModal(driver, activeExchange);
 
             Thread.sleep(150);
 
@@ -2169,9 +2296,9 @@ public class OMSweb_MultipleTrade {
 
             // Priority 1: PostgreSQL DB Table (dse_md_ltp circuit limits)
 
-            Map<String, OMSweb_DBMarketData.PublicSymbolLtp> ltpMap = OMSweb_DBMarketData.fetchPublicBoardLtp("DSE");
+            Map<String, PublicSymbolLtp> ltpMap = fetchPublicBoardLtp(activeExchange);
 
-            OMSweb_DBMarketData.PublicSymbolLtp rec = ltpMap.get(cleanSym);
+            PublicSymbolLtp rec = ltpMap.get(cleanSym);
 
             if (rec != null) {
 

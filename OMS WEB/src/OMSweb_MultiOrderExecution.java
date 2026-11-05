@@ -151,7 +151,10 @@ public class OMSweb_MultiOrderExecution {
 
         System.out.print("Enter Exchange (DSE / CSE, default=DSE): ");
         String exInput = sc.nextLine().trim().toUpperCase();
-        String exchange = exInput.equalsIgnoreCase("CSE") ? "CSE" : "DSE";
+        String exchange = (exInput.equalsIgnoreCase("CSE") || exInput.equals("2")) ? "CSE" : "DSE";
+        if ("CSE".equalsIgnoreCase(exchange)) {
+            symbol = Position.promptAndSelectCseTradeableSymbol(driver, sc, "BUY", symbol);
+        }
 
         // Auto-populate manually input symbol into Trade search and Marketwatch
         try {

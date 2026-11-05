@@ -1,9 +1,20 @@
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Scanner;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
@@ -1116,4 +1127,415 @@ public class Position {
     private static String fmtQty(double val) {
         return String.format("%,.0f", val);
     }
+
+    // =========================================================================
+    // 10. CSE TRADEABLE SYMBOLS RESOLVER (DATABASE + POSITION WIDGET)
+    // =========================================================================
+    private static final String PRIMARY_DB_HOST = "192.168.155.22";
+    private static final int    PRIMARY_DB_PORT = 5445;
+    private static final String SECONDARY_DB_HOST = "10.20.8.29";
+    private static final int    SECONDARY_DB_PORT = 5445;
+    private static final String DB_NAME = "marketdb";
+    private static final String DB_USER = "marketdata";
+    private static final String DB_PASSWORD = "pass4321";
+
+    public static class CseTradeableSymbol {
+        private final String symbol;
+        private final String companyName;
+        private final double ltp;
+        private final double ycp;
+        private final double circuitUp;
+        private final double circuitDown;
+        private final long volume;
+        private final boolean inDb;
+        private final boolean inPositionWidget;
+        private final int holdingClientsCount;
+        private final double totalSaleableQty;
+        private final String topHoldingClient;
+
+        public CseTradeableSymbol(String symbol, String companyName, double ltp, double ycp,
+                                  double circuitUp, double circuitDown, long volume,
+                                  boolean inDb, boolean inPositionWidget,
+                                  int holdingClientsCount, double totalSaleableQty, String topHoldingClient) {
+            this.symbol = symbol;
+            this.companyName = companyName;
+            this.ltp = ltp;
+            this.ycp = ycp;
+            this.circuitUp = circuitUp;
+            this.circuitDown = circuitDown;
+            this.volume = volume;
+            this.inDb = inDb;
+            this.inPositionWidget = inPositionWidget;
+            this.holdingClientsCount = holdingClientsCount;
+            this.totalSaleableQty = totalSaleableQty;
+            this.topHoldingClient = topHoldingClient;
+        }
+
+        public String getSymbol() { return symbol; }
+        public String getCompanyName() { return companyName; }
+        public double getLtp() { return ltp; }
+        public double getYcp() { return ycp; }
+        public double getCircuitUp() { return circuitUp; }
+        public double getCircuitDown() { return circuitDown; }
+        public long getVolume() { return volume; }
+        public boolean isInDb() { return inDb; }
+        public boolean isInPositionWidget() { return inPositionWidget; }
+        public int getHoldingClientsCount() { return holdingClientsCount; }
+        public double getTotalSaleableQty() { return totalSaleableQty; }
+        public String getTopHoldingClient() { return topHoldingClient; }
+
+        @Override
+        public String toString() {
+            return String.format("%s [LTP: %.2f | Circuit: %.2f - %.2f | Vol: %,d | Pos: %s]",
+                    symbol, ltp, circuitDown, circuitUp, volume,
+                    (inPositionWidget ? String.format("%d clients, %,.0f saleable", holdingClientsCount, totalSaleableQty) : "None"));
+        }
+    }
+
+    private static boolean isHostReachable(String host, int port, int timeoutMs) {
+        try (java.net.Socket socket = new java.net.Socket()) {
+            socket.connect(new java.net.InetSocketAddress(host, port), timeoutMs);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static Connection getJdbcConnection() {
+        String[][] dbs = {
+            { PRIMARY_DB_HOST, String.valueOf(PRIMARY_DB_PORT) },
+            { SECONDARY_DB_HOST, String.valueOf(SECONDARY_DB_PORT) }
+        };
+        for (String[] db : dbs) {
+            String host = db[0];
+            int port = Integer.parseInt(db[1]);
+            if (isHostReachable(host, port, 180)) {
+                try {
+                    Class.forName("org.postgresql.Driver");
+                    String url = String.format(Locale.US, "jdbc:postgresql://%s:%d/%s?connectTimeout=2&socketTimeout=3",
+                            host, port, DB_NAME);
+                    Properties props = new Properties();
+                    props.setProperty("user", DB_USER);
+                    props.setProperty("password", DB_PASSWORD);
+                    Connection conn = DriverManager.getConnection(url, props);
+                    if (conn != null && !conn.isClosed()) {
+                        return conn;
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Extracts all CSE holding clients and symbols from Position widget (DOM table + API).
+     */
+    @SuppressWarnings("unchecked")
+    public static Map<String, List<ClientPosition>> getCseHoldingsFromPositionWidget(WebDriver driver) {
+        Map<String, List<ClientPosition>> holdings = new LinkedHashMap<>();
+        if (driver == null) return holdings;
+
+        try {
+            ensurePositionWidgetVisible(driver);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            // 1. Switch exchange selector in Position widget to CSE
+            js.executeScript(
+                "var exSel = document.getElementById('exchange_position');" +
+                "if (exSel) {" +
+                "    exSel.value = 'CSE';" +
+                "    exSel.dispatchEvent(new Event('change', { bubbles: true }));" +
+                "}" +
+                "var clearBtn = document.querySelector('button.btn-clear-position, button[onclick*=\"clear\"]');" +
+                "if (clearBtn) { try { clearBtn.click(); } catch(e){} }" +
+                "if (typeof get_symbol_client === 'function') {" +
+                "    try { get_symbol_client(1); } catch(e) {}" +
+                "}"
+            );
+            Thread.sleep(700);
+
+            // 2. Scrape from symbol_position_table
+            List<ClientPosition> domRows = extractFromDomTable(driver, "");
+            for (ClientPosition cp : domRows) {
+                String sym = cleanSymbol(cp.getSymbol());
+                if (!sym.isEmpty()) {
+                    holdings.computeIfAbsent(sym, k -> new ArrayList<>()).add(cp);
+                }
+            }
+
+            // 3. Fallback / supplement: fetch from Position API for CSE
+            try {
+                String script =
+                    "var done = arguments[arguments.length - 1];" +
+                    "var url = '/shared/getsymbolclient/?page=1&per_page=100&exchange=CSE';" +
+                    "fetch(url, { method: 'GET', headers: { 'Accept': 'application/json' }, credentials: 'include' })" +
+                    ".then(function(r) { return r.json(); })" +
+                    ".then(function(data) { done(data); })" +
+                    ".catch(function(err) { done({ error: err.toString() }); });";
+
+                Object raw = js.executeAsyncScript(script);
+                if (raw instanceof Map) {
+                    Map<String, Object> respMap = (Map<String, Object>) raw;
+                    Object dataObj = respMap.get("data");
+                    if (dataObj instanceof List) {
+                        List<Map<String, Object>> dataList = (List<Map<String, Object>>) dataObj;
+                        for (Map<String, Object> item : dataList) {
+                            String sym = cleanSymbol(String.valueOf(item.getOrDefault("symbol", "")));
+                            String clientCode = String.valueOf(item.getOrDefault("client_code", "")).trim();
+                            if (sym.isEmpty() || clientCode.isEmpty()) continue;
+
+                            double totalQty = parseNum(String.valueOf(item.getOrDefault("totalqty", "0")));
+                            double saleableQty = parseNum(String.valueOf(item.getOrDefault("qty", "0")));
+                            double avgCost = parseNum(String.valueOf(item.getOrDefault("avgcost", "0")));
+                            double totalCost = parseNum(String.valueOf(item.getOrDefault("totalcost", "0")));
+                            double mktRate = parseNum(String.valueOf(item.getOrDefault("ltp", "0")));
+                            double mktValue = parseNum(String.valueOf(item.getOrDefault("value", "0")));
+                            double gain = parseNum(String.valueOf(item.getOrDefault("gain", "0")));
+                            double gainPercent = parseNum(String.valueOf(item.getOrDefault("gain_per", "0")));
+
+                            ClientPosition cp = new ClientPosition(sym, clientCode, totalQty, saleableQty, avgCost, totalCost, mktRate, mktValue, gain, gainPercent);
+                            List<ClientPosition> list = holdings.computeIfAbsent(sym, k -> new ArrayList<>());
+                            boolean exists = list.stream().anyMatch(existing -> existing.getClientCode().equalsIgnoreCase(clientCode));
+                            if (!exists) list.add(cp);
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        } catch (Exception e) {
+            System.out.println("[WARN: Position Widget CSE Holdings] " + e.getMessage());
+        }
+        return holdings;
+    }
+
+    /**
+     * Resolves and cross-references all tradeable symbols on CSE from PostgreSQL (cse_md_ltp)
+     * and the Position widget (holding clients, saleable shares).
+     */
+    public static List<CseTradeableSymbol> getCseTradeableSymbols(WebDriver driver) {
+        Map<String, CseTradeableSymbol> symbolMap = new LinkedHashMap<>();
+
+        // A. Query DB table cse_md_ltp
+        Map<String, Double[]> dbQuotes = new HashMap<>(); // [ltp, ycp, circuitUp, circuitDown, volume]
+        Map<String, String> companyNames = new HashMap<>();
+
+        String sql = "SELECT symbol, COALESCE(sector, symbol) AS company_name, ltp, ycp, circuit_up, circuit_down, total_qty " +
+                     "FROM cse_md_ltp WHERE board = 'PUBLIC' AND ltp IS NOT NULL AND ltp > 0 " +
+                     "ORDER BY total_qty DESC, symbol ASC";
+
+        try (Connection conn = getJdbcConnection()) {
+            if (conn != null) {
+                try (PreparedStatement ps = conn.prepareStatement(sql);
+                     ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        String sym = cleanSymbol(rs.getString("symbol"));
+                        String comp = rs.getString("company_name");
+                        double ltp = rs.getDouble("ltp");
+                        double ycp = rs.getDouble("ycp");
+                        double up = rs.getDouble("circuit_up");
+                        double down = rs.getDouble("circuit_down");
+                        long vol = rs.getLong("total_qty");
+
+                        if (!sym.isEmpty()) {
+                            dbQuotes.put(sym, new Double[]{ltp, ycp, up, down, (double) vol});
+                            companyNames.put(sym, comp != null ? comp : sym);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("[WARN: DB CSE Query] " + e.getMessage());
+        }
+
+        // B. Query Position Widget for CSE Holdings
+        Map<String, List<ClientPosition>> cseHoldings = getCseHoldingsFromPositionWidget(driver);
+
+        // C. Combine All Symbols: DB First, then Position Holdings
+        Set<String> allSymbols = new LinkedHashSet<>(dbQuotes.keySet());
+        allSymbols.addAll(cseHoldings.keySet());
+
+        for (String sym : allSymbols) {
+            Double[] quote = dbQuotes.get(sym);
+            boolean inDb = (quote != null);
+            double ltp = inDb ? quote[0] : 0.0;
+            double ycp = inDb ? quote[1] : 0.0;
+            double up = inDb ? quote[2] : 0.0;
+            double down = inDb ? quote[3] : 0.0;
+            long vol = inDb ? quote[4].longValue() : 0L;
+            String comp = companyNames.getOrDefault(sym, sym);
+
+            List<ClientPosition> posList = cseHoldings.get(sym);
+            boolean inPos = (posList != null && !posList.isEmpty());
+            int clientCount = inPos ? posList.size() : 0;
+            double saleableTotal = inPos ? posList.stream().mapToDouble(ClientPosition::getSaleableQty).sum() : 0.0;
+            String topClient = inPos ? posList.stream()
+                    .max(Comparator.comparingDouble(ClientPosition::getSaleableQty))
+                    .map(ClientPosition::getClientCode).orElse("-") : "-";
+
+            if (!inDb && inPos && !posList.isEmpty()) {
+                ClientPosition sample = posList.get(0);
+                ltp = sample.getMktRate() > 0 ? sample.getMktRate() : sample.getAvgCost();
+                if (up <= 0 && ltp > 0) up = Math.round(ltp * 1.10 * 100.0) / 100.0;
+                if (down <= 0 && ltp > 0) down = Math.round(ltp * 0.90 * 100.0) / 100.0;
+            }
+
+            symbolMap.put(sym, new CseTradeableSymbol(
+                sym, comp, ltp, ycp, up, down, vol, inDb, inPos, clientCount, saleableTotal, topClient
+            ));
+        }
+
+        // D. Sort:
+        // 1. Position holdings with saleable shares first
+        // 2. Standard equities (non-derivative, non-bond, LTP between 5 and 2000 BDT) sorted by volume/LTP
+        // 3. Other tradeable symbols
+        List<CseTradeableSymbol> sortedList = new ArrayList<>(symbolMap.values());
+        sortedList.sort((a, b) -> {
+            boolean aHoldings = a.getTotalSaleableQty() > 0;
+            boolean bHoldings = b.getTotalSaleableQty() > 0;
+            if (aHoldings && !bHoldings) return -1;
+            if (!aHoldings && bHoldings) return 1;
+            if (aHoldings && bHoldings) {
+                return Double.compare(b.getTotalSaleableQty(), a.getTotalSaleableQty());
+            }
+
+            boolean aIsStandardStock = !a.getSymbol().contains("-") && !a.getSymbol().contains("BOND") && !a.getSymbol().contains("KG") && a.getLtp() > 1.0 && a.getLtp() < 5000.0;
+            boolean bIsStandardStock = !b.getSymbol().contains("-") && !b.getSymbol().contains("BOND") && !b.getSymbol().contains("KG") && b.getLtp() > 1.0 && b.getLtp() < 5000.0;
+            if (aIsStandardStock && !bIsStandardStock) return -1;
+            if (!aIsStandardStock && bIsStandardStock) return 1;
+
+            if (a.getVolume() > 0 || b.getVolume() > 0) {
+                return Long.compare(b.getVolume(), a.getVolume());
+            }
+            return Double.compare(b.getLtp(), a.getLtp());
+        });
+
+        return sortedList;
+    }
+
+    /**
+     * Prints an enterprise table of tradeable symbols on Chittagong Stock Exchange (CSE).
+     */
+    public static void printCseTradeableSymbolsTable(List<CseTradeableSymbol> list, int maxRows) {
+        int total = list.size();
+        int count = Math.min(total, maxRows > 0 ? maxRows : 25);
+
+        System.out.println("\n+=============================================================================================================================+");
+        System.out.printf("|                              CSE TRADEABLE SYMBOLS (DATABASE + POSITION WIDGET)                              |%n");
+        System.out.printf("| Database: cse_md_ltp (%d Tradeable) | Position Widget: Real-time CSE Client Holdings                                |%n", total);
+        System.out.println("+=============================================================================================================================+");
+        System.out.printf("| %-3s | %-12s | %-24s | %10s | %18s | %-38s |%n",
+                "#", "Symbol", "Company / Instrument", "LTP (BDT)", "Circuit (L - H)", "Position Widget (CSE Client Holdings)");
+        System.out.println("+-----+--------------+--------------------------+------------+--------------------+----------------------------------------+");
+
+        for (int i = 0; i < count; i++) {
+            CseTradeableSymbol s = list.get(i);
+            String comp = s.getCompanyName();
+            if (comp != null && comp.length() > 24) comp = comp.substring(0, 21) + "...";
+            String circuit = (s.getCircuitDown() > 0 || s.getCircuitUp() > 0)
+                    ? String.format(Locale.US, "%.2f - %.2f", s.getCircuitDown(), s.getCircuitUp())
+                    : "-";
+
+            String posText;
+            if (s.isInPositionWidget() && s.getTotalSaleableQty() > 0) {
+                posText = String.format("✔ %d Client(s) | %,.0f Saleable (Top: %s)",
+                        s.getHoldingClientsCount(), s.getTotalSaleableQty(), s.getTopHoldingClient());
+            } else if (s.isInPositionWidget()) {
+                posText = String.format("Holdings: %d Client(s) | 0 Saleable", s.getHoldingClientsCount());
+            } else {
+                posText = s.isInDb() ? "Tradeable (No local CSE holdings)" : "-";
+            }
+            if (posText.length() > 38) posText = posText.substring(0, 35) + "...";
+
+            System.out.printf(Locale.US, "| %-3d | %-12s | %-24s | %10.2f | %18s | %-38s |%n",
+                    (i + 1), s.getSymbol(), comp, s.getLtp(), circuit, posText);
+        }
+
+        if (total > count) {
+            System.out.printf("| ... and %d more tradeable CSE symbols available in database/position.%-45s |%n", (total - count), "");
+        }
+        System.out.println("+=============================================================================================================================+\n");
+    }
+
+    /**
+     * Interactive resolver when user selects CSE for trade.
+     * Displays CSE tradeable symbols from DB and Position widget and updates the UI.
+     */
+    public static String promptAndSelectCseTradeableSymbol(WebDriver driver, Scanner sc, String sideText, String currentSymbol) {
+        System.out.println("\n[CSE TRADE ROUTING] Querying tradeable symbols from DB (cse_md_ltp) and Position widget...");
+        List<CseTradeableSymbol> symbols = getCseTradeableSymbols(driver);
+
+        if (symbols.isEmpty()) {
+            System.out.println("[WARN] No CSE symbols retrieved from DB or Position widget. Keeping current symbol: " + currentSymbol);
+            return currentSymbol;
+        }
+
+        printCseTradeableSymbolsTable(symbols, 20);
+
+        // Determine top recommended symbol
+        CseTradeableSymbol topRec = symbols.get(0);
+        // If SELL, prefer a symbol that actually has saleable shares in Position widget!
+        if ("SELL".equalsIgnoreCase(sideText)) {
+            for (CseTradeableSymbol s : symbols) {
+                if (s.getTotalSaleableQty() > 0) {
+                    topRec = s;
+                    break;
+                }
+            }
+        }
+
+        String recSym = topRec.getSymbol();
+        System.out.printf("Select CSE Symbol for %s Order:%n", sideText != null ? sideText : "TRADE");
+        System.out.printf("  - Enter row # (1-%d)%n", Math.min(20, symbols.size()));
+        System.out.printf("  - Or enter symbol name directly (e.g. %s)%n", recSym);
+        System.out.printf("  - Or press ENTER to accept recommended [#1: %s]%n", recSym);
+        System.out.print("Enter Choice: ");
+
+        String choice = "";
+        try {
+            if (sc != null && sc.hasNextLine()) {
+                choice = sc.nextLine().trim().toUpperCase();
+            }
+        } catch (Exception ignored) {}
+        String chosenSym = recSym;
+
+        if (!choice.isEmpty()) {
+            if (choice.matches("\\d+")) {
+                int idx = Integer.parseInt(choice) - 1;
+                if (idx >= 0 && idx < symbols.size()) {
+                    chosenSym = symbols.get(idx).getSymbol();
+                } else {
+                    System.out.printf("[WARN] Index %d out of bounds. Defaulting to %s.%n", (idx + 1), recSym);
+                }
+            } else {
+                chosenSym = cleanSymbol(choice);
+            }
+        }
+
+        System.out.printf(">> [SELECTED CSE SYMBOL] %s (Routing order to CSE Gateway)%n", chosenSym);
+
+        // Synchronize UI widgets with the selected CSE symbol
+        try {
+            // 1. Update Trade search bar & Market Watch input
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            js.executeScript(
+                "var sym = arguments[0];" +
+                "var inps = document.querySelectorAll('#instrument, #marketwatch_symbol, #order_instrument');" +
+                "for (var i = 0; i < inps.length; i++) {" +
+                "    inps[i].value = sym;" +
+                "    inps[i].dispatchEvent(new Event('input', { bubbles: true }));" +
+                "    inps[i].dispatchEvent(new Event('change', { bubbles: true }));" +
+                "}",
+                chosenSym
+            );
+
+            // 2. Connect Market Watch with CSE
+            Market_Watch.connectWidget(driver, chosenSym, "CSE");
+
+            // 3. Search symbol in Position widget with exchange CSE
+            searchSymbolInPosition(driver, chosenSym, "CSE");
+
+        } catch (Exception ignored) {}
+
+        return chosenSym;
+    }
+
 }
