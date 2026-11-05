@@ -5,11 +5,10 @@ import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 public class Market_Watch {
-
     // =========================================================================
     // 1. SELECTORS & COLUMN DEFINITIONS
     // =========================================================================
-    
+
     // Tab Selectors
     public static final By MARKET_WATCH_TAB = By.xpath(
             "//div[contains(@class,'lm_tab') and contains(.,'Market Watch')] | " +
@@ -45,7 +44,6 @@ public class Market_Watch {
         System.out.println("\n=======================================================");
         System.out.println("             MARKET WATCH DATA VIEWER                  ");
         System.out.println("=======================================================");
-
         String symbol = readInputSafe(driver, By.id("order_instrument"), By.id("instrument"), By.id("marketwatch_symbol"));
         if (symbol.isEmpty()) {
             System.out.print("Enter Symbol to Search (or press ENTER for all rows, e.g. GP, ACFL): ");
@@ -67,7 +65,7 @@ public class Market_Watch {
     // =========================================================================
     // 3. NAVIGATION & CONNECTIVITY HELPERS
     // =========================================================================
-    
+
     /**
      * Focuses or brings the Market Watch widget into visibility.
      */
@@ -161,7 +159,7 @@ public class Market_Watch {
 
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
-            
+
             // 1. Set exchange toggle if present
             js.executeScript(
                 "var ex = arguments[0];" +
@@ -257,7 +255,7 @@ public class Market_Watch {
     // =========================================================================
     // 4. REAL-TIME UI DOM DATA EXTRACTION (ALL 20 COLUMNS)
     // =========================================================================
-    
+
     /**
      * Extracts the real-time UI DOM snapshot of the Market Watch row for the specified symbol.
      * Captures all 20 columns:
@@ -267,7 +265,6 @@ public class Market_Watch {
     public static Map<String, String> getUiSnapshot(WebDriver driver, String symbol) {
         Map<String, String> data = new LinkedHashMap<>();
         if (driver == null) return data;
-        
         String cleanSym = cleanSymbol(symbol);
         JavascriptExecutor js = (JavascriptExecutor) driver;
 

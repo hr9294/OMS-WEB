@@ -9,13 +9,11 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-
 import org.openqa.selenium.*;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 public class Account_Limits {
-
     // =========================================================================
     // 1. ENDPOINTS & SELECTORS (Matched to your screenshot)
     // =========================================================================
@@ -48,16 +46,13 @@ public class Account_Limits {
         String clientCode = readInputSafe(driver, By.id("order_client_code"));
         if (clientCode.isEmpty()) clientCode = "23986";
         String exchange = "DSE";
-
         System.out.printf("[LIMITS] Using Client Code: %s | Exchange: %s%n", clientCode, exchange);
 
         // Navigate and capture snapshot
         navigateToAccountLimits(driver);
         filterByClient(driver, clientCode);
-
         Map<String, String> data = getSnapshot(driver, clientCode, exchange);
         printSnapshot("ACCOUNT LIMITS FOR " + clientCode, data);
-
         System.out.print("\nDo you want to query & randomly select 4-5 clients with > 100,000 cash, BO ID, and Active status? (1=YES / 0=NO): ");
         String opt = sc.nextLine().trim();
         if (opt.equals("1")) {
@@ -110,7 +105,6 @@ public class Account_Limits {
         System.out.printf("%n=======================================================================================%n");
         System.out.printf(" [ACCOUNT LIMITS] QUERYING CLIENTS WITH CASH >= %,.2f BDT, VALID BO ID, & ACTIVE STATUS%n", minCash);
         System.out.printf("=======================================================================================%n");
-
         JavascriptExecutor js = (JavascriptExecutor) driver;
         Map<String, Double> discoveredCashMap = new LinkedHashMap<>();
 
@@ -189,11 +183,9 @@ public class Account_Limits {
             try {
                 Map<String, String> details = ClientPortfolio.getClientDetails(driver, code);
                 if (details == null || details.isEmpty()) continue;
-
                 String boId = details.getOrDefault("bo_id", "-").trim();
                 String name = details.getOrDefault("client_name", "-").trim();
                 String status = details.getOrDefault("status", "Active").trim();
-
                 double cashLimit = parseDbl(details.getOrDefault("cash_limit", "0"));
                 double mature = parseDbl(details.getOrDefault("mature_balance", "0"));
                 double tableCash = entry.getValue();
@@ -247,7 +239,6 @@ public class Account_Limits {
         // AUTOMATICALLY RETURN TO TRADE PAGE AND RESTORE STATE
         String topClient = !chosen.isEmpty() ? chosen.get(0).getClientCode() : "08096";
         OMSweb_Trade.restoreTradePageState(driver, "GP", topClient);
-
         return chosen.stream().map(ClientCashInfo::getClientCode).collect(Collectors.toList());
     }
 
@@ -454,7 +445,6 @@ public class Account_Limits {
     // =========================================================================
     private static Map<String, String> fetchFromApi(WebDriver driver, String urlStr) throws Exception {
         Map<String, String> result = new LinkedHashMap<>();
-
         URL url = new URI(urlStr).toURL();
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("GET");
@@ -462,7 +452,6 @@ public class Account_Limits {
         conn.setReadTimeout(5000);
         conn.setRequestProperty("Accept", "application/json");
         conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-
         Set<Cookie> cookies = driver.manage().getCookies();
         if (cookies != null && !cookies.isEmpty()) {
             String cookieHeader = cookies.stream().map(c -> c.getName() + "=" + c.getValue()).collect(Collectors.joining("; "));
@@ -479,14 +468,12 @@ public class Account_Limits {
 
         int responseCode = conn.getResponseCode();
         if (responseCode != 200) return Collections.emptyMap();
-
         StringBuilder jsonBuilder = new StringBuilder();
         try (BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
             while ((line = in.readLine()) != null) jsonBuilder.append(line);
         }
         String json = jsonBuilder.toString();
-
         result.put("Initial_Limit", getJsonVal(json, "initial_limit", "initialLimit"));
         result.put("Remaining_Cash", getJsonVal(json, "remaining_cash", "remainingCash", "cash_balance"));
         result.put("Cash_Day_Order", getJsonVal(json, "day_order", "dayOrder"));
@@ -536,29 +523,23 @@ public class Account_Limits {
     private static Map<String, String> parseAccountLimitsJson(String json) {
         Map<String, String> result = new LinkedHashMap<>();
         if (json == null || json.trim().isEmpty() || !json.contains("ClientCode")) return result;
-
         result.put("Initial_Limit", getJsonVal(json, "initial_cash", "initial_limit"));
         result.put("Remaining_Cash", getJsonVal(json, "Cash", "cash"));
         result.put("Cash_Day_Order", getJsonVal(json, "total_active_orders_value", "day_order"));
         result.put("Total_Transaction", getJsonVal(json, "total_value", "total_transaction"));
         result.put("Net_Transaction", getJsonVal(json, "net_value", "net_transaction"));
-
         result.put("Buy_Limit", getJsonVal(json, "main_buy_initial_limit"));
         result.put("Buy_Day_Order", getJsonVal(json, "buy_active_orders_value"));
         result.put("Buy_Exec_Value", getJsonVal(json, "buy_value"));
-
         double buyActive = parseDbl(result.get("Buy_Day_Order"));
         double buyExec = parseDbl(result.get("Buy_Exec_Value"));
         result.put("Buy_Remaining", String.format(Locale.US, "%.2f", buyActive - buyExec));
-
         result.put("Sell_Limit", getJsonVal(json, "main_sell_initial_limit"));
         result.put("Sell_Day_Order", getJsonVal(json, "sell_active_orders_value"));
         result.put("Sell_Exec_Value", getJsonVal(json, "sell_value"));
-
         double sellActive = parseDbl(result.get("Sell_Day_Order"));
         double sellExec = parseDbl(result.get("Sell_Exec_Value"));
         result.put("Sell_Remaining", String.format(Locale.US, "%.2f", sellActive - sellExec));
-
         result.put("Mature_Balance", getJsonVal(json, "mature_balance"));
         result.put("Ledger_Balance", getJsonVal(json, "ledger_balance"));
         return result;
@@ -588,11 +569,9 @@ public class Account_Limits {
     public static void verify(Map<String, String> before, Map<String, String> after,
                               String side, int tradeQty, double tradeRate, String exchange,
                               int executedQty, int dueQty) {
-
         boolean isBuy = side.equalsIgnoreCase("BUY");
         int effExecQty = executedQty > 0 ? executedQty : tradeQty;
         int effDueQty = dueQty >= 0 && executedQty > 0 ? dueQty : Math.max(0, tradeQty - effExecQty);
-
         double executedTradeValue = effExecQty * tradeRate;
         double dueTradeValue = effDueQty * tradeRate;
         double totalTradeValue = tradeQty * tradeRate;
@@ -600,10 +579,8 @@ public class Account_Limits {
         // Cash fields
         double oldRemainingCash = parseNum(before.getOrDefault("Remaining_Cash", "0"));
         double newRemainingCash = parseNum(after.getOrDefault("Remaining_Cash", "0"));
-
         double oldDayOrder = parseNum(before.getOrDefault("Cash_Day_Order", "0"));
         double newDayOrder = parseNum(after.getOrDefault("Cash_Day_Order", "0"));
-
         double oldTotalTx = parseNum(before.getOrDefault("Total_Transaction", "0"));
         double newTotalTx = parseNum(after.getOrDefault("Total_Transaction", "0"));
 
@@ -617,11 +594,9 @@ public class Account_Limits {
         double expectedTotalTx = oldTotalTx + executedTradeValue;
         double expectedExecVal = oldExecVal + executedTradeValue;
         double expectedCash = isBuy ? (oldRemainingCash - (executedTradeValue + dueTradeValue)) : (oldRemainingCash + executedTradeValue);
-
         boolean dayOrderPass = Math.abs(newDayOrder - expectedDayOrder) <= 1.0;
         boolean totalTxPass  = Math.abs(newTotalTx - expectedTotalTx) <= 1.0 || effExecQty == 0;
         boolean execValPass  = Math.abs(newExecVal - expectedExecVal) <= 1.0 || effExecQty == 0;
-
         System.out.println();
         System.out.println("+=========================================================================================+");
         if (effDueQty > 0) {

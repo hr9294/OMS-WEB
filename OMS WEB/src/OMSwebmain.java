@@ -3,22 +3,18 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Scanner;
-
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 
 public class OMSwebmain {
-
     static WebDriver driver;
 
     public static void main(String[] args) throws InterruptedException, IOException {
-
         // Suppress ChromeDriver and Selenium CDP version fallback warnings
         System.setProperty("webdriver.chrome.silentOutput", "true");
         java.util.logging.Logger.getLogger("org.openqa.selenium").setLevel(java.util.logging.Level.SEVERE);
-
         ChromeOptions options = new ChromeOptions();
         options.addArguments("--remote-allow-origins=*");
         options.addArguments("--log-level=3");
@@ -44,27 +40,22 @@ public class OMSwebmain {
         // Disable password leak detection & safe browsing check popups
         options.addArguments("--disable-features=PasswordLeakDetection,PasswordCheck,PasswordLeakToggleMove,SafeBrowsing");
         options.setAcceptInsecureCerts(true);
-
         driver = new ChromeDriver(options);
         driver.manage().window().maximize();
         driver.manage().deleteAllCookies();
         driver.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(20));
         driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
-
         driver.get("https://devoms.quantbd.com");
         Thread.sleep(1000);
 
         ((org.openqa.selenium.JavascriptExecutor) driver).executeScript(
             "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
         );
-
         System.out.println("Welcome to The UFTFAST Order Management System Application");
-
         Scanner sc = new Scanner(System.in);
 
         // Login
         OMSweb_Login.main(driver, sc);
-
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
 
         // 1. FIRST OPEN THE TRADE PAGE (Force navigation to guarantee Trade Portal opens)

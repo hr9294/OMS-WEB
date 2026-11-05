@@ -4,7 +4,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
-
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.Keys;
@@ -21,7 +20,6 @@ import org.openqa.selenium.support.ui.WebDriverWait;
  * executes order on CSE gateway (xcg3), and verifies real-time execution across 6 widgets.
  */
 public class RunNormalTradeCSE {
-
     public static void main(String[] args) throws InterruptedException, IOException {
         System.out.println("+=============================================================================+");
         System.out.println("|              UFTFAST OMS - NORMAL TRADE RUNNER (CSE GATEWAY)                |");
@@ -30,7 +28,6 @@ public class RunNormalTradeCSE {
         // 1. Configure Chrome Browser Options
         System.setProperty("webdriver.chrome.silentOutput", "true");
         java.util.logging.Logger.getLogger("org.openqa.selenium").setLevel(java.util.logging.Level.SEVERE);
-
         ChromeOptions options = new ChromeOptions();
         options.addArguments("--remote-allow-origins=*");
         options.addArguments("--log-level=3");
@@ -39,7 +36,6 @@ public class RunNormalTradeCSE {
         options.setExperimentalOption("useAutomationExtension", false);
         options.addArguments("--disable-blink-features=AutomationControlled");
         options.addArguments("--disable-infobars");
-
         Map<String, Object> prefs = new HashMap<>();
         prefs.put("credentials_enable_service", false);
         prefs.put("profile.password_manager_enabled", false);
@@ -49,10 +45,8 @@ public class RunNormalTradeCSE {
         prefs.put("safebrowsing.enhanced", false);
         prefs.put("profile.default_content_setting_values.notifications", 2);
         options.setExperimentalOption("prefs", prefs);
-
         options.addArguments("--disable-features=PasswordLeakDetection,PasswordCheck,PasswordLeakToggleMove,SafeBrowsing");
         options.setAcceptInsecureCerts(true);
-
         WebDriver driver = new ChromeDriver(options);
         driver.manage().window().maximize();
         driver.manage().deleteAllCookies();
@@ -66,7 +60,6 @@ public class RunNormalTradeCSE {
             ((JavascriptExecutor) driver).executeScript(
                 "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
             );
-
             Scanner sc = new Scanner(System.in);
             WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
 
@@ -148,13 +141,11 @@ public class RunNormalTradeCSE {
             System.out.println("[ORDER] Filling Order Modal fields & Selecting CSE Gateway...");
             OMSweb_Trade.selectExchangeInModal(driver, "CSE");
             Thread.sleep(200);
-
             OMSweb_Trade.fillAndSelectAutocompleteSafely(driver, wait, By.id("order_client_code"), clientCode, false);
             String publicInst = Position.toPublicSymbol(instrument);
             OMSweb_Trade.fillAndSelectAutocompleteSafely(driver, wait, By.id("order_instrument"), publicInst, true);
             OMSweb_Trade.ensureSymbolBoardRetained(driver, publicInst);
             OMSweb_Trade.ensureClientCodeRetained(driver, clientCode);
-
             WebElement qtyInput = driver.findElement(By.id("order_qty"));
             qtyInput.clear();
             qtyInput.sendKeys(String.valueOf(tradeQty));
@@ -203,7 +194,6 @@ public class RunNormalTradeCSE {
             Thread.sleep(1200);
             Order_Terminal.navigateToOrderTerminal(driver);
             Order_Terminal.refresh(driver);
-
             Map<String, String> actionOrder = OMSweb_Trade.fetchTerminalOrderForAction(driver, clientCode, instrument, "accept");
             if (actionOrder != null && !actionOrder.isEmpty()) {
                 System.out.println("\n=======================================================");
@@ -217,7 +207,6 @@ public class RunNormalTradeCSE {
             }
 
             System.out.println("Normal Trade execution on CSE completed successfully!");
-
         } catch (Exception e) {
             System.err.println("[ERROR] Execution failed: " + e.getMessage());
             e.printStackTrace();

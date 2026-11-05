@@ -18,7 +18,6 @@ import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 public class Order_Summary {
-
     // =========================================================================
     // 1. ENDPOINTS & SELECTORS (Matched to your screenshot)
     // =========================================================================
@@ -55,7 +54,6 @@ public class Order_Summary {
         String symbol = readInputSafe(driver, By.id("order_instrument"), By.id("instrument"), By.id("marketwatch_symbol"));
         String clientCode = readInputSafe(driver, By.id("order_client_code"));
         String exchange = "DSE";
-
         if (clientCode.isEmpty()) clientCode = "23986";
         if (symbol.isEmpty()) {
             System.out.print("Enter Symbol (e.g. GP, ACFL): ");
@@ -68,7 +66,6 @@ public class Order_Summary {
         navigateToOrderSummary(driver);
         filterBySymbol(driver, symbol);
         filterOrderSummary(driver, clientCode, symbol);
-
         Map<String, String> snapshot = getSnapshot(driver, clientCode, symbol, exchange);
         printSnapshot("ORDER SUMMARY FOR " + symbol, snapshot);
         System.out.println("=======================================================\n");
@@ -129,7 +126,7 @@ public class Order_Summary {
             Thread.sleep(600);
         } catch (Exception ignored) {}
     }
-    
+
     public static void filterOrderSummary(WebDriver driver, String clientCode, String symbol) {
         try {
             // 1. Enter Client Code in the left box (if provided)
@@ -242,7 +239,6 @@ public class Order_Summary {
                 // 1. Scrape Bottom Detail Table (Client, Symbol, B Qty, S Qty, B Ordr, S Ordr, Total Ordr, etc.)
                 WebElement detailTable = wait.until(ExpectedConditions.visibilityOfElementLocated(DETAIL_TABLE));
                 Map<String, Integer> headerMap = getHeaderMap(detailTable);
-
                 String rowPath = String.format(SYMBOL_ROW_XPATH, symbol);
                 List<WebElement> rows = detailTable.findElements(By.xpath(rowPath));
 
@@ -382,9 +378,7 @@ public class Order_Summary {
     private static Map<String, String> parseOrderSummaryJson(String json, String targetSymbol) {
         Map<String, String> result = new LinkedHashMap<>();
         if (json == null || json.trim().isEmpty() || !json.contains("\"code\":200")) return result;
-
         result.put("Symbol", targetSymbol);
-
         Pattern symRowPattern = Pattern.compile("\\{[^{}]*\"symbol\"\\s*:\\s*\"" + targetSymbol + "\"[^{}]*\\}", Pattern.CASE_INSENSITIVE);
         Matcher m = symRowPattern.matcher(json);
         if (m.find()) {
@@ -447,33 +441,25 @@ public class Order_Summary {
     public static void verify(Map<String, String> before, Map<String, String> after,
                               String symbol, String side, int tradeQty, double tradeRate, String exchange,
                               int executedQty, int dueQty) {
-
         boolean isBuy = side.equalsIgnoreCase("BUY");
         int effExecQty = executedQty > 0 ? executedQty : tradeQty;
         int effDueQty = dueQty >= 0 && executedQty > 0 ? dueQty : Math.max(0, tradeQty - effExecQty);
-
         String qtyKey = isBuy ? "B Qty" : "S Qty";
         String ordrKey = isBuy ? "B Ordr" : "S Ordr";
         String amountKey = isBuy ? "B Amount" : "S Amount";
-
         double oldQty = parseNum(before.getOrDefault(qtyKey, "0"));
         double newQty = parseNum(after.getOrDefault(qtyKey, "0"));
-
         double oldOrdr = parseNum(before.getOrDefault(ordrKey, "0"));
         double newOrdr = parseNum(after.getOrDefault(ordrKey, "0"));
-
         double oldAmount = parseNum(before.getOrDefault(amountKey, "0"));
         double newAmount = parseNum(after.getOrDefault(amountKey, "0"));
-
         double expectedQty = oldQty + tradeQty;
         double expectedOrdr = oldOrdr + 1;
         double executedValue = effExecQty * tradeRate;
         double expectedAmount = oldAmount + executedValue;
-
         boolean qtyPass = Double.compare(newQty, expectedQty) == 0;
         boolean ordrPass = Double.compare(newOrdr, expectedOrdr) == 0;
         boolean amountPass = Math.abs(newAmount - expectedAmount) <= 1.0 || effExecQty == 0;
-
         System.out.println();
         System.out.println("+=========================================================================================+");
         if (effDueQty > 0) {

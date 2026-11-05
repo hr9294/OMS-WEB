@@ -17,7 +17,6 @@ import java.util.Scanner;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
-
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.Keys;
@@ -27,7 +26,6 @@ import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 public class Position {
-
     // =========================================================================
     // 1. DATA MODEL
     // =========================================================================
@@ -96,7 +94,6 @@ public class Position {
             return;
         }
         if (colorChoice < 1 || colorChoice > 6) return;
-
         setWidgetColor(driver, colorChoice);
     }
 
@@ -222,7 +219,6 @@ public class Position {
         System.out.println("\n=======================================================");
         System.out.println("               POSITION WIDGET VIEWER                  ");
         System.out.println("=======================================================");
-
         navigateToPosition(driver);
 
         // Display and offer Position Widget Color Link
@@ -239,16 +235,12 @@ public class Position {
             symbol = cleanSymbol(sc.nextLine());
         }
         if (symbol.isEmpty()) symbol = "GP";
-
         String exchange = "DSE";
         System.out.printf("[POSITION] Searching Symbol: %s on Exchange: %s%n", symbol, exchange);
-
         navigateToPosition(driver);
         searchSymbolInPosition(driver, symbol, exchange);
-
         List<ClientPosition> positions = getPositions(driver, symbol, exchange);
         printPositionsTable(symbol, positions);
-
         List<ClientPosition> saleable = getClientsWithSaleable(driver, symbol, exchange);
         System.out.printf("\n[SUMMARY] Found %d client(s) with SALEABLE shares for %s.%n", saleable.size(), symbol);
 
@@ -261,12 +253,10 @@ public class Position {
                     System.out.print("Enter Qty to SELL (press Enter for default 10): ");
                     String qtyStr = sc.nextLine().trim();
                     int qty = qtyStr.isEmpty() ? 10 : Integer.parseInt(qtyStr);
-
                     System.out.print("Enter SELL Limit Rate (or press Enter for Market LTP): ");
                     String rateStr = sc.nextLine().trim();
                     double rate = rateStr.isEmpty() ? chosen.getMktRate() : Double.parseDouble(rateStr);
                     if (rate == 0.0) rate = chosen.getAvgCost();
-
                     WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
                     executeSellTrade(driver, wait, chosen.getClientCode(), symbol, qty, rate, exchange);
                 }
@@ -358,7 +348,6 @@ public class Position {
                 "    if (p && p.style.display === 'none') p.style.display = 'block';" +
                 "}"
             );
-
             System.out.println("[NAV] Switched to Position tab and verified visibility.");
             return true;
         } catch (Exception e) {
@@ -412,12 +401,10 @@ public class Position {
     public static void manualSelectSymbolInPosition(WebDriver driver, String symbol, String exchange) {
         String cleanSym = cleanSymbol(symbol);
         String ex = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "DSE";
-
         ensurePositionWidgetVisible(driver);
 
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             System.out.printf("[POSITION] Manually selecting Symbol: %s on Exchange: %s in Position search box...%n", cleanSym, ex);
 
             // 1. JS value assignment, exchange selection, and event dispatch
@@ -583,7 +570,6 @@ public class Position {
                         String rowSym = cleanSymbol(String.valueOf(item.getOrDefault("symbol", cleanSym)));
                         String clientCode = String.valueOf(item.getOrDefault("client_code", "")).trim();
                         if (clientCode.isEmpty()) continue;
-
                         double totalQty = parseNum(String.valueOf(item.getOrDefault("totalqty", "0")));
                         double saleableQty = parseNum(String.valueOf(item.getOrDefault("qty", "0")));
                         double avgCost = parseNum(String.valueOf(item.getOrDefault("avgcost", "0")));
@@ -619,7 +605,6 @@ public class Position {
         return list;
     }
 
-    
     /**
      * Finds a client holding sufficient saleable shares for a symbol.
      * If preferredClient has >= requiredQty, returns preferredClient.
@@ -862,7 +847,6 @@ public class Position {
         String cleanSym = cleanSymbol(symbol);
         searchSymbolInPosition(driver, cleanSym, exchange);
         List<ClientPosition> saleableClients = getClientsWithSaleable(driver, cleanSym, exchange);
-
         System.out.printf("[POSITION] Found %d client(s) with saleable shares for %s.%n", saleableClients.size(), cleanSym);
 
         if (saleableClients.isEmpty()) {
@@ -892,10 +876,8 @@ public class Position {
             System.out.printf("| ... and %d more holding clients with saleable shares.         |%n", saleableClients.size() - previewCount);
         }
         System.out.println("+---------------------------------------------------------------+");
-
         System.out.print("\nEnter specific Client Code for SELL (or multiple comma-separated), or press ENTER for random: ");
         String entered = sc.nextLine().trim();
-
         List<ClientPosition> result = new ArrayList<>();
         if (entered.isEmpty()) {
             int randomIdx = ThreadLocalRandom.current().nextInt(saleableClients.size());
@@ -1027,14 +1009,12 @@ public class Position {
                 System.out.println("[TRADE] Confirmation completed or pre-accepted.");
             }
             Thread.sleep(1500);
-
             return true;
         } catch (Exception e) {
             System.out.println("[ERROR: SELL Trade] " + e.getMessage());
             return false;
         }
     }
-
     // =========================================================================
     // 8. TABLE FORMATTER
     // =========================================================================
@@ -1046,7 +1026,6 @@ public class Position {
         System.out.printf("| %-8s | %-10s | %-12s | %-12s | %-12s | %-14s | %-12s | %-16s | %-12s |%n",
                 "Symbol", "Client", "Total Qty", "Saleable", "Avg Cost", "Total Cost", "Mkt Rate", "Mkt Value", "Gain");
         System.out.println("+-----------------------------------------------------------------------------------------------------------------------------+");
-
         if (positions.isEmpty()) {
             System.out.printf("| %-123s |%n", "No position records found for " + symbol);
         } else {
@@ -1070,7 +1049,6 @@ public class Position {
         }
         System.out.println("+=============================================================================================================================+");
     }
-
     // =========================================================================
     // 9. UTILITIES
     // =========================================================================
@@ -1083,7 +1061,6 @@ public class Position {
         if (s.isEmpty()) return "";
         return s + ".PUBLIC";
     }
-
     public static String cleanSymbol(String sym) {
         if (sym == null) return "";
         String s = sym.trim().toUpperCase();
@@ -1093,7 +1070,6 @@ public class Position {
         }
         return s.trim();
     }
-
     private static String readInputSafe(WebDriver driver, By... locators) {
         for (By loc : locators) {
             try {
@@ -1106,7 +1082,6 @@ public class Position {
         }
         return "";
     }
-
     private static double parseNum(String val) {
         if (val == null) return 0.0;
         String clean = val.replaceAll("[^0-9.-]", "").trim();
@@ -1119,15 +1094,12 @@ public class Position {
             return 0.0;
         }
     }
-
     private static String fmt(double val) {
         return String.format("%,.2f", val);
     }
-
     private static String fmtQty(double val) {
         return String.format("%,.0f", val);
     }
-
     // =========================================================================
     // 10. CSE TRADEABLE SYMBOLS RESOLVER (DATABASE + POSITION WIDGET)
     // =========================================================================
@@ -1138,7 +1110,6 @@ public class Position {
     private static final String DB_NAME = "marketdb";
     private static final String DB_USER = "marketdata";
     private static final String DB_PASSWORD = "pass4321";
-
     public static class CseTradeableSymbol {
         private final String symbol;
         private final String companyName;
@@ -1152,7 +1123,6 @@ public class Position {
         private final int holdingClientsCount;
         private final double totalSaleableQty;
         private final String topHoldingClient;
-
         public CseTradeableSymbol(String symbol, String companyName, double ltp, double ycp,
                                   double circuitUp, double circuitDown, long volume,
                                   boolean inDb, boolean inPositionWidget,
@@ -1170,7 +1140,6 @@ public class Position {
             this.totalSaleableQty = totalSaleableQty;
             this.topHoldingClient = topHoldingClient;
         }
-
         public String getSymbol() { return symbol; }
         public String getCompanyName() { return companyName; }
         public double getLtp() { return ltp; }
@@ -1183,7 +1152,6 @@ public class Position {
         public int getHoldingClientsCount() { return holdingClientsCount; }
         public double getTotalSaleableQty() { return totalSaleableQty; }
         public String getTopHoldingClient() { return topHoldingClient; }
-
         @Override
         public String toString() {
             return String.format("%s [LTP: %.2f | Circuit: %.2f - %.2f | Vol: %,d | Pos: %s]",
@@ -1191,7 +1159,6 @@ public class Position {
                     (inPositionWidget ? String.format("%d clients, %,.0f saleable", holdingClientsCount, totalSaleableQty) : "None"));
         }
     }
-
     private static boolean isHostReachable(String host, int port, int timeoutMs) {
         try (java.net.Socket socket = new java.net.Socket()) {
             socket.connect(new java.net.InetSocketAddress(host, port), timeoutMs);
@@ -1200,7 +1167,6 @@ public class Position {
             return false;
         }
     }
-
     public static Connection getJdbcConnection() {
         String[][] dbs = {
             { PRIMARY_DB_HOST, String.valueOf(PRIMARY_DB_PORT) },
@@ -1226,7 +1192,6 @@ public class Position {
         }
         return null;
     }
-
     /**
      * Extracts all CSE holding clients and symbols from Position widget (DOM table + API).
      */
@@ -1283,7 +1248,6 @@ public class Position {
                             String sym = cleanSymbol(String.valueOf(item.getOrDefault("symbol", "")));
                             String clientCode = String.valueOf(item.getOrDefault("client_code", "")).trim();
                             if (sym.isEmpty() || clientCode.isEmpty()) continue;
-
                             double totalQty = parseNum(String.valueOf(item.getOrDefault("totalqty", "0")));
                             double saleableQty = parseNum(String.valueOf(item.getOrDefault("qty", "0")));
                             double avgCost = parseNum(String.valueOf(item.getOrDefault("avgcost", "0")));
@@ -1292,7 +1256,6 @@ public class Position {
                             double mktValue = parseNum(String.valueOf(item.getOrDefault("value", "0")));
                             double gain = parseNum(String.valueOf(item.getOrDefault("gain", "0")));
                             double gainPercent = parseNum(String.valueOf(item.getOrDefault("gain_per", "0")));
-
                             ClientPosition cp = new ClientPosition(sym, clientCode, totalQty, saleableQty, avgCost, totalCost, mktRate, mktValue, gain, gainPercent);
                             List<ClientPosition> list = holdings.computeIfAbsent(sym, k -> new ArrayList<>());
                             boolean exists = list.stream().anyMatch(existing -> existing.getClientCode().equalsIgnoreCase(clientCode));
@@ -1362,7 +1325,6 @@ public class Position {
             double down = inDb ? quote[3] : 0.0;
             long vol = inDb ? quote[4].longValue() : 0L;
             String comp = companyNames.getOrDefault(sym, sym);
-
             List<ClientPosition> posList = cseHoldings.get(sym);
             boolean inPos = (posList != null && !posList.isEmpty());
             int clientCount = inPos ? posList.size() : 0;
@@ -1407,7 +1369,6 @@ public class Position {
             }
             return Double.compare(b.getLtp(), a.getLtp());
         });
-
         return sortedList;
     }
 
@@ -1417,7 +1378,6 @@ public class Position {
     public static void printCseTradeableSymbolsTable(List<CseTradeableSymbol> list, int maxRows) {
         int total = list.size();
         int count = Math.min(total, maxRows > 0 ? maxRows : 25);
-
         System.out.println("\n+=============================================================================================================================+");
         System.out.printf("|                              CSE TRADEABLE SYMBOLS (DATABASE + POSITION WIDGET)                              |%n");
         System.out.printf("| Database: cse_md_ltp (%d Tradeable) | Position Widget: Real-time CSE Client Holdings                                |%n", total);
@@ -1488,7 +1448,6 @@ public class Position {
         System.out.printf("  - Or enter symbol name directly (e.g. %s)%n", recSym);
         System.out.printf("  - Or press ENTER to accept recommended [#1: %s]%n", recSym);
         System.out.print("Enter Choice: ");
-
         String choice = "";
         try {
             if (sc != null && sc.hasNextLine()) {
@@ -1532,10 +1491,8 @@ public class Position {
 
             // 3. Search symbol in Position widget with exchange CSE
             searchSymbolInPosition(driver, chosenSym, "CSE");
-
         } catch (Exception ignored) {}
 
         return chosenSym;
     }
-
 }

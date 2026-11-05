@@ -9,14 +9,12 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-
 import org.openqa.selenium.*;
 import org.openqa.selenium.interactions.Actions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 public class Order_Terminal {
-
     // =========================================================================
     // 1. ENDPOINTS & SELECTORS (Matched to your Order Terminal widget)
     // =========================================================================
@@ -56,7 +54,6 @@ public class Order_Terminal {
         String symbol = readInputSafe(driver, By.id("order_instrument"), By.id("instrument"), By.id("marketwatch_symbol"));
         String clientCode = readInputSafe(driver, By.id("order_client_code"));
         String exchange = "DSE";
-
         if (clientCode.isEmpty()) clientCode = "23986";
         if (symbol.isEmpty()) {
             System.out.print("Enter Symbol (e.g. GP, ACFL): ");
@@ -68,7 +65,6 @@ public class Order_Terminal {
         // Navigate to Order Terminal Tab
         navigateToOrderTerminal(driver);
         filterOrderTerminal(driver, clientCode, symbol);
-
         Map<String, String> snapshot = getSnapshot(driver, clientCode, symbol, exchange);
         printSnapshot("ORDER TERMINAL SNAPSHOT FOR " + symbol, snapshot);
 
@@ -223,7 +219,6 @@ public class Order_Terminal {
         try {
             navigateToOrderTerminal(driver);
             Thread.sleep(300);
-
             WebElement row = findOrderRow(driver, orderId, clientCode, symbol);
             if (row != null) {
                 JavascriptExecutor js = (JavascriptExecutor) driver;
@@ -388,7 +383,6 @@ public class Order_Terminal {
                 "return count;",
                 status
             );
-
             int matchCount = (res instanceof Number) ? ((Number) res).intValue() : 0;
             System.out.printf("[ORDER TERMINAL] Filtered table by Status '%s'. Visible matching orders: %d%n", status, matchCount);
             Thread.sleep(400);
@@ -421,7 +415,6 @@ public class Order_Terminal {
                 try {
                     // Check if row is visible (not hidden by filter)
                     if (!row.isDisplayed()) continue;
-
                     String rowText = row.getText().toUpperCase();
                     boolean matches = false;
                     String matchedStatus = "";
@@ -474,7 +467,6 @@ public class Order_Terminal {
                         String side = (cells.size() > 7 ? cells.get(7).getText().trim() : "-");
                         String price = (cells.size() > 9 ? cells.get(9).getText().trim() : "-");
                         String qty = (cells.size() > 11 ? cells.get(11).getText().trim() : "-");
-
                         selectedSummary.add(new String[]{ orderId, clientCode, sym, side, price, qty, matchedStatus });
                     }
                 } catch (Exception ignored) {}
@@ -499,7 +491,6 @@ public class Order_Terminal {
                 }
             }
             System.out.println("+=======================================================================================================+\n");
-
         } catch (Exception e) {
             System.out.println("[WARN: Select Orders By Status] " + e.getMessage());
         }
@@ -545,7 +536,6 @@ public class Order_Terminal {
             Thread.sleep(400);
             clearSelection(driver);
             Thread.sleep(200);
-
             WebElement table = driver.findElement(TERMINAL_TABLE);
             List<WebElement> rows = table.findElements(By.xpath(".//tbody//tr"));
             List<WebElement> headers = table.findElements(By.xpath(".//thead//th"));
@@ -575,10 +565,8 @@ public class Order_Terminal {
             for (WebElement row : rows) {
                 try {
                     if (!row.isDisplayed()) continue;
-
                     List<WebElement> cells = row.findElements(By.xpath("./td"));
                     if (cells.isEmpty()) continue;
-
                     String rowText = row.getText().toUpperCase();
 
                     // 1. Detect Side
@@ -666,10 +654,8 @@ public class Order_Terminal {
                         String sym = (cells.size() > 5 ? cells.get(5).getText().trim() : "-");
                         String price = (cells.size() > 9 ? cells.get(9).getText().trim() : "-");
                         String qty = (cells.size() > 11 ? cells.get(11).getText().trim() : "-");
-
                         selectedSummary.add(new String[]{ orderId, clientCode, sym, detectedSide, price, qty, matchedStatus });
                     }
-
                 } catch (Exception ignored) {}
             }
 
@@ -692,7 +678,6 @@ public class Order_Terminal {
                 }
             }
             System.out.println("+=======================================================================================================+\n");
-
         } catch (Exception e) {
             System.out.println("[WARN: Select Orders By Side] " + e.getMessage());
         }
@@ -754,13 +739,11 @@ public class Order_Terminal {
             Thread.sleep(400);
             clearSelection(driver);
             Thread.sleep(200);
-
             WebElement table = driver.findElement(TERMINAL_TABLE);
             List<WebElement> rows = table.findElements(By.xpath(".//tbody//tr"));
             List<WebElement> headers = table.findElements(By.xpath(".//thead//th"));
             Actions actions = new Actions(driver);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             int sideColIdx = 7;
             for (int i = 0; i < headers.size(); i++) {
                 String h = headers.get(i).getText().trim().toUpperCase();
@@ -784,10 +767,8 @@ public class Order_Terminal {
                     if (!row.isDisplayed()) continue;
                     List<WebElement> cells = row.findElements(By.xpath("./td"));
                     if (cells.isEmpty()) continue;
-
                     String rowText = row.getText().toUpperCase();
                     if (!cleanSym.isEmpty() && !rowText.contains(cleanSym)) continue;
-
                     boolean isAccepted = rowText.contains("ACCEPTED") || rowText.contains("ACCEPT");
                     boolean isPartially = rowText.contains("PARTIAL") || rowText.contains("PARTIALLY") || rowText.contains("PF");
                     if (!isAccepted && !isPartially) continue;
@@ -858,7 +839,6 @@ public class Order_Terminal {
                 String price = (cells.size() > 9 ? cells.get(9).getText().trim() : "-");
                 String qty = (cells.size() > 11 ? cells.get(11).getText().trim() : "-");
                 String status = (r.getText().toUpperCase().contains("PARTIALLY") ? "PARTIALLY FILLED" : "ACCEPTED");
-
                 selectedSummary.add(new String[]{ orderId, clientCode, sym, side, price, qty, status });
             }
 
@@ -876,7 +856,6 @@ public class Order_Terminal {
                         (i + 1), s[0], s[1], s[2], s[3], s[4], s[5], s[6]);
             }
             System.out.println("+=======================================================================================================+\n");
-
         } catch (Exception e) {
             System.out.println("[WARN: Select Multiple Buy & 1 Sell] " + e.getMessage());
         }
@@ -902,13 +881,11 @@ public class Order_Terminal {
             Thread.sleep(400);
             clearSelection(driver);
             Thread.sleep(200);
-
             WebElement table = driver.findElement(TERMINAL_TABLE);
             List<WebElement> rows = table.findElements(By.xpath(".//tbody//tr"));
             List<WebElement> headers = table.findElements(By.xpath(".//thead//th"));
             Actions actions = new Actions(driver);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             int sideColIdx = 7;
             for (int i = 0; i < headers.size(); i++) {
                 String h = headers.get(i).getText().trim().toUpperCase();
@@ -932,10 +909,8 @@ public class Order_Terminal {
                     if (!row.isDisplayed()) continue;
                     List<WebElement> cells = row.findElements(By.xpath("./td"));
                     if (cells.isEmpty()) continue;
-
                     String rowText = row.getText().toUpperCase();
                     if (!cleanSym.isEmpty() && !rowText.contains(cleanSym)) continue;
-
                     boolean isAccepted = rowText.contains("ACCEPTED") || rowText.contains("ACCEPT");
                     boolean isPartially = rowText.contains("PARTIAL") || rowText.contains("PARTIALLY") || rowText.contains("PF");
                     if (!isAccepted && !isPartially) continue;
@@ -1006,7 +981,6 @@ public class Order_Terminal {
                 String price = (cells.size() > 9 ? cells.get(9).getText().trim() : "-");
                 String qty = (cells.size() > 11 ? cells.get(11).getText().trim() : "-");
                 String status = (r.getText().toUpperCase().contains("PARTIALLY") ? "PARTIALLY FILLED" : "ACCEPTED");
-
                 selectedSummary.add(new String[]{ orderId, clientCode, sym, side, price, qty, status });
             }
 
@@ -1024,7 +998,6 @@ public class Order_Terminal {
                         (i + 1), s[0], s[1], s[2], s[3], s[4], s[5], s[6]);
             }
             System.out.println("+=======================================================================================================+\n");
-
         } catch (Exception e) {
             System.out.println("[WARN: Select Multiple Sell & 1 Buy] " + e.getMessage());
         }
@@ -1053,13 +1026,11 @@ public class Order_Terminal {
             Thread.sleep(400);
             clearSelection(driver);
             Thread.sleep(200);
-
             WebElement table = driver.findElement(TERMINAL_TABLE);
             List<WebElement> rows = table.findElements(By.xpath(".//tbody//tr"));
             List<WebElement> headers = table.findElements(By.xpath(".//thead//th"));
             Actions actions = new Actions(driver);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             int sideColIdx = 7;
             for (int i = 0; i < headers.size(); i++) {
                 String h = headers.get(i).getText().trim().toUpperCase();
@@ -1082,10 +1053,8 @@ public class Order_Terminal {
                     if (!row.isDisplayed()) continue;
                     List<WebElement> cells = row.findElements(By.xpath("./td"));
                     if (cells.isEmpty()) continue;
-
                     String rowText = row.getText().toUpperCase();
                     if (!cleanSym.isEmpty() && !rowText.contains(cleanSym)) continue;
-
                     boolean isAccepted = rowText.contains("ACCEPTED") || rowText.contains("ACCEPT");
                     boolean isPartially = rowText.contains("PARTIAL") || rowText.contains("PARTIALLY") || rowText.contains("PF");
                     if (!isAccepted && !isPartially) continue;
@@ -1148,7 +1117,6 @@ public class Order_Terminal {
                 String price = (cells.size() > 9 ? cells.get(9).getText().trim() : "-");
                 String qty = (cells.size() > 11 ? cells.get(11).getText().trim() : "-");
                 String status = (r.getText().toUpperCase().contains("PARTIALLY") ? "PARTIALLY FILLED" : "ACCEPTED");
-
                 selectedSummary.add(new String[]{ orderId, clientCode, sym, side, price, qty, status });
             }
 
@@ -1166,7 +1134,6 @@ public class Order_Terminal {
                         (i + 1), s[0], s[1], s[2], s[3], s[4], s[5], s[6]);
             }
             System.out.println("+=======================================================================================================+");
-
         } catch (Exception e) {
             System.out.println("[WARN: Select Placed Buy Orders Only] " + e.getMessage());
         }
@@ -1187,13 +1154,11 @@ public class Order_Terminal {
             Thread.sleep(400);
             clearSelection(driver);
             Thread.sleep(200);
-
             WebElement table = driver.findElement(TERMINAL_TABLE);
             List<WebElement> rows = table.findElements(By.xpath(".//tbody//tr"));
             List<WebElement> headers = table.findElements(By.xpath(".//thead//th"));
             Actions actions = new Actions(driver);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             int sideColIdx = 7;
             for (int i = 0; i < headers.size(); i++) {
                 String h = headers.get(i).getText().trim().toUpperCase();
@@ -1216,10 +1181,8 @@ public class Order_Terminal {
                     if (!row.isDisplayed()) continue;
                     List<WebElement> cells = row.findElements(By.xpath("./td"));
                     if (cells.isEmpty()) continue;
-
                     String rowText = row.getText().toUpperCase();
                     if (!cleanSym.isEmpty() && !rowText.contains(cleanSym)) continue;
-
                     boolean isAccepted = rowText.contains("ACCEPTED") || rowText.contains("ACCEPT");
                     boolean isPartially = rowText.contains("PARTIAL") || rowText.contains("PARTIALLY") || rowText.contains("PF");
                     if (!isAccepted && !isPartially) continue;
@@ -1282,7 +1245,6 @@ public class Order_Terminal {
                 String price = (cells.size() > 9 ? cells.get(9).getText().trim() : "-");
                 String qty = (cells.size() > 11 ? cells.get(11).getText().trim() : "-");
                 String status = (r.getText().toUpperCase().contains("PARTIALLY") ? "PARTIALLY FILLED" : "ACCEPTED");
-
                 selectedSummary.add(new String[]{ orderId, clientCode, sym, side, price, qty, status });
             }
 
@@ -1300,7 +1262,6 @@ public class Order_Terminal {
                         (i + 1), s[0], s[1], s[2], s[3], s[4], s[5], s[6]);
             }
             System.out.println("+=======================================================================================================+");
-
         } catch (Exception e) {
             System.out.println("[WARN: Select Placed Sell Orders Only] " + e.getMessage());
         }
@@ -1371,7 +1332,6 @@ public class Order_Terminal {
         System.out.println(" BATCH 1: SELECT MULTIPLE BUY ORDERS ONLY -> RIGHT-CLICK 'EXECUTE AT MARKET'");
         System.out.println("===============================================================================");
         boolean buyOk = executeBuyOrdersAtMarket(driver);
-
         System.out.println("\n[INFO] Waiting 2 seconds for BUY execution processing...");
         try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
 
@@ -1379,7 +1339,6 @@ public class Order_Terminal {
         System.out.println(" BATCH 2: SELECT MULTIPLE SELL ORDERS ONLY -> RIGHT-CLICK 'EXECUTE AT MARKET'");
         System.out.println("===============================================================================");
         boolean sellOk = executeSellOrdersAtMarket(driver);
-
         return buyOk || sellOk;
     }
 
@@ -1400,13 +1359,10 @@ public class Order_Terminal {
 
     public static final String XPATH_EXECUTE_AT_MARKET_ANCESTOR =
         "//*[contains(text(), 'Execute at Market')]/ancestor-or-self::li[1]";
-
     public static final String XPATH_EXECUTE_AT_MARKET_MENU_ITEM =
         "//*[contains(@class,'context-menu') or contains(@class,'dropdown') or contains(@class,'menu')]//li[contains(., 'Execute at Market')]";
-
     public static final String XPATH_EXECUTE_AT_MARKET_UNIVERSAL =
         "//*[(self::li or self::a or self::span or self::div) and contains(translate(normalize-space(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'execute at market') and not(contains(., 'Cancel Order'))]";
-
     /**
      * Locates the 'Execute at Market' option from the open context menu using the exact XPaths
      * and performs a reliable multi-strategy click (Actions -> Standard Click -> JS Click -> DOM MouseEvents).
@@ -1506,7 +1462,6 @@ public class Order_Terminal {
             OMSweb_Trade.ensureUIUnlocked(driver);
             Actions actions = new Actions(driver);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             WebElement anchor = selectedRows.get(selectedRows.size() - 1);
             System.out.printf("[TERMINAL] Right-clicking on selected order row (%s) to trigger 'Execute at Market'...%n",
                     anchor.getDomAttribute("id"));
@@ -1651,7 +1606,6 @@ public class Order_Terminal {
             try {
                 WebElement table = wait.until(ExpectedConditions.visibilityOfElementLocated(TERMINAL_TABLE));
                 Map<String, Integer> headerMap = getHeaderMap(table);
-
                 List<WebElement> rows = table.findElements(By.xpath(".//tbody//tr"));
                 WebElement targetRow = null;
 
@@ -1755,7 +1709,6 @@ public class Order_Terminal {
         // Check for items array
         Pattern itemPattern = Pattern.compile("\\{[^{}]*\"symbol_code\"\\s*:\\s*\"" + targetSymbol + "\"[^{}]*\\}", Pattern.CASE_INSENSITIVE);
         Matcher m = itemPattern.matcher(json);
-
         String block = null;
         if (m.find()) {
             block = m.group(0);
@@ -1783,7 +1736,6 @@ public class Order_Terminal {
             result.put("Dealer_ID", getJsonVal(block, "owner_ws_id", "dealer_id"));
             result.put("User_ID", getJsonVal(block, "user_id"));
             result.put("Order_Remarks", getJsonVal(block, "order_remarks", "remarks"));
-
             double orderQty = parseNum(result.get("Qty"));
             double execQty  = parseNum(result.get("Exec_Qty"));
             double progress = (orderQty > 0) ? Math.round((execQty / orderQty) * 100) : 0;
@@ -1837,7 +1789,6 @@ public class Order_Terminal {
                 conn.setRequestProperty("Cookie", cookieHeader);
             }
             if (conn.getResponseCode() != 200) return Collections.emptyMap();
-
             StringBuilder sb = new StringBuilder();
             try (BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
@@ -1863,13 +1814,11 @@ public class Order_Terminal {
     // =========================================================================
     public static void verify(Map<String, String> before, Map<String, String> after,
                               String symbol, String side, int tradeQty, double tradeRate, String exchange) {
-
         String postOrderId   = after.getOrDefault("Order_ID", "-");
         String preOrderId    = before.getOrDefault("Order_ID", "-");
         String postStatus    = after.getOrDefault("Status", "-");
         String postExecType  = after.getOrDefault("Exec_Type", "-");
         String postSide      = after.getOrDefault("Side", "-");
-
         double postQty       = parseNum(after.getOrDefault("Qty", "0"));
         double postExecQty   = parseNum(after.getOrDefault("Exec_Qty", "0"));
         double postDueQty    = parseNum(after.getOrDefault("Due_Qty", "0"));
@@ -1882,14 +1831,12 @@ public class Order_Terminal {
             before.put("Progress", "0%");
         }
         String preProgress   = "0%";
-
         boolean sidePass     = postSide.equalsIgnoreCase(side);
         boolean orderNewPass = !postOrderId.equals("-") && !postOrderId.equals(preOrderId);
         boolean qtyPass      = (postQty >= tradeQty);
         boolean pricePass    = (tradeRate > 0) ? (Math.abs(postPrice - tradeRate) <= 1.0 || Math.abs(postAvgPrice - tradeRate) <= 1.0) : true;
         boolean statusPass   = Arrays.asList("FILLED", "PARTIALLY FILLED", "ACCEPTED", "TRADE EXECUTED").contains(postStatus.toUpperCase());
         String expectedProgress = postStatus.equalsIgnoreCase("FILLED") ? "100%" : (postStatus.equalsIgnoreCase("PARTIALLY FILLED") ? "> 0%" : "~Updated");
-
         System.out.println();
         System.out.println("+================================================================================================================+");
         System.out.printf("| ORDER TERMINAL AUDIT: %-7s (%-4s %d @ %.2f on %-4s)%n", symbol, side, tradeQty, tradeRate, exchange);

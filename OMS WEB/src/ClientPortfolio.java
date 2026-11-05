@@ -17,7 +17,6 @@ import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 public class ClientPortfolio {
-
     private static final String API_URL_TEMPLATE = "https://omsapi.quantbd.com/portfolio/%s?exchange=%s";
     private static final String[] EXCHANGES = {"DSE", "CSE"};
 
@@ -41,13 +40,10 @@ public class ClientPortfolio {
     public static void main(WebDriver driver, Scanner sc) throws InterruptedException {
         // Ensure Trade Portal is active if logged in as Admin
         OMSweb_Trade.navigateToTradePage(driver, new WebDriverWait(driver, Duration.ofSeconds(10)));
-
         System.out.println("\n[PORTFOLIO] Auto-detecting Symbol & Client Code from Trade page inputs...");
-
         String symbol = readInputSafe(driver, By.id("order_instrument"), By.id("instrument"), By.id("marketwatch_symbol"));
         String clientCode = readInputSafe(driver, By.id("order_client_code"));
         String exchange = "DSE";
-
         if (clientCode.isEmpty()) clientCode = "23986";
         if (symbol.isEmpty()) {
             System.out.print("No symbol found on page. Enter Symbol: ");
@@ -69,7 +65,6 @@ public class ClientPortfolio {
         // Navigate, refresh and show snapshot
         navigateToPortfolio(driver);
         refresh(driver);
-
         Map<String, String> data = getSnapshot(driver, clientCode, symbol, exchange);
         printSnapshot("CURRENT PORTFOLIO (" + symbol + ")", data);
     }
@@ -79,7 +74,6 @@ public class ClientPortfolio {
     // =========================================================================
     public static Map<String, String> getSnapshot(WebDriver driver, String clientCode, String symbol, String preferredExchange) {
         String cleanSymbol = cleanSymbol(symbol);
-
         List<String> exchangeOrder = new ArrayList<>();
         exchangeOrder.add(preferredExchange != null && !preferredExchange.isEmpty() ? preferredExchange : "DSE");
         for (String ex : EXCHANGES) {
@@ -227,7 +221,6 @@ public class ClientPortfolio {
 
         Pattern objectPattern = Pattern.compile("\\{[^{}]*\"symbol\"\\s*:\\s*\"" + targetSymbol + "\"[^{}]*\\}", Pattern.CASE_INSENSITIVE);
         Matcher matcher = objectPattern.matcher(json);
-
         Map<String, String> result = new LinkedHashMap<>();
         if (matcher.find()) {
             String block = matcher.group(0);
@@ -466,7 +459,6 @@ public class ClientPortfolio {
             try {
                 WebElement table = wait.until(ExpectedConditions.visibilityOfElementLocated(PORTFOLIO_TABLE));
                 Map<String, Integer> headerMap = getHeaderMap(table);
-
                 String rowPath = String.format(ROW_XPATH, symbol, symbol);
                 List<WebElement> rows = table.findElements(By.xpath(rowPath));
                 if (rows.isEmpty()) {
@@ -522,7 +514,6 @@ public class ClientPortfolio {
                               Map<String, String> clientBefore, Map<String, String> clientAfter,
                               String symbol, String side, int tradeQty, double tradeRate, String exchange,
                               int executedQty, int dueQty, String orderStatus) {
-
         boolean isBuy = side.equalsIgnoreCase("BUY");
 
         // --- 1. Portfolio Quantities ---
@@ -594,7 +585,6 @@ public class ClientPortfolio {
         double newAvgCost = getNum(after, "avg_cost", "avgcost");
         double oldTotalCost = getNum(before, "total_cost", "totalcost");
         double newTotalCost = getNum(after, "total_cost", "totalcost");
-
         double expectedTotalCost = isBuy ? (oldTotalCost + executedTradeValue) : (oldTotalCost - (effectiveExecutedQty * oldAvgCost));
         double expectedAvgCost = isBuy ?
                 (expectedTotalQty > 0 ? expectedTotalCost / expectedTotalQty : tradeRate) :
@@ -609,12 +599,10 @@ public class ClientPortfolio {
         double postLtp = getNum(after, "ltp", "market_rate");
         if (postLtp == 0.0) postLtp = tradeRate;
         if (preLtp == 0.0) preLtp = postLtp;
-
         double oldValue = getNum(before, "value", "market_value");
         double newValue = getNum(after, "value", "market_value");
         double expectedValue = newTotalQty * postLtp;
         boolean valPass = Math.abs(newValue - expectedValue) <= 2.0;
-
         double oldGain = getNum(before, "gain", "profit_loss");
         double newGain = getNum(after, "gain", "profit_loss");
         double oldGainPer = getNum(before, "gain_percent", "gain_per");
@@ -624,15 +612,12 @@ public class ClientPortfolio {
         String clientCode = getVal(clientBefore, "client_code");
         if (clientCode.equals("-")) clientCode = getVal(clientAfter, "client_code");
         if (clientCode.equals("-")) clientCode = "";
-
         String clientName = getVal(clientBefore, "client_name");
         if (clientName.equals("-")) clientName = getVal(clientAfter, "client_name");
         String boId = getVal(clientBefore, "bo_id");
         if (boId.equals("-")) boId = getVal(clientAfter, "bo_id");
-
         String configuredComm = getVal(clientBefore, "commission");
         if (configuredComm.equals("-")) configuredComm = getVal(clientAfter, "commission");
-
         double commRate = 0.0;
         boolean isZeroCommission = "00239".equals(clientCode.trim()) || "239".equals(clientCode.trim());
         if (!configuredComm.equals("-") && !configuredComm.trim().isEmpty()) {
@@ -651,7 +636,6 @@ public class ClientPortfolio {
         double postCash = getNum(clientAfter, "cash_limit", "b_limit");
         double preMature = getNum(clientBefore, "mature_balance", "rem_mature_balance");
         double postMature = getNum(clientAfter, "mature_balance", "rem_mature_balance");
-
         boolean hasCashData = (clientBefore != null && !clientBefore.isEmpty()) && (clientAfter != null && !clientAfter.isEmpty());
         boolean cashPass = false;
         String cashStatus = "SKIP";
@@ -660,7 +644,6 @@ public class ClientPortfolio {
         double cashNetDiff = 0.0;
         double commCharges = 0.0;
         double commPercent = 0.0;
-
         String matureStatus = "INFO";
         String matureVerdict = "Unsettled (Settles on T+2)";
         String matureChangeText = "-";
@@ -711,7 +694,6 @@ public class ClientPortfolio {
                     cashVerdict = String.format("WRONG: Cash NOT deducted! (Diff: %,.2f, Exp: %,.2f)", cashNetDiff, expectedCashDrop);
                 }
                 cashChangeText = String.format("-%,.2f", cashNetDiff);
-
                 double matureDiff = preMature - postMature;
                 if (postMature < preMature) {
                     matureStatus = "PASS";
@@ -756,7 +738,6 @@ public class ClientPortfolio {
                     cashVerdict = String.format("WRONG: Cash NOT added! (Diff: %,.2f, Exp: %,.2f)", cashNetDiff, expectedCashGain);
                 }
                 cashChangeText = String.format("+%,.2f", cashNetDiff);
-
                 double matureDiff = postMature - preMature;
                 if (postMature > preMature) {
                     matureStatus = "PASS";

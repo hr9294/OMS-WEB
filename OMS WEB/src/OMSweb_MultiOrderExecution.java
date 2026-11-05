@@ -10,7 +10,6 @@ import java.util.Scanner;
 import java.util.Set;
 import java.util.HashSet;
 import java.util.Collections;
-
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.Keys;
@@ -41,7 +40,6 @@ import org.openqa.selenium.support.ui.WebDriverWait;
  * ============================================================================
  */
 public class OMSweb_MultiOrderExecution {
-
     public static final List<String> DEFAULT_BUY_CLIENTS = Collections.unmodifiableList(Arrays.asList(
         "34601", "34649", "23986", "15740", "00224", "39187", "00516", "00916",
         "39187", "02417", "37854", "45971", "18051", "12001", "04474", "03246"
@@ -126,7 +124,6 @@ public class OMSweb_MultiOrderExecution {
         System.out.println("\n+=============================================================================+");
         System.out.println("|        MULTI-ORDER EXECUTION & REAL-TIME 6-WIDGET VERIFICATION ENGINE       |");
         System.out.println("+=============================================================================+");
-
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(6));
         JavascriptExecutor js = (JavascriptExecutor) driver;
 
@@ -168,7 +165,6 @@ public class OMSweb_MultiOrderExecution {
 
         // Connect Market Watch widget
         Market_Watch.connectWidget(driver, symbol, exchange);
-
         System.out.printf("[SETUP] Target Symbol: %s on Exchange: %s%n", symbol, exchange);
 
         // Fetch current Market reference price (LTP) from Market Depth / Watch per user request
@@ -183,7 +179,6 @@ public class OMSweb_MultiOrderExecution {
         System.out.print("Enter Choice (1, 2, or 3, default=1): ");
         String choiceStr = sc.nextLine().trim();
         int choice = choiceStr.isEmpty() ? 1 : Integer.parseInt(choiceStr);
-
         System.out.print("\nPrice Variation for Orders: (1=Same Price / 2=Different Prices, default=2): ");
         String priceVarStr = sc.nextLine().trim();
         boolean differentPrices = !priceVarStr.equals("1");
@@ -307,14 +302,11 @@ public class OMSweb_MultiOrderExecution {
             System.out.printf("\nEnter BUY Client Code(s) (single or comma-separated, default=%s): ", DEFAULT_BUY_CLIENTS.get(0));
             String buyIn = sc.nextLine().trim();
             List<String> buyClients = parseClientList(buyIn, DEFAULT_BUY_CLIENTS);
-
             String defaultSell = posHolders.get(0);
             System.out.printf("Enter Opposite SELL Client Code (from Position) [default=%s]: ", defaultSell);
             String sellIn = sc.nextLine().trim();
             String sellClient = sellIn.isEmpty() ? defaultSell : sellIn;
-
             setTradePageClientCode(driver, buyClients.get(0));
-
             int buyCount = (buyClients.size() == 1) ? 3 : Math.min(3, buyClients.size());
             int totalBuyQty = 0;
 
@@ -349,7 +341,6 @@ public class OMSweb_MultiOrderExecution {
             // Opposite SELL order at UPPER price (> refPrice and well above the BUY orders)
             double sellRate = Math.round((refPrice + spreadDelta) * 100.0) / 100.0;
             queue.add(new OrderItem(itemCounter++, OrderSide.SELL, sellClient, symbol, totalBuyQty, sellRate, true));
-
         } else if (choice == 2) {
             // Strategy 2: Multiple SELL orders (UPPER prices) + Opposite BUY order (DOWN price)
             List<String> defaultSells = posHolders.subList(0, Math.min(3, posHolders.size()));
@@ -357,13 +348,10 @@ public class OMSweb_MultiOrderExecution {
             System.out.printf("\nEnter SELL Client Code(s) (from Position, single or comma-separated) [default=%s]: ", defSellStr);
             String sellIn = sc.nextLine().trim();
             List<String> sellClients = parseClientList(sellIn, defaultSells);
-
             System.out.printf("Enter Opposite BUY Client Code [default=%s]: ", DEFAULT_BUY_CLIENTS.get(0));
             String buyIn = sc.nextLine().trim();
             String buyClient = buyIn.isEmpty() ? DEFAULT_BUY_CLIENTS.get(0) : buyIn;
-
             setTradePageClientCode(driver, sellClients.get(0));
-
             int sellCount = (sellClients.size() == 1) ? 3 : Math.min(3, sellClients.size());
             int totalSellQty = 0;
 
@@ -380,18 +368,15 @@ public class OMSweb_MultiOrderExecution {
             // Opposite BUY order at DOWN price (< refPrice and well below the SELL orders)
             double buyRate = Math.max(0.10, Math.round((refPrice - spreadDelta) * 100.0) / 100.0);
             queue.add(new OrderItem(itemCounter++, OrderSide.BUY, buyClient, symbol, totalSellQty, buyRate, true));
-
         } else {
             // Strategy 3: Custom Interactive Order Queue with Non-Crossing Spread Defaults
             System.out.print("Enter Primary Order Side (BUY / SELL, default=BUY): ");
             String sideInput = sc.nextLine().trim().toUpperCase();
             OrderSide primarySide = sideInput.equals("SELL") ? OrderSide.SELL : OrderSide.BUY;
             OrderSide oppSide = (primarySide == OrderSide.BUY) ? OrderSide.SELL : OrderSide.BUY;
-
             System.out.print("How many primary orders to place? (e.g. 2, 3, default=2): ");
             String cntStr = sc.nextLine().trim();
             int pCount = cntStr.isEmpty() ? 2 : Integer.parseInt(cntStr);
-
             int totalPrimaryQty = 0;
             String firstClient = "";
             for (int i = 0; i < pCount; i++) {
@@ -400,12 +385,10 @@ public class OMSweb_MultiOrderExecution {
                 String cInput = sc.nextLine().trim();
                 String client = cInput.isEmpty() ? defaultClient : cInput;
                 if (firstClient.isEmpty()) firstClient = client;
-
                 System.out.print("  Quantity (default 10): ");
                 String qInput = sc.nextLine().trim();
                 int q = qInput.isEmpty() ? 10 : Integer.parseInt(qInput);
                 totalPrimaryQty += q;
-
                 double defaultRate;
                 if (primarySide == OrderSide.BUY) {
                     double step = differentPrices ? (i * 0.50) : 0.0;
@@ -418,7 +401,6 @@ public class OMSweb_MultiOrderExecution {
                 System.out.printf("  Price Rate (default %.2f %s): ", defaultRate, (primarySide == OrderSide.BUY ? "DOWN" : "UPPER"));
                 String rInput = sc.nextLine().trim();
                 double r = rInput.isEmpty() ? defaultRate : Double.parseDouble(rInput);
-
                 queue.add(new OrderItem(itemCounter++, primarySide, client, symbol, q, r, false));
             }
 
@@ -427,7 +409,6 @@ public class OMSweb_MultiOrderExecution {
             System.out.printf("Enter Opposite %s Client [%s]: ", oppSide, defaultOppClient);
             String ocInput = sc.nextLine().trim();
             String oppClient = ocInput.isEmpty() ? defaultOppClient : ocInput;
-
             double defaultOppRate;
             if (oppSide == OrderSide.SELL) {
                 defaultOppRate = Math.round((refPrice + spreadDelta) * 100.0) / 100.0;
@@ -437,9 +418,7 @@ public class OMSweb_MultiOrderExecution {
             System.out.printf("Enter Opposite %s Rate (default %.2f %s): ", oppSide, defaultOppRate, (oppSide == OrderSide.SELL ? "UPPER" : "DOWN"));
             String orInput = sc.nextLine().trim();
             double oppRate = orInput.isEmpty() ? defaultOppRate : Double.parseDouble(orInput);
-
             queue.add(new OrderItem(itemCounter++, oppSide, oppClient, symbol, totalPrimaryQty, oppRate, true));
-
             setTradePageClientCode(driver, firstClient);
         }
 
@@ -704,27 +683,22 @@ public class OMSweb_MultiOrderExecution {
                     if (confirmed) break;
                     Thread.sleep(40);
                 }
-
                 long elapsed = Duration.between(start, Instant.now()).toMillis();
                 System.out.printf("✔ Order #%d Submitted successfully in %d ms (%s %s x %d @ %.2f)%n",
                         item.getId(), elapsed, item.getSide(), item.getClientCode(), item.getQuantity(), item.getRate());
-
                 placed.add(item);
                 OMSweb_Trade.dismissLingeringAutocomplete(driver);
                 Thread.sleep(150);
-
             } catch (Exception e) {
                 System.err.printf("✖ [ORDER FAILED] Order #%d (%s %s x %d @ %.2f): %s%n",
                         item.getId(), item.getSide(), item.getClientCode(), item.getQuantity(), item.getRate(), e.getMessage());
                 System.out.println("  -> [RECOVERY] Skipping Order #" + item.getId() + " and safely proceeding to next order in queue...");
-
                 // 1. Dismiss any open native browser alerts
                 try {
                     org.openqa.selenium.Alert alert = driver.switchTo().alert();
                     System.out.println("  -> [RECOVERY] Dismissed browser alert: " + alert.getText());
                     alert.dismiss();
                 } catch (Exception ignored) {}
-
                 // 2. Close any open jQuery-Confirm modals and clean up overlays
                 try {
                     js.executeScript(
@@ -749,7 +723,6 @@ public class OMSweb_MultiOrderExecution {
                         "} catch(e) {}"
                     );
                 } catch (Exception ignored) {}
-
                 // 3. Dismiss any remaining DOM cancel/close buttons
                 try {
                     List<WebElement> cancelBtns = driver.findElements(
@@ -761,7 +734,6 @@ public class OMSweb_MultiOrderExecution {
                         }
                     }
                 } catch (Exception ignored) {}
-
                 // 4. Settle DOM before continuing to next order
                 try {
                     Thread.sleep(600);
@@ -770,7 +742,6 @@ public class OMSweb_MultiOrderExecution {
         }
         return placed;
     }
-
     // =========================================================================
     // 6. ORDER TERMINAL: MULTI-SELECT & 'EXECUTE AT MARKET' CONTEXT MENU
     // =========================================================================
@@ -781,17 +752,14 @@ public class OMSweb_MultiOrderExecution {
             Thread.sleep(1000);
             Order_Terminal.refresh(driver);
             Thread.sleep(1500);
-
             // Filter table by symbol to ensure target orders are in view
             try {
                 Order_Terminal.filterOrderTerminal(driver, "", symbol);
                 Thread.sleep(600);
             } catch (Exception ignored) {}
-
             System.out.println("[TERMINAL] Filtering by Status: ALL ACCEPTED and PARTIALLY FILLED orders...");
             Order_Terminal.filterByStatus(driver, "ACTIVE");
             Thread.sleep(500);
-
             // Extract placed client codes
             List<String> placedClients = new ArrayList<>();
             long buyCount = 0, sellCount = 0;
@@ -802,12 +770,9 @@ public class OMSweb_MultiOrderExecution {
                 if (o.getSide() == OrderSide.BUY) buyCount++;
                 else if (o.getSide() == OrderSide.SELL) sellCount++;
             }
-
             boolean isMultipleBuy = (strategyChoice == 1) || (buyCount > 1 && sellCount <= 1);
             boolean isMultipleSell = (strategyChoice == 2) || (sellCount > 1 && buyCount <= 1);
-
             boolean executed = false;
-
             if (isMultipleBuy) {
                 System.out.println("\n[TERMINAL] >>> STRATEGY 1: SELECTING ONLY PLACED MULTIPLE BUY ORDERS IN QUEUE & RIGHT-CLICK 'EXECUTE AT MARKET' <<<");
                 List<String> buyOnlyClients = new ArrayList<>();
@@ -840,14 +805,12 @@ public class OMSweb_MultiOrderExecution {
                 System.out.println("\n[TERMINAL] Executing side-by-side: Multiple BUY orders ONLY, then Multiple SELL orders ONLY...");
                 executed = Order_Terminal.executeSeparatedBuyAndSellAtMarket(driver);
             }
-
             // Fallback retry: if no rows executed with symbol filter, clear filter and try scanning again
             if (!executed) {
                 System.out.println("[TERMINAL] Retrying selection without symbol filter...");
                 Order_Terminal.clearFilter(driver);
                 Order_Terminal.refresh(driver);
                 Thread.sleep(1500);
-
                 if (isMultipleBuy) {
                     executed = Order_Terminal.executeMultipleBuyOrdersOnlyAtMarket(driver, symbol, null);
                 } else if (isMultipleSell) {
@@ -855,7 +818,6 @@ public class OMSweb_MultiOrderExecution {
                 } else {
                     executed = Order_Terminal.executeSeparatedBuyAndSellAtMarket(driver);
                 }
-
                 if (!executed) {
                     List<WebElement> fallbackRows = Order_Terminal.selectOrdersByStatus(driver, "ACCEPTED", "PARTIALLY FILLED");
                     if (!fallbackRows.isEmpty()) {
@@ -863,22 +825,18 @@ public class OMSweb_MultiOrderExecution {
                     }
                 }
             }
-
             return executed;
-
         } catch (Exception e) {
             System.out.println("[WARN: Context Execution] " + e.getMessage());
             return false;
         }
     }
-
     // =========================================================================
     // 7. REAL-TIME MULTI-WIDGET AUDIT & DUAL PRE/POST COMPARISON (API & UI)
     // =========================================================================
     private static void runComprehensiveMultiWidgetAudit(WebDriver driver, WebDriverWait wait, BaselineStore base, List<OrderItem> placedOrders, String symbol, String exchange) {
         Map<String, String> scorecard = new LinkedHashMap<>();
         Map<String, String> syncScorecard = new LinkedHashMap<>();
-
         // ---------------------------------------------------------------------
         // WIDGET 1: ORDER TERMINAL REAL-TIME AUDIT (API & UI DUAL COMPARISON)
         // ---------------------------------------------------------------------
@@ -888,35 +846,29 @@ public class OMSweb_MultiOrderExecution {
         try {
             Order_Terminal.refresh(driver);
             Thread.sleep(800);
-
             boolean allTerminalSync = true;
             for (OrderItem order : placedOrders) {
                 Map<String, String> preApi = base.orderTerminal;
                 Map<String, String> preUi = base.orderTerminalUi;
                 Map<String, String> postApi = Order_Terminal.getApiSnapshot(driver, order.getClientCode(), symbol, exchange);
                 Map<String, String> postUi = Order_Terminal.getUiSnapshot(driver, symbol, order.getClientCode());
-
                 String orderId = !postApi.isEmpty() ? postApi.getOrDefault("Order_ID", order.getOrderId()) : postUi.getOrDefault("Order_ID", order.getOrderId());
                 String postStatus = !postApi.isEmpty() ? postApi.getOrDefault("Status", "FILLED") : postUi.getOrDefault("Status", "FILLED");
                 order.setOrderId(orderId);
                 order.setPostStatus(postStatus);
-
                 double execQty = parseNum(!postApi.isEmpty() ? postApi.getOrDefault("Exec_Qty", String.valueOf(order.getQuantity())) : postUi.getOrDefault("Exec_Qty", String.valueOf(order.getQuantity())));
                 double dueQty = parseNum(!postApi.isEmpty() ? postApi.getOrDefault("Due_Qty", "0") : postUi.getOrDefault("Due_Qty", "0"));
                 order.setExecQty((int) execQty);
                 order.setDueQty((int) dueQty);
-
                 String syncId = checkSync(postApi.get("Order_ID"), postUi.get("Order_ID"));
                 String syncStatus = checkSync(postApi.get("Status"), postUi.get("Status"));
                 String syncExec = checkSync(postApi.get("Exec_Qty"), postUi.get("Exec_Qty"));
                 String syncDue = checkSync(postApi.get("Due_Qty"), postUi.get("Due_Qty"));
                 String syncRate = checkSync(postApi.get("Rate"), postUi.get("Rate"));
                 String syncProg = checkSync(postApi.get("Progress"), postUi.get("Progress"));
-
                 if (!syncStatus.equals("IN SYNC") || !syncExec.equals("IN SYNC")) {
                     allTerminalSync = false;
                 }
-
                 String[][] tableData = {
                     { "Order ID", preApi.getOrDefault("Order_ID", "-"), postApi.getOrDefault("Order_ID", orderId), preUi.getOrDefault("Order_ID", "-"), postUi.getOrDefault("Order_ID", orderId), "Persistent", syncId },
                     { "Order Status", preApi.getOrDefault("Status", "ACCEPTED"), postApi.getOrDefault("Status", postStatus), preUi.getOrDefault("Status", "ACCEPTED"), postUi.getOrDefault("Status", postStatus), "ACCEPTED->FILLED", syncStatus },
@@ -925,10 +877,8 @@ public class OMSweb_MultiOrderExecution {
                     { "Order Rate", preApi.getOrDefault("Rate", String.format("%.2f", order.getRate())), postApi.getOrDefault("Rate", String.format("%.2f", order.getRate())), preUi.getOrDefault("Rate", String.format("%.2f", order.getRate())), postUi.getOrDefault("Rate", String.format("%.2f", order.getRate())), "Persistent", syncRate },
                     { "Progress", preApi.getOrDefault("Progress", "0%"), postApi.getOrDefault("Progress", "100%"), preUi.getOrDefault("Progress", "0%"), postUi.getOrDefault("Progress", "100%"), "0% -> 100%", syncProg }
                 };
-
                 printComparisonTable(String.format("ORDER TERMINAL: Client %s | %s %d %s @ %.2f",
                         order.getClientCode(), order.getSide(), order.getQuantity(), symbol, order.getRate()), tableData);
-
                 Order_Terminal.verify(base.orderTerminal, !postApi.isEmpty() ? postApi : postUi, symbol, order.getSide().name(), order.getQuantity(), order.getRate(), exchange);
             }
             scorecard.put("Order Terminal", "PASS (API & UI Pre/Post Audited & Executed)");
@@ -938,7 +888,6 @@ public class OMSweb_MultiOrderExecution {
             scorecard.put("Order Terminal", "WARNING (" + e.getMessage() + ")");
             syncScorecard.put("Order Terminal", "WARNING (" + e.getMessage() + ")");
         }
-
         // ---------------------------------------------------------------------
         // WIDGET 2: CLIENT PORTFOLIO REAL-TIME AUDIT (API & UI DUAL COMPARISON)
         // ---------------------------------------------------------------------
@@ -948,7 +897,6 @@ public class OMSweb_MultiOrderExecution {
         try {
             ClientPortfolio.refresh(driver);
             Thread.sleep(800);
-
             boolean allPortSync = true;
             for (OrderItem order : placedOrders) {
                 String code = order.getClientCode();
@@ -958,21 +906,16 @@ public class OMSweb_MultiOrderExecution {
                 Map<String, String> postUi = ClientPortfolio.getUiSnapshot(driver, code, symbol);
                 Map<String, String> preDetails = base.clientDetails.getOrDefault(code, new HashMap<>());
                 Map<String, String> postDetails = ClientPortfolio.getClientDetails(driver, code);
-
                 int execQ = order.getExecQty() > 0 ? order.getExecQty() : order.getQuantity();
                 int dueQ = order.getDueQty();
                 String status = order.getPostStatus().equalsIgnoreCase("UNKNOWN") ? "Filled" : order.getPostStatus();
-
                 String syncTotal = checkSync(postApi.get("total_qty"), postUi.get("total_qty"));
                 String syncSale = checkSync(postApi.get("saleable_qty"), postUi.get("saleable_qty"));
                 String syncCost = checkSync(postApi.get("avg_cost"), postUi.get("avg_cost"));
                 String syncVal = checkSync(postApi.get("total_cost"), postUi.get("total_cost"));
-
                 if (!syncTotal.equals("IN SYNC")) allPortSync = false;
-
                 String expTotalDelta = (order.getSide() == OrderSide.BUY ? "+" : "-") + execQ;
                 String expSaleDelta = (order.getSide() == OrderSide.SELL ? ("-" + execQ) : "Settlement Hold");
-
                 String[][] tableData = {
                     { "Total Qty", preApi.getOrDefault("total_qty", "0"), postApi.getOrDefault("total_qty", "-"), preUi.getOrDefault("total_qty", "0"), postUi.getOrDefault("total_qty", "-"), expTotalDelta, syncTotal },
                     { "Saleable Qty", preApi.getOrDefault("saleable_qty", "0"), postApi.getOrDefault("saleable_qty", "-"), preUi.getOrDefault("saleable_qty", "0"), postUi.getOrDefault("saleable_qty", "-"), expSaleDelta, syncSale },
@@ -980,10 +923,8 @@ public class OMSweb_MultiOrderExecution {
                     { "Total Cost", preApi.getOrDefault("total_cost", "-"), postApi.getOrDefault("total_cost", "-"), preUi.getOrDefault("total_cost", "-"), postUi.getOrDefault("total_cost", "-"), "Cost Basis Delta", syncVal },
                     { "Cash / Mature Bal", preDetails.getOrDefault("mature_balance", "-"), postDetails.getOrDefault("mature_balance", "-"), preDetails.getOrDefault("mature_balance", "-"), postDetails.getOrDefault("mature_balance", "-"), (order.getSide() == OrderSide.BUY ? "-" : "+") + String.format("%.2f", execQ * order.getRate()), "IN SYNC" }
                 };
-
                 printComparisonTable(String.format("CLIENT PORTFOLIO: Client %s | %s %d %s @ %.2f",
                         code, order.getSide(), order.getQuantity(), symbol, order.getRate()), tableData);
-
                 ClientPortfolio.verify(preApi, !postApi.isEmpty() ? postApi : postUi, preDetails, postDetails, symbol, order.getSide().name(),
                         order.getQuantity(), order.getRate(), exchange, execQ, dueQ, status);
             }
@@ -994,7 +935,6 @@ public class OMSweb_MultiOrderExecution {
             scorecard.put("Client Portfolio", "WARNING (" + e.getMessage() + ")");
             syncScorecard.put("Client Portfolio", "WARNING (" + e.getMessage() + ")");
         }
-
         // ---------------------------------------------------------------------
         // WIDGET 3: MARKET DEPTH REAL-TIME AUDIT (API & UI DUAL COMPARISON)
         // ---------------------------------------------------------------------
@@ -1006,13 +946,11 @@ public class OMSweb_MultiOrderExecution {
             Map<String, String> preUi = base.marketDepthUi;
             Map<String, String> postApi = Market_Depth.getApiSnapshot(driver, symbol, exchange);
             Map<String, String> postUi = Market_Depth.getUiSnapshot(driver);
-
             String syncLtp = checkSync(postApi.get("ltp"), postUi.get("ltp"));
             String syncBid = checkSync(postApi.get("total_bid_qty"), postUi.get("total_bid_qty"));
             String syncAsk = checkSync(postApi.get("total_ask_qty"), postUi.get("total_ask_qty"));
             String syncBidP = checkSync(postApi.get("bid_price_1"), postUi.get("bid_price_1"));
             String syncAskP = checkSync(postApi.get("ask_price_1"), postUi.get("ask_price_1"));
-
             String[][] tableData = {
                 { "LTP (Last Price)", preApi.getOrDefault("ltp", "-"), postApi.getOrDefault("ltp", "-"), preUi.getOrDefault("ltp", "-"), postUi.getOrDefault("ltp", "-"), "Updated on Fill", syncLtp },
                 { "Total Bid Qty", preApi.getOrDefault("total_bid_qty", "-"), postApi.getOrDefault("total_bid_qty", "-"), preUi.getOrDefault("total_bid_qty", "-"), postUi.getOrDefault("total_bid_qty", "-"), "Book Absorption", syncBid },
@@ -1020,9 +958,7 @@ public class OMSweb_MultiOrderExecution {
                 { "Top Bid Price", preApi.getOrDefault("bid_price_1", "-"), postApi.getOrDefault("bid_price_1", "-"), preUi.getOrDefault("bid_price_1", "-"), postUi.getOrDefault("bid_price_1", "-"), "Dynamic Book", syncBidP },
                 { "Top Ask Price", preApi.getOrDefault("ask_price_1", "-"), postApi.getOrDefault("ask_price_1", "-"), preUi.getOrDefault("ask_price_1", "-"), postUi.getOrDefault("ask_price_1", "-"), "Dynamic Book", syncAskP }
             };
-
             printComparisonTable("MARKET DEPTH: " + symbol + " (" + exchange + ")", tableData);
-
             OrderItem refOrder = placedOrders.get(0);
             Market_Depth.verify(preApi, !postApi.isEmpty() ? postApi : postUi, symbol, refOrder.getSide().name(), refOrder.getQuantity(), refOrder.getRate(), exchange);
             scorecard.put("Market Depth", "PASS (Order Book & Depth Flow Verified)");
@@ -1032,7 +968,6 @@ public class OMSweb_MultiOrderExecution {
             scorecard.put("Market Depth", "WARNING (" + e.getMessage() + ")");
             syncScorecard.put("Market Depth", "WARNING (" + e.getMessage() + ")");
         }
-
         // ---------------------------------------------------------------------
         // WIDGET 4: ORDER SUMMARY REAL-TIME AUDIT (API & UI DUAL COMPARISON)
         // ---------------------------------------------------------------------
@@ -1042,13 +977,11 @@ public class OMSweb_MultiOrderExecution {
         try {
             Order_Summary.refresh(driver);
             Thread.sleep(800);
-
             OrderItem refOrder = placedOrders.get(0);
             Map<String, String> preApi = base.orderSummary;
             Map<String, String> preUi = base.orderSummaryUi;
             Map<String, String> postApi = Order_Summary.getApiSnapshot(driver, refOrder.getClientCode(), symbol, exchange);
             Map<String, String> postUi = Order_Summary.getUiSnapshot(driver, symbol);
-
             int totalExecutedQty = 0;
             double buyTurnoverDelta = 0;
             double sellTurnoverDelta = 0;
@@ -1057,19 +990,15 @@ public class OMSweb_MultiOrderExecution {
                 if (o.getSide() == OrderSide.BUY) buyTurnoverDelta += (o.getQuantity() * o.getRate());
                 else sellTurnoverDelta += (o.getQuantity() * o.getRate());
             }
-
             String syncTotOrd = checkSync(postApi.get("Total_Orders"), postUi.get("Total_Orders"));
             String syncBuyTurn = checkSync(postApi.get("Buy_Turnover"), postUi.get("Buy_Turnover"));
             String syncSellTurn = checkSync(postApi.get("Sell_Turnover"), postUi.get("Sell_Turnover"));
-
             String[][] tableData = {
                 { "Total Orders", preApi.getOrDefault("Total_Orders", "0"), postApi.getOrDefault("Total_Orders", "-"), preUi.getOrDefault("Total_Orders", "0"), postUi.getOrDefault("Total_Orders", "-"), "+" + placedOrders.size(), syncTotOrd },
                 { "Buy Turnover", preApi.getOrDefault("Buy_Turnover", "0"), postApi.getOrDefault("Buy_Turnover", "-"), preUi.getOrDefault("Buy_Turnover", "0"), postUi.getOrDefault("Buy_Turnover", "-"), String.format("+%.2f", buyTurnoverDelta), syncBuyTurn },
                 { "Sell Turnover", preApi.getOrDefault("Sell_Turnover", "0"), postApi.getOrDefault("Sell_Turnover", "-"), preUi.getOrDefault("Sell_Turnover", "0"), postUi.getOrDefault("Sell_Turnover", "-"), String.format("+%.2f", sellTurnoverDelta), syncSellTurn }
             };
-
             printComparisonTable("ORDER SUMMARY: Aggregates for " + symbol, tableData);
-
             Order_Summary.verify(preApi, !postApi.isEmpty() ? postApi : postUi, symbol, refOrder.getSide().name(),
                     totalExecutedQty, refOrder.getRate(), exchange, totalExecutedQty, 0);
             scorecard.put("Order Summary", "PASS (Buy/Sell Aggregates & Turnover Verified)");
@@ -1079,7 +1008,6 @@ public class OMSweb_MultiOrderExecution {
             scorecard.put("Order Summary", "WARNING (" + e.getMessage() + ")");
             syncScorecard.put("Order Summary", "WARNING (" + e.getMessage() + ")");
         }
-
         // ---------------------------------------------------------------------
         // WIDGET 5: ACCOUNT LIMITS REAL-TIME AUDIT (API & UI DUAL COMPARISON)
         // ---------------------------------------------------------------------
@@ -1094,22 +1022,17 @@ public class OMSweb_MultiOrderExecution {
                 Map<String, String> preUi = base.accountLimitsUiSnapshots.getOrDefault(code, preApi);
                 Map<String, String> postApi = Account_Limits.getApiSnapshot(driver, code, exchange);
                 Map<String, String> postUi = Account_Limits.getUiSnapshot(driver, code);
-
                 String syncCash = checkSync(postApi.get("cash_limit"), postUi.get("cash_limit"));
                 String syncExp = checkSync(postApi.get("exposure"), postUi.get("exposure"));
                 String syncTurn = checkSync(postApi.get("turnover"), postUi.get("turnover"));
-
                 if (!syncCash.equals("IN SYNC")) allLimitsSync = false;
-
                 double orderVal = order.getQuantity() * order.getRate();
                 String[][] tableData = {
                     { "Cash Limit", preApi.getOrDefault("cash_limit", "-"), postApi.getOrDefault("cash_limit", "-"), preUi.getOrDefault("cash_limit", "-"), postUi.getOrDefault("cash_limit", "-"), (order.getSide() == OrderSide.BUY ? "-" : "+") + String.format("%.2f", orderVal), syncCash },
                     { "Exposure", preApi.getOrDefault("exposure", "-"), postApi.getOrDefault("exposure", "-"), preUi.getOrDefault("exposure", "-"), postUi.getOrDefault("exposure", "-"), String.format("%.2f", orderVal), syncExp },
                     { "Turnover", preApi.getOrDefault("turnover", "-"), postApi.getOrDefault("turnover", "-"), preUi.getOrDefault("turnover", "-"), postUi.getOrDefault("turnover", "-"), String.format("+%.2f", orderVal), syncTurn }
                 };
-
                 printComparisonTable("ACCOUNT LIMITS: Client " + code, tableData);
-
                 Account_Limits.verify(preApi, !postApi.isEmpty() ? postApi : postUi, order.getSide().name(),
                         order.getQuantity(), order.getRate(), exchange, order.getQuantity(), 0);
             }
@@ -1120,7 +1043,6 @@ public class OMSweb_MultiOrderExecution {
             scorecard.put("Account Limits", "WARNING (" + e.getMessage() + ")");
             syncScorecard.put("Account Limits", "WARNING (" + e.getMessage() + ")");
         }
-
         // ---------------------------------------------------------------------
         // WIDGET 6: POSITION WIDGET REAL-TIME AUDIT (API & UI DUAL COMPARISON)
         // ---------------------------------------------------------------------
@@ -1131,26 +1053,19 @@ public class OMSweb_MultiOrderExecution {
             Position.searchSymbolInPosition(driver, symbol, exchange);
             List<Position.ClientPosition> postApiList = Position.getApiSnapshot(driver, symbol, exchange);
             List<Position.ClientPosition> postUiList = Position.getUiSnapshot(driver, symbol, exchange);
-
             System.out.printf("[POSITION] Post-Execution Accounts (API: %d | UI: %d)%n", postApiList.size(), postUiList.size());
-
             // Build side-by-side comparison per client
             Map<String, Position.ClientPosition> preApiMap = new HashMap<>();
             for (Position.ClientPosition cp : base.positionHoldings) preApiMap.put(cp.getClientCode(), cp);
-
             Map<String, Position.ClientPosition> preUiMap = new HashMap<>();
             for (Position.ClientPosition cp : base.positionUiHoldings) preUiMap.put(cp.getClientCode(), cp);
-
             Map<String, Position.ClientPosition> postApiMap = new HashMap<>();
             for (Position.ClientPosition cp : postApiList) postApiMap.put(cp.getClientCode(), cp);
-
             Map<String, Position.ClientPosition> postUiMap = new HashMap<>();
             for (Position.ClientPosition cp : postUiList) postUiMap.put(cp.getClientCode(), cp);
-
             Set<String> allClients = new HashSet<>();
             for (OrderItem o : placedOrders) allClients.add(o.getClientCode());
             allClients.addAll(postApiMap.keySet());
-
             List<String[]> posRows = new ArrayList<>();
             boolean allPosSync = true;
             for (String code : allClients) {
@@ -1158,15 +1073,12 @@ public class OMSweb_MultiOrderExecution {
                 Position.ClientPosition preU = preUiMap.get(code);
                 Position.ClientPosition postA = postApiMap.get(code);
                 Position.ClientPosition postU = postUiMap.get(code);
-
                 String preAQ = preA != null ? String.format("%.0f", preA.getTotalQty()) : "0";
                 String postAQ = postA != null ? String.format("%.0f", postA.getTotalQty()) : "0";
                 String preUQ = preU != null ? String.format("%.0f", preU.getTotalQty()) : "0";
                 String postUQ = postU != null ? String.format("%.0f", postU.getTotalQty()) : "0";
-
                 String sync = checkSync(postAQ, postUQ);
                 if (!sync.equals("IN SYNC")) allPosSync = false;
-
                 String delta = "-";
                 for (OrderItem o : placedOrders) {
                     if (o.getClientCode().equals(code)) {
@@ -1174,12 +1086,9 @@ public class OMSweb_MultiOrderExecution {
                         break;
                     }
                 }
-
                 posRows.add(new String[]{ "Client " + code + " Total", preAQ, postAQ, preUQ, postUQ, delta, sync });
             }
-
             printComparisonTable("POSITION WIDGET HOLDINGS: " + symbol, posRows.toArray(new String[0][]));
-
             verifyPositionDeltas(base.positionHoldings, postApiList, placedOrders, symbol);
             scorecard.put("Position Widget", "PASS (Holdings & Saleable Balances Verified)");
             syncScorecard.put("Position Widget", allPosSync ? "PASS (UI & API Real-Time Synced)" : "INFO (Position Table Live Sync)");
@@ -1188,13 +1097,11 @@ public class OMSweb_MultiOrderExecution {
             scorecard.put("Position Widget", "WARNING (" + e.getMessage() + ")");
             syncScorecard.put("Position Widget", "WARNING (" + e.getMessage() + ")");
         }
-
         // =====================================================================
         // MASTER VERDICT & DUAL SCOREBOARD (API vs UI REAL-TIME CONSISTENCY)
         // =====================================================================
         printDualMasterScorecard(scorecard, syncScorecard, placedOrders, symbol);
     }
-
     // =========================================================================
     // 8. SIDE-BY-SIDE TABLE PRINTER & SYNC EVALUATOR
     // =========================================================================
@@ -1219,7 +1126,6 @@ public class OMSweb_MultiOrderExecution {
         }
         System.out.println("+================================================================================================================================================+\n");
     }
-
     private static String checkSync(String val1, String val2) {
         if (val1 == null || val2 == null) return "N/A";
         String s1 = val1.trim().replace(",", "").replace("%", "").toUpperCase();
@@ -1233,7 +1139,6 @@ public class OMSweb_MultiOrderExecution {
         } catch (Exception ignored) {}
         return "DESYNC";
     }
-
     private static void printDualMasterScorecard(Map<String, String> scorecard, Map<String, String> syncScorecard, List<OrderItem> placedOrders, String symbol) {
         System.out.println();
         System.out.println("+=======================================================================================================================+");
@@ -1243,7 +1148,6 @@ public class OMSweb_MultiOrderExecution {
         System.out.println("+-----------------------------------------------------------------------------------------------------------------------+");
         System.out.printf("| %-20s | %-44s | %-47s |%n", "OMS Widget", "Pre vs Post Trade Verdict", "Real-Time API vs UI Sync Verdict");
         System.out.println("+----------------------+----------------------------------------------+-------------------------------------------------+");
-
         for (String widget : scorecard.keySet()) {
             String v = scorecard.getOrDefault(widget, "PASS");
             String s = syncScorecard.getOrDefault(widget, "IN SYNC");
@@ -1253,7 +1157,6 @@ public class OMSweb_MultiOrderExecution {
         System.out.println("| >>> DUAL AUDIT COMPLETE: BOTH BACKEND API & VISIBLE UI WIDGETS VERIFIED PRE & POST MARKET EXECUTION. <<<              |");
         System.out.println("+=======================================================================================================================+\n");
     }
-
     // =========================================================================
     // 9. POSITION DELTA VERIFIER
     // =========================================================================
@@ -1265,31 +1168,26 @@ public class OMSweb_MultiOrderExecution {
         System.out.printf("| %-8s | %-6s | %-12s | %-12s | %-14s | %-14s | %-8s |%n",
                 "Client", "Side", "Pre-Qty", "Post-Qty", "Expected Post", "Expected Delta", "Verdict");
         System.out.println("+-------------------------------------------------------------------------------------------------------+");
-
         Map<String, Double> preMap = new HashMap<>();
         if (preHoldings != null) {
             for (Position.ClientPosition cp : preHoldings) preMap.put(cp.getClientCode(), cp.getTotalQty());
         }
-
         Map<String, Double> postMap = new HashMap<>();
         if (postHoldings != null) {
             for (Position.ClientPosition cp : postHoldings) postMap.put(cp.getClientCode(), cp.getTotalQty());
         }
-
         for (OrderItem o : orders) {
             String client = o.getClientCode();
             double preQ = preMap.getOrDefault(client, 0.0);
             double postQ = postMap.getOrDefault(client, preQ);
             double expQ = (o.getSide() == OrderSide.BUY) ? (preQ + o.getQuantity()) : Math.max(0, preQ - o.getQuantity());
             String deltaStr = (o.getSide() == OrderSide.BUY ? "+" : "-") + o.getQuantity();
-
             boolean pass = (postQ == expQ || (o.getDueQty() > 0 && postQ >= preQ));
             System.out.printf("| %-8s | %-6s | %-12.0f | %-12.0f | %-14.0f | %-14s | %-8s |%n",
                     client, o.getSide(), preQ, postQ, expQ, deltaStr, pass ? "PASS" : "INFO");
         }
         System.out.println("+=======================================================================================================+");
     }
-
     // =========================================================================
     // 10. UTILITIES
     // =========================================================================
@@ -1302,7 +1200,6 @@ public class OMSweb_MultiOrderExecution {
         }
         System.out.println("+---------------------------------------------------------------------------------------+");
     }
-
     public static String toPublicSymbol(String sym) {
         if (sym == null) return "";
         String s = sym.trim().toUpperCase().replaceAll("\\[[A-Z0-9]+\\]", "");
@@ -1312,8 +1209,6 @@ public class OMSweb_MultiOrderExecution {
         if (s.isEmpty()) return "";
         return s + ".PUBLIC";
     }
-
-    
     public static String checkSaleableUiWarning(WebDriver driver) {
         if (driver == null) return null;
         try {
@@ -1337,14 +1232,12 @@ public class OMSweb_MultiOrderExecution {
         } catch (Exception ignored) {}
         return null;
     }
-
     public static String cleanSymbol(String sym) {
         if (sym == null) return "";
         String s = sym.trim().toUpperCase().replaceAll("\\[[A-Z0-9]+\\]", "");
         if (s.contains(".")) s = s.split("\\.")[0];
         return s.trim();
     }
-
     private static double parseNum(String val) {
         if (val == null) return 0.0;
         String clean = val.replaceAll("[^0-9.-]", "").trim();

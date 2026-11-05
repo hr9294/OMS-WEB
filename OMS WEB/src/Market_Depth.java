@@ -9,13 +9,11 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-
 import org.openqa.selenium.*;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 public class Market_Depth {
-
     // =========================================================================
     // 1. ENDPOINTS & SELECTORS
     // =========================================================================
@@ -56,7 +54,6 @@ public class Market_Depth {
         // Navigate and search
         navigateToMarketDepth(driver);
         searchSymbolInDepth(driver, symbol, exchange);
-
         Map<String, String> data = getSnapshot(driver, symbol, exchange);
         printDepthReport(symbol, data);
         System.out.println("=======================================================\n");
@@ -324,7 +321,6 @@ public class Market_Depth {
     public static Map<String, String> parseMarketDepthJson(String json, String cleanSymbol, String exchange) {
         Map<String, String> result = new LinkedHashMap<>();
         if (json == null || json.trim().isEmpty() || !json.contains("symbol_data")) return result;
-
         boolean isCse = "CSE".equalsIgnoreCase(exchange);
 
         // 1. Extract symbol_data block
@@ -359,11 +355,9 @@ public class Market_Depth {
             result.put("SL", isCse ? getJsonVal(symBlock, "cse_circuit_down", "circuit_down") : getJsonVal(symBlock, "circuit_down"));
             result.put("DL", isCse ? getJsonVal(symBlock, "cse_dl", "dl", "low") : getJsonVal(symBlock, "dl", "low"));
             result.put("CL", isCse ? getJsonVal(symBlock, "cse_cd", "cd") : getJsonVal(symBlock, "cd"));
-
             String h52 = isCse ? getJsonVal(symBlock, "cse_h_52w", "h_52w") : getJsonVal(symBlock, "h_52w");
             String l52 = isCse ? getJsonVal(symBlock, "cse_l_52w", "l_52w") : getJsonVal(symBlock, "l_52w");
             result.put("52 wk", (h52.equals("-") && l52.equals("-")) ? "-" : h52 + " / " + l52);
-
             result.put("VWAP", isCse ? getJsonVal(symBlock, "cse_vwap", "vwap") : getJsonVal(symBlock, "vwap"));
             result.put("Mkt", getJsonVal(symBlock, "board", "market_type"));
 
@@ -467,7 +461,6 @@ public class Market_Depth {
         int closeBracket = json.indexOf(']', openBracket);
         if (openBracket == -1 || closeBracket == -1) return list;
         String content = json.substring(openBracket + 1, closeBracket);
-
         Matcher m = Pattern.compile("\\{([^}]+)\\}").matcher(content);
         while (m.find()) {
             String item = m.group(1);
@@ -537,7 +530,6 @@ public class Market_Depth {
             conn.setReadTimeout(5000);
             conn.setRequestProperty("Accept", "application/json");
             conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-
             Set<Cookie> cookies = driver.manage().getCookies();
             if (cookies != null && !cookies.isEmpty()) {
                 String cookieHeader = cookies.stream().map(c -> c.getName() + "=" + c.getValue()).collect(Collectors.joining("; "));
@@ -554,7 +546,6 @@ public class Market_Depth {
 
             int responseCode = conn.getResponseCode();
             if (responseCode != 200) return Collections.emptyMap();
-
             StringBuilder jsonBuilder = new StringBuilder();
             try (BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
@@ -571,20 +562,15 @@ public class Market_Depth {
     // =========================================================================
     public static void verify(Map<String, String> before, Map<String, String> after,
                               String symbol, String side, int tradeQty, double tradeRate, String exchange) {
-
         double oldTrades = parseNum(before.getOrDefault("Trade", "0"));
         double newTrades = parseNum(after.getOrDefault("Trade", "0"));
-
         double oldVol    = parseNum(before.getOrDefault("Vol", "0"));
         double newVol    = parseNum(after.getOrDefault("Vol", "0"));
-
         double currentLtp= parseNum(after.getOrDefault("Last", "0"));
-
         double expectedVol = oldVol + tradeQty;
         boolean volPass    = Double.compare(newVol, expectedVol) == 0;
         boolean tradePass  = newTrades >= oldTrades;
         boolean ltpMatch   = (tradeRate > 0) ? (Math.abs(currentLtp - tradeRate) <= 1.0) : true;
-
         System.out.println();
         System.out.println("+================================================================================================================+");
         System.out.printf("| MARKET DEPTH AUDIT: %-7s (%-4s %d @ %.2f on %-4s)%n", symbol, side, tradeQty, tradeRate, exchange);
@@ -622,7 +608,6 @@ public class Market_Depth {
     public static void printDepthReport(String symbol, Map<String, String> d) {
         String buyPer = d.getOrDefault("Buy_Percent", "-");
         String sellPer = d.getOrDefault("Sell_Percent", "-");
-
         System.out.println();
         System.out.println("+===================================================================================================================================================+");
         System.out.printf("| MARKET DEPTH & QUOTE SUMMARY: %-15s [Source: %-25s]                                         |%n", symbol, d.getOrDefault("DATA_SOURCE", "NONE"));
