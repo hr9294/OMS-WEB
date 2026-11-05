@@ -175,44 +175,166 @@ public class OMSweb_Trade {
 		}
 	}
 
-	public static void runNormalTradeCSE(WebDriver driver, Scanner sc) throws InterruptedException {
+	public static class MarketPriceBand {
+		public final String symbol;
+		public final String exchange;
+		public final double ltp;
+		public final double ycp;
+		public final double sh;
+		public final double sl;
+		public final double ch;
+		public final double cl;
+		public final double safeRate;
+
+		public MarketPriceBand(String symbol, String exchange, double ltp, double ycp, double sh, double sl, double ch, double cl) {
+			this.symbol = symbol;
+			this.exchange = exchange;
+			this.ltp = ltp;
+			this.ycp = ycp;
+			this.sh = sh;
+			this.sl = sl;
+			this.ch = ch;
+			this.cl = cl;
+
+			double rate = 0.0;
+			if (ltp > 0) {
+				boolean inCircuit = (ch <= 0 || ltp <= ch) && (cl <= 0 || ltp >= cl);
+				boolean inSession = (sh <= 0 || ltp <= sh) && (sl <= 0 || ltp >= sl);
+				if (inCircuit && inSession) {
+					rate = ltp;
+				} else if (inSession) {
+					rate = ltp;
+				} else if (inCircuit) {
+					rate = ltp;
+				}
+			}
+			if (rate <= 0 && ycp > 0) {
+				boolean inCircuit = (ch <= 0 || ycp <= ch) && (cl <= 0 || ycp >= cl);
+				boolean inSession = (sh <= 0 || ycp <= sh) && (sl <= 0 || ycp >= sl);
+				if (inCircuit || inSession) rate = ycp;
+			}
+			if (rate <= 0) {
+				if (ch > 0 && cl > 0) {
+					rate = Math.round(((ch + cl) / 2.0) * 100.0) / 100.0;
+				} else if (sh > 0 && sl > 0) {
+					rate = Math.round(((sh + sl) / 2.0) * 100.0) / 100.0;
+				} else if (ltp > 0) {
+					rate = ltp;
+				} else if (ycp > 0) {
+					rate = ycp;
+				} else {
+					rate = 25.0;
+				}
+			}
+			this.safeRate = Math.round(rate * 100.0) / 100.0;
+		}
+
+		public String toString() {
+			return String.format(Locale.US,
+				"[PRICE BAND: %s on %s] LTP: %.2f | YCP: %.2f | SH: %.2f | SL: %.2f | CH: %.2f | CL: %.2f -> Safe Rate: %.2f BDT",
+				symbol, exchange, ltp, ycp, sh, sl, ch, cl, safeRate);
+		}
+	}
+
+	public static MarketPriceBand fetchMarketDbPriceBand(String instrument, String exchange, WebDriver driver) {
+		String cleanSym = cleanSymbol(instrument);
+		String ex = (exchange != null && !exchange.isEmpty()) ? exchange.toUpperCase() : "CSE";
+		String table = "CSE".equalsIgnoreCase(ex) ? "cse_md_ltp" : "dse_md_ltp";
+
+		double ltp = 0, ycp = 0, ch = 0, cl = 0, sh = 0, sl = 0;
+		boolean sourcedFromDb = false;
+
+		String[][] hosts = {
+			{ "192.168.155.22", "5445", "Primary DB" },
+			{ "10.20.8.29", "5445", "Secondary DB" }
+		};
+
+		String sql = "SELECT symbol, ltp, ycp, circuit_up, circuit_down, high, low, close " +
+		             "FROM " + table + " WHERE symbol = ? AND board = 'PUBLIC' LIMIT 1";
+
+		for (String[] hostConfig : hosts) {
+			String host = hostConfig[0];
+			int port = Integer.parseInt(hostConfig[1]);
+			String label = hostConfig[2];
+
+			try (java.net.Socket s = new java.net.Socket()) {
+				s.connect(new java.net.InetSocketAddress(host, port), 200);
+			} catch (Exception notReachable) {
+				continue;
+			}
+
+			try {
+				Class.forName("org.postgresql.Driver");
+				String url = String.format(Locale.US, "jdbc:postgresql://%s:%d/marketdb?connectTimeout=2&socketTimeout=3", host, port);
+				java.util.Properties props = new java.util.Properties();
+				props.setProperty("user", "marketdata");
+				props.setProperty("password", "pass4321");
+				try (java.sql.Connection conn = java.sql.DriverManager.getConnection(url, props);
+				     java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
+					ps.setString(1, cleanSym);
+					try (java.sql.ResultSet rs = ps.executeQuery()) {
+						if (rs.next()) {
+							ltp = rs.getDouble("ltp");
+							ycp = rs.getDouble("ycp");
+							ch = rs.getDouble("circuit_up");
+							cl = rs.getDouble("circuit_down");
+							sh = rs.getDouble("high");
+							sl = rs.getDouble("low");
+							sourcedFromDb = true;
+							System.out.printf("[MARKET DB %s] Queried %s (%s): LTP=%.2f, YCP=%.2f, SH=%.2f, SL=%.2f, CH=%.2f, CL=%.2f%n",
+									label, cleanSym, table, ltp, ycp, sh, sl, ch, cl);
+							break;
+						}
+					}
+				}
+			} catch (Exception e) {
+				System.err.printf("[WARN: Market DB] %s query error: %s%n", label, e.getMessage());
+			}
+		}
+
+		if (!sourcedFromDb && driver != null) {
+			try {
+				Map<String, String> depth = Market_Depth.getSnapshot(driver, cleanSym, ex);
+				if (depth != null && !depth.isEmpty()) {
+					if (ltp <= 0) ltp = parseNumSafe(depth.get("LTP"));
+					if (ltp <= 0) ltp = parseNumSafe(depth.get("Last"));
+					if (ycp <= 0) ycp = parseNumSafe(depth.get("YCP"));
+					if (ycp <= 0) ycp = parseNumSafe(depth.get("Close"));
+					if (sh <= 0) sh = parseNumSafe(depth.get("SH"));
+					if (sl <= 0) sl = parseNumSafe(depth.get("SL"));
+					if (ch <= 0) ch = parseNumSafe(depth.get("CH"));
+					if (cl <= 0) cl = parseNumSafe(depth.get("CL"));
+					System.out.printf("[MARKET DEPTH UI] Queried %s: LTP=%.2f, YCP=%.2f, SH=%.2f, SL=%.2f, CH=%.2f, CL=%.2f%n",
+							cleanSym, ltp, ycp, sh, sl, ch, cl);
+				}
+			} catch (Exception ignored) {}
+		}
+
+		MarketPriceBand band = new MarketPriceBand(cleanSym, ex, ltp, ycp, sh, sl, ch, cl);
+		System.out.println(band.toString());
+		return band;
+	}
+
+	public static boolean executeSingleCseTrade(WebDriver driver, Scanner sc, String sideText, String requestedSymbol) throws InterruptedException {
 		WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
 		activeExchange = "CSE";
 
-		if (!isAlreadyOnTradePage(driver)) {
-			navigateToTradePage(driver, wait, false);
+		boolean isSell = "SELL".equalsIgnoreCase(sideText);
+		String themeColor = isSell ? "#ef4444" : "#10b981";
+
+		showFrontendBanner(driver, "[CSE TRADE] Resolving Tradeable Symbol for " + sideText + " Order...", themeColor);
+		String instrument = requestedSymbol;
+		if (instrument == null || instrument.trim().isEmpty() || "ACFL".equalsIgnoreCase(instrument)) {
+			instrument = Position.promptAndSelectCseTradeableSymbol(driver, sc, sideText, "ACFL");
 		}
-		if (!isWidgetColorConfigured) {
-			System.out.println("\n[WIDGET COLOR] Setting default color link to Turquoise (#42EADDFF) for all widgets...");
-			applyColorToAllWidgets(driver, "Turquoise", "#42EADDFF");
-			isWidgetColorConfigured = true;
-			activeWidgetColorName = "Turquoise";
-			activeWidgetColorHex = "#42EADDFF";
-		}
-
-		System.out.println("+=============================================================================+");
-		System.out.println("|              UFTFAST OMS - CSE GATEWAY NORMAL TRADE ENGINE                  |");
-		System.out.println("+=============================================================================+");
-
-		showFrontendBanner(driver, "[CSE TRADE] Setting Active Exchange to Chittagong Stock Exchange (CSE)...", "#3b82f6");
-
-		System.out.println("\n=== SELECT TRADE ACTION FOR CSE ===");
-		System.out.println("1. BUY (default)");
-		System.out.println("2. SELL");
-		System.out.print("Enter choice (1=BUY / 2=SELL, default=1 in 4s): ");
-		String sideInput = readLineWithTimeout(sc, "1", 4);
-		String sideText = "2".equals(sideInput) || "SELL".equalsIgnoreCase(sideInput) ? "SELL" : "BUY";
-
-		showFrontendBanner(driver, "[CSE TRADE] Resolving Tradeable Symbols from DB & Position Widget...", "#8b5cf6");
-		String instrument = Position.promptAndSelectCseTradeableSymbol(driver, sc, sideText, "ACFL");
 
 		String clientCode = "23986";
-		if ("SELL".equalsIgnoreCase(sideText)) {
+		if (isSell) {
 			Position.ClientPosition holdingClient = Position.findClientWithSaleable(driver, instrument, 1, "CSE");
 			if (holdingClient != null && !holdingClient.getClientCode().isEmpty()) {
 				clientCode = holdingClient.getClientCode();
-				System.out.printf("[POSITION] Selected holding client %s with %,.0f saleable shares on CSE.%n",
-						clientCode, holdingClient.getSaleableQty());
+				System.out.printf("[POSITION] Selected holding client %s with %,.0f saleable shares of %s on CSE.%n",
+						clientCode, holdingClient.getSaleableQty(), instrument);
 			} else {
 				System.out.print("Enter SELL Client Code (default 23986 in 3s): ");
 				clientCode = readLineWithTimeout(sc, "23986", 3);
@@ -222,12 +344,12 @@ public class OMSweb_Trade {
 			clientCode = readLineWithTimeout(sc, "23986", 3);
 		}
 
-		System.out.print("Enter Quantity (default 10 in 3s): ");
+		System.out.print("Enter " + sideText + " Quantity (default 10 in 3s): ");
 		String qStr = readLineWithTimeout(sc, "10", 3);
 		int tradeQty = 10;
 		try { tradeQty = Integer.parseInt(qStr); } catch (Exception ignored) {}
 
-		showFrontendBanner(driver, "[CSE TRADE] Synchronizing Symbol: " + instrument + " across UI Widgets...", "#06b6d4");
+		showFrontendBanner(driver, "[CSE TRADE] Synchronizing " + instrument + " across Market Watch & Widgets...", "#06b6d4");
 		try {
 			WebElement searchSymbol = wait.until(ExpectedConditions.presenceOfElementLocated(By.id("instrument")));
 			highlightElement(driver, searchSymbol, "#06b6d4");
@@ -242,15 +364,16 @@ public class OMSweb_Trade {
 		Thread.sleep(400);
 
 		System.out.printf("%n[ORDER] Opening %s Window for %s on CSE...%n", sideText, instrument);
-		showFrontendBanner(driver, "[CSE TRADE] Opening " + sideText + " Order Modal for " + instrument + "...", "#f59e0b");
+		showFrontendBanner(driver, "[CSE TRADE] Opening " + sideText + " Order Window for " + instrument + "...", themeColor);
+
 		By actionBtnLoc = By.xpath(String.format("//div[@title='Place %s Order']", sideText));
 		WebElement actionBtn = wait.until(ExpectedConditions.elementToBeClickable(actionBtnLoc));
-		highlightElement(driver, actionBtn, "#f59e0b");
+		highlightElement(driver, actionBtn, themeColor);
 		actionBtn.click();
 		Thread.sleep(600);
 
-		System.out.println("[ORDER] Filling Order Modal fields & Selecting CSE Gateway...");
-		showFrontendBanner(driver, "[CSE TRADE] Routing Order to CSE Gateway (Radio #xcg3)...", "#10b981");
+		System.out.println("[ORDER] Routing Order to CSE Gateway (Radio #xcg3)...");
+		showFrontendBanner(driver, "[CSE TRADE] Routing " + sideText + " Order to CSE Gateway (#xcg3)...", themeColor);
 
 		selectExchangeInModal(driver, "CSE");
 		Thread.sleep(200);
@@ -282,17 +405,13 @@ public class OMSweb_Trade {
 
 		selectExchangeInModal(driver, "CSE");
 
-		double refRate = fetchPriceLtpOrYcp(driver, wait, instrument, "CSE");
-		if (refRate <= 0) {
-			refRate = Position.getCseTradeableSymbols(driver).stream()
-					.filter(s -> s.getSymbol().equalsIgnoreCase(instrument))
-					.mapToDouble(Position.CseTradeableSymbol::getLtp).findFirst().orElse(25.00);
-		}
+		MarketPriceBand band = fetchMarketDbPriceBand(instrument, "CSE", driver);
+		double safeRate = band.safeRate;
+		String formattedRate = String.format(java.util.Locale.US, "%.2f", safeRate);
 
-		String formattedRate = String.format(java.util.Locale.US, "%.2f", refRate);
 		try {
 			WebElement rateEl = wait.until(ExpectedConditions.elementToBeClickable(By.id("limit_order_rate")));
-			highlightElement(driver, rateEl, "#3b82f6");
+			highlightElement(driver, rateEl, themeColor);
 			rateEl.clear();
 			rateEl.sendKeys(formattedRate);
 		} catch (Exception e) {
@@ -303,39 +422,40 @@ public class OMSweb_Trade {
 		try {
 			((JavascriptExecutor) driver).executeScript("$('#limit_order_rate').trigger('input').trigger('change');");
 		} catch (Exception ignored) {}
-		System.out.printf("[RATE] Set Limit Rate: %s BDT for %s on CSE%n", formattedRate, instrument);
+		System.out.printf("[RATE] Set Limit Rate: %s BDT for %s on CSE (Sourced from Market DB Price Band)%n", formattedRate, instrument);
 
 		dismissLingeringAutocomplete(driver);
 		Thread.sleep(300);
 
-		saveScreenshot(driver, "cse_trade_frontend_order_modal.png");
+		String modalShot = isSell ? "cse_trade_frontend_sell_order_modal.png" : "cse_trade_frontend_order_modal.png";
+		saveScreenshot(driver, modalShot);
 
-		showFrontendBanner(driver, "[CSE TRADE] Submitting " + sideText + " Order (" + tradeQty + " shares @ " + formattedRate + " BDT)...", "#f59e0b");
+		showFrontendBanner(driver, "[CSE TRADE] Submitting " + sideText + " Order (" + tradeQty + " shares @ " + formattedRate + " BDT)...", themeColor);
 		By submitBtnLoc = By.xpath(String.format(
 				"//div[contains(@class, 'form-submit-btn-holder')]//button[normalize-space()='%s']", sideText));
 		WebElement submitBtn = wait.until(ExpectedConditions.elementToBeClickable(submitBtnLoc));
-		highlightElement(driver, submitBtn, "#f59e0b");
+		highlightElement(driver, submitBtn, themeColor);
 		submitBtn.click();
 		Thread.sleep(500);
 
 		System.out.println("[CONFIRMATION] Confirming order modal [YES]...");
-		showFrontendBanner(driver, "[CSE TRADE] Confirming Order Confirmation Dialog [YES]...", "#10b981");
+		showFrontendBanner(driver, "[CSE TRADE] Confirming " + sideText + " Order Confirmation [YES]...", themeColor);
 		for (int attempt = 0; attempt < 20; attempt++) {
 			try {
 				Boolean clicked = (Boolean) ((JavascriptExecutor) driver).executeScript(
 					"var btn = document.getElementById('cnfirmConfirmBtn') || document.querySelector('button.btn-yes, button#yesBtn');" +
-					"if (btn) { btn.style.outline = '3px solid #10b981'; btn.click(); return true; } return false;"
+					"if (btn) { btn.style.outline = '3px solid " + themeColor + "'; btn.click(); return true; } return false;"
 				);
 				if (Boolean.TRUE.equals(clicked)) {
-					System.out.println("[CONFIRMED] Order confirmation YES clicked successfully.");
+					System.out.println("[CONFIRMED] " + sideText + " order confirmation YES clicked successfully.");
 					break;
 				}
 			} catch (Exception ignored) {}
 			Thread.sleep(100);
 		}
 
-		System.out.println("\n[TERMINAL] Polling Order Terminal for Real-time CSE Order Execution...");
-		showFrontendBanner(driver, "[CSE TRADE] Order Submitted! Polling Order Terminal Table for Execution...", "#10b981");
+		System.out.println("\n[TERMINAL] Polling Order Terminal for Real-time CSE " + sideText + " Execution...");
+		showFrontendBanner(driver, "[CSE TRADE] " + sideText + " Order Submitted! Polling Order Terminal Table...", themeColor);
 		Thread.sleep(1200);
 
 		Order_Terminal.navigateToOrderTerminal(driver);
@@ -353,32 +473,75 @@ public class OMSweb_Trade {
 				"    if (rows[i].innerText.indexOf(oid) !== -1) {" +
 				"        rows[i].scrollIntoView({behavior: 'smooth', block: 'center'});" +
 				"        rows[i].style.transition = 'all 0.4s ease';" +
-				"        rows[i].style.backgroundColor = '#dcfce7';" +
-				"        rows[i].style.outline = '3px solid #22c55e';" +
+				"        rows[i].style.backgroundColor = '" + (isSell ? "#fee2e2" : "#dcfce7") + "';" +
+				"        rows[i].style.outline = '3px solid " + themeColor + "';" +
 				"        rows[i].style.fontWeight = 'bold';" +
 				"        break;" +
 				"    }" +
 				"}",
 				placedOrderId
 			);
-			showFrontendBanner(driver, "[CSE TRADE] Trade ACCEPTED on CSE! Order ID: " + placedOrderId + " (Highlighted in Green)", "#10b981");
+			showFrontendBanner(driver, "[CSE TRADE] " + sideText + " Order Placed on CSE! Order ID: " + placedOrderId, themeColor);
 		}
 
 		Thread.sleep(500);
-		saveScreenshot(driver, "cse_trade_frontend_order_terminal.png");
+		String termShot = isSell ? "cse_trade_frontend_sell_order_terminal.png" : "cse_trade_frontend_order_terminal.png";
+		saveScreenshot(driver, termShot);
 
 		if (actionOrder != null && !actionOrder.isEmpty()) {
 			System.out.println("\n=======================================================");
-			System.out.printf("  CSE ORDER PLACED SUCCESSFULLY: %s %d %s @ %s BDT%n",
-					sideText, tradeQty, instrument, formattedRate);
+			System.out.printf("  CSE %s ORDER PLACED: %s %d %s @ %s BDT%n",
+					sideText, sideText, tradeQty, instrument, formattedRate);
 			System.out.println("=======================================================");
 			actionOrder.forEach((k, v) -> System.out.printf("  %-16s: %s%n", k, v));
 			System.out.println("=======================================================\n");
 		} else {
-			System.out.println("[INFO] Order submitted to CSE Gateway. Verify Order Terminal for order status updates.");
+			System.out.println("[INFO] " + sideText + " order submitted to CSE Gateway. Verify Order Terminal for updates.");
+		}
+		return true;
+	}
+
+	public static void runNormalTradeCSE(WebDriver driver, Scanner sc) throws InterruptedException {
+		WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+		activeExchange = "CSE";
+
+		if (!isAlreadyOnTradePage(driver)) {
+			navigateToTradePage(driver, wait, false);
+		}
+		if (!isWidgetColorConfigured) {
+			System.out.println("\n[WIDGET COLOR] Setting default color link to Turquoise (#42EADDFF) for all widgets...");
+			applyColorToAllWidgets(driver, "Turquoise", "#42EADDFF");
+			isWidgetColorConfigured = true;
+			activeWidgetColorName = "Turquoise";
+			activeWidgetColorHex = "#42EADDFF";
 		}
 
-		System.out.println("Normal Trade execution on CSE completed successfully!");
+		System.out.println("+=============================================================================+");
+		System.out.println("|              UFTFAST OMS - CSE GATEWAY NORMAL TRADE ENGINE                  |");
+		System.out.println("+=============================================================================+");
+
+		showFrontendBanner(driver, "[CSE TRADE] Setting Active Exchange to Chittagong Stock Exchange (CSE)...", "#3b82f6");
+
+		System.out.println("\n=== SELECT TRADE ACTION FOR CSE ===");
+		System.out.println("1. SELL (Sell Order Window & Execution) [Default]");
+		System.out.println("2. BUY  (Buy Order Window & Execution)");
+		System.out.println("3. BOTH (Sequential BUY & SELL Execution)");
+		System.out.print("Enter choice (1=SELL / 2=BUY / 3=BOTH, default=1 in 4s): ");
+		String sideInput = readLineWithTimeout(sc, "1", 4);
+
+		if ("3".equals(sideInput) || "BOTH".equalsIgnoreCase(sideInput)) {
+			System.out.println("\n>>> [1/2] EXECUTING CSE BUY ORDER...");
+			executeSingleCseTrade(driver, sc, "BUY", "ACFL");
+			Thread.sleep(1500);
+			System.out.println("\n>>> [2/2] EXECUTING CSE SELL ORDER...");
+			executeSingleCseTrade(driver, sc, "SELL", "ACFL");
+		} else if ("2".equals(sideInput) || "BUY".equalsIgnoreCase(sideInput)) {
+			executeSingleCseTrade(driver, sc, "BUY", "ACFL");
+		} else {
+			executeSingleCseTrade(driver, sc, "SELL", "ACFL");
+		}
+
+		System.out.println("\nNormal Trade execution on CSE completed successfully!");
 	}
 
 	public static void main(WebDriver driver, Scanner sc) throws InterruptedException {
