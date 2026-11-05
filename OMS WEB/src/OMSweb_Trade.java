@@ -197,34 +197,25 @@ public class OMSweb_Trade {
 			this.cl = cl;
 
 			double rate = 0.0;
+			// 1. First Priority: LTP from DB
 			if (ltp > 0) {
-				boolean inCircuit = (ch <= 0 || ltp <= ch) && (cl <= 0 || ltp >= cl);
-				boolean inSession = (sh <= 0 || ltp <= sh) && (sl <= 0 || ltp >= sl);
-				if (inCircuit && inSession) {
-					rate = ltp;
-				} else if (inSession) {
-					rate = ltp;
-				} else if (inCircuit) {
-					rate = ltp;
-				}
+				rate = ltp;
 			}
-			if (rate <= 0 && ycp > 0) {
-				boolean inCircuit = (ch <= 0 || ycp <= ch) && (cl <= 0 || ycp >= cl);
-				boolean inSession = (sh <= 0 || ycp <= sh) && (sl <= 0 || ycp >= sl);
-				if (inCircuit || inSession) rate = ycp;
+			// 2. Second Priority: YCP from DB (when LTP is unavailable or 0)
+			else if (ycp > 0) {
+				rate = ycp;
 			}
-			if (rate <= 0) {
-				if (ch > 0 && cl > 0) {
-					rate = Math.round(((ch + cl) / 2.0) * 100.0) / 100.0;
-				} else if (sh > 0 && sl > 0) {
-					rate = Math.round(((sh + sl) / 2.0) * 100.0) / 100.0;
-				} else if (ltp > 0) {
-					rate = ltp;
-				} else if (ycp > 0) {
-					rate = ycp;
-				} else {
-					rate = 25.0;
-				}
+			// 3. Third Priority: Others from DB (SH / SL, CH / CL)
+			else if (sh > 0) {
+				rate = sh;
+			} else if (sl > 0) {
+				rate = sl;
+			} else if (ch > 0) {
+				rate = ch;
+			} else if (cl > 0) {
+				rate = cl;
+			} else {
+				rate = 25.0;
 			}
 			this.safeRate = Math.round(rate * 100.0) / 100.0;
 		}
@@ -2890,9 +2881,17 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		String cleanSym = cleanSymbol(instrument);
 		String ex = (exchange != null && !exchange.isEmpty()) ? exchange : "DSE";
 
-		// NOTE: Direct DB LTP fetch disabled per requirement (LTP sourced from Market Depth / UI).
+		// Tier 0 (FIRST PRIORITY): PostgreSQL Market DB (cse_md_ltp / dse_md_ltp) -> LTP, then YCP, then others
+		try {
+			MarketPriceBand dbBand = fetchMarketDbPriceBand(cleanSym, ex, null);
+			if (dbBand != null && dbBand.safeRate > 0) {
+				System.out.printf("[MARKET PRICE: DB FIRST] Sourced price for %s on %s from DB: %.2f BDT (LTP=%.2f, YCP=%.2f, SH=%.2f, SL=%.2f, CH=%.2f, CL=%.2f)%n",
+						cleanSym, ex, dbBand.safeRate, dbBand.ltp, dbBand.ycp, dbBand.sh, dbBand.sl, dbBand.ch, dbBand.cl);
+				return dbBand.safeRate;
+			}
+		} catch (Exception ignored) {}
 
-		// Tier 1: Market Depth Snapshot API (Queries Admin Shared API / QuantBD Token API / DOM)
+		// Tier 1 (FALLBACK): Market Depth Snapshot API (Queries Admin Shared API / QuantBD Token API / DOM)
 
 		try {
 			Map<String, String> depth = Market_Depth.getSnapshot(driver, cleanSym, ex);
