@@ -15,6 +15,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Scanner;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.Keys;
@@ -466,6 +470,35 @@ public class OMSweb_MultipleTrade {
     // 3. MAIN ENTRY POINTS (STANDALONE & RUNNER)
 
     // ==========================================
+    // 3. MAIN ENTRY POINTS (STANDALONE & RUNNER)
+    // ==========================================
+
+    public static String readLineWithTimeout(Scanner sc, String defaultVal, int timeoutSeconds) {
+        if (sc == null) return defaultVal;
+        ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "MultiTradeTimeoutReader");
+            t.setDaemon(true);
+            return t;
+        });
+        Future<String> future = executor.submit(() -> {
+            try {
+                if (sc.hasNextLine()) {
+                    return sc.nextLine();
+                }
+            } catch (Exception ignored) {}
+            return defaultVal;
+        });
+        try {
+            String res = future.get(timeoutSeconds, TimeUnit.SECONDS);
+            return (res == null || res.trim().isEmpty()) ? defaultVal : res.trim();
+        } catch (Exception e) {
+            System.out.println(" [Auto-proceed default: " + defaultVal + "]");
+            future.cancel(true);
+            return defaultVal;
+        } finally {
+            executor.shutdownNow();
+        }
+    }
 
     public static void main(String[] args) {
         ChromeOptions options = new ChromeOptions();
@@ -493,11 +526,21 @@ public class OMSweb_MultipleTrade {
         driver.manage().window().maximize();
         driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
 
+        boolean isCse = false;
+        for (String arg : args) {
+            if ("CSE".equalsIgnoreCase(arg)) isCse = true;
+        }
+
         try (Scanner sc = new Scanner(System.in)) {
             driver.get("https://devoms.quantbd.com");
             Thread.sleep(1000);
             OMSweb_Login.main(driver, sc);
-            main(driver, sc);
+            if (isCse) {
+                activeExchange = "CSE";
+                OMSweb_MultiOrderExecution.runCseMultiOrderExecution(driver, sc);
+            } else {
+                main(driver, sc);
+            }
         } catch (Exception e) {
             System.err.println("[HFT ENGINE ERROR] " + e.getMessage());
         }
@@ -523,12 +566,21 @@ public class OMSweb_MultipleTrade {
 
         // 0. Exchange Selection
         System.out.println("\n[HFT CONFIG: 0. EXCHANGE ROUTING]");
-        System.out.println("  1. DSE (Dhaka Stock Exchange - Default)");
-        System.out.println("  2. CSE (Chittagong Stock Exchange)");
-        System.out.print("Select Exchange (1 or 2, default=1): ");
-        String exChoice = sc.nextLine().trim();
-        activeExchange = ("2".equals(exChoice) || exChoice.equalsIgnoreCase("CSE")) ? "CSE" : "DSE";
+        System.out.println("  1. DSE (Dhaka Stock Exchange)");
+        System.out.println("  2. CSE (Chittagong Stock Exchange - Multiple Orders Execution) [Default]");
+        System.out.print("Select Exchange (1=DSE / 2=CSE, default=2 in 3s): ");
+        String exChoice = readLineWithTimeout(sc, "2", 3);
+        activeExchange = ("1".equals(exChoice) || exChoice.equalsIgnoreCase("DSE")) ? "DSE" : "CSE";
         System.out.printf(">> [ACTIVE EXCHANGE] %s Gateway Selected%n", activeExchange);
+
+        if ("CSE".equalsIgnoreCase(activeExchange)) {
+            System.out.println("\n+=============================================================================+");
+            System.out.println("|      CSE MULTIPLE TRADE ENGINE -> MULTIPLE ORDERS EXECUTION ON CSE          |");
+            System.out.println("+=============================================================================+");
+            System.out.println("[CSE TRADE ROUTING] Executing multiple orders on CSE (Multiple BUY + Opposite SELL & Real-time Audit)...");
+            OMSweb_MultiOrderExecution.runCseMultiOrderExecution(driver, sc);
+            return;
+        }
 
         // 2. Multi-Symbol Basket Selection
         List<String> activePublicSymbols = "CSE".equalsIgnoreCase(activeExchange) ? getPublicSymbols("CSE") : getPublicSymbolsBasket();
@@ -629,7 +681,7 @@ public class OMSweb_MultipleTrade {
 
         for (int i = 0; i < holderDiscLimit; i++) {
             String sym = symbols.get(i);
-            List<String> holders = fetchHoldingClientsForSymbol(driver, sym, "DSE");
+            List<String> holders = fetchHoldingClientsForSymbol(driver, sym, activeExchange);
             sellClientsBySymbol.put(sym, holders);
 
             System.out.printf("  ✔ %-10s -> Found %2d holding client(s) with saleable shares: %s%n",
@@ -905,7 +957,7 @@ public class OMSweb_MultipleTrade {
 
             // Auto-shift SELL order to another client if current client has insufficient saleable quantity
             if (order.side == OrderSide.SELL) {
-                Position.ClientPosition bestSeller = Position.findClientWithSaleable(driver, order.symbol, order.quantity, order.clientCode, "DSE");
+                Position.ClientPosition bestSeller = Position.findClientWithSaleable(driver, order.symbol, order.quantity, order.clientCode, activeExchange);
                 if (bestSeller != null && !bestSeller.getClientCode().equalsIgnoreCase(order.clientCode)) {
                     System.out.printf("  [AUTO-SHIFT] Client %s does not have %d saleable shares of %s. Shifting to Client %s (Saleable: %,.0f shares)...%n",
                             order.clientCode, order.quantity, order.symbol, bestSeller.getClientCode(), bestSeller.getSaleableQty());
@@ -1913,7 +1965,7 @@ public class OMSweb_MultipleTrade {
         List<String> symbols = Collections.singletonList(symbol);
         List<String> buyClients = DEFAULT_BUY_CLIENTS;
         Map<String, List<String>> sellMap = new HashMap<>();
-        sellMap.put(symbol, fetchHoldingClientsForSymbol(driver, symbol, "DSE"));
+        sellMap.put(symbol, fetchHoldingClientsForSymbol(driver, symbol, activeExchange));
         Map<String, Double> priceMap = new HashMap<>();
         priceMap.put(symbol, fetchPriceSafely(driver, new WebDriverWait(driver, Duration.ofSeconds(2)), symbol));
         return buildHftPipeline(symbols, buyClients, sellMap, priceMap, totalTrades, 1, baseOffset);

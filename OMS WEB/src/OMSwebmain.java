@@ -76,11 +76,14 @@ public class OMSwebmain {
         System.out.println("  2. Multi-Order Execution, Right-Click 'Execute at Market' & Real-time 6-Widget Audit");
         System.out.println("  3. High-Speed Multi-Trade Engine (2-Min Simultaneous: Accepted, Filled, Partial, Cancel)");
         System.out.println("  4. Direct CSE Normal Trade Engine");
-        System.out.print("Enter Choice (1, 2, 3, or 4, default=1): ");
+        System.out.println("  5. Direct CSE Multi-Order / Multiple Trade Engine");
+        System.out.print("Enter Choice (1, 2, 3, 4, or 5, default=1): ");
         String engChoice = sc.nextLine().trim();
 
         // 4. THEN OTHERS
-        if ("4".equals(engChoice) || "CSE".equalsIgnoreCase(engChoice)) {
+        if ("5".equals(engChoice) || "5".equalsIgnoreCase(engChoice)) {
+            OMSweb_MultiOrderExecution.runCseMultiOrderExecution(driver, sc);
+        } else if ("4".equals(engChoice) || "CSE".equalsIgnoreCase(engChoice)) {
             OMSweb_Trade.runNormalTradeCSE(driver, sc);
         } else if ("3".equals(engChoice)) {
             OMSweb_MultipleTrade.main(driver, sc);

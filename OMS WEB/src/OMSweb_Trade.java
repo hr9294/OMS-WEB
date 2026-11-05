@@ -536,10 +536,14 @@ public class OMSweb_Trade {
 		System.out.println("1. BOTH BUY & SELL Execution [Default]");
 		System.out.println("2. BUY Order Only");
 		System.out.println("3. SELL Order Only");
-		System.out.print("Enter choice (1=BOTH / 2=BUY / 3=SELL, default=1 in 3s): ");
+		System.out.println("4. MULTIPLE ORDERS / MULTIPLE TRADE on CSE");
+		System.out.print("Enter choice (1=BOTH / 2=BUY / 3=SELL / 4=MULTI, default=1 in 3s): ");
 		String sideInput = readLineWithTimeout(sc, "1", 3);
 
-		if ("2".equals(sideInput) || "BUY".equalsIgnoreCase(sideInput)) {
+		if ("4".equals(sideInput) || "MULTI".equalsIgnoreCase(sideInput) || "MULTIPLE".equalsIgnoreCase(sideInput)) {
+			System.out.println("\n>>> EXECUTING CSE MULTIPLE ORDERS / MULTIPLE TRADE...");
+			OMSweb_MultiOrderExecution.runCseMultiOrderExecution(driver, sc);
+		} else if ("2".equals(sideInput) || "BUY".equalsIgnoreCase(sideInput)) {
 			System.out.println("\n>>> EXECUTING CSE BUY ORDER...");
 			String chosenSymbol = Position.promptAndSelectCseTradeableSymbol(driver, sc, "BUY", "BBS");
 			executeSingleCseTrade(driver, sc, "BUY", chosenSymbol);
