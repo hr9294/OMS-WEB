@@ -39,6 +39,10 @@ public class OMSwebmain {
 
         // Disable password leak detection & safe browsing check popups
         options.addArguments("--disable-features=PasswordLeakDetection,PasswordCheck,PasswordLeakToggleMove,SafeBrowsing");
+        options.addArguments("--start-maximized");
+        options.addArguments("--window-position=0,0");
+        options.addArguments("--window-size=1920,1080");
+        options.setExperimentalOption("detach", true); // Keeps browser visible and open on desktop
         options.setAcceptInsecureCerts(true);
         driver = new ChromeDriver(options);
         driver.manage().window().maximize();
