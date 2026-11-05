@@ -2247,9 +2247,16 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		fillAndSelectAutocompleteSafely(driver, wait, By.id("order_instrument"), publicInst2, true);
 		ensureSymbolBoardRetained(driver, publicInst2);
 		ensureClientCodeRetained(driver, clientCode);
-		WebElement qtyInput = driver.findElement(By.id("order_qty"));
-		qtyInput.clear();
-		qtyInput.sendKeys(qty);
+		dismissLingeringAutocomplete(driver);
+		try {
+			WebElement qtyInput = wait.until(ExpectedConditions.elementToBeClickable(By.id("order_qty")));
+			qtyInput.clear();
+			qtyInput.sendKeys(qty);
+		} catch (Exception e) {
+			((JavascriptExecutor) driver).executeScript(
+					"var el = document.getElementById('order_qty'); if(el){ el.value = arguments[0]; try { $(el).trigger('input').trigger('change'); } catch(err){} }",
+					qty);
+		}
 		try {
 			((JavascriptExecutor) driver).executeScript("$('#order_qty').trigger('input').trigger('change');");
 		} catch (Exception ignored) {}
