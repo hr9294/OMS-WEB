@@ -1,4 +1,7 @@
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
@@ -7,6 +10,8 @@ import java.util.Scanner;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.Keys;
+import org.openqa.selenium.OutputType;
+import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
@@ -15,38 +20,99 @@ import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 /**
- * Dedicated Runner for Executing a Normal Trade on CSE (Chittagong Stock Exchange)
- * Resolves tradeable symbols from PostgreSQL DB (cse_md_ltp) and the Position widget,
- * executes order on CSE gateway (xcg3), and verifies real-time execution across 6 widgets.
+ * Dedicated Runner for Executing a Normal Trade on CSE (Chittagong Stock Exchange).
+ * Runs directly in real environment frontend with real-time visual UI highlighting,
+ * live HUD banner overlay, automatic screenshot captures, and verified execution in Order Terminal.
  */
 public class RunNormalTradeCSE {
+
+    public static final String ARTIFACT_DIR = "C:/Users/Hasibur Rahman/.gemini/antigravity/brain/f1d08daf-b204-4974-9477-32b49afd7601";
+    public static final String SCREENSHOTS_DIR = "D:/Anitgravity/screenshots";
+
+    public static void showFrontendBanner(WebDriver driver, String msg, String borderColor) {
+        try {
+            ((JavascriptExecutor) driver).executeScript(
+                "var id = 'oms-frontend-banner';" +
+                "var b = document.getElementById(id);" +
+                "if (!b) {" +
+                "    b = document.createElement('div');" +
+                "    b.id = id;" +
+                "    b.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:9999999;' +" +
+                "                      'padding:10px 24px;border-radius:24px;font-family:Segoe UI,sans-serif;font-size:14px;font-weight:700;' +" +
+                "                      'color:#ffffff;background:#0f172a;border:2px solid " + (borderColor != null ? borderColor : "#3b82f6") + ";' +" +
+                "                      'box-shadow:0 10px 30px rgba(0,0,0,0.5);transition:all 0.3s ease;pointer-events:none;letter-spacing:0.5px;';" +
+                "    document.body.appendChild(b);" +
+                "}" +
+                "b.innerHTML = arguments[0];" +
+                "if (arguments[1]) b.style.borderColor = arguments[1];",
+                msg, borderColor
+            );
+        } catch (Exception ignored) {}
+    }
+
+    public static void highlightElement(WebDriver driver, WebElement el, String color) {
+        try {
+            ((JavascriptExecutor) driver).executeScript(
+                "arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});" +
+                "arguments[0].style.transition = 'all 0.25s ease';" +
+                "arguments[0].style.outline = '3px solid " + color + "';" +
+                "arguments[0].style.boxShadow = '0 0 16px " + color + "';",
+                el
+            );
+            Thread.sleep(350);
+            ((JavascriptExecutor) driver).executeScript(
+                "arguments[0].style.outline = '';" +
+                "arguments[0].style.boxShadow = '';",
+                el
+            );
+        } catch (Exception ignored) {}
+    }
+
+    public static void saveScreenshot(WebDriver driver, String filename) {
+        try {
+            File src = ((TakesScreenshot) driver).getScreenshotAs(OutputType.FILE);
+            new File(ARTIFACT_DIR).mkdirs();
+            new File(SCREENSHOTS_DIR).mkdirs();
+            File dest1 = new File(ARTIFACT_DIR, filename);
+            File dest2 = new File(SCREENSHOTS_DIR, filename);
+            Files.copy(src.toPath(), dest1.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(src.toPath(), dest2.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            System.out.println("[SCREENSHOT CAPTURED] " + dest1.getAbsolutePath());
+        } catch (Exception e) {
+            System.err.println("[WARN: Screenshot] " + e.getMessage());
+        }
+    }
+
     public static void main(String[] args) throws InterruptedException, IOException {
         System.out.println("+=============================================================================+");
-        System.out.println("|              UFTFAST OMS - NORMAL TRADE RUNNER (CSE GATEWAY)                |");
+        System.out.println("|         UFTFAST OMS - REAL ENVIRONMENT FRONTEND RUNNER (CSE GATEWAY)        |");
         System.out.println("+=============================================================================+");
 
-        // 1. Configure Chrome Browser Options
+        // 1. Configure Chrome Browser Options (keeps browser open on screen)
         System.setProperty("webdriver.chrome.silentOutput", "true");
         java.util.logging.Logger.getLogger("org.openqa.selenium").setLevel(java.util.logging.Level.SEVERE);
         ChromeOptions options = new ChromeOptions();
         options.addArguments("--remote-allow-origins=*");
         options.addArguments("--log-level=3");
         options.addArguments("--silent");
+        options.addArguments("--start-maximized");
+        options.setExperimentalOption("detach", true); // Keeps browser open for real frontend inspection
         options.setExperimentalOption("excludeSwitches", new String[]{"enable-automation"});
         options.setExperimentalOption("useAutomationExtension", false);
         options.addArguments("--disable-blink-features=AutomationControlled");
         options.addArguments("--disable-infobars");
+
         Map<String, Object> prefs = new HashMap<>();
         prefs.put("credentials_enable_service", false);
         prefs.put("profile.password_manager_enabled", false);
         prefs.put("profile.password_manager_leak_detection", false);
-        prefs.put("password_manager_leak_detection", false);
         prefs.put("safebrowsing.enabled", false);
         prefs.put("safebrowsing.enhanced", false);
         prefs.put("profile.default_content_setting_values.notifications", 2);
         options.setExperimentalOption("prefs", prefs);
         options.addArguments("--disable-features=PasswordLeakDetection,PasswordCheck,PasswordLeakToggleMove,SafeBrowsing");
         options.setAcceptInsecureCerts(true);
+
         WebDriver driver = new ChromeDriver(options);
         driver.manage().window().maximize();
         driver.manage().deleteAllCookies();
@@ -65,11 +131,14 @@ public class RunNormalTradeCSE {
 
             // 2. Perform Login
             System.out.println("\n[SETUP] Logging in to UFTFAST OMS...");
+            showFrontendBanner(driver, "[CSE REAL ENVIRONMENT] Authenticating into UFTFAST OMS...", "#3b82f6");
             OMSweb_Login.main(driver, sc);
 
             // 3. Open Trade Page
             System.out.println("\n[SETUP] Navigating to Trade Portal...");
+            showFrontendBanner(driver, "[CSE REAL ENVIRONMENT] Navigating to Trade Portal & Linking Widgets...", "#3b82f6");
             OMSweb_Trade.navigateToTradePage(driver, wait, true);
+            Thread.sleep(800);
 
             // 4. Set Active Exchange to CSE
             OMSweb_Trade.activeExchange = "CSE";
@@ -86,6 +155,7 @@ public class RunNormalTradeCSE {
             String sideText = "2".equals(sideInput) || "SELL".equalsIgnoreCase(sideInput) ? "SELL" : "BUY";
 
             // 6. Query and Resolve Tradeable CSE Symbol from DB (cse_md_ltp) & Position Widget
+            showFrontendBanner(driver, "[CSE REAL ENVIRONMENT] Querying Tradeable Symbols from DB & Position Widget...", "#8b5cf6");
             String instrument = Position.promptAndSelectCseTradeableSymbol(driver, sc, sideText, "ACFL");
 
             // 7. Resolve Client Code
@@ -119,36 +189,65 @@ public class RunNormalTradeCSE {
                 if (!qStr.isEmpty()) tradeQty = Integer.parseInt(qStr);
             } catch (Exception ignored) {}
 
-            // 9. Synchronize Search Inputs & Market Watch
+            // 9. Synchronize Search Inputs & Market Watch visually on Frontend
+            showFrontendBanner(driver, "[CSE REAL ENVIRONMENT] Synchronizing Symbol: " + instrument + " across UI Widgets...", "#06b6d4");
             try {
                 WebElement searchSymbol = wait.until(ExpectedConditions.presenceOfElementLocated(By.id("instrument")));
+                highlightElement(driver, searchSymbol, "#06b6d4");
                 searchSymbol.clear();
                 searchSymbol.sendKeys(instrument);
                 searchSymbol.sendKeys(Keys.ARROW_DOWN);
                 searchSymbol.sendKeys(Keys.ENTER);
-                Thread.sleep(300);
+                Thread.sleep(400);
             } catch (Exception ignored) {}
 
             Market_Watch.connectWidget(driver, instrument, "CSE");
+            Thread.sleep(500);
 
             // 10. Open Order Window
             System.out.printf("%n[ORDER] Opening %s Window for %s on CSE...%n", sideText, instrument);
-            By actionBtn = By.xpath(String.format("//div[@title='Place %s Order']", sideText));
-            wait.until(ExpectedConditions.elementToBeClickable(actionBtn)).click();
-            Thread.sleep(600);
+            showFrontendBanner(driver, "[CSE REAL ENVIRONMENT] Opening " + sideText + " Order Modal for " + instrument + "...", "#f59e0b");
+            By actionBtnLoc = By.xpath(String.format("//div[@title='Place %s Order']", sideText));
+            WebElement actionBtn = wait.until(ExpectedConditions.elementToBeClickable(actionBtnLoc));
+            highlightElement(driver, actionBtn, "#f59e0b");
+            actionBtn.click();
+            Thread.sleep(700);
 
             // 11. Fill Order Modal Inputs and Select CSE (xcg3)
             System.out.println("[ORDER] Filling Order Modal fields & Selecting CSE Gateway...");
+            showFrontendBanner(driver, "[CSE REAL ENVIRONMENT] Routing Order to CSE Gateway (Radio #xcg3)...", "#10b981");
+
+            // Visually highlight and select CSE Radio
             OMSweb_Trade.selectExchangeInModal(driver, "CSE");
-            Thread.sleep(200);
+            Thread.sleep(300);
+
+            // Client Code
             OMSweb_Trade.fillAndSelectAutocompleteSafely(driver, wait, By.id("order_client_code"), clientCode, false);
+            try {
+                WebElement ccEl = driver.findElement(By.id("order_client_code"));
+                highlightElement(driver, ccEl, "#3b82f6");
+            } catch (Exception ignored) {}
+
+            // Instrument
             String publicInst = Position.toPublicSymbol(instrument);
             OMSweb_Trade.fillAndSelectAutocompleteSafely(driver, wait, By.id("order_instrument"), publicInst, true);
             OMSweb_Trade.ensureSymbolBoardRetained(driver, publicInst);
             OMSweb_Trade.ensureClientCodeRetained(driver, clientCode);
-            WebElement qtyInput = driver.findElement(By.id("order_qty"));
-            qtyInput.clear();
-            qtyInput.sendKeys(String.valueOf(tradeQty));
+
+            // Quantity (Resilient typing)
+            try {
+                WebElement qtyEl = wait.until(ExpectedConditions.elementToBeClickable(By.id("order_qty")));
+                highlightElement(driver, qtyEl, "#3b82f6");
+                qtyEl.clear();
+                qtyEl.sendKeys(String.valueOf(tradeQty));
+            } catch (Exception e) {
+                ((JavascriptExecutor) driver).executeScript(
+                    "var el = document.getElementById('order_qty'); if(el){ el.value = arguments[0]; try { $(el).trigger('input').trigger('change'); } catch(err){} }",
+                    String.valueOf(tradeQty));
+            }
+            try {
+                ((JavascriptExecutor) driver).executeScript("$('#order_qty').trigger('input').trigger('change');");
+            } catch (Exception ignored) {}
 
             // Re-assert CSE radio check
             OMSweb_Trade.selectExchangeInModal(driver, "CSE");
@@ -161,40 +260,91 @@ public class RunNormalTradeCSE {
                         .mapToDouble(Position.CseTradeableSymbol::getLtp).findFirst().orElse(25.00);
             }
 
-            WebElement rateInput = driver.findElement(By.id("limit_order_rate"));
-            rateInput.clear();
             String formattedRate = String.format(java.util.Locale.US, "%.2f", refRate);
-            rateInput.sendKeys(formattedRate);
+            try {
+                WebElement rateEl = wait.until(ExpectedConditions.elementToBeClickable(By.id("limit_order_rate")));
+                highlightElement(driver, rateEl, "#3b82f6");
+                rateEl.clear();
+                rateEl.sendKeys(formattedRate);
+            } catch (Exception e) {
+                ((JavascriptExecutor) driver).executeScript(
+                    "var el = document.getElementById('limit_order_rate'); if(el){ el.value = arguments[0]; try { $(el).trigger('input').trigger('change'); } catch(err){} }",
+                    formattedRate);
+            }
+            try {
+                ((JavascriptExecutor) driver).executeScript("$('#limit_order_rate').trigger('input').trigger('change');");
+            } catch (Exception ignored) {}
             System.out.printf("[RATE] Set Limit Rate: %s BDT for %s on CSE%n", formattedRate, instrument);
 
+            // Dismiss any autocomplete popup before submitting
+            OMSweb_Trade.dismissLingeringAutocomplete(driver);
+            Thread.sleep(400);
+
+            // Capture Screenshot of filled Order Modal before submit
+            saveScreenshot(driver, "cse_trade_frontend_order_modal.png");
+
             // 13. Submit Order
-            By submitBtn = By.xpath(String.format(
+            showFrontendBanner(driver, "[CSE REAL ENVIRONMENT] Submitting " + sideText + " Order (" + tradeQty + " shares @ " + formattedRate + " BDT)...", "#f59e0b");
+            By submitBtnLoc = By.xpath(String.format(
                     "//div[contains(@class, 'form-submit-btn-holder')]//button[normalize-space()='%s']", sideText));
-            wait.until(ExpectedConditions.elementToBeClickable(submitBtn)).click();
-            Thread.sleep(500);
+            WebElement submitBtn = wait.until(ExpectedConditions.elementToBeClickable(submitBtnLoc));
+            highlightElement(driver, submitBtn, "#f59e0b");
+            submitBtn.click();
+            Thread.sleep(600);
 
             // 14. Auto-Confirm Modal
             System.out.println("[CONFIRMATION] Confirming order modal [YES]...");
+            showFrontendBanner(driver, "[CSE REAL ENVIRONMENT] Confirming Order Confirmation Dialog [YES]...", "#10b981");
             for (int attempt = 0; attempt < 20; attempt++) {
                 try {
                     Boolean clicked = (Boolean) ((JavascriptExecutor) driver).executeScript(
                         "var btn = document.getElementById('cnfirmConfirmBtn') || document.querySelector('button.btn-yes, button#yesBtn');" +
-                        "if (btn) { btn.click(); return true; } return false;"
+                        "if (btn) { btn.style.outline = '3px solid #10b981'; btn.click(); return true; } return false;"
                     );
                     if (Boolean.TRUE.equals(clicked)) {
-                        System.out.println("✔ Order confirmation YES clicked successfully.");
+                        System.out.println("[CONFIRMED] Order confirmation YES clicked successfully.");
                         break;
                     }
                 } catch (Exception ignored) {}
                 Thread.sleep(100);
             }
 
-            // 15. Verify Real-time Order in Order Terminal & Status
+            // 15. Verify Real-time Order in Order Terminal & Status on Frontend
             System.out.println("\n[TERMINAL] Polling Order Terminal for Real-time CSE Order Execution...");
-            Thread.sleep(1200);
+            showFrontendBanner(driver, "[CSE REAL ENVIRONMENT] Order Submitted! Polling Order Terminal Table for Execution...", "#10b981");
+            Thread.sleep(1500);
+
             Order_Terminal.navigateToOrderTerminal(driver);
             Order_Terminal.refresh(driver);
+            Thread.sleep(800);
+
             Map<String, String> actionOrder = OMSweb_Trade.fetchTerminalOrderForAction(driver, clientCode, instrument, "accept");
+            String placedOrderId = actionOrder != null ? actionOrder.getOrDefault("Order ID", "") : "";
+
+            // Highlight the placed order row in the Order Terminal table on the frontend
+            if (!placedOrderId.isEmpty()) {
+                ((JavascriptExecutor) driver).executeScript(
+                    "var oid = arguments[0];" +
+                    "var rows = document.querySelectorAll('#order-terminal-table tbody tr, table.order_terminal_table tbody tr, div[id*=\"terminal\"] table tbody tr');" +
+                    "for (var i = 0; i < rows.length; i++) {" +
+                    "    if (rows[i].innerText.indexOf(oid) !== -1) {" +
+                    "        rows[i].scrollIntoView({behavior: 'smooth', block: 'center'});" +
+                    "        rows[i].style.transition = 'all 0.4s ease';" +
+                    "        rows[i].style.backgroundColor = '#dcfce7';" +
+                    "        rows[i].style.outline = '3px solid #22c55e';" +
+                    "        rows[i].style.fontWeight = 'bold';" +
+                    "        break;" +
+                    "    }" +
+                    "}",
+                    placedOrderId
+                );
+                showFrontendBanner(driver, "[CSE REAL ENVIRONMENT] Trade ACCEPTED on CSE! Order ID: " + placedOrderId + " (Highlighted in Green)", "#10b981");
+            }
+
+            // Capture Screenshot of Order Terminal showing the executed CSE order
+            Thread.sleep(600);
+            saveScreenshot(driver, "cse_trade_frontend_order_terminal.png");
+
             if (actionOrder != null && !actionOrder.isEmpty()) {
                 System.out.println("\n=======================================================");
                 System.out.printf("  CSE ORDER PLACED SUCCESSFULLY: %s %d %s @ %s BDT%n",
