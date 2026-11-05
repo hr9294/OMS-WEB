@@ -31,6 +31,33 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 public class OMSweb_Trade {
 	public static String activeExchange = "DSE";
 
+	public static String readLineWithTimeout(Scanner sc, String defaultVal, int timeoutSeconds) {
+		if (sc == null) return defaultVal;
+		java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+			Thread t = new Thread(r, "ConsoleTimeoutReader");
+			t.setDaemon(true);
+			return t;
+		});
+		try {
+			java.util.concurrent.Future<String> future = executor.submit(() -> {
+				if (sc.hasNextLine()) {
+					return sc.nextLine().trim();
+				}
+				return defaultVal;
+			});
+			String res = future.get(timeoutSeconds, java.util.concurrent.TimeUnit.SECONDS);
+			executor.shutdownNow();
+			return (res == null || res.isEmpty()) ? defaultVal : res;
+		} catch (java.util.concurrent.TimeoutException te) {
+			executor.shutdownNow();
+			System.out.println(" [Auto-selected: " + defaultVal + "]");
+			return defaultVal;
+		} catch (Exception e) {
+			executor.shutdownNow();
+			return defaultVal;
+		}
+	}
+
 	public static void showFrontendBanner(WebDriver driver, String msg, String borderColor) {
 		try {
 			((JavascriptExecutor) driver).executeScript(
@@ -172,11 +199,8 @@ public class OMSweb_Trade {
 		System.out.println("\n=== SELECT TRADE ACTION FOR CSE ===");
 		System.out.println("1. BUY (default)");
 		System.out.println("2. SELL");
-		System.out.print("Enter choice (1=BUY / 2=SELL, default=1): ");
-		String sideInput = "";
-		try {
-			if (sc.hasNextLine()) sideInput = sc.nextLine().trim();
-		} catch (Exception ignored) {}
+		System.out.print("Enter choice (1=BUY / 2=SELL, default=1 in 4s): ");
+		String sideInput = readLineWithTimeout(sc, "1", 4);
 		String sideText = "2".equals(sideInput) || "SELL".equalsIgnoreCase(sideInput) ? "SELL" : "BUY";
 
 		showFrontendBanner(driver, "[CSE TRADE] Resolving Tradeable Symbols from DB & Position Widget...", "#8b5cf6");
@@ -190,26 +214,18 @@ public class OMSweb_Trade {
 				System.out.printf("[POSITION] Selected holding client %s with %,.0f saleable shares on CSE.%n",
 						clientCode, holdingClient.getSaleableQty());
 			} else {
-				System.out.print("Enter SELL Client Code (default 23986): ");
-				try {
-					String c = sc.nextLine().trim();
-					if (!c.isEmpty()) clientCode = c;
-				} catch (Exception ignored) {}
+				System.out.print("Enter SELL Client Code (default 23986 in 3s): ");
+				clientCode = readLineWithTimeout(sc, "23986", 3);
 			}
 		} else {
-			System.out.print("Enter BUY Client Code (default 23986): ");
-			try {
-				String c = sc.nextLine().trim();
-				if (!c.isEmpty()) clientCode = c;
-			} catch (Exception ignored) {}
+			System.out.print("Enter BUY Client Code (default 23986 in 3s): ");
+			clientCode = readLineWithTimeout(sc, "23986", 3);
 		}
 
+		System.out.print("Enter Quantity (default 10 in 3s): ");
+		String qStr = readLineWithTimeout(sc, "10", 3);
 		int tradeQty = 10;
-		System.out.print("Enter Quantity (default 10): ");
-		try {
-			String qStr = sc.nextLine().trim();
-			if (!qStr.isEmpty()) tradeQty = Integer.parseInt(qStr);
-		} catch (Exception ignored) {}
+		try { tradeQty = Integer.parseInt(qStr); } catch (Exception ignored) {}
 
 		showFrontendBanner(driver, "[CSE TRADE] Synchronizing Symbol: " + instrument + " across UI Widgets...", "#06b6d4");
 		try {
@@ -386,8 +402,8 @@ public class OMSweb_Trade {
 
 		// ---------- Manual input symbol into search + marketwatch ----------
 
-		System.out.print("\nEnter Symbol (default GP, or type 'CSE' for Chittagong Stock Exchange): ");
-		String instrument = sc.nextLine().trim();
+		System.out.print("\nEnter Symbol (default CSE in 4s, or type GP/DSE symbol): ");
+		String instrument = readLineWithTimeout(sc, "CSE", 4);
 
 		if (instrument.equalsIgnoreCase("CSE") || instrument.equalsIgnoreCase("C")) {
 			activeExchange = "CSE";

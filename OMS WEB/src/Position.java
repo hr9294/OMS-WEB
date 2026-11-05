@@ -1415,6 +1415,33 @@ public class Position {
         System.out.println("+=============================================================================================================================+\n");
     }
 
+    public static String readLineWithTimeout(Scanner sc, String defaultVal, int timeoutSeconds) {
+        if (sc == null) return defaultVal;
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "PositionConsoleTimeoutReader");
+            t.setDaemon(true);
+            return t;
+        });
+        try {
+            java.util.concurrent.Future<String> future = executor.submit(() -> {
+                if (sc.hasNextLine()) {
+                    return sc.nextLine().trim();
+                }
+                return defaultVal;
+            });
+            String res = future.get(timeoutSeconds, java.util.concurrent.TimeUnit.SECONDS);
+            executor.shutdownNow();
+            return (res == null || res.isEmpty()) ? defaultVal : res;
+        } catch (java.util.concurrent.TimeoutException te) {
+            executor.shutdownNow();
+            System.out.println(" [Auto-selected default: " + defaultVal + "]");
+            return defaultVal;
+        } catch (Exception e) {
+            executor.shutdownNow();
+            return defaultVal;
+        }
+    }
+
     /**
      * Interactive resolver when user selects CSE for trade.
      * Displays CSE tradeable symbols from DB and Position widget and updates the UI.
@@ -1447,13 +1474,8 @@ public class Position {
         System.out.printf("  - Enter row # (1-%d)%n", Math.min(20, symbols.size()));
         System.out.printf("  - Or enter symbol name directly (e.g. %s)%n", recSym);
         System.out.printf("  - Or press ENTER to accept recommended [#1: %s]%n", recSym);
-        System.out.print("Enter Choice: ");
-        String choice = "";
-        try {
-            if (sc != null && sc.hasNextLine()) {
-                choice = sc.nextLine().trim().toUpperCase();
-            }
-        } catch (Exception ignored) {}
+        System.out.print("Enter Choice (default #" + recSym + " in 4s): ");
+        String choice = readLineWithTimeout(sc, recSym, 4).toUpperCase();
         String chosenSym = recSym;
 
         if (!choice.isEmpty()) {
