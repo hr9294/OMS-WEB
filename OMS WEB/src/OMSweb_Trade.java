@@ -597,49 +597,27 @@ public class OMSweb_Trade {
 
 		// ---------- Manual input symbol into search + marketwatch ----------
 
-		// Default Normal Trade Exchange is DSE
-		activeExchange = "DSE";
-		System.out.print("\nEnter Symbol (default GP [DSE] in 4s, or enter Symbol/CSE): ");
-		String instrument = readLineWithTimeout(sc, "GP", 4);
+		System.out.println("\n+=============================================================================+");
+		System.out.println("|              UFTFAST OMS - NORMAL TRADE ENGINE (DSE & CSE)                  |");
+		System.out.println("+=============================================================================+");
+		System.out.println("  1. BOTH Exchanges (DSE & CSE Normal Trade + Auto-Export Trade File) [Default]");
+		System.out.println("  2. DSE Normal Trade Only");
+		System.out.println("  3. CSE Normal Trade Only");
+		System.out.print("Enter choice (1=BOTH / 2=DSE / 3=CSE, default=1 in 4s): ");
+		String modeChoice = readLineWithTimeout(sc, "1", 4);
 
-		if (instrument.equalsIgnoreCase("CSE") || instrument.equalsIgnoreCase("C")) {
-			activeExchange = "CSE";
-			runNormalTradeCSE(driver, sc);
-			return;
-		} else {
+		if ("2".equals(modeChoice) || "DSE".equalsIgnoreCase(modeChoice)) {
 			activeExchange = "DSE";
-			if (instrument.isEmpty() || instrument.matches("\\d+")) {
-				if (instrument.matches("\\d+")) {
-					System.out.println("[WARN] Entered '" + instrument + "' is numeric. Defaulting to GP.");
-				}
-				instrument = "GP";
-			}
-		}
-
-		try {
-			WebElement searchSymbol = wait.until(ExpectedConditions.presenceOfElementLocated(By.id("instrument")));
-			searchSymbol.clear();
-			searchSymbol.sendKeys(instrument);
-			searchSymbol.sendKeys(Keys.ARROW_DOWN);
-			searchSymbol.sendKeys(Keys.ENTER);
-			js.executeScript("arguments[0].scrollIntoView(true);", searchSymbol);
-			Thread.sleep(400);
-		} catch (Exception e) {
-			System.out.println("[SETUP: WARN] Search instrument input not found or skipped: " + e.getMessage());
-		}
-
-		// Establish Market Watch widget connectivity
-		Market_Watch.connectWidget(driver, instrument, activeExchange);
-
-		// ---------- Optional: ask if user wants to select an Order Status type ----------
-
-		System.out.print("\nDo you want to select an Order Status type? (1=YES / 0=NO, then ENTER): ");
-		String wantStatus = sc.nextLine();
-
-		if (wantStatus.trim().equals("1")) {
-			selectOrderStatus(driver, wait, sc, instrument);
+			System.out.print("\nEnter DSE Symbol (default GP in 4s): ");
+			String instrument = readLineWithTimeout(sc, "GP", 4);
+			if (instrument.isEmpty()) instrument = "GP";
+			normalTradeFlow(driver, wait, sc, cleanSymbol(instrument));
+		} else if ("3".equals(modeChoice) || "CSE".equalsIgnoreCase(modeChoice)) {
+			runNormalTradeCSE(driver, sc);
+			exportTradeFiles(driver);
 		} else {
-			normalTradeFlow(driver, wait, sc, instrument);
+			// Default 1: BOTH DSE and CSE Exchanges + Auto-Export Trade File!
+			runNormalTradeBothDSEAndCSEAndExport(driver, sc);
 		}
 	}
 
@@ -4921,6 +4899,108 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		Thread.sleep(1200);
 		dismissLingeringAutocomplete(driver);
 		js.executeScript("try { var c = document.querySelectorAll('.wb-close, .winbox .wb-close'); for (var i=0; i<c.length; i++) c[i].click(); } catch(e){}");
+	}
+
+
+	public static void runNormalTradeBothDSEAndCSEAndExport(WebDriver driver, Scanner sc) throws InterruptedException {
+		WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(15));
+
+		if (!isAlreadyOnTradePage(driver)) {
+			navigateToTradePage(driver, wait, false);
+		}
+		if (!isWidgetColorConfigured) {
+			applyColorToAllWidgets(driver, "Turquoise", "#42EADDFF");
+			isWidgetColorConfigured = true;
+			activeWidgetColorName = "Turquoise";
+			activeWidgetColorHex = "#42EADDFF";
+		}
+
+		System.out.println("\n+=============================================================================+");
+		System.out.println("|     NORMAL TRADE ENGINE - BOTH EXCHANGES (DSE & CSE) + TRADE EXPORT         |");
+		System.out.println("+=============================================================================+");
+
+		// =====================================================================
+		// STAGE 1: DSE NORMAL TRADE (BUY & SELL)
+		// =====================================================================
+		System.out.println("\n>>> [STAGE 1/3] EXECUTING NORMAL TRADE ON DSE GATEWAY...");
+		activeExchange = "DSE";
+		String dseSymbol = "GP";
+		System.out.print("Enter DSE Symbol (default GP in 4s): ");
+		String symInp = readLineWithTimeout(sc, "GP", 4);
+		if (symInp != null && !symInp.trim().isEmpty()) dseSymbol = cleanSymbol(symInp);
+
+		Market_Watch.connectWidget(driver, dseSymbol, "DSE");
+		MarketPriceBand dseBand = fetchMarketDbPriceBand(dseSymbol, "DSE", driver);
+		double dseRate = (dseBand != null && dseBand.safeRate > 0) ? dseBand.safeRate : fetchLTP(driver, wait, dseSymbol);
+		if (dseRate <= 0) dseRate = (dseBand != null && dseBand.ycp > 0) ? dseBand.ycp : 11519.70;
+
+		String dseBuyer = "23986";
+		String dseSeller = "11310";
+		try {
+			Position.ClientPosition holder = Position.findClientWithSaleable(driver, dseSymbol, 10, dseBuyer, "DSE");
+			if (holder != null && !holder.getClientCode().isEmpty()) dseSeller = holder.getClientCode();
+		} catch (Exception ignored) {}
+
+		System.out.printf("[DSE SETUP] Symbol: %s | Rate: %.2f | BUY Client: %s | SELL Client: %s | Qty: 10%n",
+				dseSymbol, dseRate, dseBuyer, dseSeller);
+
+		System.out.println("  -> [DSE 1/2] Placing Normal BUY Order...");
+		executeTradeOrderDirectSafe(driver, wait, "BUY", dseBuyer, dseSymbol, 10, dseRate);
+		Thread.sleep(1200);
+
+		System.out.println("  -> [DSE 2/2] Placing Normal SELL Order...");
+		executeTradeOrderDirectSafe(driver, wait, "SELL", dseSeller, dseSymbol, 10, dseRate);
+		Thread.sleep(1200);
+
+		// Trigger match for DSE in Order Terminal
+		try {
+			Order_Terminal.navigateToOrderTerminal(driver);
+			Order_Terminal.refresh(driver);
+			Thread.sleep(800);
+			Order_Terminal.executeSeparatedBuyAndSellAtMarket(driver);
+			Thread.sleep(1000);
+		} catch (Exception e) {
+			System.out.println("[DSE TERMINAL MATCH] " + e.getMessage());
+		}
+
+		// =====================================================================
+		// STAGE 2: CSE NORMAL TRADE (BUY & SELL)
+		// =====================================================================
+		System.out.println("\n>>> [STAGE 2/3] EXECUTING NORMAL TRADE ON CSE GATEWAY...");
+		activeExchange = "CSE";
+		if (!isAlreadyOnTradePage(driver)) {
+			navigateToTradePage(driver, wait, false);
+		}
+
+		String cseSymbol = Position.promptAndSelectCseTradeableSymbol(driver, sc, "BOTH BUY & SELL", "BBS");
+		System.out.printf("%n  -> [CSE 1/2] Placing Normal BUY Order for %s on CSE...%n", cseSymbol);
+		executeSingleCseTrade(driver, sc, "BUY", cseSymbol);
+		Thread.sleep(1200);
+
+		System.out.printf("%n  -> [CSE 2/2] Placing Normal SELL Order for %s on CSE...%n", cseSymbol);
+		executeSingleCseTrade(driver, sc, "SELL", cseSymbol);
+		Thread.sleep(1200);
+
+		// Trigger match for CSE in Order Terminal
+		try {
+			Order_Terminal.navigateToOrderTerminal(driver);
+			Order_Terminal.refresh(driver);
+			Thread.sleep(800);
+			Order_Terminal.executeSeparatedBuyAndSellAtMarket(driver);
+			Thread.sleep(1000);
+		} catch (Exception e) {
+			System.out.println("[CSE TERMINAL MATCH] " + e.getMessage());
+		}
+
+		// =====================================================================
+		// STAGE 3: EXPORT TRADE FILE (ALL EXCHANGES: DSE + CSE)
+		// =====================================================================
+		System.out.println("\n>>> [STAGE 3/3] EXPORTING TRADE FILES (DSE & CSE XML & CSV)...");
+		exportTradeFiles(driver);
+
+		System.out.println("\n=============================================================================");
+		System.out.println(" [SUCCESS] Normal Trade completed for BOTH DSE & CSE and Trade File exported! ");
+		System.out.println("=============================================================================\n");
 	}
 
 }
