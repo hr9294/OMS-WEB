@@ -72,20 +72,16 @@ public class OMSwebmain {
 
         // 3. THEN SELECT EXECUTION ENGINE
         System.out.println("\n[UFTFAST OMS] 3. Select Execution Engine:");
-        System.out.println("  1. Normal Trade (Buy & Sell) + Auto-Export Trade File [Default]");
+        System.out.println("  1. Normal Trade (DSE default / CSE) [Default]");
         System.out.println("  2. Multi-Order Execution (Single/Multi-Client, DSE/CSE, Market Execution)");
         System.out.println("  3. High-Speed Multiple Trade Engine (2-Min Simultaneous Trading, DSE/CSE)");
         System.out.println("  4. Upload File Engine (User Choice File Upload: Client, Stock, Cash, etc.)");
         System.out.println("  5. Export File Engine (Trade Files, EOD Price, Commission & Reports)");
-        System.out.println("  6. Single Order Normal Trade (Interactive Single BUY or SELL)");
-        System.out.print("Enter Choice (1-6, default=1 in 4s): ");
+        System.out.print("Enter Choice (1-5, default=1 in 4s): ");
         String engChoice = OMSweb_Trade.readLineWithTimeout(sc, "1", 4);
 
         // 4. DISPATCH TO CORRESPONDING CLASS
-        if ("6".equals(engChoice) || "single".equalsIgnoreCase(engChoice)) {
-            // Interactive Single Order Normal Trade
-            OMSweb_Trade.main(driver, sc);
-        } else if ("5".equals(engChoice) || "export".equalsIgnoreCase(engChoice) || "trade-export".equalsIgnoreCase(engChoice)) {
+        if ("5".equals(engChoice) || "export".equalsIgnoreCase(engChoice) || "trade-export".equalsIgnoreCase(engChoice)) {
             // Trigger Export File Class
             OMSweb_ExportData.main(driver, sc);
         } else if ("4".equals(engChoice) || "upload".equalsIgnoreCase(engChoice)) {
@@ -102,8 +98,8 @@ public class OMSwebmain {
             OMSweb_Trade.activeExchange = "CSE";
             OMSweb_Trade.runNormalTradeCSE(driver, sc);
         } else {
-            // Default 1: Normal Trade (Buy & Sell) + Auto-Export Trade File
-            OMSweb_Trade.runNormalTradeAndExportTradeFile(driver, sc);
+            // Trigger Normal Trade Class (handles DSE default & CSE normal orders) [Default]
+            OMSweb_Trade.main(driver, sc);
         }
 
         // OMSweb_MultipleTrade.main(driver, sc);
