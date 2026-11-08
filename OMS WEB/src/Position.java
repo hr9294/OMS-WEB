@@ -1278,7 +1278,7 @@ public class Position {
         Map<String, CseTradeableSymbol> symbolMap = new LinkedHashMap<>();
 
         // A. Query DB table cse_md_ltp
-        Map<String, Double[]> dbQuotes = new HashMap<>(); // [ltp, ycp, circuitUp, circuitDown, volume]
+        Map<String, double[]> dbQuotes = new HashMap<>(); // [ltp, ycp, circuitUp, circuitDown, volume]
         Map<String, String> companyNames = new HashMap<>();
 
         String sql = "SELECT symbol, COALESCE(sector, symbol) AS company_name, ltp, ycp, circuit_up, circuit_down, total_qty " +
@@ -1299,7 +1299,7 @@ public class Position {
                         long vol = rs.getLong("total_qty");
 
                         if (!sym.isEmpty()) {
-                            dbQuotes.put(sym, new Double[]{ltp, ycp, up, down, (double) vol});
+                            dbQuotes.put(sym, new double[]{ltp, ycp, up, down, (double) vol});
                             companyNames.put(sym, comp != null ? comp : sym);
                         }
                     }
@@ -1317,27 +1317,43 @@ public class Position {
         allSymbols.addAll(cseHoldings.keySet());
 
         for (String sym : allSymbols) {
-            Double[] quote = dbQuotes.get(sym);
+            double[] quote = dbQuotes.get(sym);
             boolean inDb = (quote != null);
-            double ltp = inDb ? quote[0] : 0.0;
-            double ycp = inDb ? quote[1] : 0.0;
-            double up = inDb ? quote[2] : 0.0;
-            double down = inDb ? quote[3] : 0.0;
-            long vol = inDb ? quote[4].longValue() : 0L;
+            double ltp = 0.0;
+            double ycp = 0.0;
+            double up = 0.0;
+            double down = 0.0;
+            long vol = 0L;
+            if (quote != null) {
+                ltp = quote[0];
+                ycp = quote[1];
+                up = quote[2];
+                down = quote[3];
+                vol = (long) quote[4];
+            }
+
             String comp = companyNames.getOrDefault(sym, sym);
             List<ClientPosition> posList = cseHoldings.get(sym);
             boolean inPos = (posList != null && !posList.isEmpty());
-            int clientCount = inPos ? posList.size() : 0;
-            double saleableTotal = inPos ? posList.stream().mapToDouble(ClientPosition::getSaleableQty).sum() : 0.0;
-            String topClient = inPos ? posList.stream()
-                    .max(Comparator.comparingDouble(ClientPosition::getSaleableQty))
-                    .map(ClientPosition::getClientCode).orElse("-") : "-";
+            int clientCount = 0;
+            double saleableTotal = 0.0;
+            String topClient = "-";
 
-            if (!inDb && inPos && !posList.isEmpty()) {
+            if (posList != null && !posList.isEmpty()) {
+                clientCount = posList.size();
+                saleableTotal = posList.stream().mapToDouble(ClientPosition::getSaleableQty).sum();
+                topClient = posList.stream()
+                        .max(Comparator.comparingDouble(ClientPosition::getSaleableQty))
+                        .map(ClientPosition::getClientCode).orElse("-");
+            }
+
+            if (!inDb && posList != null && !posList.isEmpty()) {
                 ClientPosition sample = posList.get(0);
-                ltp = sample.getMktRate() > 0 ? sample.getMktRate() : sample.getAvgCost();
-                if (up <= 0 && ltp > 0) up = Math.round(ltp * 1.10 * 100.0) / 100.0;
-                if (down <= 0 && ltp > 0) down = Math.round(ltp * 0.90 * 100.0) / 100.0;
+                if (sample != null) {
+                    ltp = sample.getMktRate() > 0 ? sample.getMktRate() : sample.getAvgCost();
+                    if (up <= 0 && ltp > 0) up = Math.round(ltp * 1.10 * 100.0) / 100.0;
+                    if (down <= 0 && ltp > 0) down = Math.round(ltp * 0.90 * 100.0) / 100.0;
+                }
             }
 
             symbolMap.put(sym, new CseTradeableSymbol(
