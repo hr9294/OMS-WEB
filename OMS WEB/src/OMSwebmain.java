@@ -70,28 +70,40 @@ public class OMSwebmain {
         System.out.println("[UFTFAST OMS] 2. Configuring Widget Color Link...");
         OMSweb_Trade.runWidgetColorSelection(driver, sc);
 
-        // 3. THEN TRADE EXECUTION OPTION
-        System.out.println("\n[UFTFAST OMS] 3. Select Trading Execution Option:");
-        System.out.println("  1. Standard Trade & 6-Widget Verification [Default]");
-        System.out.println("  2. Multi-Order Execution, Right-Click 'Execute at Market' & Real-time 6-Widget Audit");
-        System.out.println("  3. High-Speed Multi-Trade Engine (2-Min Simultaneous: Accepted, Filled, Partial, Cancel)");
-        System.out.println("  4. Direct CSE Normal Trade Engine");
-        System.out.println("  5. Direct CSE Multi-Order / Multiple Trade Engine");
-        System.out.print("Enter Choice (1, 2, 3, 4, or 5, default=1): ");
-        String engChoice = sc.nextLine().trim();
+        // 3. THEN SELECT EXECUTION ENGINE
+        System.out.println("\n[UFTFAST OMS] 3. Select Execution Engine:");
+        System.out.println("  1. Normal Trade (Buy & Sell) + Auto-Export Trade File [Default]");
+        System.out.println("  2. Multi-Order Execution (Single/Multi-Client, DSE/CSE, Market Execution)");
+        System.out.println("  3. High-Speed Multiple Trade Engine (2-Min Simultaneous Trading, DSE/CSE)");
+        System.out.println("  4. Upload File Engine (User Choice File Upload: Client, Stock, Cash, etc.)");
+        System.out.println("  5. Export File Engine (Trade Files, EOD Price, Commission & Reports)");
+        System.out.println("  6. Single Order Normal Trade (Interactive Single BUY or SELL)");
+        System.out.print("Enter Choice (1-6, default=1 in 4s): ");
+        String engChoice = OMSweb_Trade.readLineWithTimeout(sc, "1", 4);
 
-        // 4. THEN OTHERS
-        if ("5".equals(engChoice) || "5".equalsIgnoreCase(engChoice)) {
-            OMSweb_MultiOrderExecution.runCseMultiOrderExecution(driver, sc);
-        } else if ("4".equals(engChoice) || "CSE".equalsIgnoreCase(engChoice)) {
-            OMSweb_Trade.runNormalTradeCSE(driver, sc);
-        } else if ("3".equals(engChoice)) {
-            OMSweb_MultipleTrade.main(driver, sc);
-        } else if ("2".equals(engChoice)) {
-            OMSweb_MultiOrderExecution.main(driver, sc);
-        } else {
-            // Standard Trade Page
+        // 4. DISPATCH TO CORRESPONDING CLASS
+        if ("6".equals(engChoice) || "single".equalsIgnoreCase(engChoice)) {
+            // Interactive Single Order Normal Trade
             OMSweb_Trade.main(driver, sc);
+        } else if ("5".equals(engChoice) || "export".equalsIgnoreCase(engChoice) || "trade-export".equalsIgnoreCase(engChoice)) {
+            // Trigger Export File Class
+            OMSweb_ExportData.main(driver, sc);
+        } else if ("4".equals(engChoice) || "upload".equalsIgnoreCase(engChoice)) {
+            // Trigger Upload File Class
+            OMSweb_UploadData.main(driver, sc);
+        } else if ("3".equals(engChoice) || "multitrade".equalsIgnoreCase(engChoice)) {
+            // Trigger Multiple Trade Class (handles DSE & CSE)
+            OMSweb_MultipleTrade.main(driver, sc);
+        } else if ("2".equals(engChoice) || "multiorder".equalsIgnoreCase(engChoice)) {
+            // Trigger Multi-Order Execution Class (handles DSE & CSE)
+            OMSweb_MultiOrderExecution.main(driver, sc);
+        } else if ("CSE".equalsIgnoreCase(engChoice)) {
+            // Direct CSE keyword routing to Trade Class
+            OMSweb_Trade.activeExchange = "CSE";
+            OMSweb_Trade.runNormalTradeCSE(driver, sc);
+        } else {
+            // Default 1: Normal Trade (Buy & Sell) + Auto-Export Trade File
+            OMSweb_Trade.runNormalTradeAndExportTradeFile(driver, sc);
         }
 
         // OMSweb_MultipleTrade.main(driver, sc);

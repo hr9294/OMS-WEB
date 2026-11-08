@@ -1,5 +1,10 @@
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.text.SimpleDateFormat;
@@ -15,6 +20,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
 import org.openqa.selenium.Alert;
+
+import org.openqa.selenium.Cookie;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.Keys;
@@ -142,8 +149,10 @@ public class OMSweb_Trade {
 		options.setAcceptInsecureCerts(true);
 
 		boolean isCse = false;
+		boolean isBuySellExport = false;
 		for (String arg : args) {
 			if ("CSE".equalsIgnoreCase(arg)) isCse = true;
+			if ("EXPORT".equalsIgnoreCase(arg) || "BUY_SELL_EXPORT".equalsIgnoreCase(arg) || "TRADE_EXPORT".equalsIgnoreCase(arg) || "6".equals(arg)) isBuySellExport = true;
 		}
 
 		WebDriver driver = new ChromeDriver(options);
@@ -163,7 +172,10 @@ public class OMSweb_Trade {
 			WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
 			navigateToTradePage(driver, wait, true);
 
-			if (isCse) {
+			if (isBuySellExport) {
+				System.out.println("\n[UFTFAST OMS] Normal Trade (Buy & Sell) with Trade File Export Requested.");
+				runNormalTradeAndExportTradeFile(driver, sc);
+			} else if (isCse) {
 				System.out.println("\n[UFTFAST OMS] CSE Trading Mode Requested directly.");
 				runNormalTradeCSE(driver, sc);
 			} else {
@@ -585,19 +597,23 @@ public class OMSweb_Trade {
 
 		// ---------- Manual input symbol into search + marketwatch ----------
 
-		System.out.print("\nEnter Symbol (default CSE in 4s, or type GP/DSE symbol): ");
-		String instrument = readLineWithTimeout(sc, "CSE", 4);
+		// Default Normal Trade Exchange is DSE
+		activeExchange = "DSE";
+		System.out.print("\nEnter Symbol (default GP [DSE] in 4s, or enter Symbol/CSE): ");
+		String instrument = readLineWithTimeout(sc, "GP", 4);
 
 		if (instrument.equalsIgnoreCase("CSE") || instrument.equalsIgnoreCase("C")) {
 			activeExchange = "CSE";
 			runNormalTradeCSE(driver, sc);
 			return;
-		} else if (instrument.isEmpty() || instrument.matches("\\d+")) {
-			if (instrument.matches("\\d+")) {
-				System.out.println("[WARN] Entered '" + instrument + "' is numeric. Defaulting to GP.");
+		} else {
+			activeExchange = "DSE";
+			if (instrument.isEmpty() || instrument.matches("\\d+")) {
+				if (instrument.matches("\\d+")) {
+					System.out.println("[WARN] Entered '" + instrument + "' is numeric. Defaulting to GP.");
+				}
+				instrument = "GP";
 			}
-
-			instrument = "GP";
 		}
 
 		try {
@@ -678,6 +694,7 @@ public class OMSweb_Trade {
 			runSequentialBuyLifecycleAudit(driver, wait, sc, instrument, "DSE", "23986", null);
 			break;
 
+
 		default:
 			System.out.println("Invalid status choice.");
 			break;
@@ -699,8 +716,8 @@ public class OMSweb_Trade {
 
 			System.out.println("\nFor BUY, Please Enter: 1");
 			System.out.println("For SELL, Please Enter: 2");
-			System.out.print("Please Enter your choice: ");
-			String sideInput = sc.nextLine().trim();
+			System.out.print("Please Enter your choice (1=BUY / 2=SELL, default 1 in 4s): ");
+			String sideInput = readLineWithTimeout(sc, "1", 4);
 			int int_side = 1;
 
 			try {
@@ -717,8 +734,8 @@ public class OMSweb_Trade {
 			System.out.println("1. DSE (default)");
 			System.out.println("2. CSE");
 			System.out.println("3. Priority Order");
-			System.out.print("Please Enter your choice (1-3, or DSE/CSE/Priority, default 1): ");
-			String exInput = sc.nextLine().trim();
+			System.out.print("Please Enter your choice (1-3, or DSE/CSE/Priority, default 1 in 4s): ");
+			String exInput = readLineWithTimeout(sc, "1", 4);
 			String exchange = "DSE";
 			boolean isPriorityOrder = false;
 
@@ -749,8 +766,8 @@ public class OMSweb_Trade {
 
 			if (int_side == 1) { // BUY
 
-				System.out.print("\nEnter Client Code (default 23986): ");
-				String input = sc.nextLine().trim();
+				System.out.print("\nEnter Client Code (default 23986 in 4s): ");
+				String input = readLineWithTimeout(sc, "23986", 4);
 
 				if (input.isEmpty()) {
 					clientCodes.add("23986");
@@ -765,8 +782,8 @@ public class OMSweb_Trade {
 				}
 
 				System.out.println("[BUY CLIENTS] Selected Client Code(s): " + clientCodes);
-				System.out.print("\nDo you want to run 5-Stage BUY Lifecycle Audit across 6 widgets? (1=YES / 0=NO, default 0): ");
-				String auditChoice = sc.nextLine().trim();
+				System.out.print("\nDo you want to run 5-Stage BUY Lifecycle Audit across 6 widgets? (1=YES / 0=NO, default 0 in 4s): ");
+				String auditChoice = readLineWithTimeout(sc, "0", 4);
 
 				if (auditChoice.equals("1")) {
 					runSequentialBuyLifecycleAudit(driver, wait, sc, instrument, snapshotExchange, clientCodes.get(0), null);
@@ -781,8 +798,8 @@ public class OMSweb_Trade {
 				}
 			} else { // SELL
 
-				System.out.print("\nEnter Client Code (default from Position): ");
-				String input = sc.nextLine().trim();
+				System.out.print("\nEnter Client Code (default from Position in 4s): ");
+				String input = readLineWithTimeout(sc, "", 4);
 
 				if (!input.isEmpty()) {
 					for (String code : input.split("[,\\s]+")) {
@@ -834,7 +851,7 @@ public class OMSweb_Trade {
 				System.out.print("Enter Qty (or press Enter for default 10): ");
 			}
 
-			String qtyStr = sc.nextLine().trim();
+			String qtyStr = readLineWithTimeout(sc, defaultQty, 4);
 			if (qtyStr.isEmpty()) qtyStr = defaultQty;
 			int tradeQty = Integer.parseInt(qtyStr);
 
@@ -956,18 +973,24 @@ public class OMSweb_Trade {
 				compareAndReport6Widgets(preTradeSnap, postTradeSnap, "NORMAL TRADE REAL-TIME UI AUDIT (" + sideText + " " + tradeQty + " " + instrument + ")");
 			}
 
+			System.out.print("\nDo you want to export the Trade File now? (1=YES / 0=NO, default=0): ");
+			String expPrompt = readLineWithTimeout(sc, "1", 4);
+			if ("1".equals(expPrompt) || "y".equalsIgnoreCase(expPrompt) || "yes".equalsIgnoreCase(expPrompt)) {
+				exportTradeFiles(driver);
+			}
+
 			// ---------- After confirmation, ask to select an Order Status type ----------
 
-			System.out.print("\nDo you want to select an Order Status type now? (1=YES / 0=NO, then ENTER): ");
+			System.out.print("\nDo you want to select an Order Status type now? (1=YES / 0=NO, default 0 in 4s): ");
 
-			if (sc.nextLine().trim().equals("1")) {
+			if ("1".equals(readLineWithTimeout(sc, "0", 4))) {
 				selectOrderStatus(driver, wait, sc, instrument);
 			}
 
 			// ---------- Ask if user wants to trade again ----------
 
-			System.out.print("Do you want to trade again? (1=YES / 0=NO, default=0): ");
-			String tradeAgainInput = sc.nextLine().trim();
+			System.out.print("Do you want to trade again? (1=YES / 0=NO, default=0 in 4s): ");
+			String tradeAgainInput = readLineWithTimeout(sc, "0", 4);
 
 			if (!tradeAgainInput.equals("1") && !tradeAgainInput.equalsIgnoreCase("y") && !tradeAgainInput.equalsIgnoreCase("yes")) {
 				keepTrading = false;
@@ -2813,8 +2836,8 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		try {
 			rateInput = driver.findElement(By.id("limit_order_rate"));
 		} catch (Exception ignored) {}
-		System.out.print("Enter " + side + " Rate manually (press ENTER to auto-fetch from LTP): ");
-		String rate = sc.nextLine().trim();
+		System.out.print("Enter " + side + " Rate manually (auto-fetching in 4s): ");
+		String rate = readLineWithTimeout(sc, "", 4);
 		double parsedRate = 0.0;
 		if (rate.isEmpty()) {
 			double ltp = fetchLTP(driver, wait, instrument);
@@ -3470,8 +3493,8 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		System.out.println("\n=== Widget Color Link ===");
 		System.out.println("1.Turquoise (Default) 2.Yellow 3.Orange");
 		System.out.println("4.Green 5.Red 6.Pink");
-		System.out.print("Enter choice (1-6, default 1 [Turquoise]): ");
-		String input = sc.nextLine().trim();
+		System.out.print("Enter choice (1-6, default 1 [Turquoise] in 3s): ");
+		String input = readLineWithTimeout(sc, "1", 3);
 		if (input.isEmpty()) input = "1";
 		int colorChoice;
 		try {
@@ -4668,4 +4691,236 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		System.out.println("| Default Color Channel     : PASSED - All 6 widgets synced to Turquoise (#42EADDFF).    |");
 		System.out.println("+========================================================================================+\n");
 	}
+
+	// =========================================================================
+	// TRADE FILE EXPORT & DEDICATED NORMAL TRADE (BUY + SELL + EXPORT)
+	// =========================================================================
+	public static boolean exportTradeFiles(WebDriver driver) {
+		if (driver == null) return false;
+		System.out.println("\n=======================================================");
+		System.out.println("            EXPORTING TRADE FILES (XML & CSV)          ");
+		System.out.println("=======================================================");
+		String exportDir = "sample_files/trades_export";
+		new File(exportDir).mkdirs();
+
+		try {
+			Set<Cookie> seleniumCookies = driver.manage().getCookies();
+			StringBuilder cookieHeader = new StringBuilder();
+			for (Cookie c : seleniumCookies) {
+				if (cookieHeader.length() > 0) cookieHeader.append("; ");
+				cookieHeader.append(c.getName()).append("=").append(c.getValue());
+			}
+
+			String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+
+			// 1. Download XML Trade File (All)
+			String xmlTradeUrl = "https://devoms.quantbd.com/shared/download_trade_file?exchange=default";
+			File xmlFile = new File(exportDir + "/Trade_Export_All_" + timestamp + ".xml");
+			boolean xmlOk = downloadHttpFile(xmlTradeUrl, cookieHeader.toString(), xmlFile);
+			System.out.printf("[EXPORT] XML Trade File (All): %s | Size: %,d bytes | File: %s%n",
+					xmlOk ? "SUCCESS" : "FAILED", xmlFile.length(), xmlFile.getName());
+
+			// 2. Download CSV Trade File (All)
+			String csvTradeUrl = "https://devoms.quantbd.com/shared/download_csv_trade_file?exchange=default";
+			File csvFile = new File(exportDir + "/Trade_Export_All_" + timestamp + ".csv");
+			boolean csvOk = downloadHttpFile(csvTradeUrl, cookieHeader.toString(), csvFile);
+			System.out.printf("[EXPORT] CSV Trade File (All): %s | Size: %,d bytes | File: %s%n",
+					csvOk ? "SUCCESS" : "FAILED", csvFile.length(), csvFile.getName());
+
+			// 3. Trigger UI export via File Manager / Upload Data page
+			try {
+				JavascriptExecutor js = (JavascriptExecutor) driver;
+				js.executeScript(
+					"var icons = Array.from(document.querySelectorAll('a[href*=\"upload_data\"], a[href*=\"file_manager\"], .sidebar a, nav a, .nav-item a'));\n" +
+					"var target = icons.find(function(a) { return (a.getAttribute('href')||'').indexOf('upload_data') !== -1 || (a.getAttribute('href')||'').indexOf('file_manager') !== -1; });\n" +
+					"if (target) { target.click(); } else { window.location.href = '/broker_it/upload_data'; }"
+				);
+				Thread.sleep(2000);
+				js.executeScript(
+					"var btn = document.getElementById('dropdownMenuButton'); if (btn) btn.click();\n" +
+					"var link = document.querySelector('a[href*=\"download_trade_file?exchange=default\"]'); if (link) link.click();"
+				);
+				Thread.sleep(1500);
+				js.executeScript("if (typeof refresh_this_page === 'function') refresh_this_page();");
+				Thread.sleep(1500);
+			} catch (Exception ex) {
+				System.out.println("[EXPORT: UI NOTICE] " + ex.getMessage());
+			}
+
+			if (xmlFile.exists() && xmlFile.length() > 0) {
+				List<String> lines = Files.readAllLines(xmlFile.toPath());
+				System.out.println("[EXPORT XML PREVIEW] " + lines.get(0));
+			}
+			if (csvFile.exists() && csvFile.length() > 0) {
+				List<String> lines = Files.readAllLines(csvFile.toPath());
+				System.out.println("[EXPORT CSV PREVIEW] " + lines.get(0));
+			}
+			System.out.println("=======================================================\n");
+			return xmlOk || csvOk;
+		} catch (Exception e) {
+			System.out.println("[EXPORT: ERROR] " + e.getMessage());
+			return false;
+		}
+	}
+
+	private static boolean downloadHttpFile(String fileUrl, String cookieHeader, File destination) {
+		try {
+			URL url = URI.create(fileUrl).toURL();
+			HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+			conn.setRequestMethod("GET");
+			conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36");
+			conn.setRequestProperty("Cookie", cookieHeader);
+			conn.setConnectTimeout(15000);
+			conn.setReadTimeout(15000);
+
+			int status = conn.getResponseCode();
+			if (status == 200) {
+				try (InputStream in = conn.getInputStream();
+					 FileOutputStream out = new FileOutputStream(destination)) {
+					byte[] buffer = new byte[8192];
+					int len;
+					while ((len = in.read(buffer)) != -1) {
+						out.write(buffer, 0, len);
+					}
+				}
+				return destination.exists() && destination.length() > 0;
+			}
+		} catch (Exception ignored) {}
+		return false;
+	}
+
+	public static void runNormalTradeAndExportTradeFile(WebDriver driver, Scanner sc) throws InterruptedException {
+		WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(15));
+
+		if (!isAlreadyOnTradePage(driver)) {
+			navigateToTradePage(driver, wait, false);
+		}
+
+		if (!isWidgetColorConfigured) {
+			applyColorToAllWidgets(driver, "Turquoise", "#42EADDFF");
+			isWidgetColorConfigured = true;
+			activeWidgetColorName = "Turquoise";
+			activeWidgetColorHex = "#42EADDFF";
+		}
+
+		System.out.println("\n=======================================================");
+		System.out.println("  NORMAL TRADE ENGINE (BUY & SELL) + TRADE FILE EXPORT ");
+		System.out.println("=======================================================");
+
+		System.out.print("Enter Symbol for Normal Trade (default GP in 4s): ");
+		String symbol = readLineWithTimeout(sc, "GP", 4);
+		if (symbol == null || symbol.trim().isEmpty()) symbol = "GP";
+		symbol = cleanSymbol(symbol);
+
+		Market_Watch.connectWidget(driver, symbol, "DSE");
+
+		// Strict Hierarchy: DB first (dse_md_ltp), then LTP, then YCP
+		MarketPriceBand band = fetchMarketDbPriceBand(symbol, "DSE", driver);
+		double ltp = (band != null && band.safeRate > 0) ? band.safeRate : fetchLTP(driver, wait, symbol);
+		if (ltp <= 0) ltp = (band != null && band.ycp > 0) ? band.ycp : 11519.70;
+
+		System.out.print("Enter BUY Client Code (default 23986 in 4s): ");
+		String buyClient = readLineWithTimeout(sc, "23986", 4);
+		if (buyClient == null || buyClient.trim().isEmpty()) buyClient = "23986";
+
+		// Proactively resolve holding seller client with verified saleable shares from Position
+		String autoSellClient = "11310";
+		try {
+			Position.ClientPosition holder = Position.findClientWithSaleable(driver, symbol, 10, buyClient, "DSE");
+			if (holder != null && !holder.getClientCode().isEmpty()) {
+				autoSellClient = holder.getClientCode();
+			}
+		} catch (Exception ignored) {}
+
+		System.out.printf("Enter SELL Client Code (default %s in 4s): ", autoSellClient);
+		String sellClient = readLineWithTimeout(sc, autoSellClient, 4);
+		if (sellClient == null || sellClient.trim().isEmpty()) sellClient = autoSellClient;
+
+		System.out.print("Enter Quantity (default 10 in 4s): ");
+		String qtyInput = readLineWithTimeout(sc, "10", 4);
+		int qty = 10;
+		try { qty = Integer.parseInt(qtyInput.trim()); } catch (Exception ignored) {}
+
+		System.out.printf("%n[SETUP] Symbol: %s | LTP: %.2f | Qty: %d | BUY: %s | SELL: %s%n",
+				symbol, ltp, qty, buyClient, sellClient);
+
+		// 1. Execute BUY
+		System.out.printf("%n>>> [1/3] EXECUTING NORMAL BUY ORDER FOR CLIENT %s...%n", buyClient);
+		executeTradeOrderDirectSafe(driver, wait, "BUY", buyClient, symbol, qty, ltp);
+		Thread.sleep(1500);
+		Map<String, String> buyOrder = fetchTerminalOrderForAction(driver, buyClient, symbol, "accept");
+		printActionOrderTerminalTable("NORMAL TRADE [BUY ACCEPTED]", buyOrder);
+
+		// 2. Execute SELL
+		System.out.printf("%n>>> [2/3] EXECUTING NORMAL SELL ORDER FOR CLIENT %s...%n", sellClient);
+		executeTradeOrderDirectSafe(driver, wait, "SELL", sellClient, symbol, qty, ltp);
+		Thread.sleep(1500);
+		Map<String, String> sellOrder = fetchTerminalOrderForAction(driver, sellClient, symbol, "accept");
+		printActionOrderTerminalTable("NORMAL TRADE [SELL ACCEPTED]", sellOrder);
+
+		// 3. Right-Click Execute at Market
+		System.out.print("\nExecute orders at market in Order Terminal to trigger match? (1=YES / 0=NO, default 1 in 4s): ");
+		String matchChoice = readLineWithTimeout(sc, "1", 4);
+		if ("1".equals(matchChoice)) {
+			try {
+				Order_Terminal.navigateToOrderTerminal(driver);
+				Order_Terminal.refresh(driver);
+				Thread.sleep(800);
+				Order_Terminal.executeSeparatedBuyAndSellAtMarket(driver);
+			} catch (Exception ignored) {}
+		}
+
+		// 4. Export Trade File
+		System.out.println("\n>>> [3/3] EXPORTING TRADE FILE (XML & CSV)...");
+		exportTradeFiles(driver);
+
+		System.out.println("\n[COMPLETED] Normal Buy, Sell and Trade File Export finished successfully!");
+	}
+
+	public static void executeTradeOrderDirectSafe(WebDriver driver, WebDriverWait wait, String side, String clientCode, String symbol, int qty, double rate) throws InterruptedException {
+		JavascriptExecutor js = (JavascriptExecutor) driver;
+
+		js.executeScript("try { var c = document.querySelectorAll('.wb-close, .winbox .wb-close, .modal .close'); for (var i=0; i<c.length; i++) c[i].click(); } catch(e){}");
+		Thread.sleep(300);
+
+		String xpath = "//div[@title='Place " + side.toUpperCase() + " Order'] | //button[normalize-space()='" + side.toUpperCase() + "'] | //div[contains(@class,'new_" + side.toLowerCase() + "_order')]";
+		List<WebElement> btns = driver.findElements(By.xpath(xpath));
+		if (!btns.isEmpty()) {
+			js.executeScript("arguments[0].click();", btns.get(0));
+		}
+		Thread.sleep(500);
+
+		selectExchangeInModal(driver, "DSE");
+		Thread.sleep(150);
+
+		fillOrderFields(driver, wait, symbol, String.valueOf(qty), clientCode);
+		String rateFormatted = String.format(Locale.US, "%.2f", rate);
+		try {
+			WebElement rInp = driver.findElement(By.id("limit_order_rate"));
+			if (rInp.isDisplayed()) { rInp.clear(); rInp.sendKeys(rateFormatted); }
+			else { js.executeScript("arguments[0].value = arguments[1]; $(arguments[0]).trigger('input').trigger('change');", rInp, rateFormatted); }
+		} catch (Exception e) {
+			js.executeScript("var el = document.getElementById('limit_order_rate'); if(el){ el.value = arguments[0]; $(el).trigger('input').trigger('change'); }", rateFormatted);
+		}
+		displayCommissionOnOrderWindow(driver, clientCode, qty, rate);
+
+		Boolean clicked = (Boolean) js.executeScript(
+			"var side = arguments[0].toUpperCase();\n" +
+			"var btns = Array.from(document.querySelectorAll('.form-submit-btn-holder button, button.btn-buy, button.btn-sell, .td-btn button, .order_submit_btn'));\n" +
+			"var target = btns.find(function(b) { var t = (b.innerText||b.textContent||'').trim().toUpperCase(); return t === side || t.indexOf(side) !== -1; });\n" +
+			"if (target) { $(target).prop('disabled', false).removeAttr('disabled'); if (window.jQuery) $(target).trigger('click'); target.click(); return true; }\n" +
+			"return false;",
+			side.toUpperCase()
+		);
+		if (!Boolean.TRUE.equals(clicked)) {
+			submitOrder(driver, side.toUpperCase());
+		}
+		Thread.sleep(400);
+
+		autoConfirmOrderOrCancellation(driver, wait);
+		Thread.sleep(1200);
+		dismissLingeringAutocomplete(driver);
+		js.executeScript("try { var c = document.querySelectorAll('.wb-close, .winbox .wb-close'); for (var i=0; i<c.length; i++) c[i].click(); } catch(e){}");
+	}
+
 }

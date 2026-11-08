@@ -50,7 +50,7 @@ public class OMSweb_Login {
 		System.out.println("If \"YES\", please enter: \"1\" ");
 		System.out.println("Otherwise, please enter: \"0\" ");
 		System.out.println("Please Enter your choise: \n");
-		String ch = sc.nextLine();
+		String ch = OMSweb_Trade.readLineWithTimeout(sc, "1", 3);
 
 		try {
 			int int_ch = Integer.parseInt(ch);
