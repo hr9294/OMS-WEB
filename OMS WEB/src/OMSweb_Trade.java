@@ -321,6 +321,10 @@ public class OMSweb_Trade {
 	public static boolean executeSingleCseTrade(WebDriver driver, Scanner sc, String sideText, String requestedSymbol) throws InterruptedException {
 		WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
 		activeExchange = "CSE";
+		if (!isAlreadyOnTradePage(driver)) {
+			navigateToTradePage(driver, wait, false);
+			Thread.sleep(600);
+		}
 
 		boolean isSell = "SELL".equalsIgnoreCase(sideText);
 		String themeColor = isSell ? "#ef4444" : "#10b981";
@@ -4680,6 +4684,8 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		System.out.println("=======================================================");
 		String exportDir = "sample_files/trades_export";
 		new File(exportDir).mkdirs();
+		File altDir1 = new File("D:/Anitgravity/sample_files/trades_export");
+		altDir1.mkdirs();
 
 		try {
 			Set<Cookie> seleniumCookies = driver.manage().getCookies();
@@ -4726,10 +4732,12 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			}
 
 			if (xmlFile.exists() && xmlFile.length() > 0) {
+				try { Files.copy(xmlFile.toPath(), new File(altDir1, xmlFile.getName()).toPath(), StandardCopyOption.REPLACE_EXISTING); } catch (Exception ignored) {}
 				List<String> lines = Files.readAllLines(xmlFile.toPath());
 				System.out.println("[EXPORT XML PREVIEW] " + lines.get(0));
 			}
 			if (csvFile.exists() && csvFile.length() > 0) {
+				try { Files.copy(csvFile.toPath(), new File(altDir1, csvFile.getName()).toPath(), StandardCopyOption.REPLACE_EXISTING); } catch (Exception ignored) {}
 				List<String> lines = Files.readAllLines(csvFile.toPath());
 				System.out.println("[EXPORT CSV PREVIEW] " + lines.get(0));
 			}
@@ -4856,6 +4864,14 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 	}
 
 	public static void executeTradeOrderDirectSafe(WebDriver driver, WebDriverWait wait, String side, String clientCode, String symbol, int qty, double rate) throws InterruptedException {
+		executeTradeOrderDirectSafe(driver, wait, side, clientCode, symbol, qty, rate, "DSE");
+	}
+
+	public static void executeTradeOrderDirectSafe(WebDriver driver, WebDriverWait wait, String side, String clientCode, String symbol, int qty, double rate, String exchange) throws InterruptedException {
+		if (!isAlreadyOnTradePage(driver)) {
+			navigateToTradePage(driver, wait, false);
+			Thread.sleep(600);
+		}
 		JavascriptExecutor js = (JavascriptExecutor) driver;
 
 		js.executeScript("try { var c = document.querySelectorAll('.wb-close, .winbox .wb-close, .modal .close'); for (var i=0; i<c.length; i++) c[i].click(); } catch(e){}");
@@ -4868,7 +4884,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		}
 		Thread.sleep(500);
 
-		selectExchangeInModal(driver, "DSE");
+		selectExchangeInModal(driver, exchange != null ? exchange : "DSE");
 		Thread.sleep(150);
 
 		fillOrderFields(driver, wait, symbol, String.valueOf(qty), clientCode);
@@ -4972,13 +4988,36 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			navigateToTradePage(driver, wait, false);
 		}
 
-		String cseSymbol = Position.promptAndSelectCseTradeableSymbol(driver, sc, "BOTH BUY & SELL", "BBS");
-		System.out.printf("%n  -> [CSE 1/2] Placing Normal BUY Order for %s on CSE...%n", cseSymbol);
-		executeSingleCseTrade(driver, sc, "BUY", cseSymbol);
+		String cseSymbol = "BBS";
+		try {
+			cseSymbol = Position.promptAndSelectCseTradeableSymbol(driver, sc, "BOTH BUY & SELL", "BBS");
+		} catch (Exception e) {
+			cseSymbol = "BBS";
+		}
+		if (cseSymbol == null || cseSymbol.trim().isEmpty()) cseSymbol = "BBS";
+
+		Market_Watch.connectWidget(driver, cseSymbol, "CSE");
+		MarketPriceBand cseBand = fetchMarketDbPriceBand(cseSymbol, "CSE", driver);
+		double cseRate = (cseBand != null && cseBand.safeRate > 0) ? cseBand.safeRate : 200.00;
+
+		String cseBuyer = "23986";
+		String cseSeller = "00128";
+		try {
+			Position.ClientPosition cseHolder = Position.findClientWithSaleable(driver, cseSymbol, 10, cseBuyer, "CSE");
+			if (cseHolder != null && !cseHolder.getClientCode().isEmpty()) {
+				cseSeller = cseHolder.getClientCode();
+			}
+		} catch (Exception ignored) {}
+
+		System.out.printf("[CSE SETUP] Symbol: %s | Rate: %.2f | BUY Client: %s | SELL Client: %s | Qty: 10%n",
+				cseSymbol, cseRate, cseBuyer, cseSeller);
+
+		System.out.println("  -> [CSE 1/2] Placing Normal BUY Order on CSE...");
+		executeTradeOrderDirectSafe(driver, wait, "BUY", cseBuyer, cseSymbol, 10, cseRate, "CSE");
 		Thread.sleep(1200);
 
-		System.out.printf("%n  -> [CSE 2/2] Placing Normal SELL Order for %s on CSE...%n", cseSymbol);
-		executeSingleCseTrade(driver, sc, "SELL", cseSymbol);
+		System.out.println("  -> [CSE 2/2] Placing Normal SELL Order on CSE...");
+		executeTradeOrderDirectSafe(driver, wait, "SELL", cseSeller, cseSymbol, 10, cseRate, "CSE");
 		Thread.sleep(1200);
 
 		// Trigger match for CSE in Order Terminal
