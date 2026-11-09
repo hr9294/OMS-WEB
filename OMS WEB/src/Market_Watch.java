@@ -1,3 +1,5 @@
+import org.openqa.selenium.WebDriver;
+import java.util.Scanner;
 import java.time.Duration;
 import java.util.*;
 import org.openqa.selenium.*;
@@ -605,5 +607,28 @@ public class Market_Watch {
             } catch (Exception ignored) {}
         }
         return "";
+    }
+
+    // Standalone launcher for Eclipse & command-line execution
+    public static void main(String[] args) {
+        WebDriver driver = OMSwebmain.createDriver();
+        Scanner sc = new Scanner(System.in);
+        try {
+            driver.get("https://devoms.quantbd.com");
+            Thread.sleep(800);
+            ((org.openqa.selenium.JavascriptExecutor) driver).executeScript(
+                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+            );
+            OMSweb_Login.main(driver, sc);
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+            OMSweb_Trade.navigateToTradePage(driver, wait, true);
+            main(driver, sc);
+            System.out.println("\n=============================================================================");
+            System.out.println(" [SUCCESS] Market Watch session completed successfully.");
+            System.out.println("=============================================================================\n");
+        } catch (Exception e) {
+            System.err.println("[MARKET WATCH LAUNCH ERROR] " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 }

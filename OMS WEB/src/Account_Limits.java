@@ -1,3 +1,5 @@
+import org.openqa.selenium.WebDriver;
+import java.util.Scanner;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
@@ -8,7 +10,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.sql.Statement;
+//import java.sql.Statement;
 import java.time.Duration;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -890,5 +892,28 @@ public class Account_Limits {
         snap.forEach((k, v) -> {
             if (!k.equals("DATA_SOURCE")) System.out.printf("   %-22s: %s%n", k, v);
         });
+    }
+
+    // Standalone launcher for Eclipse & command-line execution
+    public static void main(String[] args) {
+        WebDriver driver = OMSwebmain.createDriver();
+        Scanner sc = new Scanner(System.in);
+        try {
+            driver.get("https://devoms.quantbd.com");
+            Thread.sleep(800);
+            ((org.openqa.selenium.JavascriptExecutor) driver).executeScript(
+                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+            );
+            OMSweb_Login.main(driver, sc);
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+            OMSweb_Trade.navigateToTradePage(driver, wait, true);
+            main(driver, sc);
+            System.out.println("\n=============================================================================");
+            System.out.println(" [SUCCESS] Account Limits session completed successfully.");
+            System.out.println("=============================================================================\n");
+        } catch (Exception e) {
+            System.err.println("[ACCOUNT LIMITS LAUNCH ERROR] " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 }

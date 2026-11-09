@@ -1,3 +1,5 @@
+import org.openqa.selenium.WebDriver;
+import java.util.Scanner;
 
 import java.net.URI;
 //import java.net.http.HttpClient;
@@ -542,6 +544,29 @@ public class Order_Summary {
             System.out.printf("   %-20s: %-10s | %-20s: %s%n", "All Buy Exec Qty", snap.getOrDefault("Buy_Exec_Qty_Total", "-"), "All Sell Exec Qty", snap.getOrDefault("Sell_Exec_Qty_Total", "-"));
             System.out.printf("   %-20s: %-10s | %-20s: %s%n", "All Buy Exec Value", snap.getOrDefault("Buy_Exec_Value", "-"), "All Sell Exec Value", snap.getOrDefault("Sell_Exec_Value", "-"));
             System.out.printf("   %-20s: %-10s | %-20s: %s%n", "Total Client Orders", snap.getOrDefault("Total_Orders", "-"), "Total Client Value", snap.getOrDefault("Total_Exec_Value", "-"));
+        }
+    }
+
+    // Standalone launcher for Eclipse & command-line execution
+    public static void main(String[] args) {
+        WebDriver driver = OMSwebmain.createDriver();
+        Scanner sc = new Scanner(System.in);
+        try {
+            driver.get("https://devoms.quantbd.com");
+            Thread.sleep(800);
+            ((org.openqa.selenium.JavascriptExecutor) driver).executeScript(
+                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+            );
+            OMSweb_Login.main(driver, sc);
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+            OMSweb_Trade.navigateToTradePage(driver, wait, true);
+            main(driver, sc);
+            System.out.println("\n=============================================================================");
+            System.out.println(" [SUCCESS] Order Summary session completed successfully.");
+            System.out.println("=============================================================================\n");
+        } catch (Exception e) {
+            System.err.println("[ORDER SUMMARY LAUNCH ERROR] " + e.getMessage());
+            e.printStackTrace();
         }
     }
 }

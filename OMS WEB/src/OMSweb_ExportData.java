@@ -1,3 +1,5 @@
+import org.openqa.selenium.WebDriver;
+import java.util.Scanner;
 import java.time.Duration;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -731,5 +733,26 @@ public class OMSweb_ExportData {
         if (s == null) return "";
         if (s.length() <= maxLen) return s;
         return s.substring(0, maxLen - 3) + "...";
+    }
+
+    // Standalone launcher for Eclipse & command-line execution
+    public static void main(String[] args) {
+        WebDriver driver = OMSwebmain.createDriver();
+        Scanner sc = new Scanner(System.in);
+        try {
+            driver.get("https://devoms.quantbd.com");
+            Thread.sleep(800);
+            ((org.openqa.selenium.JavascriptExecutor) driver).executeScript(
+                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+            );
+            OMSweb_Login.main(driver, sc);
+            main(driver, sc);
+            System.out.println("\n=============================================================================");
+            System.out.println(" [SUCCESS] Export File Engine completed successfully.");
+            System.out.println("=============================================================================\n");
+        } catch (Exception e) {
+            System.err.println("[EXPORT LAUNCH ERROR] " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 }

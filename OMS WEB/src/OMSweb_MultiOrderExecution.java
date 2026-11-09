@@ -186,7 +186,8 @@ public class OMSweb_MultiOrderExecution {
             if ("CSE".equalsIgnoreCase(arg)) isCse = true;
         }
 
-        try (Scanner sc = new Scanner(System.in)) {
+        Scanner sc = new Scanner(System.in);
+        try {
             driver.get("https://devoms.quantbd.com");
             Thread.sleep(1000);
             OMSweb_Login.main(driver, sc);

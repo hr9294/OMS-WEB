@@ -26,91 +26,51 @@ public class OMSwebmain {
 
 
 
-    public static void main(String[] args) throws InterruptedException, IOException {
-
-        // Suppress ChromeDriver and Selenium CDP version fallback warnings
-
+        public static WebDriver createDriver() {
         System.setProperty("webdriver.chrome.silentOutput", "true");
-
         java.util.logging.Logger.getLogger("org.openqa.selenium").setLevel(java.util.logging.Level.SEVERE);
-
         ChromeOptions options = new ChromeOptions();
-
         options.addArguments("--remote-allow-origins=*");
-
         options.addArguments("--log-level=3");
-
         options.addArguments("--silent");
 
-
-
-        // Hide automation flags
-
         options.setExperimentalOption("excludeSwitches", new String[]{"enable-automation"});
-
         options.setExperimentalOption("useAutomationExtension", false);
-
         options.addArguments("--disable-blink-features=AutomationControlled");
-
         options.addArguments("--disable-infobars");
 
-
-
-        // Privacy tweaks: disable password manager, leak detection, notifications, etc.
-
         Map<String, Object> prefs = new HashMap<>();
-
         prefs.put("credentials_enable_service", false);
-
         prefs.put("profile.password_manager_enabled", false);
-
         prefs.put("profile.password_manager_leak_detection", false);
-
         prefs.put("password_manager_leak_detection", false);
-
         prefs.put("safebrowsing.enabled", false);
-
         prefs.put("safebrowsing.enhanced", false);
-
         prefs.put("profile.default_content_setting_values.notifications", 2);
-
         String downloadPath = System.getProperty("user.home") + File.separator + "Downloads";
-
         prefs.put("download.default_directory", downloadPath);
-
         prefs.put("download.prompt_for_download", false);
-
         prefs.put("download.directory_upgrade", true);
-
         options.setExperimentalOption("prefs", prefs);
 
-
-
-        // Disable password leak detection & safe browsing check popups
-
         options.addArguments("--disable-features=PasswordLeakDetection,PasswordCheck,PasswordLeakToggleMove,SafeBrowsing,ProfileCustomization,CustomizeChromeSidePanel,ChromeRefresh2023");
-		options.addArguments("--profile-directory=Default");
-
+        options.addArguments("--profile-directory=Default");
         options.addArguments("--start-maximized");
-
         options.addArguments("--window-position=0,0");
-
         options.addArguments("--window-size=1920,1080");
-
-        options.setExperimentalOption("detach", true); // Keeps browser visible and open on desktop
-
+        options.setExperimentalOption("detach", true);
         options.setAcceptInsecureCerts(true);
 
-        driver = new ChromeDriver(options);
+        WebDriver drv = new ChromeDriver(options);
+        drv.manage().window().maximize();
+        drv.manage().deleteAllCookies();
+        drv.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(20));
+        drv.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
+        return drv;
+    }
 
-        driver.manage().window().maximize();
-
-        driver.manage().deleteAllCookies();
-
-        driver.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(20));
-
-        driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
-
+    public static void main(String[] args) throws InterruptedException, IOException {
+        driver = createDriver();
         driver.get("https://devoms.quantbd.com");
 
         Thread.sleep(1000);
