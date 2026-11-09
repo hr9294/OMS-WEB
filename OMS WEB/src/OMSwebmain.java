@@ -218,7 +218,7 @@ public class OMSwebmain {
 
             } else {
 
-                OMSweb_Trade.runNormalTradeAndExportTradeFile(driver, sc);
+                OMSweb_Trade.main(driver, sc);
 
             }
 
