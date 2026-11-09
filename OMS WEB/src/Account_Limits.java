@@ -4,6 +4,11 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.time.Duration;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -65,6 +70,205 @@ public class Account_Limits {
     // 3. NAVIGATION & FILTER HELPERS
     // =========================================================================
     // =========================================================================
+    // =========================================================================
+    // POSTGRESQL DATABASE CLIENT CASH COLLECTION (public.clients_cash)
+    // =========================================================================
+    public static final String QTRADER_PRIMARY_HOST   = "192.168.155.22";
+    public static final int    QTRADER_PRIMARY_PORT   = 5443;
+    public static final String QTRADER_SECONDARY_HOST = "10.20.8.29";
+    public static final int    QTRADER_SECONDARY_PORT = 5443;
+    public static final String QTRADER_DB_NAME        = "qtraderdb";
+    public static final String QTRADER_DB_USER        = "qtraderdata";
+    public static final String QTRADER_DB_PASS        = "pass4321";
+
+    private static boolean isHostReachable(String host, int port, int timeoutMs) {
+        try (java.net.Socket socket = new java.net.Socket()) {
+            socket.connect(new java.net.InetSocketAddress(host, port), timeoutMs);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static Connection getQtraderDbConnection() {
+        String[][] dbs = {
+            { QTRADER_PRIMARY_HOST, String.valueOf(QTRADER_PRIMARY_PORT) },
+            { QTRADER_SECONDARY_HOST, String.valueOf(QTRADER_SECONDARY_PORT) }
+        };
+        for (String[] db : dbs) {
+            String host = db[0];
+            int port = Integer.parseInt(db[1]);
+            if (isHostReachable(host, port, 200)) {
+                try {
+                    Class.forName("org.postgresql.Driver");
+                    String url = String.format(Locale.US, "jdbc:postgresql://%s:%d/%s?connectTimeout=2&socketTimeout=4",
+                            host, port, QTRADER_DB_NAME);
+                    Properties props = new Properties();
+                    props.setProperty("user", QTRADER_DB_USER);
+                    props.setProperty("password", QTRADER_DB_PASS);
+                    Connection conn = DriverManager.getConnection(url, props);
+                    if (conn != null && !conn.isClosed()) {
+                        return conn;
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Rich data model for client cash collected directly from PostgreSQL public.clients_cash table.
+     */
+    public static class ClientCashRecord {
+        private final String clientCode;
+        private final double cash;
+        private final double initialCash;
+        private final double matureBalance;
+        private final double ledgerBalance;
+        private final double totalCash;
+        private final double equity;
+        private final String boId;
+        private final String status;
+        private final String clientName;
+
+        public ClientCashRecord(String clientCode, double cash, double initialCash,
+                                double matureBalance, double ledgerBalance, double totalCash,
+                                double equity, String boId, String status, String clientName) {
+            this.clientCode = clientCode != null ? clientCode.trim() : "";
+            this.cash = cash;
+            this.initialCash = initialCash;
+            this.matureBalance = matureBalance;
+            this.ledgerBalance = ledgerBalance;
+            this.totalCash = totalCash;
+            this.equity = equity;
+            this.boId = boId != null ? boId.trim() : "-";
+            this.status = status != null ? status.trim() : "Active";
+            this.clientName = clientName != null ? clientName.trim() : "-";
+        }
+
+        public String getClientCode() { return clientCode; }
+        public double getCash() { return cash; }
+        public double getInitialCash() { return initialCash; }
+        public double getMatureBalance() { return matureBalance; }
+        public double getLedgerBalance() { return ledgerBalance; }
+        public double getTotalCash() { return totalCash; }
+        public double getEquity() { return equity; }
+        public String getBoId() { return boId; }
+        public String getStatus() { return status; }
+        public String getClientName() { return clientName; }
+
+        @Override
+        public String toString() {
+            return String.format("Client: %-8s | Cash: %,12.2f BDT | Mature: %,12.2f BDT | BO ID: %-16s | Status: %-8s | Name: %s",
+                    clientCode, cash, matureBalance, boId, status, clientName);
+        }
+    }
+
+    /**
+     * Collects exact client cash record from PostgreSQL public.clients_cash table.
+     */
+    public static ClientCashRecord fetchClientCashRecordFromDb(String clientCode) {
+        if (clientCode == null || clientCode.trim().isEmpty()) return null;
+        String cleanCode = clientCode.trim();
+        String sql = "SELECT c.\"ClientCode\", c.\"Cash\", c.initial_cash, c.mature_balance, " +
+                     "       c.ledger_balance, c.total_cash, c.equity, a.\"Name\", a.\"BOID\" " +
+                     "FROM public.clients_cash c " +
+                     "LEFT JOIN public.clients_active a ON c.\"ClientCode\" = a.\"ClientCode\" " +
+                     "WHERE c.\"ClientCode\" = ? LIMIT 1;";
+        try (Connection conn = getQtraderDbConnection()) {
+            if (conn == null) return null;
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, cleanCode);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    if (rs.next()) {
+                        double cash = rs.getDouble("Cash");
+                        double initCash = rs.getDouble("initial_cash");
+                        double mature = rs.getDouble("mature_balance");
+                        double ledger = rs.getDouble("ledger_balance");
+                        double total = rs.getDouble("total_cash");
+                        double equity = rs.getDouble("equity");
+                        String name = rs.getString("Name");
+                        String boid = rs.getString("BOID");
+                        return new ClientCashRecord(cleanCode, cash, initCash, mature, ledger, total, equity,
+                                boid != null ? boid : "-", "Active", name != null ? name : "-");
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.out.printf("[DB CLIENT CASH WARN] Query failed for %s: %s%n", cleanCode, e.getMessage());
+        }
+        return null;
+    }
+
+    /**
+     * Collects numeric Cash balance from PostgreSQL public.clients_cash table.
+     */
+    public static double fetchClientCashFromDb(String clientCode) {
+        ClientCashRecord rec = fetchClientCashRecordFromDb(clientCode);
+        return rec != null ? rec.getCash() : 0.0;
+    }
+
+    /**
+     * Finds an active buyer client code with Cash >= requiredCash from PostgreSQL public.clients_cash.
+     */
+    public static String findClientWithSufficientCashFromDb(double requiredCash, String fallbackClient) {
+        String sql = "SELECT c.\"ClientCode\", c.\"Cash\", c.mature_balance, a.\"Name\", a.\"BOID\" " +
+                     "FROM public.clients_cash c " +
+                     "JOIN public.clients_active a ON c.\"ClientCode\" = a.\"ClientCode\" " +
+                     "WHERE c.\"Cash\" >= ? AND a.\"BOID\" IS NOT NULL AND LENGTH(TRIM(CAST(a.\"BOID\" AS text))) >= 8 " +
+                     "ORDER BY c.\"Cash\" DESC LIMIT 1;";
+        try (Connection conn = getQtraderDbConnection()) {
+            if (conn != null) {
+                try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                    pstmt.setDouble(1, requiredCash);
+                    try (ResultSet rs = pstmt.executeQuery()) {
+                        if (rs.next()) {
+                            String found = rs.getString("ClientCode");
+                            double cash = rs.getDouble("Cash");
+                            System.out.printf("[DB CLIENT CASH] Selected eligible buyer %s with %,.2f BDT cash (required: %,.2f BDT) from public.clients_cash%n",
+                                    found, cash, requiredCash);
+                            return found;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.out.printf("[DB CLIENT CASH WARN] Sufficient cash search failed: %s%n", e.getMessage());
+        }
+        return fallbackClient != null ? fallbackClient : "23986";
+    }
+
+    /**
+     * Collects all active clients with Cash >= minCash directly from PostgreSQL public.clients_cash.
+     */
+    public static List<ClientCashInfo> getActiveClientsWithCashDirectFromDb(double minCash, int limit) {
+        List<ClientCashInfo> list = new ArrayList<>();
+        String sql = "SELECT c.\"ClientCode\", c.\"Cash\", c.mature_balance, a.\"Name\", a.\"BOID\" " +
+                     "FROM public.clients_cash c " +
+                     "JOIN public.clients_active a ON c.\"ClientCode\" = a.\"ClientCode\" " +
+                     "WHERE c.\"Cash\" >= ? AND a.\"BOID\" IS NOT NULL AND LENGTH(TRIM(CAST(a.\"BOID\" AS text))) >= 8 " +
+                     "ORDER BY c.\"Cash\" DESC LIMIT " + limit + ";";
+        try (Connection conn = getQtraderDbConnection()) {
+            if (conn != null) {
+                try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                    pstmt.setDouble(1, minCash);
+                    try (ResultSet rs = pstmt.executeQuery()) {
+                        while (rs.next()) {
+                            String code = rs.getString("ClientCode");
+                            double cash = rs.getDouble("Cash");
+                            String name = rs.getString("Name");
+                            String boid = rs.getString("BOID");
+                            list.add(new ClientCashInfo(code, cash, boid != null ? boid : "-", "Active", name != null ? name : "-"));
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.out.printf("[DB CLIENT CASH WARN] Direct query failed: %s%n", e.getMessage());
+        }
+        return list;
+    }
+
     // 2. DATA MODEL FOR CLIENT CASH & STATUS
     // =========================================================================
     public static class ClientCashInfo {
@@ -105,6 +309,36 @@ public class Account_Limits {
         System.out.printf("%n=======================================================================================%n");
         System.out.printf(" [ACCOUNT LIMITS] QUERYING CLIENTS WITH CASH >= %,.2f BDT, VALID BO ID, & ACTIVE STATUS%n", minCash);
         System.out.printf("=======================================================================================%n");
+        // [DB CLIENT CASH] Collect clients directly from PostgreSQL public.clients_cash table
+        List<ClientCashInfo> dbClients = getActiveClientsWithCashDirectFromDb(minCash, 50);
+        if (!dbClients.isEmpty()) {
+            System.out.printf("[ACCOUNT LIMITS] Retrieved %d active clients with cash >= %,.2f BDT directly from DB (public.clients_cash)!%n",
+                    dbClients.size(), minCash);
+            List<ClientCashInfo> chosen = new ArrayList<>();
+            List<ClientCashInfo> shuffled = new ArrayList<>(dbClients);
+            Collections.shuffle(shuffled);
+            int desiredCount = Math.min(targetCount, shuffled.size());
+            chosen = new ArrayList<>(shuffled.subList(0, desiredCount));
+            chosen.sort((a, b) -> Double.compare(b.getCash(), a.getCash()));
+
+            System.out.println();
+            System.out.println("+----+----------+--------------------+------------------+----------+--------------------------------+");
+            System.out.printf("| %-2s | %-8s | %-18s | %-16s | %-8s | %-30s |%n",
+                    "#", "Client", "Cash Balance (BDT)", "BO ID", "Status", "Client Name");
+            System.out.println("+----+----------+--------------------+------------------+----------+--------------------------------+");
+            for (int i = 0; i < chosen.size(); i++) {
+                ClientCashInfo c = chosen.get(i);
+                System.out.printf("| %-2d | %-8s | %,18.2f | %-16s | %-8s | %-30s |%n",
+                        (i + 1), c.getClientCode(), c.getCash(), c.getBoId(), c.getStatus(),
+                        c.getClientName().length() > 30 ? c.getClientName().substring(0, 30) : c.getClientName());
+            }
+            System.out.println("+----+----------+--------------------+------------------+----------+--------------------------------+");
+
+            String topClient = !chosen.isEmpty() ? chosen.get(0).getClientCode() : "08570";
+            try { OMSweb_Trade.restoreTradePageState(driver, "GP", topClient); } catch (Exception ignored) {}
+            return chosen.stream().map(ClientCashInfo::getClientCode).collect(Collectors.toList());
+        }
+
         JavascriptExecutor js = (JavascriptExecutor) driver;
         Map<String, Double> discoveredCashMap = new LinkedHashMap<>();
 

@@ -1529,6 +1529,19 @@ public class OMSweb_Trade {
 
 				System.out.println("[BUY CLIENTS] Selected Client Code(s): " + clientCodes);
 
+				// [DB CLIENT CASH] Query and display client cash from PostgreSQL public.clients_cash
+				if (!clientCodes.isEmpty()) {
+					try {
+						String primaryBuyCode = clientCodes.get(0);
+						Account_Limits.ClientCashRecord cashRec = Account_Limits.fetchClientCashRecordFromDb(primaryBuyCode);
+						if (cashRec != null) {
+							System.out.printf("[DB CLIENT CASH] Client: %s | Cash: %,.2f BDT | Mature: %,.2f BDT | Initial: %,.2f BDT (Table: public.clients_cash)%n",
+									cashRec.getClientCode(), cashRec.getCash(), cashRec.getMatureBalance(), cashRec.getInitialCash());
+							showFrontendBanner(driver, String.format("[CLIENT CASH: %s] Cash: %,.2f BDT (Table: public.clients_cash)", cashRec.getClientCode(), cashRec.getCash()), "#10b981");
+						}
+					} catch (Exception ignored) {}
+				}
+
 				System.out.print("\nDo you want to run 5-Stage BUY Lifecycle Audit across 6 widgets? (1=YES / 0=NO, default 0 in 4s): ");
 
 				String auditChoice = readLineWithTimeout(sc, "0", 4);
@@ -9341,6 +9354,22 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		if (buyClient == null || buyClient.trim().isEmpty()) buyClient = "23986";
 
+		// [DB CLIENT CASH] Verify buyer cash from public.clients_cash table
+		double reqBuyCash = 10 * ltp;
+		Account_Limits.ClientCashRecord buyCashRec = Account_Limits.fetchClientCashRecordFromDb(buyClient);
+		if (buyCashRec == null || buyCashRec.getCash() < reqBuyCash) {
+			String eligible = Account_Limits.findClientWithSufficientCashFromDb(reqBuyCash, buyClient);
+			if (!eligible.equals(buyClient)) {
+				Account_Limits.ClientCashRecord eligCash = Account_Limits.fetchClientCashRecordFromDb(eligible);
+				System.out.printf("[DB CLIENT CASH] Client %s has cash BDT %,.2f (< required BDT %,.2f). Auto-selected eligible buyer %s with cash BDT %,.2f from public.clients_cash table.%n",
+						buyClient, (buyCashRec != null ? buyCashRec.getCash() : 0.0), reqBuyCash, eligible, (eligCash != null ? eligCash.getCash() : 0.0));
+				buyClient = eligible;
+			}
+		} else {
+			System.out.printf("[DB CLIENT CASH] Verified buyer %s has cash BDT %,.2f (>= required BDT %,.2f) from public.clients_cash table.%n",
+					buyClient, buyCashRec.getCash(), reqBuyCash);
+		}
+
 
 
 		// Proactively resolve holding seller client with verified saleable shares from Position
@@ -9473,6 +9502,17 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		JavascriptExecutor js = (JavascriptExecutor) driver;
 
 
+
+		if ("BUY".equalsIgnoreCase(side)) {
+			try {
+				Account_Limits.ClientCashRecord cashRec = Account_Limits.fetchClientCashRecordFromDb(clientCode);
+				if (cashRec != null) {
+					System.out.printf("[DB CLIENT CASH] Buyer: %s | Cash Balance: %,.2f BDT | Mature: %,.2f BDT | Order Val: %,.2f BDT (Table: public.clients_cash)%n",
+							clientCode, cashRec.getCash(), cashRec.getMatureBalance(), (qty * rate));
+					showFrontendBanner(driver, String.format("[CLIENT CASH: %s] Balance: %,.2f BDT (DB public.clients_cash)", clientCode, cashRec.getCash()), "#10b981");
+				}
+			} catch (Exception ignored) {}
+		}
 
 		js.executeScript("try { var c = document.querySelectorAll('.wb-close, .winbox .wb-close, .modal .close'); for (var i=0; i<c.length; i++) c[i].click(); } catch(e){}");
 
@@ -9628,6 +9668,22 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		String dseBuyer = "23986";
 
+		// [DB CLIENT CASH] Query buyer cash directly from PostgreSQL public.clients_cash
+		double dseRequiredCash = 10 * dseRate;
+		Account_Limits.ClientCashRecord dseBuyerCash = Account_Limits.fetchClientCashRecordFromDb(dseBuyer);
+		if (dseBuyerCash == null || dseBuyerCash.getCash() < dseRequiredCash) {
+			String eligibleBuyer = Account_Limits.findClientWithSufficientCashFromDb(dseRequiredCash, dseBuyer);
+			if (!eligibleBuyer.equals(dseBuyer)) {
+				Account_Limits.ClientCashRecord eligCash = Account_Limits.fetchClientCashRecordFromDb(eligibleBuyer);
+				System.out.printf("[DB CLIENT CASH] Default buyer %s has %,.2f BDT cash (< required %,.2f BDT). Auto-selected eligible buyer %s with %,.2f BDT cash from public.clients_cash table.%n",
+						dseBuyer, (dseBuyerCash != null ? dseBuyerCash.getCash() : 0.0), dseRequiredCash, eligibleBuyer, (eligCash != null ? eligCash.getCash() : 0.0));
+				dseBuyer = eligibleBuyer;
+			}
+		} else {
+			System.out.printf("[DB CLIENT CASH] DSE Buyer %s verified with %,.2f BDT cash (>= required %,.2f BDT) from public.clients_cash table.%n",
+					dseBuyer, dseBuyerCash.getCash(), dseRequiredCash);
+		}
+
 		String dseSeller = "11310";
 
 		try {
@@ -9728,6 +9784,22 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 		String cseBuyer = "23986";
+
+		// [DB CLIENT CASH] Query CSE buyer cash directly from PostgreSQL public.clients_cash
+		double cseRequiredCash = 10 * cseRate;
+		Account_Limits.ClientCashRecord cseBuyerCash = Account_Limits.fetchClientCashRecordFromDb(cseBuyer);
+		if (cseBuyerCash == null || cseBuyerCash.getCash() < cseRequiredCash) {
+			String eligibleBuyer = Account_Limits.findClientWithSufficientCashFromDb(cseRequiredCash, cseBuyer);
+			if (!eligibleBuyer.equals(cseBuyer)) {
+				Account_Limits.ClientCashRecord eligCash = Account_Limits.fetchClientCashRecordFromDb(eligibleBuyer);
+				System.out.printf("[DB CLIENT CASH] CSE default buyer %s has %,.2f BDT cash (< required %,.2f BDT). Auto-selected eligible buyer %s with %,.2f BDT cash from public.clients_cash table.%n",
+						cseBuyer, (cseBuyerCash != null ? cseBuyerCash.getCash() : 0.0), cseRequiredCash, eligibleBuyer, (eligCash != null ? eligCash.getCash() : 0.0));
+				cseBuyer = eligibleBuyer;
+			}
+		} else {
+			System.out.printf("[DB CLIENT CASH] CSE Buyer %s verified with %,.2f BDT cash (>= required %,.2f BDT) from public.clients_cash table.%n",
+					cseBuyer, cseBuyerCash.getCash(), cseRequiredCash);
+		}
 
 		String cseSeller = "00128";
 

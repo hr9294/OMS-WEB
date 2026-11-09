@@ -45,9 +45,10 @@ import org.openqa.selenium.support.ui.WebDriverWait;
  * ============================================================================
  */
 public class OMSweb_MultiOrderExecution {
+    // Verified High-Cash BUY Clients (Sourced from public.clients_cash in qtraderdb)
     public static final List<String> DEFAULT_BUY_CLIENTS = Collections.unmodifiableList(Arrays.asList(
-        "34601", "34649", "23986", "15740", "00224", "39187", "00516", "00916",
-        "39187", "02417", "37854", "45971", "18051", "12001", "04474", "03246"
+        "08570", "28000", "22360", "51030", "22358", "00224", "08096", "23986",
+        "15740", "39187", "00516", "00916", "02417", "37854", "45971", "18051"
     ));
 
     // =========================================================================
