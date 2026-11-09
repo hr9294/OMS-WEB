@@ -104,7 +104,7 @@ public class OMSwebmain {
             OMSweb_Trade.runNormalTradeCSE(driver, sc);
         } else {
             // Trigger Normal Trade Class (handles DSE default & CSE normal orders) [Default]
-            OMSweb_Trade.main(driver, sc);
+            OMSweb_Trade.runNormalTradeAndExportTradeFile(driver, sc);
         }
 
         // OMSweb_MultipleTrade.main(driver, sc);
@@ -118,6 +118,6 @@ public class OMSwebmain {
         // OMSweb_MultiOrderExecution.main()driver,sc;
 
         System.out.println("\n[UFTFAST OMS] Trade session completed. Exiting application.");
-        sc.close();
+        System.exit(0);
     }
 }
