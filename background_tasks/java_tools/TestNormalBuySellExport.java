@@ -17,7 +17,7 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 
 public class TestNormalBuySellExport {
 
-    private static final String EXPORT_DIR = "C:\\Users\\Hasibur Rahman\\git\\OMS-WEB\\sample_files\\trades_export";
+    private static final String EXPORT_DIR = System.getProperty("user.home") + File.separator + "Downloads";
     private static final String ARTIFACT_DIR = "C:\\Users\\Hasibur Rahman\\.gemini\\antigravity\\brain\\e97cfc56-db00-4743-82f5-75664c6a224f";
 
     public static void main(String[] args) {
