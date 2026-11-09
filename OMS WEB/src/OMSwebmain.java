@@ -174,14 +174,22 @@ public class OMSwebmain {
             System.out.println("  0. Exit Application");
 
 
-            String engChoice;
-            if (isFirstRun) {
-                System.out.print("Enter Choice (1-5, 0=Exit, default=1 in 4s): ");
-                engChoice = OMSweb_Trade.readLineWithTimeout(sc, "1", 4);
-                isFirstRun = false;
-            } else {
-                System.out.print("Enter Choice (1-5 to execute, 0=Exit): ");
-                engChoice = sc.nextLine().trim();
+            String engChoice = "0";
+            try {
+                if (isFirstRun) {
+                    System.out.print("Enter Choice (1-5, 0=Exit, default=1 in 4s): ");
+                    engChoice = OMSweb_Trade.readLineWithTimeout(sc, "1", 4);
+                    isFirstRun = false;
+                } else {
+                    System.out.print("Enter Choice (1-5 to execute, 0=Exit): ");
+                    if (sc != null && sc.hasNextLine()) {
+                        engChoice = sc.nextLine().trim();
+                    } else {
+                        break;
+                    }
+                }
+            } catch (Exception ex) {
+                break;
             }
 
 
