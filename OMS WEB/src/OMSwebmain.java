@@ -88,7 +88,8 @@ public class OMSwebmain {
 
         // Disable password leak detection & safe browsing check popups
 
-        options.addArguments("--disable-features=PasswordLeakDetection,PasswordCheck,PasswordLeakToggleMove,SafeBrowsing");
+        options.addArguments("--disable-features=PasswordLeakDetection,PasswordCheck,PasswordLeakToggleMove,SafeBrowsing,ProfileCustomization,CustomizeChromeSidePanel,ChromeRefresh2023");
+		options.addArguments("--profile-directory=Default");
 
         options.addArguments("--start-maximized");
 

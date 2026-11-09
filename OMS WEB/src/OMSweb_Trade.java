@@ -284,7 +284,8 @@ public class OMSweb_Trade {
 
 
 
-		options.addArguments("--disable-features=PasswordLeakDetection,PasswordCheck,PasswordLeakToggleMove,SafeBrowsing");
+		options.addArguments("--disable-features=PasswordLeakDetection,PasswordCheck,PasswordLeakToggleMove,SafeBrowsing,ProfileCustomization,CustomizeChromeSidePanel,ChromeRefresh2023");
+		options.addArguments("--profile-directory=Default");
 
 		options.addArguments("--start-maximized");
 
@@ -9428,7 +9429,8 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 				Thread.sleep(800);
 
-				Order_Terminal.executeSeparatedBuyAndSellAtMarket(driver);
+				// Normal order placed - refresh terminal to display order
+			Order_Terminal.refresh(driver);
 
 			} catch (Exception ignored) {}
 
@@ -9670,7 +9672,8 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 			Thread.sleep(800);
 
-			Order_Terminal.executeSeparatedBuyAndSellAtMarket(driver);
+			// Normal order placed - refresh terminal to display order
+			Order_Terminal.refresh(driver);
 
 			Thread.sleep(1000);
 
@@ -9774,7 +9777,8 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 			Thread.sleep(800);
 
-			Order_Terminal.executeSeparatedBuyAndSellAtMarket(driver);
+			// Normal order placed - refresh terminal to display order
+			Order_Terminal.refresh(driver);
 
 			Thread.sleep(1000);
 
