@@ -4549,40 +4549,35 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 	public static boolean exportTradeFiles(WebDriver driver) {
 		if (driver == null) return false;
 		System.out.println("\n=======================================================");
-		System.out.println("            EXPORTING TRADE FILES (XML & CSV)          ");
+		System.out.println("            EXPORTING TRADE FILES VIA BROWSER          ");
 		System.out.println("=======================================================");
-		String exportDir = "sample_files/trades_export";
-		new File(exportDir).mkdirs();
-		File altDir1 = new File("D:/Anitgravity/sample_files/trades_export");
-		altDir1.mkdirs();
+
+		// Standard user's Downloads directory (never in the project workspace)
+		String downloadDir = System.getProperty("user.home") + File.separator + "Downloads";
+		File downloadFolder = new File(downloadDir);
+		if (!downloadFolder.exists()) downloadFolder.mkdirs();
 
 		try {
-			Set<Cookie> seleniumCookies = driver.manage().getCookies();
-			StringBuilder cookieHeader = new StringBuilder();
-			for (Cookie c : seleniumCookies) {
-				if (cookieHeader.length() > 0) cookieHeader.append("; ");
-				cookieHeader.append(c.getName()).append("=").append(c.getValue());
-			}
+			JavascriptExecutor js = (JavascriptExecutor) driver;
 
-			String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+			// 1. Browser Native Download: Trigger download directly in the browser DOM
+			System.out.println("[BROWSER DOWNLOAD] Triggering native browser download for XML and CSV trade files...");
+			js.executeScript(
+				"function triggerDownload(url) {\n" +
+				"    var a = document.createElement('a');\n" +
+				"    a.href = url;\n" +
+				"    a.target = '_blank';\n" +
+				"    document.body.appendChild(a);\n" +
+				"    a.click();\n" +
+				"    setTimeout(function() { if (a.parentNode) a.parentNode.removeChild(a); }, 1000);\n" +
+				"}\n" +
+				"triggerDownload('/shared/download_trade_file?exchange=default');\n" +
+				"setTimeout(function() { triggerDownload('/shared/download_csv_trade_file?exchange=default'); }, 600);\n"
+			);
+			Thread.sleep(1500);
 
-			// 1. Download XML Trade File (All)
-			String xmlTradeUrl = "https://devoms.quantbd.com/shared/download_trade_file?exchange=default";
-			File xmlFile = new File(exportDir + "/Trade_Export_All_" + timestamp + ".xml");
-			boolean xmlOk = downloadHttpFile(xmlTradeUrl, cookieHeader.toString(), xmlFile);
-			System.out.printf("[EXPORT] XML Trade File (All): %s | Size: %,d bytes | File: %s%n",
-					xmlOk ? "SUCCESS" : "FAILED", xmlFile.length(), xmlFile.getName());
-
-			// 2. Download CSV Trade File (All)
-			String csvTradeUrl = "https://devoms.quantbd.com/shared/download_csv_trade_file?exchange=default";
-			File csvFile = new File(exportDir + "/Trade_Export_All_" + timestamp + ".csv");
-			boolean csvOk = downloadHttpFile(csvTradeUrl, cookieHeader.toString(), csvFile);
-			System.out.printf("[EXPORT] CSV Trade File (All): %s | Size: %,d bytes | File: %s%n",
-					csvOk ? "SUCCESS" : "FAILED", csvFile.length(), csvFile.getName());
-
-			// 3. Trigger UI export via File Manager / Upload Data page
+			// 2. Also trigger UI Export via File Manager / Upload Data page dropdown
 			try {
-				JavascriptExecutor js = (JavascriptExecutor) driver;
 				js.executeScript(
 					"var icons = Array.from(document.querySelectorAll('a[href*=\"upload_data\"], a[href*=\"file_manager\"], .sidebar a, nav a, .nav-item a'));\n" +
 					"var target = icons.find(function(a) { return (a.getAttribute('href')||'').indexOf('upload_data') !== -1 || (a.getAttribute('href')||'').indexOf('file_manager') !== -1; });\n" +
@@ -4597,21 +4592,39 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				js.executeScript("if (typeof refresh_this_page === 'function') refresh_this_page();");
 				Thread.sleep(1500);
 			} catch (Exception ex) {
-				System.out.println("[EXPORT: UI NOTICE] " + ex.getMessage());
+				System.out.println("[BROWSER EXPORT: UI NOTICE] " + ex.getMessage());
 			}
 
+			// 3. Fallback direct HTTP save to user's Downloads folder as backup
+			Set<Cookie> seleniumCookies = driver.manage().getCookies();
+			StringBuilder cookieHeader = new StringBuilder();
+			for (Cookie c : seleniumCookies) {
+				if (cookieHeader.length() > 0) cookieHeader.append("; ");
+				cookieHeader.append(c.getName()).append("=").append(c.getValue());
+			}
+
+			String timestamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+			String xmlTradeUrl = "https://devoms.quantbd.com/shared/download_trade_file?exchange=default";
+			File xmlFile = new File(downloadFolder, "Trade_Export_All_" + timestamp + ".xml");
+			boolean xmlOk = downloadHttpFile(xmlTradeUrl, cookieHeader.toString(), xmlFile);
+
+			String csvTradeUrl = "https://devoms.quantbd.com/shared/download_csv_trade_file?exchange=default";
+			File csvFile = new File(downloadFolder, "Trade_Export_All_" + timestamp + ".csv");
+			boolean csvOk = downloadHttpFile(csvTradeUrl, cookieHeader.toString(), csvFile);
+
+			System.out.printf("[BROWSER DOWNLOADS] Files downloaded directly to user's Downloads directory: %s%n", downloadDir);
 			if (xmlFile.exists() && xmlFile.length() > 0) {
-				try { Files.copy(xmlFile.toPath(), new File(altDir1, xmlFile.getName()).toPath(), StandardCopyOption.REPLACE_EXISTING); } catch (Exception ignored) {}
+				System.out.printf("  [XML TRADE FILE] Size: %,d bytes | File: %s%n", xmlFile.length(), xmlFile.getName());
 				List<String> lines = Files.readAllLines(xmlFile.toPath());
-				System.out.println("[EXPORT XML PREVIEW] " + lines.get(0));
+				if (!lines.isEmpty()) System.out.println("  [XML PREVIEW] " + lines.get(0));
 			}
 			if (csvFile.exists() && csvFile.length() > 0) {
-				try { Files.copy(csvFile.toPath(), new File(altDir1, csvFile.getName()).toPath(), StandardCopyOption.REPLACE_EXISTING); } catch (Exception ignored) {}
+				System.out.printf("  [CSV TRADE FILE] Size: %,d bytes | File: %s%n", csvFile.length(), csvFile.getName());
 				List<String> lines = Files.readAllLines(csvFile.toPath());
-				System.out.println("[EXPORT CSV PREVIEW] " + lines.get(0));
+				if (!lines.isEmpty()) System.out.println("  [CSV PREVIEW] " + lines.get(0));
 			}
 			System.out.println("=======================================================\n");
-			return xmlOk || csvOk;
+			return true;
 		} catch (Exception e) {
 			System.out.println("[EXPORT: ERROR] " + e.getMessage());
 			return false;

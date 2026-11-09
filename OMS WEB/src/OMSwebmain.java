@@ -1,3 +1,4 @@
+import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.HashMap;
@@ -35,6 +36,10 @@ public class OMSwebmain {
         prefs.put("safebrowsing.enabled", false);
         prefs.put("safebrowsing.enhanced", false);
         prefs.put("profile.default_content_setting_values.notifications", 2);
+        String downloadPath = System.getProperty("user.home") + File.separator + "Downloads";
+        prefs.put("download.default_directory", downloadPath);
+        prefs.put("download.prompt_for_download", false);
+        prefs.put("download.directory_upgrade", true);
         options.setExperimentalOption("prefs", prefs);
 
         // Disable password leak detection & safe browsing check popups
