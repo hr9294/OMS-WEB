@@ -7,3 +7,16 @@ __pycache__/
 *.png
 sample_files/
 OMS WEB/sample_files/
+
+# Python virtual environments
+.venv/
+venv/
+
+# Local environment / logs
+.env
+*.log
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
