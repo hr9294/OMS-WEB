@@ -153,91 +153,33 @@ public class OMSwebmain {
 
 
 
-        // 3. CONTINUOUS INTERACTIVE EXECUTION LOOP (KEEPS APP & BROWSER OPEN)
+        // 3. SELECT EXECUTION ENGINE
+        System.out.println("\n[UFTFAST OMS] 3. Select Execution Engine:");
+        System.out.println("  1. Normal Trade (DSE default / CSE) [Default]");
+        System.out.println("  2. Multi-Order Execution (Single/Multi-Client, DSE/CSE, Market Execution)");
+        System.out.println("  3. High-Speed Multiple Trade Engine (2-Min Simultaneous Trading, DSE/CSE)");
+        System.out.println("  4. Upload File Engine (User Choice File Upload: Client, Stock, Cash, etc.)");
+        System.out.println("  5. Export File Engine (Trade Files, EOD Price, Commission & Reports)");
+        System.out.print("Enter Choice (1-5, default=1 in 4s): ");
+        String engChoice = OMSweb_Trade.readLineWithTimeout(sc, "1", 4);
 
-        boolean keepRunning = true;
-        boolean isFirstRun = true;
-
-        while (keepRunning) {
-
-            System.out.println("\n[UFTFAST OMS] 3. Select Execution Engine:");
-
-            System.out.println("  1. Normal Trade (DSE default / CSE) [Default]");
-
-            System.out.println("  2. Multi-Order Execution (Single/Multi-Client, DSE/CSE, Market Execution)");
-
-            System.out.println("  3. High-Speed Multiple Trade Engine (2-Min Simultaneous Trading, DSE/CSE)");
-
-            System.out.println("  4. Upload File Engine (User Choice File Upload: Client, Stock, Cash, etc.)");
-
-            System.out.println("  5. Export File Engine (Trade Files, EOD Price, Commission & Reports)");
-
-            System.out.println("  0. Exit Application");
-
-
-            String engChoice = "0";
-            try {
-                if (isFirstRun) {
-                    System.out.print("Enter Choice (1-5, 0=Exit, default=1 in 4s): ");
-                    engChoice = OMSweb_Trade.readLineWithTimeout(sc, "1", 4);
-                    isFirstRun = false;
-                } else {
-                    System.out.print("Enter Choice (1-5 to execute, 0=Exit): ");
-                    if (sc != null && sc.hasNextLine()) {
-                        engChoice = sc.nextLine().trim();
-                    } else {
-                        break;
-                    }
-                }
-            } catch (Exception ex) {
-                break;
-            }
-
-
-
-            if ("0".equals(engChoice) || "exit".equalsIgnoreCase(engChoice) || "quit".equalsIgnoreCase(engChoice)) {
-
-                System.out.println("\n[UFTFAST OMS] Exiting application upon user request.");
-
-                keepRunning = false;
-
-                break;
-
-            } else if ("5".equals(engChoice) || "export".equalsIgnoreCase(engChoice) || "trade-export".equalsIgnoreCase(engChoice)) {
-
-                OMSweb_ExportData.main(driver, sc);
-
-            } else if ("4".equals(engChoice) || "upload".equalsIgnoreCase(engChoice)) {
-
-                OMSweb_UploadData.main(driver, sc);
-
-            } else if ("3".equals(engChoice) || "multitrade".equalsIgnoreCase(engChoice)) {
-
-                OMSweb_MultipleTrade.main(driver, sc);
-
-            } else if ("2".equals(engChoice) || "multiorder".equalsIgnoreCase(engChoice)) {
-
-                OMSweb_MultiOrderExecution.main(driver, sc);
-
-            } else if ("CSE".equalsIgnoreCase(engChoice)) {
-
-                OMSweb_Trade.activeExchange = "CSE";
-
-                OMSweb_Trade.runNormalTradeCSE(driver, sc);
-
-            } else {
-
-                OMSweb_Trade.main(driver, sc);
-
-            }
-
-
-
-            System.out.println("\n[UFTFAST OMS] Action finished. Session and browser kept open and ready.");
-
+        if ("5".equals(engChoice) || "export".equalsIgnoreCase(engChoice) || "trade-export".equalsIgnoreCase(engChoice)) {
+            OMSweb_ExportData.main(driver, sc);
+        } else if ("4".equals(engChoice) || "upload".equalsIgnoreCase(engChoice)) {
+            OMSweb_UploadData.main(driver, sc);
+        } else if ("3".equals(engChoice) || "multitrade".equalsIgnoreCase(engChoice)) {
+            OMSweb_MultipleTrade.main(driver, sc);
+        } else if ("2".equals(engChoice) || "multiorder".equalsIgnoreCase(engChoice)) {
+            OMSweb_MultiOrderExecution.main(driver, sc);
+        } else if ("CSE".equalsIgnoreCase(engChoice)) {
+            OMSweb_Trade.activeExchange = "CSE";
+            OMSweb_Trade.runNormalTradeCSE(driver, sc);
+        } else {
+            OMSweb_Trade.main(driver, sc);
         }
 
+        System.out.println("\n=============================================================================");
+        System.out.println(" [SUCCESS] Action completed. Chrome browser remains active on your desktop.");
+        System.out.println("=============================================================================\n");
     }
-
 }
-
