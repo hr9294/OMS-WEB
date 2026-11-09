@@ -581,7 +581,6 @@ public class OMSweb_Trade {
 	}
 
 	public static void main(WebDriver driver, Scanner sc) throws InterruptedException {
-		JavascriptExecutor js = (JavascriptExecutor) driver;
 		WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
 
 		// Navigate to Trade Page initially only if not already on it (prevents double navigation / reload)
@@ -4623,8 +4622,11 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				List<String> lines = Files.readAllLines(csvFile.toPath());
 				if (!lines.isEmpty()) System.out.println("  [CSV PREVIEW] " + lines.get(0));
 			}
+			System.out.printf("[EXPORT STATUS] XML Download: %s | CSV Download: %s%n",
+					xmlOk ? "COMPLETED" : "VERIFY_BROWSER",
+					csvOk ? "COMPLETED" : "VERIFY_BROWSER");
 			System.out.println("=======================================================\n");
-			return true;
+			return xmlOk || csvOk;
 		} catch (Exception e) {
 			System.out.println("[EXPORT: ERROR] " + e.getMessage());
 			return false;
