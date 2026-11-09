@@ -4,3 +4,6 @@ bin/
 .metadata/
 __pycache__/
 *.py[cod]
+*.png
+sample_files/
+OMS WEB/sample_files/

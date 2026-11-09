@@ -45,7 +45,9 @@ public class UploadAllClientsToFrontEnd {
         ChromeOptions options = new ChromeOptions();
         options.addArguments("--remote-allow-origins=*");
         options.addArguments("--log-level=3");
-        options.addArguments("--headless=new");
+        // options.addArguments("--headless=new"); // Visible on desktop
+        options.addArguments("--start-maximized");
+        options.setExperimentalOption("detach", true);
         options.addArguments("--window-size=1920,1080");
 
         WebDriver driver = new ChromeDriver(options);
@@ -132,7 +134,7 @@ public class UploadAllClientsToFrontEnd {
             // Poll File Manager table until backend processing completes
             System.out.println("\n[POLL] Waiting for background Celery worker to parse 31,864 rows...");
             boolean processed = false;
-            for (int attempt = 1; attempt <= 12; attempt++) {
+            for (int attempt = 1; attempt <= 25; attempt++) {
                 Thread.sleep(4000);
                 js.executeScript("if (typeof refresh_this_page === 'function') refresh_this_page();");
                 Thread.sleep(2500);
