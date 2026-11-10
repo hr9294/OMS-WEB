@@ -1329,6 +1329,44 @@ public class Order_Terminal {
      * Executes multiple BUY orders only at market, waits for propagation,
      * then executes multiple SELL orders only at market.
      */
+    /**
+     * Executes ONLY the single normal order for the given client and symbol at market,
+     * ensuring no unrelated orders or multi-order batching occurs.
+     */
+    public static boolean executeSingleNormalOrderAtMarket(WebDriver driver, String symbol, String clientCode) {
+        if (driver == null) return false;
+        try {
+            navigateToOrderTerminal(driver);
+            refresh(driver);
+            Thread.sleep(600);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            Object rowFound = js.executeScript(
+                "var rows = Array.from(document.querySelectorAll('#market_table tbody tr, .order_terminal_table tbody tr'));\n" +
+                "var sym = (arguments[0] || '').trim().toUpperCase();\n" +
+                "var cln = (arguments[1] || '').trim().toUpperCase();\n" +
+                "for (var i = 0; i < rows.length; i++) {\n" +
+                "    var r = rows[i];\n" +
+                "    var txt = (r.innerText || r.textContent || '').toUpperCase();\n" +
+                "    if ((sym === '' || txt.indexOf(sym) !== -1) && (cln === '' || txt.indexOf(cln) !== -1) && (txt.indexOf('ACCEPTED') !== -1 || txt.indexOf('PARTIALLY') !== -1)) {\n" +
+                "        var cb = r.querySelector(\"input[type='checkbox']\");\n" +
+                "        if (cb && !cb.checked) { cb.click(); }\n" +
+                "        return r;\n" +
+                "    }\n" +
+                "}\n" +
+                "return null;",
+                symbol != null ? symbol : "",
+                clientCode != null ? clientCode : ""
+            );
+            if (rowFound instanceof WebElement) {
+                System.out.printf("[TERMINAL] Single normal order selected for Client %s (%s). Executing at market...%n", clientCode, symbol);
+                return executeSelectedAtMarket(driver, Collections.singletonList((WebElement) rowFound));
+            }
+        } catch (Exception e) {
+            System.out.println("[TERMINAL: WARN] Single normal order execution: " + e.getMessage());
+        }
+        return false;
+    }
+
     public static boolean executeSeparatedBuyAndSellAtMarket(WebDriver driver) {
         System.out.println("\n===============================================================================");
         System.out.println(" BATCH 1: SELECT MULTIPLE BUY ORDERS ONLY -> RIGHT-CLICK 'EXECUTE AT MARKET'");

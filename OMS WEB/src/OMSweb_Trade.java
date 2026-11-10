@@ -279,12 +279,21 @@ public class OMSweb_Trade {
 		prefs.put("safebrowsing.enhanced", false);
 
 		prefs.put("profile.default_content_setting_values.notifications", 2);
+		prefs.put("profile.default_content_setting_values.automatic_downloads", 1);
+		prefs.put("profile.default_content_settings.popups", 0);
+		prefs.put("safebrowsing.disable_download_protection", true);
+		String downloadPath = System.getProperty("user.home") + File.separator + "Downloads";
+		prefs.put("download.default_directory", downloadPath);
+		prefs.put("download.prompt_for_download", false);
+		prefs.put("download.directory_upgrade", true);
 
 		options.setExperimentalOption("prefs", prefs);
 
 
 
-		options.addArguments("--disable-features=PasswordLeakDetection,PasswordCheck,PasswordLeakToggleMove,SafeBrowsing,ProfileCustomization,CustomizeChromeSidePanel,ChromeRefresh2023");
+		options.addArguments("--disable-features=PasswordLeakDetection,PasswordCheck,PasswordLeakToggleMove,SafeBrowsing,ProfileCustomization,CustomizeChromeSidePanel,ChromeRefresh2023,DownloadBubble,DownloadBubbleV2,InsecureDownloadWarnings");
+		options.addArguments("--safebrowsing-disable-download-protection");
+		options.addArguments("--safebrowsing-disable-extension-blacklist");
 		options.addArguments("--profile-directory=Default");
 
 		options.addArguments("--start-maximized");
@@ -314,6 +323,14 @@ public class OMSweb_Trade {
 
 
 		WebDriver driver = new ChromeDriver(options);
+		try {
+			Map<String, Object> cdpParams = new HashMap<>();
+			cdpParams.put("behavior", "allow");
+			cdpParams.put("downloadPath", downloadPath);
+			cdpParams.put("eventsEnabled", true);
+			((org.openqa.selenium.chromium.ChromiumDriver) driver).executeCdpCommand("Browser.setDownloadBehavior", cdpParams);
+			((org.openqa.selenium.chromium.ChromiumDriver) driver).executeCdpCommand("Page.setDownloadBehavior", cdpParams);
+		} catch (Exception ignored) {}
 
 		driver.manage().window().maximize();
 
@@ -9145,6 +9162,14 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		if (!downloadFolder.exists()) downloadFolder.mkdirs();
 
 		try {
+			// Enable CDP download behavior so Chrome automatically allows all XML and CSV files
+			try {
+				Map<String, Object> cdpParams = new HashMap<>();
+				cdpParams.put("behavior", "allow");
+				cdpParams.put("downloadPath", downloadDir);
+				((org.openqa.selenium.chromium.ChromiumDriver) driver).executeCdpCommand("Page.setDownloadBehavior", cdpParams);
+			} catch (Exception ignoredCdp) {}
+
 			// STEP 1: GOTO FILE MANAGER PAGE (AS A NORMAL USER)
 			System.out.println("[FILE MANAGER] Navigating to File Manager page (7th sidebar folder icon)...");
 			boolean navOk = OMSweb_UploadData.navigateToUploadDataPage(driver, wait);
@@ -9213,6 +9238,21 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			String csvTradeUrl = "https://devoms.quantbd.com/shared/download_csv_trade_file?exchange=default";
 			File csvFile = new File(downloadFolder, "Trade_Export_All_" + timestamp + ".csv");
 			boolean csvOk = downloadHttpFile(csvTradeUrl, cookieHeader.toString(), csvFile);
+
+			// Automatically resolve any Chrome unconfirmed crdownload files
+			try {
+				File[] crFiles = downloadFolder.listFiles((dir, name) -> name.startsWith("Unconfirmed") && name.endsWith(".crdownload"));
+				if (crFiles != null) {
+					for (File cr : crFiles) {
+						if (cr.length() > 0) {
+							File targetXml = new File(downloadFolder, "Trade_Export_Browser_" + timestamp + "_" + cr.getName().replaceAll("[^0-9]", "") + ".xml");
+							if (cr.renameTo(targetXml)) {
+								System.out.printf("  [BROWSER XML RESOLVED] Unconfirmed crdownload saved as XML: %s (%,d bytes)%n", targetXml.getName(), targetXml.length());
+							}
+						}
+					}
+				}
+			} catch (Exception ignoredCr) {}
 
 			System.out.printf("[BROWSER DOWNLOADS] Files downloaded directly to user's Downloads directory: %s%n", downloadDir);
 			if (xmlFile.exists() && xmlFile.length() > 0) {
@@ -9718,25 +9758,17 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 
-		// Trigger match for DSE in Order Terminal
-
+		// Trigger match for DSE placed normal orders in Order Terminal
 		try {
-
+			System.out.println("  -> [DSE MATCH] Matching placed BUY and SELL normal orders in Order Terminal...");
 			Order_Terminal.navigateToOrderTerminal(driver);
-
-			Order_Terminal.refresh(driver);
-
+			Order_Terminal.executeSingleNormalOrderAtMarket(driver, dseSymbol, dseBuyer);
 			Thread.sleep(800);
-
-			// Normal order placed - refresh terminal to display order
-			Order_Terminal.refresh(driver);
-
+			Order_Terminal.executeSingleNormalOrderAtMarket(driver, dseSymbol, dseSeller);
 			Thread.sleep(1000);
-
+			Order_Terminal.refresh(driver);
 		} catch (Exception e) {
-
 			System.out.println("[DSE TERMINAL MATCH] " + e.getMessage());
-
 		}
 
 
@@ -9839,25 +9871,17 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 
 
-		// Trigger match for CSE in Order Terminal
-
+		// Trigger match for CSE placed normal orders in Order Terminal
 		try {
-
+			System.out.println("  -> [CSE MATCH] Matching placed BUY and SELL normal orders on CSE...");
 			Order_Terminal.navigateToOrderTerminal(driver);
-
-			Order_Terminal.refresh(driver);
-
+			Order_Terminal.executeSingleNormalOrderAtMarket(driver, cseSymbol, cseBuyer);
 			Thread.sleep(800);
-
-			// Normal order placed - refresh terminal to display order
-			Order_Terminal.refresh(driver);
-
+			Order_Terminal.executeSingleNormalOrderAtMarket(driver, cseSymbol, cseSeller);
 			Thread.sleep(1000);
-
+			Order_Terminal.refresh(driver);
 		} catch (Exception e) {
-
 			System.out.println("[CSE TERMINAL MATCH] " + e.getMessage());
-
 		}
 
 

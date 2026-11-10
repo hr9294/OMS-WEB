@@ -47,13 +47,18 @@ public class OMSwebmain {
         prefs.put("safebrowsing.enabled", false);
         prefs.put("safebrowsing.enhanced", false);
         prefs.put("profile.default_content_setting_values.notifications", 2);
+        prefs.put("profile.default_content_setting_values.automatic_downloads", 1);
+        prefs.put("profile.default_content_settings.popups", 0);
+        prefs.put("safebrowsing.disable_download_protection", true);
         String downloadPath = System.getProperty("user.home") + File.separator + "Downloads";
         prefs.put("download.default_directory", downloadPath);
         prefs.put("download.prompt_for_download", false);
         prefs.put("download.directory_upgrade", true);
         options.setExperimentalOption("prefs", prefs);
 
-        options.addArguments("--disable-features=PasswordLeakDetection,PasswordCheck,PasswordLeakToggleMove,SafeBrowsing,ProfileCustomization,CustomizeChromeSidePanel,ChromeRefresh2023");
+        options.addArguments("--disable-features=PasswordLeakDetection,PasswordCheck,PasswordLeakToggleMove,SafeBrowsing,ProfileCustomization,CustomizeChromeSidePanel,ChromeRefresh2023,DownloadBubble,DownloadBubbleV2,InsecureDownloadWarnings");
+        options.addArguments("--safebrowsing-disable-download-protection");
+        options.addArguments("--safebrowsing-disable-extension-blacklist");
         options.addArguments("--profile-directory=Default");
         options.addArguments("--start-maximized");
         options.addArguments("--window-position=0,0");
@@ -62,6 +67,14 @@ public class OMSwebmain {
         options.setAcceptInsecureCerts(true);
 
         WebDriver drv = new ChromeDriver(options);
+        try {
+            Map<String, Object> cdpParams = new HashMap<>();
+            cdpParams.put("behavior", "allow");
+            cdpParams.put("downloadPath", downloadPath);
+            cdpParams.put("eventsEnabled", true);
+            ((org.openqa.selenium.chromium.ChromiumDriver) drv).executeCdpCommand("Browser.setDownloadBehavior", cdpParams);
+            ((org.openqa.selenium.chromium.ChromiumDriver) drv).executeCdpCommand("Page.setDownloadBehavior", cdpParams);
+        } catch (Exception ignored) {}
         drv.manage().window().maximize();
         drv.manage().deleteAllCookies();
         drv.manage().timeouts().pageLoadTimeout(Duration.ofSeconds(20));
