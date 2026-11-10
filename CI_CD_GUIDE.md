@@ -86,3 +86,35 @@ mvn exec:java -Dexec.mainClass="OMSwebmain"
 If you want GitHub Actions to run on this machine (with direct visibility into Chrome and access to internal DB `192.168.155.22:5443`):
 1. Run `.\scripts\setup-github-runner.ps1` in PowerShell.
 2. Follow the 3-step registration from [GitHub Runner Settings](https://github.com/hr9294/OMS-WEB/settings/actions/runners/new?arch=x64&os=win).
+
+---
+
+## 7. Connecting From the Developer's Repository (Automated Webhook Dispatch)
+
+When developers push code or deploy a new build to `https://devoms.quantbd.com`, they can automatically trigger your testing suite by adding this step to their CI/CD pipeline:
+
+```yaml
+# Add to the Developer's repository (.github/workflows/deploy.yml) at the end:
+- name: Trigger Automated OMS-WEB Tests
+  run: |
+    curl -X POST \
+      -H "Accept: application/vnd.github.v3+json" \
+      -H "Authorization: token ${{ secrets.QA_DISPATCH_TOKEN }}" \
+      https://api.github.com/repos/hr9294/OMS-WEB/dispatches \
+      -d '{
+        "event_type": "app_deployed",
+        "client_payload": {
+          "commit": "${{ github.sha }}",
+          "author": "${{ github.actor }}",
+          "repository": "${{ github.repository }}",
+          "environment": "https://devoms.quantbd.com"
+        }
+      }'
+```
+
+### Testing the Trigger Locally
+You can test triggering the pipeline right now by running:
+```powershell
+.\scripts\trigger-webhook.ps1
+```
+This sends an event to GitHub Actions, which immediately starts `trade-automation.yml`, runs `OMSwebmain`, and publishes a report with the developer's commit details!

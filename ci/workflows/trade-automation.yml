@@ -1,6 +1,7 @@
 name: OMS Trade Automation & Export Pipeline
 
 on:
+  # 1. Manual trigger from GitHub Actions web UI
   workflow_dispatch:
     inputs:
       execution_mode:
@@ -21,14 +22,18 @@ on:
           - windows-latest
           - self-hosted
 
-  # Scheduled run for Sunday to Thursday trading days (9:30 AM BD Time = 3:30 AM UTC)
+  # 2. Automated Trigger from Developer's Repository (when code is pushed or deployed)
+  repository_dispatch:
+    types: [app_deployed, new_build_deployed, run_tests]
+
+  # 3. Scheduled run for Sunday to Thursday trading days (9:30 AM BD Time = 3:30 AM UTC)
   schedule:
     - cron: '30 3 * * 0-4'
 
 jobs:
   trade-automation:
     name: Execute Trade Engine & Export Files
-    runs-on: ${{ inputs.runner_type || 'windows-latest' }}
+    runs-on: ${{ inputs.runner_type || github.event.client_payload.runner_type || 'windows-latest' }}
 
     steps:
       - name: Checkout Code
@@ -51,9 +56,19 @@ jobs:
         run: |
           $env:CI = "true"
           $env:HEADLESS = "true"
-          $mode = "${{ inputs.execution_mode }}"
+
+          # Determine execution mode from manual input or dispatch payload
+          $mode = "${{ inputs.execution_mode || github.event.client_payload.execution_mode }}"
           if (-not $mode) { $mode = "NORMAL_TRADE" }
 
+          # Check if custom target URL was passed by the developers (e.g. staging or test branch)
+          $targetUrl = "${{ github.event.client_payload.target_url }}"
+          if ($targetUrl) {
+            $env:TARGET_URL = $targetUrl
+            Write-Host "[PIPELINE] Target URL configured from Dispatch: $targetUrl"
+          }
+
+          Write-Host "[PIPELINE] Trigger Event: ${{ github.event_name }}"
           Write-Host "[PIPELINE] Launching OMS Automation in mode: $mode"
           mvn -B exec:java -Dexec.mainClass="OMSwebmain" -Dexec.args="$mode"
         continue-on-error: true
@@ -75,12 +90,21 @@ jobs:
       - name: Publish Step Summary
         if: always()
         run: |
+          $devCommit = "${{ github.event.client_payload.commit || 'N/A' }}"
+          $devAuthor = "${{ github.event.client_payload.author || 'N/A' }}"
+          $devRepo   = "${{ github.event.client_payload.repository || 'External App Repo' }}"
+          $devEnv    = "${{ github.event.client_payload.environment || 'https://devoms.quantbd.com' }}"
+
           $summary = @"
-          # 📊 OMS Trade Automation Run Summary
-          - **Trigger**: `${{ github.event_name }}`
-          - **Mode**: `${{ inputs.execution_mode || 'NORMAL_TRADE (Scheduled)' }}`
-          - **Runner**: `${{ inputs.runner_type || 'windows-latest' }}`
+          # 📊 OMS Trade Automation & Quality Gate Report
+          - **Trigger Event**: `${{ github.event_name }}`
+          - **Deployed Environment**: `$devEnv`
+          - **Developer Commit**: `$devCommit`
+          - **Developer / Author**: `$devAuthor`
+          - **Originating Repo**: `$devRepo`
+          - **Execution Mode**: `${{ inputs.execution_mode || github.event.client_payload.execution_mode || 'NORMAL_TRADE' }}`
+          - **Runner**: `${{ inputs.runner_type || github.event.client_payload.runner_type || 'windows-latest' }}`
           - **Status**: Completed
-          - **Artifacts**: Exported XML/CSV trade files archived in workflow run artifacts.
+          - **Artifacts**: Downloaded XML & CSV Trade Files saved to workflow artifacts.
           "@
           $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8
