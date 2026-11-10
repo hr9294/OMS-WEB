@@ -17,6 +17,7 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 import org.openqa.selenium.chrome.ChromeDriver;
 
 import org.openqa.selenium.chrome.ChromeOptions;
+import org.openqa.selenium.JavascriptExecutor;
 
 
 
@@ -90,7 +91,51 @@ public class OMSwebmain {
         return drv;
     }
 
-    public static void main(String[] args) throws InterruptedException, IOException {
+
+    /**
+     * Closes all browser-related notifications, modals, bootstrap dialogs, jconfirm popups,
+     * alert banners, and backdrop overlays to ensure a completely clean UI.
+     */
+    public static void closeAllBrowserPopupsAndModals(WebDriver driver) {
+        if (driver == null) return;
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            js.executeScript(
+                "try {\n" +
+                "    // 1. Close all jconfirm dialogs\n" +
+                "    if (window.jconfirm && window.jconfirm.instances) {\n" +
+                "        for (var i = 0; i < window.jconfirm.instances.length; i++) {\n" +
+                "            try { if (window.jconfirm.instances[i]) window.jconfirm.instances[i].close(); } catch(e) {}\n" +
+                "        }\n" +
+                "    }\n" +
+                "    // 2. Hide Bootstrap and custom modals\n" +
+                "    if (window.jQuery) {\n" +
+                "        try { window.jQuery('.modal').modal('hide'); } catch(e) {}\n" +
+                "    }\n" +
+                "    // 3. Click any visible close buttons on modals, popups, and alerts\n" +
+                "    var closeBtns = document.querySelectorAll(\".modal .close, .modal [data-dismiss='modal'], button.btn-close, .close-modal, .swal2-close, .alert .close, .toast .close\");\n" +
+                "    for (var c = 0; c < closeBtns.length; c++) {\n" +
+                "        try { closeBtns[c].click(); } catch(e) {}\n" +
+                "    }\n" +
+                "    // 4. Remove lingering backdrops and overlays\n" +
+                "    var overlays = document.querySelectorAll('.modal-backdrop, .jconfirm-bg, .jconfirm-overlay, .blockOverlay, .swal2-container');\n" +
+                "    for (var o = 0; o < overlays.length; o++) {\n" +
+                "        try { overlays[o].remove(); } catch(e) {}\n" +
+                "    }\n" +
+                "    // 5. Re-enable body scrolling\n" +
+                "    if (document.body) {\n" +
+                "        document.body.classList.remove('modal-open');\n" +
+                "        document.body.style.removeProperty('padding-right');\n" +
+                "        document.body.style.removeProperty('overflow');\n" +
+                "    }\n" +
+                "} catch(err) {}"
+            );
+            // Dismiss native alerts if present
+            try { driver.switchTo().alert().dismiss(); } catch (Exception ignoredAlert) {}
+        } catch (Exception ignored) {}
+    }
+
+        public static void main(String[] args) throws InterruptedException, IOException {
         driver = createDriver();
         driver.get("https://devoms.quantbd.com");
 
@@ -134,33 +179,58 @@ public class OMSwebmain {
 
 
 
-        // 3. SELECT EXECUTION ENGINE
-        System.out.println("\n[UFTFAST OMS] 3. Select Execution Engine:");
-        System.out.println("  1. Normal Trade (DSE default / CSE) [Default]");
-        System.out.println("  2. Multi-Order Execution (Single/Multi-Client, DSE/CSE, Market Execution)");
-        System.out.println("  3. High-Speed Multiple Trade Engine (2-Min Simultaneous Trading, DSE/CSE)");
-        System.out.println("  4. Upload File Engine (User Choice File Upload: Client, Stock, Cash, etc.)");
-        System.out.println("  5. Export File Engine (Trade Files, EOD Price, Commission & Reports)");
-        System.out.print("Enter Choice (1-5, default=1 in 4s): ");
-        String engChoice = OMSweb_Trade.readLineWithTimeout(sc, "1", 4);
+        // 3. CONTINUOUS ACTIVE SESSION LOOP (NEVER TERMINATE, AUTO-CLOSE ALL POPUPS & MODALS)
+        boolean keepSessionAlive = true;
+        boolean isFirstRun = true;
 
-        if ("5".equals(engChoice) || "export".equalsIgnoreCase(engChoice) || "trade-export".equalsIgnoreCase(engChoice)) {
-            OMSweb_ExportData.main(driver, sc);
-        } else if ("4".equals(engChoice) || "upload".equalsIgnoreCase(engChoice)) {
-            OMSweb_UploadData.main(driver, sc);
-        } else if ("3".equals(engChoice) || "multitrade".equalsIgnoreCase(engChoice)) {
-            OMSweb_MultipleTrade.main(driver, sc);
-        } else if ("2".equals(engChoice) || "multiorder".equalsIgnoreCase(engChoice)) {
-            OMSweb_MultiOrderExecution.main(driver, sc);
-        } else if ("CSE".equalsIgnoreCase(engChoice)) {
-            OMSweb_Trade.activeExchange = "CSE";
-            OMSweb_Trade.runNormalTradeCSE(driver, sc);
-        } else {
-            OMSweb_Trade.main(driver, sc);
+        while (keepSessionAlive) {
+            closeAllBrowserPopupsAndModals(driver);
+
+            System.out.println("\n=============================================================================");
+            System.out.println("                     [UFTFAST OMS ACTIVE SESSION]                           ");
+            System.out.println("  Browser & trading session are LIVE and persistent. Never terminating.     ");
+            System.out.println("=============================================================================");
+            System.out.println("Select Action:");
+            System.out.println("  1. Normal Trade (DSE default / CSE) [Default]");
+            System.out.println("  2. Multi-Order Execution (Single/Multi-Client, DSE/CSE, Market Execution)");
+            System.out.println("  3. High-Speed Multiple Trade Engine (2-Min Simultaneous Trading, DSE/CSE)");
+            System.out.println("  4. Upload File Engine (User Choice File Upload: Client, Stock, Cash, etc.)");
+            System.out.println("  5. Export File Engine (Trade Files, EOD Price, Commission & Reports)");
+            System.out.println("  6. Close All Popups, Modals & Notifications (Clean UI)");
+            System.out.println("  0. Exit Application");
+
+            String defaultChoice = isFirstRun ? "1" : "";
+            int timeoutSecs = isFirstRun ? 4 : 0;
+            System.out.print(isFirstRun ? "Enter Choice (0-6, default=1 in 4s): " : "Enter Choice (0-6): ");
+
+            String engChoice = timeoutSecs > 0 ? OMSweb_Trade.readLineWithTimeout(sc, defaultChoice, timeoutSecs) : sc.nextLine().trim();
+            isFirstRun = false;
+
+            if ("0".equals(engChoice) || "exit".equalsIgnoreCase(engChoice) || "quit".equalsIgnoreCase(engChoice)) {
+                System.out.println("\n[UFTFAST OMS] User requested exit. Browser detached. Goodbye!");
+                keepSessionAlive = false;
+                break;
+            } else if ("6".equals(engChoice) || "clean".equalsIgnoreCase(engChoice)) {
+                closeAllBrowserPopupsAndModals(driver);
+                System.out.println("[CLEAN UI] Closed all open modals, overlays, and notifications.");
+            } else if ("5".equals(engChoice) || "export".equalsIgnoreCase(engChoice) || "trade-export".equalsIgnoreCase(engChoice)) {
+                OMSweb_ExportData.main(driver, sc);
+            } else if ("4".equals(engChoice) || "upload".equalsIgnoreCase(engChoice)) {
+                OMSweb_UploadData.main(driver, sc);
+            } else if ("3".equals(engChoice) || "multitrade".equalsIgnoreCase(engChoice)) {
+                OMSweb_MultipleTrade.main(driver, sc);
+            } else if ("2".equals(engChoice) || "multiorder".equalsIgnoreCase(engChoice)) {
+                OMSweb_MultiOrderExecution.main(driver, sc);
+            } else if ("CSE".equalsIgnoreCase(engChoice)) {
+                OMSweb_Trade.activeExchange = "CSE";
+                OMSweb_Trade.runNormalTradeCSE(driver, sc);
+            } else {
+                OMSweb_Trade.main(driver, sc);
+            }
+
+            // Immediately close all modals/popups after execution to keep browser clean
+            closeAllBrowserPopupsAndModals(driver);
+            System.out.println("\n[SESSION LIVE] Action completed. Session remains ACTIVE in Eclipse (never terminating).");
         }
-
-        System.out.println("\n=============================================================================");
-        System.out.println(" [SUCCESS] Action completed. Chrome browser remains active on your desktop.");
-        System.out.println("=============================================================================\n");
     }
 }
