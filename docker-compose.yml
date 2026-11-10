@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  oms-tests:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: oms-web-automated-tests
+    # Crucial for Google Chrome rendering in Docker: prevents shared memory crashes
+    shm_size: '2gb'
+    environment:
+      - CI=true
+      - HEADLESS=true
+      - TARGET_URL=https://devoms.quantbd.com
+    volumes:
+      # Exported XML and CSV trade files are saved directly onto the host server
+      - ./exported-trades:/root/Downloads
+    # Host networking allows direct, zero-lag access to devoms and internal PostgreSQL 192.168.155.22
+    network_mode: "host"

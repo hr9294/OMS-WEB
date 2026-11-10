@@ -24,6 +24,7 @@ import org.openqa.selenium.JavascriptExecutor;
 public class OMSwebmain {
 
     static WebDriver driver;
+    public static final boolean isCi = "true".equalsIgnoreCase(System.getenv("CI")) || "true".equalsIgnoreCase(System.getenv("HEADLESS"));
 
 
 
@@ -67,7 +68,6 @@ public class OMSwebmain {
         options.setExperimentalOption("detach", true);
         options.setAcceptInsecureCerts(true);
 
-        boolean isCi = "true".equalsIgnoreCase(System.getenv("CI")) || "true".equalsIgnoreCase(System.getenv("HEADLESS"));
         if (isCi) {
             options.addArguments("--headless=new");
             options.addArguments("--disable-gpu");
@@ -226,6 +226,13 @@ public class OMSwebmain {
 
             // Immediately close all modals/popups after execution to keep browser clean
             closeAllBrowserPopupsAndModals(driver);
+
+            if (isCi) {
+                System.out.println("\n[AUTOMATION: DONE] Automated container/CI execution finished successfully. Exiting cleanly.");
+                keepSessionAlive = false;
+                break;
+            }
+
             System.out.println("\n[SESSION LIVE] Action completed. Session remains ACTIVE in Eclipse (never terminating).");
         }
     }
