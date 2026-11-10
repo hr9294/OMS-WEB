@@ -1,0 +1,86 @@
+name: OMS Trade Automation & Export Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      execution_mode:
+        description: 'Trade Execution Mode'
+        required: true
+        default: 'NORMAL_TRADE'
+        type: choice
+        options:
+          - NORMAL_TRADE
+          - TRADE_EXPORT
+          - MULTI_ORDER
+      runner_type:
+        description: 'Runner Environment (windows-latest or self-hosted)'
+        required: true
+        default: 'windows-latest'
+        type: choice
+        options:
+          - windows-latest
+          - self-hosted
+
+  # Scheduled run for Sunday to Thursday trading days (9:30 AM BD Time = 3:30 AM UTC)
+  schedule:
+    - cron: '30 3 * * 0-4'
+
+jobs:
+  trade-automation:
+    name: Execute Trade Engine & Export Files
+    runs-on: ${{ inputs.runner_type || 'windows-latest' }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Compile Suite with Maven
+        run: |
+          mvn -B compile
+        env:
+          MAVEN_OPTS: "-Dfile.encoding=UTF-8"
+
+      - name: Run Automation Engine
+        run: |
+          $env:CI = "true"
+          $env:HEADLESS = "true"
+          $mode = "${{ inputs.execution_mode }}"
+          if (-not $mode) { $mode = "NORMAL_TRADE" }
+
+          Write-Host "[PIPELINE] Launching OMS Automation in mode: $mode"
+          mvn -B exec:java -Dexec.mainClass="OMSwebmain" -Dexec.args="$mode"
+        continue-on-error: true
+
+      - name: Archive Exported Trade Files (XML & CSV)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: oms-trade-files-${{ github.run_id }}
+          path: |
+            ~/Downloads/*TRADES*.xml
+            ~/Downloads/*TRADES*.csv
+            ~/Downloads/Trade_Export_*.xml
+            ~/Downloads/Trade_Export_*.csv
+            *.png
+            logs/*.log
+          retention-days: 30
+
+      - name: Publish Step Summary
+        if: always()
+        run: |
+          $summary = @"
+          # 📊 OMS Trade Automation Run Summary
+          - **Trigger**: `${{ github.event_name }}`
+          - **Mode**: `${{ inputs.execution_mode || 'NORMAL_TRADE (Scheduled)' }}`
+          - **Runner**: `${{ inputs.runner_type || 'windows-latest' }}`
+          - **Status**: Completed
+          - **Artifacts**: Exported XML/CSV trade files archived in workflow run artifacts.
+          "@
+          $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8
