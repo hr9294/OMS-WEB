@@ -66,6 +66,14 @@ public class OMSwebmain {
         options.setExperimentalOption("detach", true);
         options.setAcceptInsecureCerts(true);
 
+        boolean isCi = "true".equalsIgnoreCase(System.getenv("CI")) || "true".equalsIgnoreCase(System.getenv("HEADLESS"));
+        if (isCi) {
+            options.addArguments("--headless=new");
+            options.addArguments("--disable-gpu");
+            options.addArguments("--no-sandbox");
+            options.addArguments("--disable-dev-shm-usage");
+        }
+
         WebDriver drv = new ChromeDriver(options);
         try {
             Map<String, Object> cdpParams = new HashMap<>();
