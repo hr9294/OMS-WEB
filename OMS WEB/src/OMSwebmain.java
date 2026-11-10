@@ -196,12 +196,11 @@ public class OMSwebmain {
             System.out.println("  3. High-Speed Multiple Trade Engine (2-Min Simultaneous Trading, DSE/CSE)");
             System.out.println("  4. Upload File Engine (User Choice File Upload: Client, Stock, Cash, etc.)");
             System.out.println("  5. Export File Engine (Trade Files, EOD Price, Commission & Reports)");
-            System.out.println("  6. Close All Popups, Modals & Notifications (Clean UI)");
             System.out.println("  0. Exit Application");
 
             String defaultChoice = isFirstRun ? "1" : "";
             int timeoutSecs = isFirstRun ? 4 : 0;
-            System.out.print(isFirstRun ? "Enter Choice (0-6, default=1 in 4s): " : "Enter Choice (0-6): ");
+            System.out.print(isFirstRun ? "Enter Choice (1-5 to execute, 0=Exit, default=1 in 4s): " : "Enter Choice (1-5 to execute, 0=Exit): ");
 
             String engChoice = timeoutSecs > 0 ? OMSweb_Trade.readLineWithTimeout(sc, defaultChoice, timeoutSecs) : sc.nextLine().trim();
             isFirstRun = false;
@@ -210,9 +209,6 @@ public class OMSwebmain {
                 System.out.println("\n[UFTFAST OMS] User requested exit. Browser detached. Goodbye!");
                 keepSessionAlive = false;
                 break;
-            } else if ("6".equals(engChoice) || "clean".equalsIgnoreCase(engChoice)) {
-                closeAllBrowserPopupsAndModals(driver);
-                System.out.println("[CLEAN UI] Closed all open modals, overlays, and notifications.");
             } else if ("5".equals(engChoice) || "export".equalsIgnoreCase(engChoice) || "trade-export".equalsIgnoreCase(engChoice)) {
                 OMSweb_ExportData.main(driver, sc);
             } else if ("4".equals(engChoice) || "upload".equalsIgnoreCase(engChoice)) {
