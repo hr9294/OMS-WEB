@@ -32,7 +32,7 @@ This document describes the Continuous Integration (CI) and Continuous Delivery 
 
 | Workflow | File | Triggers | Description |
 | :--- | :--- | :--- | :--- |
-| **CI Build & Verification** | `.github/workflows/ci.yml` | Every `push` to `main`, `pull_request`, or Manual | Compiles the full suite with Maven on JDK 21 and validates all 15 class outputs. |
+| **CI Build & Verification** | `.github/workflows/ci.yml` | Every `push` to `main`, `pull_request`, or Manual | Compiles the full suite with Maven on JDK 25 and validates all 15 class outputs. |
 | **Daily Trade Automation** | `.github/workflows/trade-automation.yml` | `cron: 30 3 * * 0-4` (9:30 AM BD Time, Sun-Thu) or Manual | Executes trade engine, matches BUY/SELL pair, and automatically exports XML/CSV trade files as downloadable GitHub artifacts. |
 
 ---

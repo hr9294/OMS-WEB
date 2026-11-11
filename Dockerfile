@@ -1,6 +1,6 @@
 # ==============================================================================
 # OMS-WEB Automated Testing Container
-# Environment: Linux (Debian Jammy) + Java 21 + Maven 3.9 + Google Chrome Headless
+# Environment: Ubuntu Noble + Java 21 + Maven 3.10 + Google Chrome Headless
 # ==============================================================================
 FROM maven:3.9.6-eclipse-temurin-21-jammy
 

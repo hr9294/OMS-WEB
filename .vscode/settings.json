@@ -13,5 +13,6 @@
     "files.exclude": {
         "**/__pycache__": true,
         "**/.pytest_cache": true
-    }
+    },
+    "java.compile.nullAnalysis.mode": "automatic"
 }
