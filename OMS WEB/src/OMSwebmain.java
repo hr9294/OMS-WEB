@@ -19,14 +19,10 @@ import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.JavascriptExecutor;
 
-
-
 public class OMSwebmain {
 
     static WebDriver driver;
     public static final boolean isCi = "true".equalsIgnoreCase(System.getenv("CI")) || "true".equalsIgnoreCase(System.getenv("HEADLESS"));
-
-
 
         public static WebDriver createDriver() {
         System.setProperty("webdriver.chrome.silentOutput", "true");
@@ -91,7 +87,6 @@ public class OMSwebmain {
         return drv;
     }
 
-
     /**
      * Closes all browser-related notifications, modals, bootstrap dialogs, jconfirm popups,
      * alert banners, and backdrop overlays to ensure a completely clean UI.
@@ -141,8 +136,6 @@ public class OMSwebmain {
 
         Thread.sleep(1000);
 
-
-
         ((org.openqa.selenium.JavascriptExecutor) driver).executeScript(
 
             "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
@@ -153,15 +146,11 @@ public class OMSwebmain {
 
         Scanner sc = new Scanner(System.in);
 
-
-
         // Login
 
         OMSweb_Login.main(driver, sc);
 
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
-
-
 
         // 1. FIRST OPEN THE TRADE PAGE (Force navigation to guarantee Trade Portal opens)
 
@@ -169,15 +158,11 @@ public class OMSwebmain {
 
         OMSweb_Trade.navigateToTradePage(driver, wait, true);
 
-
-
         // 2. THEN SELECT WIDGET COLOR LINK
 
         System.out.println("[UFTFAST OMS] 2. Configuring Widget Color Link...");
 
         OMSweb_Trade.runWidgetColorSelection(driver, sc);
-
-
 
         // 3. CONTINUOUS ACTIVE SESSION LOOP (NEVER TERMINATE, AUTO-CLOSE ALL POPUPS & MODALS)
         boolean keepSessionAlive = true;
