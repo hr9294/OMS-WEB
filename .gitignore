@@ -21,3 +21,7 @@ venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+OMS-App/
+OMS_Mobile_Automation_Java/
+OMS_Mobile_Automation_Python/
