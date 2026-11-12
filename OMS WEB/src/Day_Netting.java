@@ -813,6 +813,11 @@ public class Day_Netting {
 
         navigateToRmsNettingTab(driver);
 
+        boolean isCi = "true".equalsIgnoreCase(System.getenv("CI"))
+                || "true".equalsIgnoreCase(System.getenv("HEADLESS"))
+                || "true".equalsIgnoreCase(System.getenv("DOCKER_MODE"))
+                || "true".equalsIgnoreCase(System.getenv("AUTOMATE_MODE"));
+
         boolean running = true;
         while (running) {
             System.out.println("\n[DAY NETTING] Select Action:");
@@ -824,9 +829,18 @@ public class Day_Netting {
             System.out.println("  6. Run UI Netting Indicators Audit (Market Depth, Watchlists, Order Window)");
             System.out.println("  7. Run Full Automated Scrip Netting Test Suite (All 5 Scopes)");
             System.out.println("  0. Return to Main Menu");
-            System.out.print("Enter Choice (0-7, default=7 in 5s): ");
 
-            String choice = OMSweb_Trade.readLineWithTimeout(sc, "7", 5);
+            String choice = "";
+            if (isCi) {
+                choice = "7";
+                System.out.println("\n[DOCKER AUTOMATE MODE] Automatically selected Day Netting option: 7 (Full Test Suite)");
+            } else {
+                while (choice.isEmpty()) {
+                    System.out.print("Enter Choice (0-7): ");
+                    if (!sc.hasNextLine()) break;
+                    choice = sc.nextLine().trim();
+                }
+            }
 
             if ("0".equals(choice) || "exit".equalsIgnoreCase(choice)) {
                 System.out.println("[DAY NETTING] Returning to main session.");
@@ -881,10 +895,20 @@ public class Day_Netting {
                 runFullUIIndicatorsAudit(driver, sym, cln);
             } else if ("7".equals(choice) || "test".equalsIgnoreCase(choice)) {
                 runAllNettingTests(driver);
-                running = false;
             } else {
-                System.out.println("Unrecognized choice.");
+                System.out.printf("[INVALID SELECTION] '%s' is not recognized. Please choose 0-7.%n", choice);
+                continue;
             }
+
+            if (isCi) {
+                running = false;
+                break;
+            }
+
+            System.out.println("\n=============================================================================");
+            System.out.println(" [ACTION FINISHED] Day Netting action completed successfully.");
+            System.out.println(" Selection menu will now reappear below for further action.");
+            System.out.println("=============================================================================");
         }
     }
 

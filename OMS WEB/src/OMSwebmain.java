@@ -186,7 +186,7 @@ public class OMSwebmain {
             System.out.println("  6. Day Netting Engine (Scrip Netting, RMS Controls & UI Audit)");
             System.out.println("  0. Exit Application");
 
-            String engChoice;
+            String engChoice = "";
 
             if (isCi) {
                 // AUTOMATED DOCKER MODE: Automatically select and run action without waiting
@@ -197,9 +197,14 @@ public class OMSwebmain {
                 engChoice = (envAction != null && !envAction.trim().isEmpty()) ? envAction.trim() : "1";
                 System.out.printf("\n[DOCKER AUTOMATE MODE] Automatically selected action: %s%n", engChoice);
             } else {
-                // MANUAL MODE: Wait for explicit user choice. Only that choice executes.
-                System.out.print("Enter Choice (1-6 to execute, 0=Exit): ");
-                engChoice = sc.nextLine().trim();
+                // MANUAL MODE: Flush any residual empty line and wait for explicit user choice
+                while (engChoice.isEmpty()) {
+                    System.out.print("Enter Choice (1-6 to execute, 0=Exit): ");
+                    if (!sc.hasNextLine()) {
+                        break;
+                    }
+                    engChoice = sc.nextLine().trim();
+                }
             }
 
             if ("0".equals(engChoice) || "exit".equalsIgnoreCase(engChoice) || "quit".equalsIgnoreCase(engChoice)) {
@@ -228,9 +233,6 @@ public class OMSwebmain {
                 System.out.println("\n[UFTFAST OMS] Executing Normal Trade for CSE...");
                 OMSweb_Trade.activeExchange = "CSE";
                 OMSweb_Trade.runNormalTradeCSE(driver, sc);
-            } else if (engChoice.isEmpty()) {
-                System.out.println("\n[UFTFAST OMS] No choice entered. Please select a valid option (1-6, or 0 to exit).");
-                continue;
             } else {
                 System.out.printf("\n[INVALID SELECTION] '%s' is not recognized. Only your chosen action (1-6, or 0) will execute.%n", engChoice);
                 continue;
@@ -245,7 +247,10 @@ public class OMSwebmain {
                 break;
             }
 
-            System.out.println("\n[SESSION LIVE] Action completed. Session remains ACTIVE in Eclipse (never terminating).");
+            System.out.println("\n=============================================================================");
+            System.out.println(" [ACTION FINISHED] Completed successfully. Session is ACTIVE in browser.");
+            System.out.println(" Selection menu will now reappear below for your further action.");
+            System.out.println("=============================================================================");
         }
     }
 }
