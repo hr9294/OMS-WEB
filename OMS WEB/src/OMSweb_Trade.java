@@ -73,55 +73,23 @@ public class OMSweb_Trade {
 	public static String activeExchange = "DSE";
 
 	public static String readLineWithTimeout(Scanner sc, String defaultVal, int timeoutSeconds) {
-
 		if (sc == null) return defaultVal;
-
-		java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
-
-			Thread t = new Thread(r, "ConsoleTimeoutReader");
-
-			t.setDaemon(true);
-
-			return t;
-
-		});
-
 		try {
-
-			java.util.concurrent.Future<String> future = executor.submit(() -> {
-
-				if (sc.hasNextLine()) {
-
-					return sc.nextLine().trim();
-
+			long end = System.currentTimeMillis() + (timeoutSeconds * 1000L);
+			while (System.currentTimeMillis() < end) {
+				if (System.in.available() > 0) {
+					if (sc.hasNextLine()) {
+						String res = sc.nextLine().trim();
+						return res.isEmpty() ? defaultVal : res;
+					}
 				}
-
-				return defaultVal;
-
-			});
-
-			String res = future.get(timeoutSeconds, java.util.concurrent.TimeUnit.SECONDS);
-
-			executor.shutdownNow();
-
-			return (res == null || res.isEmpty()) ? defaultVal : res;
-
-		} catch (java.util.concurrent.TimeoutException te) {
-
-			executor.shutdownNow();
-
+				Thread.sleep(50);
+			}
 			System.out.println(" [Auto-selected: " + defaultVal + "]");
-
 			return defaultVal;
-
 		} catch (Exception e) {
-
-			executor.shutdownNow();
-
 			return defaultVal;
-
 		}
-
 	}
 
 	public static void showFrontendBanner(WebDriver driver, String msg, String borderColor) {

@@ -476,28 +476,21 @@ public class OMSweb_MultipleTrade {
 
     public static String readLineWithTimeout(Scanner sc, String defaultVal, int timeoutSeconds) {
         if (sc == null) return defaultVal;
-        ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "MultiTradeTimeoutReader");
-            t.setDaemon(true);
-            return t;
-        });
-        Future<String> future = executor.submit(() -> {
-            try {
-                if (sc.hasNextLine()) {
-                    return sc.nextLine();
-                }
-            } catch (Exception ignored) {}
-            return defaultVal;
-        });
         try {
-            String res = future.get(timeoutSeconds, TimeUnit.SECONDS);
-            return (res == null || res.trim().isEmpty()) ? defaultVal : res.trim();
-        } catch (Exception e) {
+            long end = System.currentTimeMillis() + (timeoutSeconds * 1000L);
+            while (System.currentTimeMillis() < end) {
+                if (System.in.available() > 0) {
+                    if (sc.hasNextLine()) {
+                        String res = sc.nextLine().trim();
+                        return res.isEmpty() ? defaultVal : res;
+                    }
+                }
+                Thread.sleep(50);
+            }
             System.out.println(" [Auto-proceed default: " + defaultVal + "]");
-            future.cancel(true);
             return defaultVal;
-        } finally {
-            executor.shutdownNow();
+        } catch (Exception e) {
+            return defaultVal;
         }
     }
 

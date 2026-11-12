@@ -200,10 +200,18 @@ public class OMSwebmain {
                 // MANUAL MODE: Flush any residual empty line and wait for explicit user choice
                 while (engChoice.isEmpty()) {
                     System.out.print("Enter Choice (1-6 to execute, 0=Exit): ");
-                    if (!sc.hasNextLine()) {
-                        break;
+                    try {
+                        if (!sc.hasNextLine()) {
+                            break;
+                        }
+                        engChoice = sc.nextLine().trim();
+                    } catch (Exception e) {
+                        sc = new Scanner(System.in);
+                        if (!sc.hasNextLine()) {
+                            break;
+                        }
+                        engChoice = sc.nextLine().trim();
                     }
-                    engChoice = sc.nextLine().trim();
                 }
             }
 
