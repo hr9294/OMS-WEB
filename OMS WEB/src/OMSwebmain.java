@@ -22,7 +22,10 @@ import org.openqa.selenium.JavascriptExecutor;
 public class OMSwebmain {
 
     static WebDriver driver;
-    public static final boolean isCi = "true".equalsIgnoreCase(System.getenv("CI")) || "true".equalsIgnoreCase(System.getenv("HEADLESS"));
+    public static final boolean isCi = "true".equalsIgnoreCase(System.getenv("CI"))
+            || "true".equalsIgnoreCase(System.getenv("HEADLESS"))
+            || "true".equalsIgnoreCase(System.getenv("DOCKER_MODE"))
+            || "true".equalsIgnoreCase(System.getenv("AUTOMATE_MODE"));
 
         public static WebDriver createDriver() {
         System.setProperty("webdriver.chrome.silentOutput", "true");
@@ -166,7 +169,6 @@ public class OMSwebmain {
 
         // 3. CONTINUOUS ACTIVE SESSION LOOP (NEVER TERMINATE, AUTO-CLOSE ALL POPUPS & MODALS)
         boolean keepSessionAlive = true;
-        boolean isFirstRun = true;
 
         while (keepSessionAlive) {
             closeAllBrowserPopupsAndModals(driver);
@@ -176,7 +178,7 @@ public class OMSwebmain {
             System.out.println("  Browser & trading session are LIVE and persistent. Never terminating.     ");
             System.out.println("=============================================================================");
             System.out.println("Select Action:");
-            System.out.println("  1. Normal Trade (DSE default / CSE) [Default]");
+            System.out.println("  1. Normal Trade (DSE default / CSE)");
             System.out.println("  2. Multi-Order Execution (Single/Multi-Client, DSE/CSE, Market Execution)");
             System.out.println("  3. High-Speed Multiple Trade Engine (2-Min Simultaneous Trading, DSE/CSE)");
             System.out.println("  4. Upload File Engine (User Choice File Upload: Client, Stock, Cash, etc.)");
@@ -184,33 +186,54 @@ public class OMSwebmain {
             System.out.println("  6. Day Netting Engine (Scrip Netting, RMS Controls & UI Audit)");
             System.out.println("  0. Exit Application");
 
-            String defaultChoice = isFirstRun ? "1" : "";
-            int timeoutSecs = isFirstRun ? 4 : 0;
-            System.out.print(isFirstRun ? "Enter Choice (1-6 to execute, 0=Exit, default=1 in 4s): " : "Enter Choice (1-6 to execute, 0=Exit): ");
+            String engChoice;
 
-            String engChoice = timeoutSecs > 0 ? OMSweb_Trade.readLineWithTimeout(sc, defaultChoice, timeoutSecs) : sc.nextLine().trim();
-            isFirstRun = false;
+            if (isCi) {
+                // AUTOMATED DOCKER MODE: Automatically select and run action without waiting
+                String envAction = System.getenv("ACTION_CHOICE");
+                if (envAction == null || envAction.trim().isEmpty()) {
+                    envAction = System.getenv("AUTOMATE_ACTION");
+                }
+                engChoice = (envAction != null && !envAction.trim().isEmpty()) ? envAction.trim() : "1";
+                System.out.printf("\n[DOCKER AUTOMATE MODE] Automatically selected action: %s%n", engChoice);
+            } else {
+                // MANUAL MODE: Wait for explicit user choice. Only that choice executes.
+                System.out.print("Enter Choice (1-6 to execute, 0=Exit): ");
+                engChoice = sc.nextLine().trim();
+            }
 
             if ("0".equals(engChoice) || "exit".equalsIgnoreCase(engChoice) || "quit".equalsIgnoreCase(engChoice)) {
                 System.out.println("\n[UFTFAST OMS] User requested exit. Browser detached. Goodbye!");
                 keepSessionAlive = false;
                 break;
-            } else if ("6".equals(engChoice) || "netting".equalsIgnoreCase(engChoice) || "daynetting".equalsIgnoreCase(engChoice)) {
-                System.out.println("\n[UFTFAST OMS] Launching Day Netting Engine (Scrip Netting Suite)...");
-                Day_Netting.main(driver, sc);
-            } else if ("5".equals(engChoice) || "export".equalsIgnoreCase(engChoice) || "trade-export".equalsIgnoreCase(engChoice)) {
-                OMSweb_ExportData.main(driver, sc);
-            } else if ("4".equals(engChoice) || "upload".equalsIgnoreCase(engChoice)) {
-                OMSweb_UploadData.main(driver, sc);
-            } else if ("3".equals(engChoice) || "multitrade".equalsIgnoreCase(engChoice)) {
-                OMSweb_MultipleTrade.main(driver, sc);
+            } else if ("1".equals(engChoice) || "normal".equalsIgnoreCase(engChoice) || "trade".equalsIgnoreCase(engChoice)) {
+                System.out.println("\n[UFTFAST OMS] Executing Action 1: Normal Trade (DSE default)...");
+                OMSweb_Trade.main(driver, sc);
             } else if ("2".equals(engChoice) || "multiorder".equalsIgnoreCase(engChoice)) {
+                System.out.println("\n[UFTFAST OMS] Executing Action 2: Multi-Order Execution...");
                 OMSweb_MultiOrderExecution.main(driver, sc);
+            } else if ("3".equals(engChoice) || "multitrade".equalsIgnoreCase(engChoice)) {
+                System.out.println("\n[UFTFAST OMS] Executing Action 3: High-Speed Multiple Trade Engine...");
+                OMSweb_MultipleTrade.main(driver, sc);
+            } else if ("4".equals(engChoice) || "upload".equalsIgnoreCase(engChoice)) {
+                System.out.println("\n[UFTFAST OMS] Executing Action 4: Upload File Engine...");
+                OMSweb_UploadData.main(driver, sc);
+            } else if ("5".equals(engChoice) || "export".equalsIgnoreCase(engChoice) || "trade-export".equalsIgnoreCase(engChoice)) {
+                System.out.println("\n[UFTFAST OMS] Executing Action 5: Export File Engine...");
+                OMSweb_ExportData.main(driver, sc);
+            } else if ("6".equals(engChoice) || "netting".equalsIgnoreCase(engChoice) || "daynetting".equalsIgnoreCase(engChoice)) {
+                System.out.println("\n[UFTFAST OMS] Executing Action 6: Day Netting Engine (Scrip Netting Suite)...");
+                Day_Netting.main(driver, sc);
             } else if ("CSE".equalsIgnoreCase(engChoice)) {
+                System.out.println("\n[UFTFAST OMS] Executing Normal Trade for CSE...");
                 OMSweb_Trade.activeExchange = "CSE";
                 OMSweb_Trade.runNormalTradeCSE(driver, sc);
+            } else if (engChoice.isEmpty()) {
+                System.out.println("\n[UFTFAST OMS] No choice entered. Please select a valid option (1-6, or 0 to exit).");
+                continue;
             } else {
-                OMSweb_Trade.main(driver, sc);
+                System.out.printf("\n[INVALID SELECTION] '%s' is not recognized. Only your chosen action (1-6, or 0) will execute.%n", engChoice);
+                continue;
             }
 
             // Immediately close all modals/popups after execution to keep browser clean
