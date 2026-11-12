@@ -181,7 +181,7 @@ public class OMSwebmain {
             System.out.println("  3. High-Speed Multiple Trade Engine (2-Min Simultaneous Trading, DSE/CSE)");
             System.out.println("  4. Upload File Engine (User Choice File Upload: Client, Stock, Cash, etc.)");
             System.out.println("  5. Export File Engine (Trade Files, EOD Price, Commission & Reports)");
-            System.out.println("  6. Widget UI Data Check (Maximize -> Snapshot -> Minimize Each Widget)");
+            System.out.println("  6. Day Netting Engine (Scrip Netting, RMS Controls & UI Audit)");
             System.out.println("  0. Exit Application");
 
             String defaultChoice = isFirstRun ? "1" : "";
@@ -195,9 +195,9 @@ public class OMSwebmain {
                 System.out.println("\n[UFTFAST OMS] User requested exit. Browser detached. Goodbye!");
                 keepSessionAlive = false;
                 break;
-            } else if ("6".equals(engChoice) || "widget".equalsIgnoreCase(engChoice) || "snapshot".equalsIgnoreCase(engChoice)) {
-                System.out.println("\n[UFTFAST OMS] Executing Widget UI Data Check (Maximize -> Snapshot -> Minimize)...");
-                OMSweb_Trade.checkAllWidgetsWithMaximizeAndSnapshot(driver, "WIDGET_DATA_CHECK", "23986", "GP");
+            } else if ("6".equals(engChoice) || "netting".equalsIgnoreCase(engChoice) || "daynetting".equalsIgnoreCase(engChoice)) {
+                System.out.println("\n[UFTFAST OMS] Launching Day Netting Engine (Scrip Netting Suite)...");
+                Day_Netting.main(driver, sc);
             } else if ("5".equals(engChoice) || "export".equalsIgnoreCase(engChoice) || "trade-export".equalsIgnoreCase(engChoice)) {
                 OMSweb_ExportData.main(driver, sc);
             } else if ("4".equals(engChoice) || "upload".equalsIgnoreCase(engChoice)) {
