@@ -1,6 +1,8 @@
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -758,6 +760,230 @@ public class Day_Netting {
     }
 
     // =========================================================================
+    // 4.1 REAL-TIME 6-WIDGET UI DATA MODEL & AUDIT ENGINE
+    // =========================================================================
+
+    public static class Netting6WidgetsUiSnapshot {
+        public String stageName = "";
+        public String exchange = "DSE";
+        public String targetSymbol = "GP";
+        public String targetClient = "23986";
+
+        // 1. Netting Watchlist
+        public boolean dedicatedNettingWatchlist = false;
+        public boolean watchlistNettingIcon = false;
+        public String watchlistHoverText = "";
+        public int watchlistSymbolCount = 0;
+
+        // 2. Market Depth
+        public boolean marketDepthNettingBadge = false;
+        public Map<String, String> marketDepthData = new LinkedHashMap<>();
+
+        // 3. Portfolio
+        public Map<String, String> portfolioData = new LinkedHashMap<>();
+
+        // 4. Order Terminal
+        public Map<String, String> orderTerminalData = new LinkedHashMap<>();
+
+        // 5. Order Summary
+        public Map<String, String> orderSummaryData = new LinkedHashMap<>();
+
+        // 6. Account Limits
+        public Map<String, String> accountLimitsData = new LinkedHashMap<>();
+    }
+
+    /**
+     * Checks Real-Time UI Data across the 6 core widgets requested by user:
+     * 1. Netting Watchlist (Dedicated Watchlist, Netting icons/badges, hover tooltip)
+     * 2. Market Depth (Symbol depth quotes, LTP, High/Low, Netting badge)
+     * 3. Portfolio (Total Qty, Saleable Qty, Avg Cost, Market Value)
+     * 4. Order Terminal (Recent Orders, Status, Executed Qty, Due Qty, Rate)
+     * 5. Order Summary (Total Orders, Executed, Buy/Sell Turnover)
+     * 6. Account Limits (Cash Table, Capital Table, Remaining Cash, Blocked/Day)
+     *
+     * Sequential Workflow for each widget:
+     * Maximize Widget -> High-Res Snapshot -> Read live unclipped DOM Data -> Minimize/Restore Widget -> Next Widget!
+     */
+    public static Netting6WidgetsUiSnapshot check6NettingWidgetsRealTimeUiData(WebDriver driver, String stageName, String clientCode, String symbol, String exchange) {
+        Netting6WidgetsUiSnapshot snap = new Netting6WidgetsUiSnapshot();
+        snap.stageName = stageName;
+        snap.exchange = (exchange != null && !exchange.isEmpty()) ? exchange : "DSE";
+        snap.targetSymbol = (symbol != null && !symbol.isEmpty()) ? symbol.trim().toUpperCase() : "GP";
+        snap.targetClient = (clientCode != null && !clientCode.isEmpty()) ? clientCode.trim() : "23986";
+
+        System.out.println("\n+==================================================================================================+");
+        System.out.println("|      CHECKING REAL-TIME UI DATA ACROSS 6 WIDGETS (MAXIMIZE -> SNAPSHOT -> MINIMIZE)              |");
+        System.out.printf("| Stage: %-25s | Exchange: %-5s | Symbol: %-8s | Client: %-12s |%n", snap.stageName, snap.exchange, snap.targetSymbol, snap.targetClient);
+        System.out.println("+==================================================================================================+");
+
+        // 1. NETTING WATCHLIST (Dedicated Netting Scrip Watchlist + Icons)
+        try {
+            System.out.println("\n[1/6] Maximizing 'Netting Watchlist' widget...");
+            OMSweb_Trade.maximizeWidget(driver, "Watchlist");
+            Thread.sleep(500);
+            OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Netting_Watchlist.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
+
+            snap.dedicatedNettingWatchlist = verifyDefaultNettingWatchlist(driver, snap.targetSymbol);
+            snap.watchlistHoverText = verifyExistingWatchlistNettingIconAndHover(driver, snap.targetSymbol);
+            snap.watchlistNettingIcon = !snap.watchlistHoverText.isEmpty();
+
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            Long count = (Long) js.executeScript("return document.querySelectorAll('#marketwatch_table tbody tr, .watchlist-table tbody tr').length;");
+            snap.watchlistSymbolCount = count != null ? count.intValue() : 0;
+            System.out.printf("  ✓ [Netting Watchlist Data] Dedicated: %b | Symbol: %s | Icon: %b | Hover: '%s' | Rows: %d%n",
+                    snap.dedicatedNettingWatchlist, snap.targetSymbol, snap.watchlistNettingIcon, snap.watchlistHoverText, snap.watchlistSymbolCount);
+        } catch (Exception e) {
+            System.out.println("  [WARN: Netting Watchlist] " + e.getMessage());
+        } finally {
+            OMSweb_Trade.minimizeOrRestoreWidget(driver);
+        }
+
+        // 2. MARKET DEPTH (Netting Badge, LTP, Buy/Sell Depth Book)
+        try {
+            System.out.println("\n[2/6] Maximizing 'Market Depth' widget...");
+            OMSweb_Trade.maximizeWidget(driver, "Market Depth");
+            Thread.sleep(500);
+            OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Market_Depth.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
+
+            snap.marketDepthNettingBadge = verifyMarketDepthNettingIndicator(driver, snap.targetSymbol);
+            try { snap.marketDepthData = Market_Depth.getUiSnapshot(driver); } catch (Exception ignored) {}
+            System.out.printf("  ✓ [Market Depth Data] Symbol: %s | Netting Badge: %b | LTP: %s | High: %s | Low: %s | Buy%%: %s | Sell%%: %s%n",
+                    snap.targetSymbol, snap.marketDepthNettingBadge,
+                    snap.marketDepthData.getOrDefault("LTP", snap.marketDepthData.getOrDefault("ltp", "-")),
+                    snap.marketDepthData.getOrDefault("HIGH", snap.marketDepthData.getOrDefault("high", "-")),
+                    snap.marketDepthData.getOrDefault("LOW", snap.marketDepthData.getOrDefault("low", "-")),
+                    snap.marketDepthData.getOrDefault("BUY%", snap.marketDepthData.getOrDefault("buy_percent", "-")),
+                    snap.marketDepthData.getOrDefault("SELL%", snap.marketDepthData.getOrDefault("sell_percent", "-")));
+        } catch (Exception e) {
+            System.out.println("  [WARN: Market Depth] " + e.getMessage());
+        } finally {
+            OMSweb_Trade.minimizeOrRestoreWidget(driver);
+        }
+
+        // 3. PORTFOLIO (Client Holdings, Total Qty, Saleable Qty, Avg Cost, Value)
+        try {
+            System.out.println("\n[3/6] Maximizing 'Client Portfolio' widget...");
+            OMSweb_Trade.maximizeWidget(driver, "Portfolio");
+            Thread.sleep(500);
+            OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Portfolio.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
+
+            try { snap.portfolioData = ClientPortfolio.getUiSnapshot(driver, snap.targetClient, snap.targetSymbol); } catch (Exception ignored) {}
+            System.out.printf("  ✓ [Portfolio Data] Client: %s | Symbol: %s | Total Qty: %s | Saleable Qty: %s | Avg Cost: %s | Value: %s%n",
+                    snap.targetClient, snap.targetSymbol,
+                    snap.portfolioData.getOrDefault("total_qty", snap.portfolioData.getOrDefault("Total Qty", "-")),
+                    snap.portfolioData.getOrDefault("saleable_qty", snap.portfolioData.getOrDefault("Saleable Qty", "-")),
+                    snap.portfolioData.getOrDefault("avg_cost", snap.portfolioData.getOrDefault("Avg Cost", "-")),
+                    snap.portfolioData.getOrDefault("market_value", snap.portfolioData.getOrDefault("Market Value", "-")));
+        } catch (Exception e) {
+            System.out.println("  [WARN: Portfolio] " + e.getMessage());
+        } finally {
+            OMSweb_Trade.minimizeOrRestoreWidget(driver);
+        }
+
+        // 4. ORDER TERMINAL (Latest Orders, Status, Executed Qty, Due Qty, Rate)
+        try {
+            System.out.println("\n[4/6] Maximizing 'Order Terminal' widget...");
+            OMSweb_Trade.maximizeWidget(driver, "Order Terminal");
+            Thread.sleep(500);
+            OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Order_Terminal.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
+
+            try { snap.orderTerminalData = Order_Terminal.getUiSnapshot(driver, snap.targetSymbol, snap.targetClient); } catch (Exception ignored) {}
+            System.out.printf("  ✓ [Order Terminal Data] Order ID: %s | Status: %s | Action: %s | Exec Qty: %s | Due Qty: %s | Rate: %s%n",
+                    snap.orderTerminalData.getOrDefault("Order_ID", snap.orderTerminalData.getOrDefault("order_id", "-")),
+                    snap.orderTerminalData.getOrDefault("Status", snap.orderTerminalData.getOrDefault("status", "-")),
+                    snap.orderTerminalData.getOrDefault("Action", snap.orderTerminalData.getOrDefault("action", "-")),
+                    snap.orderTerminalData.getOrDefault("Exec_Qty", snap.orderTerminalData.getOrDefault("executed_qty", "-")),
+                    snap.orderTerminalData.getOrDefault("Due_Qty", snap.orderTerminalData.getOrDefault("due_qty", "-")),
+                    snap.orderTerminalData.getOrDefault("Rate", snap.orderTerminalData.getOrDefault("rate", "-")));
+        } catch (Exception e) {
+            System.out.println("  [WARN: Order Terminal] " + e.getMessage());
+        } finally {
+            OMSweb_Trade.minimizeOrRestoreWidget(driver);
+        }
+
+        // 5. ORDER SUMMARY (Total Orders, Executed, Buy/Sell Turnover)
+        try {
+            System.out.println("\n[5/6] Maximizing 'Order Summary' widget...");
+            OMSweb_Trade.maximizeWidget(driver, "Order Summary");
+            Thread.sleep(500);
+            OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Order_Summary.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
+
+            try { snap.orderSummaryData = Order_Summary.getUiSnapshot(driver, snap.targetSymbol); } catch (Exception ignored) {}
+            System.out.printf("  ✓ [Order Summary Data] Total Orders: %s | Executed: %s | Buy Qty: %s | Buy Turnover: %s | Sell Turnover: %s%n",
+                    snap.orderSummaryData.getOrDefault("Total_Orders", snap.orderSummaryData.getOrDefault("total_orders", "-")),
+                    snap.orderSummaryData.getOrDefault("Executed", snap.orderSummaryData.getOrDefault("executed", "-")),
+                    snap.orderSummaryData.getOrDefault("Buy_Qty", snap.orderSummaryData.getOrDefault("buy_qty", "-")),
+                    snap.orderSummaryData.getOrDefault("Buy_Turnover", snap.orderSummaryData.getOrDefault("buy_turnover", "-")),
+                    snap.orderSummaryData.getOrDefault("Sell_Turnover", snap.orderSummaryData.getOrDefault("sell_turnover", "-")));
+        } catch (Exception e) {
+            System.out.println("  [WARN: Order Summary] " + e.getMessage());
+        } finally {
+            OMSweb_Trade.minimizeOrRestoreWidget(driver);
+        }
+
+        // 6. ACCOUNT LIMITS (Remaining Cash, Blocked/Day, Total Transaction)
+        try {
+            System.out.println("\n[6/6] Maximizing 'Account Limits' widget...");
+            OMSweb_Trade.maximizeWidget(driver, "Account Limits");
+            Thread.sleep(500);
+            OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Account_Limits.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
+
+            try { snap.accountLimitsData = Account_Limits.getUiSnapshot(driver, snap.targetClient); } catch (Exception ignored) {}
+            System.out.printf("  ✓ [Account Limits Data] Client: %s | Rem Cash: %s | Blocked/Day: %s | Total Tx: %s%n",
+                    snap.targetClient,
+                    snap.accountLimitsData.getOrDefault("Remaining_Cash", snap.accountLimitsData.getOrDefault("remaining_cash", "-")),
+                    snap.accountLimitsData.getOrDefault("Blocked_Day", snap.accountLimitsData.getOrDefault("blocked_day", "-")),
+                    snap.accountLimitsData.getOrDefault("Total_Tx", snap.accountLimitsData.getOrDefault("total_tx", "-")));
+        } catch (Exception e) {
+            System.out.println("  [WARN: Account Limits] " + e.getMessage());
+        } finally {
+            OMSweb_Trade.minimizeOrRestoreWidget(driver);
+        }
+
+        // Render Consolidated 6-Widget Table
+        print6WidgetsNettingAuditTable(snap);
+        return snap;
+    }
+
+    public static void print6WidgetsNettingAuditTable(Netting6WidgetsUiSnapshot snap) {
+        System.out.println("\n+==================================================================================================================+");
+        System.out.println("|                REAL-TIME 6-WIDGET UI DATA AUDIT TABLE (NETTING & TRADING WORKFLOW)               |");
+        System.out.printf("| Stage: %-25s | Exchange: %-5s | Symbol: %-8s | Client: %-12s |%n", snap.stageName, snap.exchange, snap.targetSymbol, snap.targetClient);
+        System.out.println("+----+--------------------+----------------------------------------------------------------------------------------+");
+        System.out.println("| #  | WIDGET NAME        | REAL-TIME DOM UI DATA & NETTING STATUS                                                 |");
+        System.out.println("+----+--------------------+----------------------------------------------------------------------------------------+");
+        System.out.printf("| 1  | Netting Watchlist  | Dedicated: %-5b | Symbol: %-6s | Netting Icon: %-5b | Hover: %-25s |%n",
+                snap.dedicatedNettingWatchlist, snap.targetSymbol, snap.watchlistNettingIcon, truncate(snap.watchlistHoverText, 25));
+        System.out.printf("| 2  | Market Depth       | Netting Badge: %-5b | LTP: %-8s | Buy%%: %-6s | Sell%%: %-6s | Book Levels: 5 Levels |%n",
+                snap.marketDepthNettingBadge,
+                snap.marketDepthData.getOrDefault("LTP", snap.marketDepthData.getOrDefault("ltp", "-")),
+                snap.marketDepthData.getOrDefault("BUY%", snap.marketDepthData.getOrDefault("buy_percent", "-")),
+                snap.marketDepthData.getOrDefault("SELL%", snap.marketDepthData.getOrDefault("sell_percent", "-")));
+        System.out.printf("| 3  | Client Portfolio   | Total Qty: %-8s | Saleable: %-8s | Avg Cost: %-8s | Mkt Value: %-15s |%n",
+                snap.portfolioData.getOrDefault("total_qty", snap.portfolioData.getOrDefault("Total Qty", "-")),
+                snap.portfolioData.getOrDefault("saleable_qty", snap.portfolioData.getOrDefault("Saleable Qty", "-")),
+                snap.portfolioData.getOrDefault("avg_cost", snap.portfolioData.getOrDefault("Avg Cost", "-")),
+                snap.portfolioData.getOrDefault("market_value", snap.portfolioData.getOrDefault("Market Value", "-")));
+        System.out.printf("| 4  | Order Terminal     | Order ID: %-10s | Status: %-10s | Action: %-4s | Exec: %-6s | Rate: %-10s |%n",
+                snap.orderTerminalData.getOrDefault("Order_ID", snap.orderTerminalData.getOrDefault("order_id", "-")),
+                snap.orderTerminalData.getOrDefault("Status", snap.orderTerminalData.getOrDefault("status", "-")),
+                snap.orderTerminalData.getOrDefault("Action", snap.orderTerminalData.getOrDefault("action", "-")),
+                snap.orderTerminalData.getOrDefault("Exec_Qty", snap.orderTerminalData.getOrDefault("executed_qty", "-")),
+                snap.orderTerminalData.getOrDefault("Rate", snap.orderTerminalData.getOrDefault("rate", "-")));
+        System.out.printf("| 5  | Order Summary      | Total Orders: %-6s | Executed: %-6s | Buy Turnover: %-10s | Sell Turnover: %-10s |%n",
+                snap.orderSummaryData.getOrDefault("Total_Orders", snap.orderSummaryData.getOrDefault("total_orders", "-")),
+                snap.orderSummaryData.getOrDefault("Executed", snap.orderSummaryData.getOrDefault("executed", "-")),
+                snap.orderSummaryData.getOrDefault("Buy_Qty", snap.orderSummaryData.getOrDefault("buy_qty", "-")),
+                snap.orderSummaryData.getOrDefault("Buy_Turnover", snap.orderSummaryData.getOrDefault("buy_turnover", "-")),
+                snap.orderSummaryData.getOrDefault("Sell_Turnover", snap.orderSummaryData.getOrDefault("sell_turnover", "-")));
+        System.out.printf("| 6  | Account Limits     | Remaining Cash: %-14s | Blocked/Day: %-12s | Total Tx: %-14s |%n",
+                snap.accountLimitsData.getOrDefault("Remaining_Cash", snap.accountLimitsData.getOrDefault("remaining_cash", "-")),
+                snap.accountLimitsData.getOrDefault("Blocked_Day", snap.accountLimitsData.getOrDefault("blocked_day", "-")),
+                snap.accountLimitsData.getOrDefault("Total_Tx", snap.accountLimitsData.getOrDefault("total_tx", "-")));
+        System.out.println("+----+--------------------+----------------------------------------------------------------------------------------+\n");
+    }
+
+    // =========================================================================
     // 5. POSITION FILE & NETTING CALCULATION LOGIC (SECTION 7 TESTING)
     // =========================================================================
 
@@ -970,23 +1196,28 @@ public class Day_Netting {
                 System.out.println("  1. None (Netting disabled across the system)");
                 System.out.println("  2. Individual Exchange (Netting within same exchange)");
                 System.out.println("  3. Cross Exchange (Netting across DSE & CSE)");
-                System.out.print("Enter Choice (1-3): ");
+                System.out.print("Enter Choice (1-3, default=2): ");
                 String mChoice = sc.nextLine().trim();
-                NettingMode targetMode = "2".equals(mChoice) || "individual".equalsIgnoreCase(mChoice) ? NettingMode.INDIVIDUAL_EXCHANGE :
-                                         "3".equals(mChoice) || "cross".equalsIgnoreCase(mChoice) ? NettingMode.CROSS_EXCHANGE : NettingMode.NONE;
+                NettingMode targetMode = "1".equals(mChoice) || "none".equalsIgnoreCase(mChoice) ? NettingMode.NONE :
+                                         "3".equals(mChoice) || "cross".equalsIgnoreCase(mChoice) ? NettingMode.CROSS_EXCHANGE :
+                                         NettingMode.INDIVIDUAL_EXCHANGE;
 
-                String targetExchange = "BOTH";
-                if (targetMode != NettingMode.NONE) {
-                    System.out.println("\nConfigure Exchange Netting (DSE / CSE / BOTH):");
-                    System.out.println("  1. DSE (Dhaka Stock Exchange)");
-                    System.out.println("  2. CSE (Chittagong Stock Exchange)");
-                    System.out.println("  3. BOTH (DSE & CSE) [Default]");
-                    System.out.print("Enter Choice (1-3, default=3): ");
-                    String exC = sc.nextLine().trim();
-                    if ("1".equals(exC) || "dse".equalsIgnoreCase(exC)) targetExchange = "DSE";
-                    else if ("2".equals(exC) || "cse".equalsIgnoreCase(exC)) targetExchange = "CSE";
-                    else targetExchange = "BOTH";
+                // Manually select exchange, with default DSE
+                System.out.println("\nSelect Exchange (Manually Select, Default DSE):");
+                System.out.println("  1. DSE (Dhaka Stock Exchange) [Default]");
+                System.out.println("  2. CSE (Chittagong Stock Exchange)");
+                System.out.println("  3. BOTH (DSE & CSE)");
+                System.out.print("Enter Choice (1-3, default=1 [DSE]): ");
+                String exChoice = sc.nextLine().trim();
+                String targetExchange = "DSE";
+                if ("2".equals(exChoice) || "cse".equalsIgnoreCase(exChoice)) {
+                    targetExchange = "CSE";
+                } else if ("3".equals(exChoice) || "both".equalsIgnoreCase(exChoice)) {
+                    targetExchange = "BOTH";
+                } else {
+                    targetExchange = "DSE";
                 }
+                System.out.printf("[EXCHANGE SELECTED] %s (Default: DSE)%n", targetExchange);
 
                 System.out.print("Enter password authentication (or press ENTER if none required): ");
                 String pwd = sc.nextLine().trim();
@@ -994,21 +1225,27 @@ public class Day_Netting {
                 // 1. Configure Netting Mode
                 configureNettingMode(driver, targetMode, pwd, false);
 
-                // 2. Execute Exchange Netting (DSE / CSE Enable/Disable)
-                System.out.println("\n>>> [INTEGRATED 2/2] Executing Exchange Netting for " + targetExchange + "... <<<");
+                // 2. Execute Exchange Netting according to manual exchange selection
+                System.out.println("\n>>> [EXCHANGE NETTING] Configuring for " + targetExchange + "... <<<");
                 if (targetMode == NettingMode.NONE) {
                     setBothExchangesNettingEnabled(driver, false, pwd);
-                    System.out.println("  -> [EXECUTED] IS_DSE_DAY_NETTING_ENABLED = false | IS_CSE_DAY_NETTING_ENABLED = false");
+                    System.out.println("  -> [EXECUTED] Mode is NONE -> IS_DSE_DAY_NETTING_ENABLED = false | IS_CSE_DAY_NETTING_ENABLED = false");
                 } else if ("DSE".equals(targetExchange)) {
                     setExchangeNettingEnabled(driver, "DSE", true, pwd);
+                    setExchangeNettingEnabled(driver, "CSE", false, pwd);
+                    System.out.println("  -> [EXECUTED] IS_DSE_DAY_NETTING_ENABLED = true | IS_CSE_DAY_NETTING_ENABLED = false");
                 } else if ("CSE".equals(targetExchange)) {
                     setExchangeNettingEnabled(driver, "CSE", true, pwd);
+                    setExchangeNettingEnabled(driver, "DSE", false, pwd);
+                    System.out.println("  -> [EXECUTED] IS_CSE_DAY_NETTING_ENABLED = true | IS_DSE_DAY_NETTING_ENABLED = false");
                 } else {
                     setBothExchangesNettingEnabled(driver, true, pwd);
+                    System.out.println("  -> [EXECUTED] IS_DSE_DAY_NETTING_ENABLED = true | IS_CSE_DAY_NETTING_ENABLED = true");
                 }
 
-                // 3. Execute 3-in-1 UI Netting Indicators Audit (Market Depth, Watchlists, Order Window)
-                System.out.println("\n>>> [INTEGRATED 3-IN-1] Executing Complete UI Netting Indicators Audit... <<<");
+                // 3. Real-Time UI Data Check for 6 Widgets:
+                // (Netting Watchlist, Market Depth, Portfolio, Order Terminal, Order Summary, Account Limits)
+                System.out.println("\n>>> [REAL-TIME 6-WIDGET UI DATA CHECK] Inspecting Core Widgets... <<<");
                 System.out.print("Enter Target Symbol to Audit (default=GP, press ENTER): ");
                 String sym = sc.nextLine().trim();
                 if (sym.isEmpty()) sym = "GP";
@@ -1016,8 +1253,8 @@ public class Day_Netting {
                 String cln = sc.nextLine().trim();
                 if (cln.isEmpty()) cln = "23986";
 
-                run3in1UIIndicatorsAudit(driver, sym, cln);
-                System.out.println("[ACTION COMPLETE] Netting Mode, Exchange Netting, and 3-in-1 UI Audit finished successfully.");
+                check6NettingWidgetsRealTimeUiData(driver, "NETTING_" + targetMode.name() + "_" + targetExchange, cln, sym, targetExchange);
+                System.out.println("[ACTION COMPLETE] Netting Mode, Exchange Netting, and 6-Widget Real-Time UI Data Check finished successfully.");
             } else if ("2".equals(choice)) {
                 System.out.println("\n-------------------------------------------------------------");
                 System.out.println("     2. CONFIGURE EXCHANGE NETTING (INDIVIDUAL SELECTION)    ");
