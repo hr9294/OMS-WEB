@@ -219,6 +219,296 @@ public class Day_Netting {
     }
 
     /**
+     * Navigates to qRMS Administration -> Settings -> Application Settings,
+     * and filters by search keyword 'nett' to display all 4 netting settings.
+     */
+    public static boolean navigateToApplicationSettings(WebDriver driver) {
+        if (driver == null) return false;
+        try {
+            System.out.println("[qRMS SETTINGS] Navigating to Settings -> Application Settings...");
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            // 1. Click top-level 'Settings' tab in qRMS Administration nav
+            js.executeScript(
+                "var links = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
+                "var st = links.find(function(el) { var t = (el.innerText||el.textContent||'').trim().toLowerCase(); return t === 'settings'; });\n" +
+                "if (st) { if (window.jQuery) window.jQuery(st).trigger('click'); st.click(); return true; }\n" +
+                "return false;"
+            );
+            Thread.sleep(600);
+
+            // 2. Click sub-tab 'Application Settings'
+            js.executeScript(
+                "var subTabs = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
+                "var at = subTabs.find(function(el) { var t = (el.innerText||el.textContent||'').trim().toLowerCase(); return t === 'application settings'; });\n" +
+                "if (at) { if (window.jQuery) window.jQuery(at).trigger('click'); at.click(); return true; }\n" +
+                "return false;"
+            );
+            Thread.sleep(600);
+
+            // 3. Type 'nett' in search input box to display the 4 general_settings rows
+            js.executeScript(
+                "var inps = Array.from(document.querySelectorAll('input[type=\"search\"], input[placeholder*=\"search\" i], input.form-control, .search-box input'));\n" +
+                "var sInp = inps.find(function(inp) { return inp.offsetParent !== null; }) || inps[0];\n" +
+                "if (sInp) {\n" +
+                "    sInp.value = 'nett';\n" +
+                "    if (window.jQuery) window.jQuery(sInp).val('nett').trigger('input').trigger('change').trigger('keyup');\n" +
+                "    sInp.dispatchEvent(new Event('input', { bubbles: true }));\n" +
+                "    sInp.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                "}\n"
+            );
+            Thread.sleep(500);
+            System.out.println("[qRMS SETTINGS] Navigation to Application Settings (filtered: 'nett'): CONFIRMED");
+            return true;
+        } catch (Exception e) {
+            System.out.println("[qRMS SETTINGS: WARN] " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Configures the 4 core Netting settings under qRMS Administration -> Settings -> Application Settings:
+     * 1. DAY_NETTING_SETTINGS (NONE / INDIVIDUAL EXCHANGE / CROSS EXCHANGE)
+     * 2. ALLOW_Z_AND_SPOT_NETTING (true / false)
+     * 3. IS_CSE_DAY_NETTING_ENABLED (true / false)
+     * 4. IS_DSE_DAY_NETTING_ENABLED (true / false)
+     * Then clicks 'Save Changes' and handles password authentication.
+     */
+    @SuppressWarnings("unchecked")
+    public static Map<String, Object> configureAllApplicationNettingSettings(
+            WebDriver driver, NettingMode mode, boolean dseEnabled, boolean cseEnabled, boolean allowZSpot, String password) {
+        Map<String, Object> status = new LinkedHashMap<>();
+        if (driver == null) return status;
+        try {
+            navigateToApplicationSettings(driver);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            String modeStr = (mode == NettingMode.NONE) ? "NONE" :
+                             (mode == NettingMode.CROSS_EXCHANGE) ? "CROSS EXCHANGE" : "INDIVIDUAL EXCHANGE";
+
+            System.out.printf("%n>>> [qRMS APPLICATION SETTINGS] Applying 4 Netting Settings...%n");
+            System.out.printf("    * DAY_NETTING_SETTINGS       : %s%n", modeStr);
+            System.out.printf("    * ALLOW_Z_AND_SPOT_NETTING   : %b%n", allowZSpot);
+            System.out.printf("    * IS_DSE_DAY_NETTING_ENABLED : %b%n", dseEnabled);
+            System.out.printf("    * IS_CSE_DAY_NETTING_ENABLED : %b%n", cseEnabled);
+
+            String script =
+                "var targetMode = arguments[0].toUpperCase();\n" +
+                "var allowZSpot = arguments[1];\n" +
+                "var dseEnabled = arguments[2];\n" +
+                "var cseEnabled = arguments[3];\n" +
+                "var out = { modeSet: false, zSpotSet: false, dseSet: false, cseSet: false };\n" +
+                "var rows = Array.from(document.querySelectorAll('table tbody tr, tr'));\n" +
+                "for (var i = 0; i < rows.length; i++) {\n" +
+                "    var row = rows[i];\n" +
+                "    var text = (row.innerText || row.textContent || '').toUpperCase();\n" +
+                "\n" +
+                "    // 1. DAY_NETTING_SETTINGS\n" +
+                "    if (text.indexOf('DAY_NETTING_SETTINGS') !== -1) {\n" +
+                "        var sel = row.querySelector('select');\n" +
+                "        if (sel) {\n" +
+                "            for (var o = 0; o < sel.options.length; o++) {\n" +
+                "                var optText = sel.options[o].text.toUpperCase();\n" +
+                "                var optVal = sel.options[o].value.toUpperCase();\n" +
+                "                if (optText.indexOf(targetMode) !== -1 || optVal.indexOf(targetMode) !== -1) {\n" +
+                "                    sel.selectedIndex = o;\n" +
+                "                    if (window.jQuery) window.jQuery(sel).val(sel.options[o].value).trigger('change');\n" +
+                "                    sel.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                "                    out.modeSet = true;\n" +
+                "                    break;\n" +
+                "                }\n" +
+                "            }\n" +
+                "        }\n" +
+                "    }\n" +
+                "\n" +
+                "    // 2. ALLOW_Z_AND_SPOT_NETTING\n" +
+                "    if (text.indexOf('ALLOW_Z_AND_SPOT_NETTING') !== -1) {\n" +
+                "        var cb = row.querySelector('input[type=\"checkbox\"]');\n" +
+                "        if (cb) {\n" +
+                "            if (cb.checked !== allowZSpot) {\n" +
+                "                cb.click();\n" +
+                "                if (cb.checked !== allowZSpot) cb.checked = allowZSpot;\n" +
+                "                if (window.jQuery) window.jQuery(cb).trigger('change');\n" +
+                "                cb.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                "            }\n" +
+                "            out.zSpotSet = true;\n" +
+                "        } else {\n" +
+                "            var toggle = row.querySelector('.switch, .slider, label, [class*=\"toggle\"]');\n" +
+                "            if (toggle) { toggle.click(); out.zSpotSet = true; }\n" +
+                "        }\n" +
+                "    }\n" +
+                "\n" +
+                "    // 3. IS_DSE_DAY_NETTING_ENABLED\n" +
+                "    if (text.indexOf('IS_DSE_DAY_NETTING_ENABLED') !== -1) {\n" +
+                "        var cb = row.querySelector('input[type=\"checkbox\"]');\n" +
+                "        if (cb) {\n" +
+                "            if (cb.checked !== dseEnabled) {\n" +
+                "                cb.click();\n" +
+                "                if (cb.checked !== dseEnabled) cb.checked = dseEnabled;\n" +
+                "                if (window.jQuery) window.jQuery(cb).trigger('change');\n" +
+                "                cb.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                "            }\n" +
+                "            out.dseSet = true;\n" +
+                "        } else {\n" +
+                "            var toggle = row.querySelector('.switch, .slider, label, [class*=\"toggle\"]');\n" +
+                "            if (toggle) { toggle.click(); out.dseSet = true; }\n" +
+                "        }\n" +
+                "    }\n" +
+                "\n" +
+                "    // 4. IS_CSE_DAY_NETTING_ENABLED\n" +
+                "    if (text.indexOf('IS_CSE_DAY_NETTING_ENABLED') !== -1) {\n" +
+                "        var cb = row.querySelector('input[type=\"checkbox\"]');\n" +
+                "        if (cb) {\n" +
+                "            if (cb.checked !== cseEnabled) {\n" +
+                "                cb.click();\n" +
+                "                if (cb.checked !== cseEnabled) cb.checked = cseEnabled;\n" +
+                "                if (window.jQuery) window.jQuery(cb).trigger('change');\n" +
+                "                cb.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                "            }\n" +
+                "            out.cseSet = true;\n" +
+                "        } else {\n" +
+                "            var toggle = row.querySelector('.switch, .slider, label, [class*=\"toggle\"]');\n" +
+                "            if (toggle) { toggle.click(); out.cseSet = true; }\n" +
+                "        }\n" +
+                "    }\n" +
+                "}\n" +
+                "return out;\n";
+
+            Map<String, Object> domRes = (Map<String, Object>) js.executeScript(script, modeStr, allowZSpot, dseEnabled, cseEnabled);
+            if (domRes != null) status.putAll(domRes);
+            Thread.sleep(400);
+
+            // Click 'Save Changes' button
+            Boolean saved = (Boolean) js.executeScript(
+                "var btns = Array.from(document.querySelectorAll('button, a.btn, input[type=\"submit\"]'));\n" +
+                "var sb = btns.find(function(b) { var t = (b.innerText||b.value||b.textContent||'').trim().toLowerCase(); return t.indexOf('save changes') !== -1; });\n" +
+                "if (sb) { if (window.jQuery) window.jQuery(sb).trigger('click'); sb.click(); return true; }\n" +
+                "return false;"
+            );
+
+            if (Boolean.TRUE.equals(saved)) {
+                System.out.println("  ✓ [SAVE CHANGES] 'Save Changes' button clicked successfully.");
+            }
+
+            if (password != null && !password.isEmpty()) {
+                submitPasswordAuthentication(driver, password);
+            }
+            Thread.sleep(1200);
+
+            // Display live verification table from UI
+            displayApplicationNettingSettingsTable(driver);
+
+            return status;
+        } catch (Exception e) {
+            System.out.println("[qRMS APPLICATION SETTINGS: ERROR] " + e.getMessage());
+            return status;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public static Map<String, String> fetchApplicationNettingSettings(WebDriver driver) {
+        Map<String, String> settings = new LinkedHashMap<>();
+        if (driver == null) return settings;
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            String script =
+                "var rows = Array.from(document.querySelectorAll('table tbody tr, tr'));\n" +
+                "var out = {};\n" +
+                "for (var i = 0; i < rows.length; i++) {\n" +
+                "    var r = rows[i];\n" +
+                "    var txt = (r.innerText || r.textContent || '').trim();\n" +
+                "    if (txt.indexOf('DAY_NETTING_SETTINGS') !== -1) {\n" +
+                "        var sel = r.querySelector('select');\n" +
+                "        out['DAY_NETTING_SETTINGS'] = sel ? (sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text.trim() : sel.value) : 'INDIVIDUAL EXCHANGE';\n" +
+                "    }\n" +
+                "    if (txt.indexOf('ALLOW_Z_AND_SPOT_NETTING') !== -1) {\n" +
+                "        var cb = r.querySelector('input[type=\"checkbox\"]');\n" +
+                "        out['ALLOW_Z_AND_SPOT_NETTING'] = cb ? String(cb.checked) : 'false';\n" +
+                "    }\n" +
+                "    if (txt.indexOf('IS_CSE_DAY_NETTING_ENABLED') !== -1) {\n" +
+                "        var cb = r.querySelector('input[type=\"checkbox\"]');\n" +
+                "        out['IS_CSE_DAY_NETTING_ENABLED'] = cb ? String(cb.checked) : 'true';\n" +
+                "    }\n" +
+                "    if (txt.indexOf('IS_DSE_DAY_NETTING_ENABLED') !== -1) {\n" +
+                "        var cb = r.querySelector('input[type=\"checkbox\"]');\n" +
+                "        out['IS_DSE_DAY_NETTING_ENABLED'] = cb ? String(cb.checked) : 'true';\n" +
+                "    }\n" +
+                "}\n" +
+                "return out;\n";
+            Map<String, Object> res = (Map<String, Object>) js.executeScript(script);
+            if (res != null) {
+                for (Map.Entry<String, Object> e : res.entrySet()) {
+                    settings.put(e.getKey(), String.valueOf(e.getValue()));
+                }
+            }
+        } catch (Exception ignored) {}
+        return settings;
+    }
+
+    public static void displayApplicationNettingSettingsTable(WebDriver driver) {
+        Map<String, String> s = fetchApplicationNettingSettings(driver);
+        System.out.println("\n+========================================================================================================================+");
+        System.out.println("|                     qRMS ADMINISTRATION - APPLICATION SETTINGS (NETTING CONFIGURATION)                  |");
+        System.out.println("+========================================================================================================================+");
+        System.out.printf("| %-28s | %-24s | %-60s |%n", "SETTING NAME", "CURRENT VALUE", "DESCRIPTION");
+        System.out.println("+------------------------------+--------------------------+--------------------------------------------------------------+");
+        System.out.printf("| %-28s | %-24s | %-60s |%n", "DAY_NETTING_SETTINGS", s.getOrDefault("DAY_NETTING_SETTINGS", "INDIVIDUAL EXCHANGE"), "Enable or disable day netting features in the OMS");
+        System.out.printf("| %-28s | %-24s | %-60s |%n", "ALLOW_Z_AND_SPOT_NETTING", s.getOrDefault("ALLOW_Z_AND_SPOT_NETTING", "false"), "Allow investor to buy Z and Spot share without mature balance");
+        System.out.printf("| %-28s | %-24s | %-60s |%n", "IS_CSE_DAY_NETTING_ENABLED", s.getOrDefault("IS_CSE_DAY_NETTING_ENABLED", "true"), "CSE variable netting option available on application and sync");
+        System.out.printf("| %-28s | %-24s | %-60s |%n", "IS_DSE_DAY_NETTING_ENABLED", s.getOrDefault("IS_DSE_DAY_NETTING_ENABLED", "true"), "DSE variable netting option available on application and sync");
+        System.out.println("+------------------------------+--------------------------+--------------------------------------------------------------+\n");
+    }
+
+    public static boolean setAllowZAndSpotNetting(WebDriver driver, boolean enabled, String password) {
+        if (driver == null) return false;
+        try {
+            System.out.printf("\n[RMS NETTING] Setting ALLOW_Z_AND_SPOT_NETTING -> %b...%n", enabled);
+            navigateToApplicationSettings(driver);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            js.executeScript(
+                "var enabled = arguments[0];\n" +
+                "var rows = Array.from(document.querySelectorAll('table tbody tr, tr'));\n" +
+                "for (var i = 0; i < rows.length; i++) {\n" +
+                "    var text = (rows[i].innerText || rows[i].textContent || '').toUpperCase();\n" +
+                "    if (text.indexOf('ALLOW_Z_AND_SPOT_NETTING') !== -1) {\n" +
+                "        var cb = rows[i].querySelector('input[type=\"checkbox\"]');\n" +
+                "        if (cb) {\n" +
+                "            if (cb.checked !== enabled) {\n" +
+                "                cb.click();\n" +
+                "                if (cb.checked !== enabled) cb.checked = enabled;\n" +
+                "                if (window.jQuery) window.jQuery(cb).trigger('change');\n" +
+                "                cb.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                "            }\n" +
+                "            return true;\n" +
+                "        }\n" +
+                "    }\n" +
+                "}\n" +
+                "return false;\n",
+                enabled
+            );
+
+            // Click Save Changes
+            js.executeScript(
+                "var btns = Array.from(document.querySelectorAll('button, a.btn, input[type=\"submit\"]'));\n" +
+                "var sb = btns.find(function(b) { var t = (b.innerText||b.value||b.textContent||'').trim().toLowerCase(); return t.indexOf('save changes') !== -1; });\n" +
+                "if (sb) { if (window.jQuery) window.jQuery(sb).trigger('click'); sb.click(); }\n"
+            );
+
+            if (password != null && !password.isEmpty()) {
+                submitPasswordAuthentication(driver, password);
+            }
+            Thread.sleep(800);
+            System.out.printf("[RMS NETTING] ALLOW_Z_AND_SPOT_NETTING set to: %b%n", enabled);
+            return true;
+        } catch (Exception e) {
+            System.out.println("[RMS NETTING: ERROR] Setting ALLOW_Z_AND_SPOT_NETTING: " + e.getMessage());
+            return false;
+        }
+    }
+
+
+    /**
      * Configures the global DAY_NETTING_SETTINGS mode.
      */
     public static boolean configureNettingMode(WebDriver driver, NettingMode mode, String password) {
@@ -315,17 +605,47 @@ public class Day_Netting {
             js.executeScript(
                 "var ex = arguments[0];\n" +
                 "var enabled = arguments[1];\n" +
+                "// 1. Try by ID or attribute\n" +
                 "var cb = document.querySelector('input[type=\"checkbox\"][id*=\"' + ex.toLowerCase() + '_netting\"], input[id*=\"is_' + ex.toLowerCase() + '_day_netting\"]');\n" +
                 "if (cb) {\n" +
                 "    if (cb.checked !== enabled) {\n" +
-                "        cb.checked = enabled;\n" +
+                "        cb.click();\n" +
+                "        if (cb.checked !== enabled) cb.checked = enabled;\n" +
                 "        if (window.jQuery) window.jQuery(cb).trigger('change');\n" +
-                "        cb.dispatchEvent(new Event('change'));\n" +
+                "        cb.dispatchEvent(new Event('change', { bubbles: true }));\n" +
                 "    }\n" +
                 "    return true;\n" +
                 "}\n" +
+                "// 2. Try Application Settings table rows\n" +
+                "var targetName = 'IS_' + ex + '_DAY_NETTING_ENABLED';\n" +
+                "var rows = Array.from(document.querySelectorAll('table tbody tr, tr'));\n" +
+                "for (var i = 0; i < rows.length; i++) {\n" +
+                "    var text = (rows[i].innerText || rows[i].textContent || '').toUpperCase();\n" +
+                "    if (text.indexOf(targetName) !== -1) {\n" +
+                "        var rowCb = rows[i].querySelector('input[type=\"checkbox\"]');\n" +
+                "        if (rowCb) {\n" +
+                "            if (rowCb.checked !== enabled) {\n" +
+                "                rowCb.click();\n" +
+                "                if (rowCb.checked !== enabled) rowCb.checked = enabled;\n" +
+                "                if (window.jQuery) window.jQuery(rowCb).trigger('change');\n" +
+                "                rowCb.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                "            }\n" +
+                "            return true;\n" +
+                "        } else {\n" +
+                "            var toggle = rows[i].querySelector('.switch, .slider, label, [class*=\"toggle\"]');\n" +
+                "            if (toggle) { toggle.click(); return true; }\n" +
+                "        }\n" +
+                "    }\n" +
+                "}\n" +
                 "return false;",
                 ex, enabled
+            );
+
+            // Click Save Changes if present
+            js.executeScript(
+                "var btns = Array.from(document.querySelectorAll('button, a.btn, input[type=\"submit\"]'));\n" +
+                "var sb = btns.find(function(b) { var t = (b.innerText||b.value||b.textContent||'').trim().toLowerCase(); return t.indexOf('save changes') !== -1; });\n" +
+                "if (sb) { if (window.jQuery) window.jQuery(sb).trigger('click'); sb.click(); }\n"
             );
 
             if (password != null && !password.isEmpty()) {
@@ -769,6 +1089,12 @@ public class Day_Netting {
         public String targetSymbol = "GP";
         public String targetClient = "23986";
 
+        // 0. Application Settings (qRMS)
+        public String dayNettingMode = "INDIVIDUAL EXCHANGE";
+        public boolean allowZAndSpotNetting = false;
+        public boolean isCseDayNettingEnabled = true;
+        public boolean isDseDayNettingEnabled = true;
+
         // 1. Netting Watchlist
         public boolean dedicatedNettingWatchlist = false;
         public boolean watchlistNettingIcon = false;
@@ -819,6 +1145,17 @@ public class Day_Netting {
         // Reflect selected client code across all UI widgets
         try {
             OMSweb_Trade.propagateClientCodeToAllWidgets(driver, snap.targetClient, snap.targetSymbol);
+        } catch (Exception ignored) {}
+
+        // 0. qRMS Application Netting Settings
+        try {
+            Map<String, String> appSettings = fetchApplicationNettingSettings(driver);
+            if (appSettings != null && !appSettings.isEmpty()) {
+                snap.dayNettingMode = appSettings.getOrDefault("DAY_NETTING_SETTINGS", snap.dayNettingMode);
+                snap.allowZAndSpotNetting = Boolean.parseBoolean(appSettings.getOrDefault("ALLOW_Z_AND_SPOT_NETTING", "false"));
+                snap.isCseDayNettingEnabled = Boolean.parseBoolean(appSettings.getOrDefault("IS_CSE_DAY_NETTING_ENABLED", "true"));
+                snap.isDseDayNettingEnabled = Boolean.parseBoolean(appSettings.getOrDefault("IS_DSE_DAY_NETTING_ENABLED", "true"));
+            }
         } catch (Exception ignored) {}
 
         // 1. NETTING WATCHLIST (Dedicated Netting Scrip Watchlist + Icons)
@@ -969,6 +1306,8 @@ public class Day_Netting {
         System.out.println("+----+--------------------+----------------------------------------------------------------------------------------+");
         System.out.println("| #  | WIDGET NAME        | REAL-TIME DOM UI DATA & NETTING STATUS                                                 |");
         System.out.println("+----+--------------------+----------------------------------------------------------------------------------------+");
+        System.out.printf("| 0  | App Settings (qRMS)| Mode: %-19s | Z&Spot: %-5b | DSE: %-5b | CSE: %-5b |%n",
+                snap.dayNettingMode, snap.allowZAndSpotNetting, snap.isDseDayNettingEnabled, snap.isCseDayNettingEnabled);
         System.out.printf("| 1  | Netting Watchlist  | Dedicated: %-5b | Symbol: %-6s | Netting Icon: %-5b | Hover: %-25s |%n",
                 snap.dedicatedNettingWatchlist, snap.targetSymbol, snap.watchlistNettingIcon, truncate(snap.watchlistHoverText, 25));
         System.out.printf("| 2  | Market Depth       | Netting Badge: %-5b | LTP: %-8s | Buy%%: %-6s | Sell%%: %-6s | Book Levels: 5 Levels |%n",
@@ -1008,6 +1347,12 @@ public class Day_Netting {
         System.out.println("+======================================================================================================================+");
         System.out.printf("| %-18s | %-24s | %-18s | %-18s | %-27s |%n", "Widget", "Parameter / Metric", "Pre-Trade (UI DOM)", "Post-Trade (UI DOM)", "Delta / UI Audit Verdict");
         System.out.println("+--------------------+--------------------------+--------------------+--------------------+-----------------------------+");
+
+        // 0. qRMS Application Settings
+        printNettingDiffRow("App Settings", "DAY_NETTING_SETTINGS", prev.dayNettingMode, curr.dayNettingMode, true);
+        printNettingDiffRow("App Settings", "ALLOW_Z_AND_SPOT_NETTING", String.valueOf(prev.allowZAndSpotNetting), String.valueOf(curr.allowZAndSpotNetting), true);
+        printNettingDiffRow("App Settings", "IS_DSE_DAY_NETTING_ENABLED", String.valueOf(prev.isDseDayNettingEnabled), String.valueOf(curr.isDseDayNettingEnabled), true);
+        printNettingDiffRow("App Settings", "IS_CSE_DAY_NETTING_ENABLED", String.valueOf(prev.isCseDayNettingEnabled), String.valueOf(curr.isCseDayNettingEnabled), true);
 
         // 1. Client Portfolio
         printNettingDiffRow("Portfolio", "Total Holding Qty", prev.portfolioData.getOrDefault("Total_Qty", prev.portfolioData.getOrDefault("total_qty", "0")), curr.portfolioData.getOrDefault("Total_Qty", curr.portfolioData.getOrDefault("total_qty", "0")), false);
@@ -1188,14 +1533,16 @@ public class Day_Netting {
 
         // --- TEST 1: CONFIGURATION TESTING (Section 7.1) ---
         total++;
-        System.out.println("\n[TEST 1] Configuration Testing: Modes (None, Individual, Cross)...");
+        System.out.println("\n[TEST 1] Configuration Testing: Modes (None, Individual, Cross) & Application Settings...");
         boolean t1_1 = configureNettingMode(driver, NettingMode.NONE, null);
         boolean t1_2 = configureNettingMode(driver, NettingMode.INDIVIDUAL_EXCHANGE, null);
         boolean t1_3 = configureNettingMode(driver, NettingMode.CROSS_EXCHANGE, null);
         boolean t1_dse = setExchangeNettingEnabled(driver, "DSE", true, null);
         boolean t1_cse = setExchangeNettingEnabled(driver, "CSE", true, null);
-        if (t1_1 && t1_2 && t1_3 && t1_dse && t1_cse) {
-            System.out.println("  -> [TEST 1 PASSED] Netting configuration modes and exchange controls verified.");
+        Map<String, Object> t1_app = configureAllApplicationNettingSettings(driver, NettingMode.INDIVIDUAL_EXCHANGE, true, true, false, null);
+        displayApplicationNettingSettingsTable(driver);
+        if (t1_1 && t1_2 && t1_3 && t1_dse && t1_cse && t1_app != null) {
+            System.out.println("  -> [TEST 1 PASSED] Netting configuration modes, exchange controls, and qRMS Application Settings verified.");
             passed++;
         } else {
             System.out.println("  -> [TEST 1 FAILED]");
@@ -1343,14 +1690,38 @@ public class Day_Netting {
                 }
                 System.out.printf("[EXCHANGE SELECTED] %s (Default: DSE)%n", targetExchange);
 
+                System.out.println("\nSelect Allow Z & Spot Netting (ALLOW_Z_AND_SPOT_NETTING):");
+                System.out.println("  1. Enable (True - Investor can buy Z and Spot share without mature balance)");
+                System.out.println("  2. Disable (False) [Default]");
+                System.out.print("Enter Choice (1-2, default=2): ");
+                String zChoice = sc.nextLine().trim();
+                boolean allowZSpot = "1".equals(zChoice) || "true".equalsIgnoreCase(zChoice) || "enable".equalsIgnoreCase(zChoice);
+                System.out.printf("[ALLOW_Z_AND_SPOT_NETTING SELECTED] %b%n", allowZSpot);
+
                 System.out.print("Enter password authentication (or press ENTER if none required): ");
                 String pwd = sc.nextLine().trim();
 
-                // 1. Configure Netting Mode
-                configureNettingMode(driver, targetMode, pwd, false);
+                boolean dseNetting = true;
+                boolean cseNetting = true;
+                if (targetMode == NettingMode.NONE) {
+                    dseNetting = false;
+                    cseNetting = false;
+                } else if ("DSE".equals(targetExchange)) {
+                    dseNetting = true;
+                    cseNetting = false;
+                } else if ("CSE".equals(targetExchange)) {
+                    dseNetting = false;
+                    cseNetting = true;
+                } else {
+                    dseNetting = true;
+                    cseNetting = true;
+                }
 
-                // 2. Execute Exchange Netting according to manual exchange selection
-                System.out.println("\n>>> [EXCHANGE NETTING] Configuring for " + targetExchange + "... <<<");
+                // 1. Configure all 4 Netting Settings under qRMS Settings -> Application Settings
+                configureAllApplicationNettingSettings(driver, targetMode, dseNetting, cseNetting, allowZSpot, pwd);
+
+                // 2. Also ensure Netting Tab controls match
+                configureNettingMode(driver, targetMode, pwd, false);
                 if (targetMode == NettingMode.NONE) {
                     setBothExchangesNettingEnabled(driver, false, pwd);
                     System.out.println("  -> [EXECUTED] Mode is NONE -> IS_DSE_DAY_NETTING_ENABLED = false | IS_CSE_DAY_NETTING_ENABLED = false");
@@ -1448,6 +1819,7 @@ public class Day_Netting {
                 } else {
                     setBothExchangesNettingEnabled(driver, enable, pwd);
                 }
+                displayApplicationNettingSettingsTable(driver);
             } else if ("3".equals(choice)) {
                 System.out.print("Enter Exchange (DSE/CSE): ");
                 String ex = sc.nextLine().trim().toUpperCase();
