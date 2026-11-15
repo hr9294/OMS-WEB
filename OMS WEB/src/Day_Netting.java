@@ -1,5 +1,5 @@
 import java.time.Duration;
-import java.util.ArrayList;
+//import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -1161,10 +1161,7 @@ public class Day_Netting {
 
         boolean running = true;
         while (running) {
-            System.out.println("\n=======================================================");
-            System.out.println("            DAY NETTING (SCRIP NETTING) ENGINE        ");
-            System.out.println("=======================================================");
-            System.out.println("Select Action:");
+            System.out.println("\nSelect Action:");
             System.out.println("  1. Configure Netting Mode (None / Individual / Cross Exchange)");
             System.out.println("  3. Upload / Manage Applicable Symbols");
             System.out.println("  4. Configure Client Netting Eligibility (Allow / Block Client)");
@@ -1351,10 +1348,9 @@ public class Day_Netting {
                 break;
             }
 
-            System.out.println("\n=============================================================================");
-            System.out.println(" [ACTION FINISHED] Day Netting action completed successfully.");
-            System.out.println(" Selection menu will now reappear below for further action.");
-            System.out.println("=============================================================================");
+            System.out.println("\n-----------------------------------------------------------------------------");
+            System.out.println(" [ACTION COMPLETED] Action finished successfully.");
+            System.out.println("-----------------------------------------------------------------------------");
         }
     }
 
