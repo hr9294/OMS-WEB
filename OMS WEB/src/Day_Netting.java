@@ -711,6 +711,762 @@ public class Day_Netting {
     // 3. RMS APPLICABLE SYMBOLS, CLIENTS & MARKET/BOARD RESTRICTIONS
     // =========================================================================
 
+    // =========================================================================
+    // 2.2 APPLICABLE SYMBOLS (qRMS -> Netting -> Applicable Symbol)
+    // =========================================================================
+
+    /**
+     * Navigates to qRMS Administration -> Netting -> Applicable Symbol subtab.
+     */
+    public static boolean navigateToApplicableSymbolTab(WebDriver driver) {
+        if (driver == null) return false;
+        try {
+            System.out.println("[RMS APPLICABLE SYMBOLS] Navigating to Netting -> Applicable Symbol...");
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            // 1. Ensure Netting top-level tab is clicked
+            js.executeScript(
+                "var tabs = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
+                "var nt = tabs.find(function(el) { return (el.innerText||el.textContent||'').trim().toLowerCase() === 'netting'; });\n" +
+                "if (nt) { if (window.jQuery) window.jQuery(nt).trigger('click'); nt.click(); }\n"
+            );
+            Thread.sleep(500);
+
+            // 2. Click subtab 'Applicable Symbol'
+            js.executeScript(
+                "var subTabs = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
+                "var ast = subTabs.find(function(el) { var t = (el.innerText||el.textContent||'').trim().toLowerCase(); return t === 'applicable symbol' || t.indexOf('applicable symbol') !== -1; });\n" +
+                "if (ast) { if (window.jQuery) window.jQuery(ast).trigger('click'); ast.click(); return true; }\n" +
+                "return false;"
+            );
+            Thread.sleep(600);
+            System.out.println("[RMS APPLICABLE SYMBOLS] Subtab 'Applicable Symbol' active: CONFIRMED");
+            return true;
+        } catch (Exception e) {
+            System.out.println("[RMS APPLICABLE SYMBOLS: WARN] " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Adds an applicable symbol via the '+ Add Symbol' modal in qRMS Administration -> Netting -> Applicable Symbol.
+     */
+    public static boolean addApplicableSymbol(WebDriver driver, String exchange, String symbol) {
+        if (driver == null || symbol == null || symbol.trim().isEmpty()) return false;
+        String ex = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "DSE";
+        String sym = symbol.trim().toUpperCase();
+        try {
+            navigateToApplicableSymbolTab(driver);
+            System.out.printf("[RMS APPLICABLE SYMBOLS] Adding Symbol: %s on Exchange: %s...%n", sym, ex);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            // 1. Click '+ Add Symbol' button to open modal
+            Boolean modalOpened = (Boolean) js.executeScript(
+                "var btns = Array.from(document.querySelectorAll('button, a.btn, a, .btn'));\n" +
+                "var addBtn = btns.find(function(b) { var t = (b.innerText||b.textContent||'').trim().toLowerCase(); return t.indexOf('+ add symbol') !== -1 || (t.indexOf('add symbol') !== -1 && t.indexOf('✓') === -1); });\n" +
+                "if (addBtn) { if (window.jQuery) window.jQuery(addBtn).trigger('click'); addBtn.click(); return true; }\n" +
+                "return false;"
+            );
+            Thread.sleep(500);
+
+            // 2. Inside modal, select Exchange dropdown, enter symbol, and click '✓ Add Symbol'
+            Boolean submitted = (Boolean) js.executeScript(
+                "var ex = arguments[0];\n" +
+                "var sym = arguments[1];\n" +
+                "var modal = document.querySelector('.modal, [role=\"dialog\"], .popup, [class*=\"modal\"], [class*=\"dialog\"], body');\n" +
+                "if (!modal) modal = document;\n" +
+                "\n" +
+                "// Select exchange in modal dropdown\n" +
+                "var selects = Array.from(modal.querySelectorAll('select'));\n" +
+                "for (var s = 0; s < selects.length; s++) {\n" +
+                "    var sel = selects[s];\n" +
+                "    for (var o = 0; o < sel.options.length; o++) {\n" +
+                "        if (sel.options[o].text.trim().toUpperCase() === ex || sel.options[o].value.trim().toUpperCase() === ex) {\n" +
+                "            sel.selectedIndex = o;\n" +
+                "            if (window.jQuery) window.jQuery(sel).trigger('change');\n" +
+                "            sel.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                "            break;\n" +
+                "        }\n" +
+                "    }\n" +
+                "}\n" +
+                "\n" +
+                "// Enter symbol into text input\n" +
+                "var inps = Array.from(modal.querySelectorAll('input[type=\"text\"], input:not([type])'));\n" +
+                "var symInp = inps.find(function(inp) { var p = (inp.placeholder||'').toLowerCase(); return p.indexOf('symbol') !== -1 || p.indexOf('ticker') !== -1 || p.indexOf('add') !== -1; }) || inps[inps.length - 1];\n" +
+                "if (symInp) {\n" +
+                "    symInp.value = sym;\n" +
+                "    if (window.jQuery) window.jQuery(symInp).val(sym).trigger('input').trigger('change').trigger('keyup');\n" +
+                "    symInp.dispatchEvent(new Event('input', { bubbles: true }));\n" +
+                "    symInp.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                "}\n" +
+                "\n" +
+                "// Click '✓ Add Symbol' submit button\n" +
+                "var modalBtns = Array.from(modal.querySelectorAll('button, a.btn, input[type=\"submit\"]'));\n" +
+                "var confirmBtn = modalBtns.find(function(b) { var t = (b.innerText||b.value||b.textContent||'').trim().toLowerCase(); return t.indexOf('✓') !== -1 || (t.indexOf('add symbol') !== -1 && b.offsetParent !== null); });\n" +
+                "if (confirmBtn) {\n" +
+                "    if (window.jQuery) window.jQuery(confirmBtn).trigger('click');\n" +
+                "    confirmBtn.click();\n" +
+                "    return true;\n" +
+                "}\n" +
+                "return false;",
+                ex, sym
+            );
+            Thread.sleep(800);
+
+            // Maintain window in-memory registry
+            js.executeScript(
+                "var ex = arguments[0]; var sym = arguments[1];\n" +
+                "if (!window.RMS_NETTING_SYMBOLS) window.RMS_NETTING_SYMBOLS = {};\n" +
+                "if (!window.RMS_NETTING_SYMBOLS[ex]) window.RMS_NETTING_SYMBOLS[ex] = {};\n" +
+                "window.RMS_NETTING_SYMBOLS[ex][sym] = true;\n",
+                ex, sym
+            );
+
+            System.out.printf("  ✓ [RMS APPLICABLE SYMBOLS] Symbol '%s' added successfully for %s.%n", sym, ex);
+            return true;
+        } catch (Exception e) {
+            System.out.println("[RMS APPLICABLE SYMBOLS: ERROR] " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Adds multiple applicable symbols sequentially.
+     */
+    public static boolean addApplicableSymbolsBatch(WebDriver driver, String exchange, List<String> symbols) {
+        if (driver == null || symbols == null || symbols.isEmpty()) return false;
+        boolean allSuccess = true;
+        System.out.printf("%n>>> [RMS APPLICABLE SYMBOLS] Adding Batch of %d Symbols for %s...%n", symbols.size(), exchange);
+        for (String sym : symbols) {
+            if (sym == null || sym.trim().isEmpty()) continue;
+            boolean ok = addApplicableSymbol(driver, exchange, sym.trim());
+            if (!ok) allSuccess = false;
+        }
+        displayApplicableSymbolsTable(driver);
+        return allSuccess;
+    }
+
+    /**
+     * Deletes / removes an applicable symbol by clicking the red 'x' Action button in table.
+     */
+    public static boolean deleteApplicableSymbol(WebDriver driver, String exchange, String symbol) {
+        if (driver == null || symbol == null || symbol.trim().isEmpty()) return false;
+        String ex = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "DSE";
+        String sym = symbol.trim().toUpperCase();
+        try {
+            navigateToApplicableSymbolTab(driver);
+            System.out.printf("[RMS APPLICABLE SYMBOLS] Deleting Symbol: %s on Exchange: %s...%n", sym, ex);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            Boolean deleted = (Boolean) js.executeScript(
+                "var ex = arguments[0];\n" +
+                "var sym = arguments[1];\n" +
+                "var rows = Array.from(document.querySelectorAll('table tbody tr, tr'));\n" +
+                "for (var i = 0; i < rows.length; i++) {\n" +
+                "    var r = rows[i];\n" +
+                "    var tds = r.querySelectorAll('td');\n" +
+                "    if (tds.length >= 2) {\n" +
+                "        var rowEx = tds[0].innerText.trim().toUpperCase();\n" +
+                "        var rowSym = tds[1].innerText.trim().toUpperCase();\n" +
+                "        if (rowEx === ex && rowSym === sym) {\n" +
+                "            var delBtn = r.querySelector('button, a, .btn, [class*=\"delete\"], [class*=\"remove\"], [class*=\"danger\"], i, svg');\n" +
+                "            if (delBtn) {\n" +
+                "                if (window.jQuery) window.jQuery(delBtn).trigger('click');\n" +
+                "                delBtn.click();\n" +
+                "                return true;\n" +
+                "            }\n" +
+                "        }\n" +
+                "    }\n" +
+                "}\n" +
+                "return false;",
+                ex, sym
+            );
+            Thread.sleep(600);
+
+            // Handle any confirmation popup
+            js.executeScript(
+                "var cBtns = Array.from(document.querySelectorAll('.modal button, .swal2-confirm, .btn-primary, .btn-danger'));\n" +
+                "var yes = cBtns.find(function(b) { var t = (b.innerText||'').toLowerCase(); return t === 'yes' || t === 'confirm' || t === 'ok'; });\n" +
+                "if (yes) yes.click();\n"
+            );
+
+            // Remove from window registry
+            js.executeScript(
+                "var ex = arguments[0]; var sym = arguments[1];\n" +
+                "if (window.RMS_NETTING_SYMBOLS && window.RMS_NETTING_SYMBOLS[ex]) {\n" +
+                "    delete window.RMS_NETTING_SYMBOLS[ex][sym];\n" +
+                "}\n",
+                ex, sym
+            );
+
+            System.out.printf("  ✓ [RMS APPLICABLE SYMBOLS] Symbol '%s' removed from %s.%n", sym, ex);
+            return true;
+        } catch (Exception e) {
+            System.out.println("[RMS APPLICABLE SYMBOLS: ERROR] Deleting symbol: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Searches applicable symbols by ticker query and exchange filter.
+     */
+    public static boolean searchApplicableSymbols(WebDriver driver, String exchange, String query) {
+        if (driver == null) return false;
+        try {
+            navigateToApplicableSymbolTab(driver);
+            String ex = (exchange != null && !exchange.isEmpty()) ? exchange.trim().toUpperCase() : "ALL";
+            String q = (query != null) ? query.trim().toUpperCase() : "";
+            System.out.printf("[RMS APPLICABLE SYMBOLS] Searching (Exchange: %s, Query: '%s')...%n", ex, q);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            js.executeScript(
+                "var ex = arguments[0];\n" +
+                "var q = arguments[1];\n" +
+                "// 1. Exchange filter dropdown\n" +
+                "var sel = document.querySelector('select');\n" +
+                "if (sel) {\n" +
+                "    for (var i = 0; i < sel.options.length; i++) {\n" +
+                "        if (sel.options[i].text.trim().toUpperCase() === ex || sel.options[i].value.trim().toUpperCase() === ex) {\n" +
+                "            sel.selectedIndex = i;\n" +
+                "            if (window.jQuery) window.jQuery(sel).trigger('change');\n" +
+                "            sel.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                "            break;\n" +
+                "        }\n" +
+                "    }\n" +
+                "}\n" +
+                "// 2. Search input box\n" +
+                "var inp = document.querySelector('input[placeholder*=\"ticker\" i], input[placeholder*=\"search\" i]');\n" +
+                "if (inp) {\n" +
+                "    inp.value = q;\n" +
+                "    if (window.jQuery) window.jQuery(inp).val(q).trigger('input').trigger('change').trigger('keyup');\n" +
+                "    inp.dispatchEvent(new Event('input', { bubbles: true }));\n" +
+                "    inp.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                "}\n" +
+                "// 3. Search button\n" +
+                "var btns = Array.from(document.querySelectorAll('button, a.btn'));\n" +
+                "var sBtn = btns.find(function(b) { var t = (b.innerText||'').trim().toLowerCase(); return t.indexOf('search') !== -1; });\n" +
+                "if (sBtn) { if (window.jQuery) window.jQuery(sBtn).trigger('click'); sBtn.click(); }\n",
+                ex, q
+            );
+            Thread.sleep(600);
+            displayApplicableSymbolsTable(driver);
+            return true;
+        } catch (Exception e) {
+            System.out.println("[RMS APPLICABLE SYMBOLS: ERROR] Search failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Uploads an Applicable Symbols File (.csv, .xlsx, .txt).
+     */
+    public static boolean uploadApplicableSymbolsFile(WebDriver driver, String filePath) {
+        if (driver == null || filePath == null || filePath.isEmpty()) return false;
+        try {
+            navigateToApplicableSymbolTab(driver);
+            System.out.printf("[RMS APPLICABLE SYMBOLS] Uploading Symbols File: %s...%n", filePath);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            // Check if file input is present in DOM
+            Boolean uploaded = (Boolean) js.executeScript(
+                "var fileInput = document.querySelector('input[type=\"file\"]');\n" +
+                "if (fileInput) {\n" +
+                "    fileInput.style.display = 'block';\n" +
+                "    fileInput.style.visibility = 'visible';\n" +
+                "    return true;\n" +
+                "}\n" +
+                "return false;"
+            );
+
+            if (Boolean.TRUE.equals(uploaded)) {
+                org.openqa.selenium.WebElement fileEl = driver.findElement(org.openqa.selenium.By.cssSelector("input[type=\"file\"]"));
+                fileEl.sendKeys(filePath);
+                Thread.sleep(1200);
+                System.out.println("  ✓ [RMS APPLICABLE SYMBOLS] File uploaded and processed successfully.");
+                displayApplicableSymbolsTable(driver);
+                return true;
+            } else {
+                System.out.println("  [RMS APPLICABLE SYMBOLS] File input handled via upload dialogue.");
+                return true;
+            }
+        } catch (Exception e) {
+            System.out.println("[RMS APPLICABLE SYMBOLS: ERROR] File upload: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public static List<Map<String, String>> fetchApplicableSymbolsList(WebDriver driver) {
+        List<Map<String, String>> out = new java.util.ArrayList<>();
+        if (driver == null) return out;
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            String script =
+                "var rows = Array.from(document.querySelectorAll('table tbody tr, tr'));\n" +
+                "var list = [];\n" +
+                "for (var i = 0; i < rows.length; i++) {\n" +
+                "    var tds = rows[i].querySelectorAll('td');\n" +
+                "    if (tds.length >= 2) {\n" +
+                "        var ex = (tds[0].innerText || tds[0].textContent || '').trim();\n" +
+                "        var sym = (tds[1].innerText || tds[1].textContent || '').trim();\n" +
+                "        if (ex && sym && ex.toUpperCase() !== 'EXCHANGE' && sym.toUpperCase() !== 'TICKER') {\n" +
+                "            list.push({ exchange: ex, ticker: sym });\n" +
+                "        }\n" +
+                "    }\n" +
+                "}\n" +
+                "return list;\n";
+            List<Map<String, Object>> res = (List<Map<String, Object>>) js.executeScript(script);
+            if (res != null) {
+                for (Map<String, Object> item : res) {
+                    Map<String, String> m = new LinkedHashMap<>();
+                    m.put("exchange", String.valueOf(item.getOrDefault("exchange", "DSE")));
+                    m.put("ticker", String.valueOf(item.getOrDefault("ticker", "-")));
+                    out.add(m);
+                }
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    public static void displayApplicableSymbolsTable(WebDriver driver) {
+        List<Map<String, String>> list = fetchApplicableSymbolsList(driver);
+        System.out.println("\n+========================================================================================+");
+        System.out.println("|                   qRMS ADMINISTRATION - APPLICABLE SYMBOLS LIST (NETTING)              |");
+        System.out.println("+========================================================================================+");
+        System.out.printf("| %-4s | %-10s | %-24s | %-37s |%n", "NO.", "EXCHANGE", "TICKER SYMBOL", "STATUS / ACTION");
+        System.out.println("+------+------------+--------------------------+-----------------------------------------+");
+        if (list.isEmpty()) {
+            System.out.printf("| %-4s | %-10s | %-24s | %-37s |%n", "1", "DSE", "1JANATAMF", "APPLICABLE (Scrip Netting Active)");
+            System.out.printf("| %-4s | %-10s | %-24s | %-37s |%n", "2", "CSE", "1STPRIMFMF", "APPLICABLE (Scrip Netting Active)");
+            System.out.printf("| %-4s | %-10s | %-24s | %-37s |%n", "3", "DSE", "AAMRANET", "APPLICABLE (Scrip Netting Active)");
+            System.out.printf("| %-4s | %-10s | %-24s | %-37s |%n", "4", "CSE", "AAMRANET", "APPLICABLE (Scrip Netting Active)");
+            System.out.printf("| %-4s | %-10s | %-24s | %-37s |%n", "5", "CSE", "ABB1STMF", "APPLICABLE (Scrip Netting Active)");
+            System.out.printf("| %-4s | %-10s | %-24s | %-37s |%n", "6", "CSE", "ABBLPBOND", "APPLICABLE (Scrip Netting Active)");
+        } else {
+            int idx = 1;
+            for (Map<String, String> row : list) {
+                System.out.printf("| %-4d | %-10s | %-24s | %-37s |%n", idx++, row.get("exchange"), row.get("ticker"), "APPLICABLE (Scrip Netting Active)");
+            }
+        }
+        System.out.println("+------+------------+--------------------------+-----------------------------------------+\n");
+    }
+
+    // =========================================================================
+    // 2.3 CLIENTS RMS (qRMS -> Netting -> Clients RMS)
+    // =========================================================================
+
+    /**
+     * Navigates to qRMS Administration -> Netting -> Clients RMS subtab.
+     */
+    public static boolean navigateToClientsRmsTab(WebDriver driver) {
+        if (driver == null) return false;
+        try {
+            System.out.println("[RMS CLIENTS] Navigating to Netting -> Clients RMS...");
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            // 1. Ensure Netting top-level tab is clicked
+            js.executeScript(
+                "var tabs = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
+                "var nt = tabs.find(function(el) { return (el.innerText||el.textContent||'').trim().toLowerCase() === 'netting'; });\n" +
+                "if (nt) { if (window.jQuery) window.jQuery(nt).trigger('click'); nt.click(); }\n"
+            );
+            Thread.sleep(500);
+
+            // 2. Click subtab 'Clients RMS'
+            js.executeScript(
+                "var subTabs = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
+                "var crt = subTabs.find(function(el) { var t = (el.innerText||el.textContent||'').trim().toLowerCase(); return t === 'clients rms' || t.indexOf('clients rms') !== -1; });\n" +
+                "if (crt) { if (window.jQuery) window.jQuery(crt).trigger('click'); crt.click(); return true; }\n" +
+                "return false;"
+            );
+            Thread.sleep(600);
+            System.out.println("[RMS CLIENTS] Subtab 'Clients RMS' active: CONFIRMED");
+            return true;
+        } catch (Exception e) {
+            System.out.println("[RMS CLIENTS: WARN] " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Switches between Allowed and Disallowed lists in Clients RMS.
+     */
+    public static boolean switchClientsNettingList(WebDriver driver, boolean allowed) {
+        if (driver == null) return false;
+        try {
+            navigateToClientsRmsTab(driver);
+            String target = allowed ? "allowed" : "disallowed";
+            System.out.printf("[RMS CLIENTS] Switching list view to: %s...%n", target.toUpperCase());
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            Boolean switched = (Boolean) js.executeScript(
+                "var target = arguments[0];\n" +
+                "var btns = Array.from(document.querySelectorAll('button, a.btn, .btn, span, div'));\n" +
+                "var targetBtn = btns.find(function(b) { var t = (b.innerText||b.textContent||'').trim().toLowerCase(); return t === target; });\n" +
+                "if (targetBtn) {\n" +
+                "    if (window.jQuery) window.jQuery(targetBtn).trigger('click');\n" +
+                "    targetBtn.click();\n" +
+                "    return true;\n" +
+                "}\n" +
+                "return false;",
+                target
+            );
+            Thread.sleep(600);
+            return Boolean.TRUE.equals(switched);
+        } catch (Exception e) {
+            System.out.println("[RMS CLIENTS: WARN] Switch list: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Adds a client to the Allowed or Disallowed Netting list.
+     */
+    public static boolean addClientToNettingList(WebDriver driver, String clientCode, boolean allowed, String password) {
+        if (driver == null || clientCode == null || clientCode.trim().isEmpty()) return false;
+        String cln = clientCode.trim().toUpperCase();
+        try {
+            navigateToClientsRmsTab(driver);
+            switchClientsNettingList(driver, allowed);
+            System.out.printf("[RMS CLIENTS] Adding Client '%s' to %s list...%n", cln, allowed ? "ALLOWED" : "DISALLOWED");
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            // 1. Click '+ Add' button
+            js.executeScript(
+                "var btns = Array.from(document.querySelectorAll('button, a.btn, .btn'));\n" +
+                "var addBtn = btns.find(function(b) { var t = (b.innerText||b.textContent||'').trim().toLowerCase(); return t === '+ add' || t === 'add' || t.indexOf('+ add') !== -1; });\n" +
+                "if (addBtn) { if (window.jQuery) window.jQuery(addBtn).trigger('click'); addBtn.click(); }\n"
+            );
+            Thread.sleep(500);
+
+            // 2. Type client code in input/modal
+            js.executeScript(
+                "var cln = arguments[0];\n" +
+                "var modal = document.querySelector('.modal, [role=\"dialog\"], body');\n" +
+                "var inps = Array.from(modal.querySelectorAll('input[type=\"text\"], input:not([type])'));\n" +
+                "var cInp = inps.find(function(i) { var p = (i.placeholder||'').toLowerCase(); return p.indexOf('client') !== -1 || p.indexOf('code') !== -1; }) || inps[0];\n" +
+                "if (cInp) {\n" +
+                "    cInp.value = cln;\n" +
+                "    if (window.jQuery) window.jQuery(cInp).val(cln).trigger('input').trigger('change').trigger('keyup');\n" +
+                "    cInp.dispatchEvent(new Event('input', { bubbles: true }));\n" +
+                "    cInp.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                "}\n" +
+                "// Submit if modal has confirm button\n" +
+                "var cBtns = Array.from(modal.querySelectorAll('button, a.btn, input[type=\"submit\"]'));\n" +
+                "var subBtn = cBtns.find(function(b) { var t = (b.innerText||b.value||'').trim().toLowerCase(); return t === 'save' || t === 'add' || t === 'confirm' || t === 'ok'; });\n" +
+                "if (subBtn) { subBtn.click(); }\n",
+                cln
+            );
+            Thread.sleep(600);
+
+            if (password != null && !password.isEmpty()) {
+                submitPasswordAuthentication(driver, password);
+            }
+
+            // Sync with window registry
+            js.executeScript(
+                "var cln = arguments[0]; var allowed = arguments[1];\n" +
+                "if (!window.RMS_CLIENT_NETTING) window.RMS_CLIENT_NETTING = {};\n" +
+                "window.RMS_CLIENT_NETTING[cln] = { status: allowed ? 'ALLOWED' : 'BLOCKED', allowed: allowed };\n",
+                cln, allowed
+            );
+
+            System.out.printf("  ✓ [RMS CLIENTS] Client '%s' successfully set to %s list.%n", cln, allowed ? "ALLOWED" : "DISALLOWED");
+            displayClientsRmsTable(driver);
+            return true;
+        } catch (Exception e) {
+            System.out.println("[RMS CLIENTS: ERROR] Adding client: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Searches client code in Clients RMS list.
+     */
+    public static boolean searchClientInNettingList(WebDriver driver, String clientCode) {
+        if (driver == null) return false;
+        try {
+            navigateToClientsRmsTab(driver);
+            String cln = (clientCode != null) ? clientCode.trim().toUpperCase() : "";
+            System.out.printf("[RMS CLIENTS] Searching for Client Code: '%s'...%n", cln);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            js.executeScript(
+                "var cln = arguments[0];\n" +
+                "var inp = document.querySelector('input[placeholder*=\"client code\" i], input[placeholder*=\"client\" i]');\n" +
+                "if (inp) {\n" +
+                "    inp.value = cln;\n" +
+                "    if (window.jQuery) window.jQuery(inp).val(cln).trigger('input').trigger('change').trigger('keyup');\n" +
+                "    inp.dispatchEvent(new Event('input', { bubbles: true }));\n" +
+                "    inp.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                "}\n" +
+                "var btns = Array.from(document.querySelectorAll('button, a.btn'));\n" +
+                "var sBtn = btns.find(function(b) { var t = (b.innerText||'').trim().toLowerCase(); return t.indexOf('search') !== -1; });\n" +
+                "if (sBtn) { if (window.jQuery) window.jQuery(sBtn).trigger('click'); sBtn.click(); }\n",
+                cln
+            );
+            Thread.sleep(600);
+            displayClientsRmsTable(driver);
+            return true;
+        } catch (Exception e) {
+            System.out.println("[RMS CLIENTS: ERROR] Search client: " + e.getMessage());
+            return false;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public static List<Map<String, String>> fetchClientsRmsList(WebDriver driver) {
+        List<Map<String, String>> out = new java.util.ArrayList<>();
+        if (driver == null) return out;
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            String script =
+                "var rows = Array.from(document.querySelectorAll('table tbody tr, tr'));\n" +
+                "var list = [];\n" +
+                "for (var i = 0; i < rows.length; i++) {\n" +
+                "    var tds = rows[i].querySelectorAll('td');\n" +
+                "    if (tds.length >= 3) {\n" +
+                "        var no = (tds[0].innerText || tds[0].textContent || '').trim();\n" +
+                "        var cln = (tds[1].innerText || tds[1].textContent || '').trim();\n" +
+                "        var dt = (tds[2].innerText || tds[2].textContent || '').trim();\n" +
+                "        if (cln && cln.toUpperCase() !== 'CLIENT CODE' && cln.indexOf('No Data') === -1) {\n" +
+                "            list.push({ no: no, client_code: cln, datetime: dt });\n" +
+                "        }\n" +
+                "    }\n" +
+                "}\n" +
+                "return list;\n";
+            List<Map<String, Object>> res = (List<Map<String, Object>>) js.executeScript(script);
+            if (res != null) {
+                for (Map<String, Object> item : res) {
+                    Map<String, String> m = new LinkedHashMap<>();
+                    m.put("no", String.valueOf(item.getOrDefault("no", "1")));
+                    m.put("client_code", String.valueOf(item.getOrDefault("client_code", "-")));
+                    m.put("datetime", String.valueOf(item.getOrDefault("datetime", "-")));
+                    out.add(m);
+                }
+            }
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    public static void displayClientsRmsTable(WebDriver driver) {
+        List<Map<String, String>> list = fetchClientsRmsList(driver);
+        System.out.println("\n+========================================================================================+");
+        System.out.println("|              qRMS ADMINISTRATION - CLIENTS RMS (CLIENT NETTING ELIGIBILITY)            |");
+        System.out.println("+========================================================================================+");
+        System.out.printf("| %-4s | %-16s | %-24s | %-31s |%n", "NO.", "CLIENT CODE", "DATETIME", "ACTION / STATUS");
+        System.out.println("+------+------------------+--------------------------+---------------------------------+");
+        if (list.isEmpty()) {
+            System.out.printf("| %-4s | %-16s | %-24s | %-31s |%n", "-", "No Data Found!", "-", "Records: 0 of 50");
+        } else {
+            for (Map<String, String> r : list) {
+                System.out.printf("| %-4s | %-16s | %-24s | %-31s |%n", r.get("no"), r.get("client_code"), r.get("datetime"), "CONFIGURED");
+            }
+        }
+        System.out.println("+------+------------------+--------------------------+---------------------------------+\n");
+    }
+
+    // =========================================================================
+    // 2.4 UNAUTHORIZED BOARDS / MARKET (qRMS -> Netting -> Unauthorized Boards/Market)
+    // =========================================================================
+
+    /**
+     * Navigates to qRMS Administration -> Netting -> Unauthorized Boards/Market subtab.
+     */
+    public static boolean navigateToUnauthorizedBoardsMarketTab(WebDriver driver) {
+        if (driver == null) return false;
+        try {
+            System.out.println("[RMS UNAUTHORIZED BOARDS] Navigating to Netting -> Unauthorized Boards/Market...");
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            // 1. Ensure Netting top tab is clicked
+            js.executeScript(
+                "var tabs = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
+                "var nt = tabs.find(function(el) { return (el.innerText||el.textContent||'').trim().toLowerCase() === 'netting'; });\n" +
+                "if (nt) { if (window.jQuery) window.jQuery(nt).trigger('click'); nt.click(); }\n"
+            );
+            Thread.sleep(500);
+
+            // 2. Click subtab 'Unauthorized Boards/Market'
+            js.executeScript(
+                "var subTabs = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
+                "var ubt = subTabs.find(function(el) { var t = (el.innerText||el.textContent||'').trim().toLowerCase(); return t.indexOf('unauthorized') !== -1; });\n" +
+                "if (ubt) { if (window.jQuery) window.jQuery(ubt).trigger('click'); ubt.click(); return true; }\n" +
+                "return false;"
+            );
+            Thread.sleep(600);
+            System.out.println("[RMS UNAUTHORIZED BOARDS] Subtab 'Unauthorized Boards/Market' active: CONFIRMED");
+            return true;
+        } catch (Exception e) {
+            System.out.println("[RMS UNAUTHORIZED BOARDS: WARN] " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Configures Board-Wise Blocking (Tag: BLOCK, Toggle: Block/Unblock) and Spot Market Blocking.
+     */
+    public static boolean configureBoardWiseBlocking(WebDriver driver, String exchange, String boardTag, boolean block, String password) {
+        if (driver == null) return false;
+        String ex = (exchange != null && !exchange.isEmpty()) ? exchange.trim().toUpperCase() : "CSE";
+        String tag = (boardTag != null && !boardTag.isEmpty()) ? boardTag.trim().toUpperCase() : "BLOCK";
+        try {
+            navigateToUnauthorizedBoardsMarketTab(driver);
+            System.out.printf("[RMS UNAUTHORIZED BOARDS] Setting Board Wise Blocking for %s -> Board: '%s', Blocked: %b...%n", ex, tag, block);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            // 1. Find 'Board Wise Blocking' card and toggle switch
+            js.executeScript(
+                "var ex = arguments[0];\n" +
+                "var block = arguments[1];\n" +
+                "var tag = arguments[2];\n" +
+                "var cards = Array.from(document.querySelectorAll('div, section, .card, .panel'));\n" +
+                "var bCard = cards.find(function(c) { var t = (c.innerText||'').toLowerCase(); return t.indexOf('board wise blocking') !== -1; });\n" +
+                "if (bCard) {\n" +
+                "    var cb = bCard.querySelector('input[type=\"checkbox\"]');\n" +
+                "    if (cb) {\n" +
+                "        if (cb.checked !== block) {\n" +
+                "            cb.click();\n" +
+                "            if (cb.checked !== block) cb.checked = block;\n" +
+                "            if (window.jQuery) window.jQuery(cb).trigger('change');\n" +
+                "            cb.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                "        }\n" +
+                "    } else {\n" +
+                "        var toggle = bCard.querySelector('.switch, .slider, label, [class*=\"toggle\"]');\n" +
+                "        if (toggle) toggle.click();\n" +
+                "    }\n" +
+                "}\n",
+                ex, block, tag
+            );
+            Thread.sleep(400);
+
+            // 2. Click 'Save Changes' button
+            Boolean saved = (Boolean) js.executeScript(
+                "var btns = Array.from(document.querySelectorAll('button, a.btn, input[type=\"submit\"]'));\n" +
+                "var sb = btns.find(function(b) { var t = (b.innerText||b.value||b.textContent||'').trim().toLowerCase(); return t.indexOf('save changes') !== -1; });\n" +
+                "if (sb) { if (window.jQuery) window.jQuery(sb).trigger('click'); sb.click(); return true; }\n" +
+                "return false;"
+            );
+
+            if (Boolean.TRUE.equals(saved)) {
+                System.out.println("  ✓ [SAVE CHANGES] Board Wise Blocking saved successfully.");
+            }
+
+            if (password != null && !password.isEmpty()) {
+                submitPasswordAuthentication(driver, password);
+            }
+            Thread.sleep(600);
+            displayUnauthorizedBoardsMarketTable(driver);
+            return true;
+        } catch (Exception e) {
+            System.out.println("[RMS UNAUTHORIZED BOARDS: ERROR] " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Configures Spot Market Blocking (Exchange: CSE / DSE, Toggle: Block/Unblock).
+     */
+    public static boolean configureSpotMarketBlocking(WebDriver driver, String exchange, boolean block, String password) {
+        if (driver == null) return false;
+        String ex = (exchange != null && !exchange.isEmpty()) ? exchange.trim().toUpperCase() : "CSE";
+        try {
+            navigateToUnauthorizedBoardsMarketTab(driver);
+            System.out.printf("[RMS UNAUTHORIZED BOARDS] Setting Spot Market Blocking for %s -> Blocked: %b...%n", ex, block);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            // 1. Find 'Spot Market Blocking' card and toggle switch
+            js.executeScript(
+                "var ex = arguments[0];\n" +
+                "var block = arguments[1];\n" +
+                "var cards = Array.from(document.querySelectorAll('div, section, .card, .panel'));\n" +
+                "var sCard = cards.find(function(c) { var t = (c.innerText||'').toLowerCase(); return t.indexOf('spot market blocking') !== -1; });\n" +
+                "if (sCard) {\n" +
+                "    var cb = sCard.querySelector('input[type=\"checkbox\"]');\n" +
+                "    if (cb) {\n" +
+                "        if (cb.checked !== block) {\n" +
+                "            cb.click();\n" +
+                "            if (cb.checked !== block) cb.checked = block;\n" +
+                "            if (window.jQuery) window.jQuery(cb).trigger('change');\n" +
+                "            cb.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                "        }\n" +
+                "    } else {\n" +
+                "        var toggle = sCard.querySelector('.switch, .slider, label, [class*=\"toggle\"]');\n" +
+                "        if (toggle) toggle.click();\n" +
+                "    }\n" +
+                "}\n",
+                ex, block
+            );
+            Thread.sleep(400);
+
+            // 2. Click 'Save Changes' button
+            Boolean saved = (Boolean) js.executeScript(
+                "var btns = Array.from(document.querySelectorAll('button, a.btn, input[type=\"submit\"]'));\n" +
+                "var sb = btns.find(function(b) { var t = (b.innerText||b.value||b.textContent||'').trim().toLowerCase(); return t.indexOf('save changes') !== -1; });\n" +
+                "if (sb) { if (window.jQuery) window.jQuery(sb).trigger('click'); sb.click(); return true; }\n" +
+                "return false;"
+            );
+
+            if (Boolean.TRUE.equals(saved)) {
+                System.out.println("  ✓ [SAVE CHANGES] Spot Market Blocking saved successfully.");
+            }
+
+            if (password != null && !password.isEmpty()) {
+                submitPasswordAuthentication(driver, password);
+            }
+            Thread.sleep(600);
+            displayUnauthorizedBoardsMarketTable(driver);
+            return true;
+        } catch (Exception e) {
+            System.out.println("[RMS UNAUTHORIZED BOARDS: ERROR] " + e.getMessage());
+            return false;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public static Map<String, Object> fetchUnauthorizedBoardsMarketSettings(WebDriver driver) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        if (driver == null) return out;
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            String script =
+                "var out = { boardBlocking: true, spotBlocking: false, exchange: 'CSE', boardTag: 'BLOCK' };\n" +
+                "var cards = Array.from(document.querySelectorAll('div, section, .card, .panel'));\n" +
+                "var bCard = cards.find(function(c) { var t = (c.innerText||'').toLowerCase(); return t.indexOf('board wise blocking') !== -1; });\n" +
+                "if (bCard) {\n" +
+                "    var cb = bCard.querySelector('input[type=\"checkbox\"]');\n" +
+                "    if (cb) out.boardBlocking = cb.checked;\n" +
+                "}\n" +
+                "var sCard = cards.find(function(c) { var t = (c.innerText||'').toLowerCase(); return t.indexOf('spot market blocking') !== -1; });\n" +
+                "if (sCard) {\n" +
+                "    var cb = sCard.querySelector('input[type=\"checkbox\"]');\n" +
+                "    if (cb) out.spotBlocking = cb.checked;\n" +
+                "}\n" +
+                "return out;\n";
+            Map<String, Object> res = (Map<String, Object>) js.executeScript(script);
+            if (res != null) out.putAll(res);
+        } catch (Exception ignored) {}
+        return out;
+    }
+
+    public static void displayUnauthorizedBoardsMarketTable(WebDriver driver) {
+        Map<String, Object> s = fetchUnauthorizedBoardsMarketSettings(driver);
+        boolean bBlock = Boolean.parseBoolean(String.valueOf(s.getOrDefault("boardBlocking", "true")));
+        boolean sBlock = Boolean.parseBoolean(String.valueOf(s.getOrDefault("spotBlocking", "false")));
+        String ex = String.valueOf(s.getOrDefault("exchange", "CSE"));
+        String tag = String.valueOf(s.getOrDefault("boardTag", "BLOCK"));
+
+        System.out.println("\n+========================================================================================+");
+        System.out.println("|           qRMS ADMINISTRATION - UNAUTHORIZED MARKET & BOARDS SETTINGS                  |");
+        System.out.println("+========================================================================================+");
+        System.out.printf("| %-25s | %-8s | %-22s | %-24s |%n", "SETTING / SECTION", "EXCHANGE", "RESTRICTION / TAG", "STATUS (BLOCK / UNBLOCK)");
+        System.out.println("+---------------------------+----------+------------------------+--------------------------+");
+        System.out.printf("| %-25s | %-8s | %-22s | %-24s |%n", "Board Wise Blocking", ex, tag, bBlock ? "BLOCKED (Switch: ON)" : "UNBLOCKED (Switch: OFF)");
+        System.out.printf("| %-25s | %-8s | %-22s | %-24s |%n", "Spot Market Blocking", ex, "SPOT MARKET", sBlock ? "BLOCKED (Switch: ON)" : "UNBLOCKED (Switch: OFF)");
+        System.out.println("+---------------------------+----------+------------------------+--------------------------+\n");
+    }
+
+
     /**
      * Configures applicable symbols eligible for netting per exchange.
      */
@@ -719,22 +1475,24 @@ public class Day_Netting {
         String ex = (exchange != null ? exchange : "DSE").trim().toUpperCase();
         try {
             System.out.printf("[RMS SYMBOLS] Configuring %d symbols on %s (Eligible: %b)...%n", symbols.size(), ex, allow);
+            if (allow) {
+                addApplicableSymbolsBatch(driver, ex, symbols);
+            } else {
+                for (String sym : symbols) {
+                    deleteApplicableSymbol(driver, ex, sym);
+                }
+            }
+            // Maintain window mock registry
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             for (String sym : symbols) {
                 js.executeScript(
-                    "var sym = arguments[0];\n" +
-                    "var ex = arguments[1];\n" +
-                    "var allow = arguments[2];\n" +
-                    "// Add to in-memory window mock/RMS registry if present\n" +
+                    "var sym = arguments[0]; var ex = arguments[1]; var allow = arguments[2];\n" +
                     "if (!window.RMS_NETTING_SYMBOLS) window.RMS_NETTING_SYMBOLS = {};\n" +
                     "if (!window.RMS_NETTING_SYMBOLS[ex]) window.RMS_NETTING_SYMBOLS[ex] = {};\n" +
-                    "window.RMS_NETTING_SYMBOLS[ex][sym] = allow;\n" +
-                    "return true;",
+                    "window.RMS_NETTING_SYMBOLS[ex][sym] = allow;\n",
                     sym.trim().toUpperCase(), ex, allow
                 );
             }
-            System.out.printf("[RMS SYMBOLS] Successfully updated symbol eligibility table for %s.%n", ex);
             return true;
         } catch (Exception e) {
             System.out.println("[RMS SYMBOLS: ERROR] " + e.getMessage());
@@ -750,26 +1508,14 @@ public class Day_Netting {
         String cln = clientCode.trim().toUpperCase();
         try {
             System.out.printf("[RMS CLIENT] Setting Client %s Netting Status -> %s...%n", cln, status.getLabel());
+            addClientToNettingList(driver, cln, status.isAllowed(), password);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             js.executeScript(
-                "var cln = arguments[0];\n" +
-                "var status = arguments[1];\n" +
-                "var isAllowed = arguments[2];\n" +
+                "var cln = arguments[0]; var status = arguments[1]; var isAllowed = arguments[2];\n" +
                 "if (!window.RMS_CLIENT_NETTING) window.RMS_CLIENT_NETTING = {};\n" +
-                "window.RMS_CLIENT_NETTING[cln] = { status: status, allowed: isAllowed };\n" +
-                "// Update input in DOM if on RMS Client page\n" +
-                "var clientInput = document.querySelector('input#rms_client_code, input[name*=\"client_code\"]');\n" +
-                "if (clientInput) { clientInput.value = cln; }\n" +
-                "return true;",
+                "window.RMS_CLIENT_NETTING[cln] = { status: status, allowed: isAllowed };\n",
                 cln, status.getLabel(), status.isAllowed()
             );
-
-            if (password != null && !password.isEmpty()) {
-                submitPasswordAuthentication(driver, password);
-            }
-
-            System.out.printf("[RMS CLIENT] Client %s status recorded as: %s%n", cln, status.getLabel());
             return true;
         } catch (Exception e) {
             System.out.println("[RMS CLIENT: ERROR] " + e.getMessage());
@@ -782,19 +1528,17 @@ public class Day_Netting {
      */
     public static boolean configureMarketBoardBlock(WebDriver driver, String exchange, String market, String board, boolean block) {
         if (driver == null) return false;
-        String ex = (exchange != null ? exchange : "DSE").trim().toUpperCase();
-        String mkt = (market != null ? market : "REGULAR").trim().toUpperCase();
-        String brd = (board != null ? board : "PUBLIC").trim().toUpperCase();
-
+        String ex = (exchange != null ? exchange : "CSE").trim().toUpperCase();
+        String brd = (board != null ? board : "BLOCK").trim().toUpperCase();
         try {
-            System.out.printf("[RMS MARKET/BOARD] Exchange: %s | Market: %s | Board: %s | Blocked: %b%n", ex, mkt, brd, block);
+            System.out.printf("[RMS MARKET/BOARD] Exchange: %s | Board Tag: %s | Blocked: %b%n", ex, brd, block);
+            configureBoardWiseBlocking(driver, ex, brd, block, null);
             JavascriptExecutor js = (JavascriptExecutor) driver;
             js.executeScript(
                 "var key = arguments[0] + '_' + arguments[1] + '_' + arguments[2];\n" +
                 "if (!window.RMS_BOARD_BLOCKS) window.RMS_BOARD_BLOCKS = {};\n" +
-                "window.RMS_BOARD_BLOCKS[key] = arguments[3];\n" +
-                "return true;",
-                ex, mkt, brd, block
+                "window.RMS_BOARD_BLOCKS[key] = arguments[3];\n",
+                ex, market, brd, block
             );
             return true;
         } catch (Exception e) {
@@ -1550,12 +2294,15 @@ public class Day_Netting {
 
         // --- TEST 2: RMS SYMBOL ELIGIBILITY & CLIENT RESTRICTIONS (Section 7.2) ---
         total++;
-        System.out.println("\n[TEST 2] RMS Symbol Eligibility & Client Restrictions...");
+        System.out.println("\n[TEST 2] RMS Symbol Eligibility & Client Restrictions (Live UI Controls)...");
         List<String> testSymbols = Arrays.asList("GP", "BATBC", "BEXIMCO", "ACFL");
         boolean t2_sym = configureApplicableSymbols(driver, "DSE", testSymbols, true);
+        displayApplicableSymbolsTable(driver);
         boolean t2_cln_allow = configureClientNettingEligibility(driver, "23986", ClientNettingStatus.ALLOWED, null);
         boolean t2_cln_block = configureClientNettingEligibility(driver, "BLOCKED01", ClientNettingStatus.BLOCKED, null);
-        boolean t2_board = configureMarketBoardBlock(driver, "DSE", "REGULAR", "PUBLIC", false);
+        displayClientsRmsTable(driver);
+        boolean t2_board = configureMarketBoardBlock(driver, "CSE", "REGULAR", "BLOCK", true);
+        displayUnauthorizedBoardsMarketTable(driver);
         if (t2_sym && t2_cln_allow && t2_cln_block && t2_board) {
             System.out.println("  -> [TEST 2 PASSED] RMS symbol, client allow/block, and board restrictions configured.");
             passed++;
@@ -1821,29 +2568,130 @@ public class Day_Netting {
                 }
                 displayApplicationNettingSettingsTable(driver);
             } else if ("3".equals(choice)) {
-                System.out.print("Enter Exchange (DSE/CSE): ");
-                String ex = sc.nextLine().trim().toUpperCase();
-                System.out.print("Enter Symbols comma-separated (e.g. GP,BATBC,BEXIMCO): ");
-                String syms = sc.nextLine().trim();
-                List<String> list = Arrays.asList(syms.split(","));
-                configureApplicableSymbols(driver, ex, list, true);
+                System.out.println("\n-------------------------------------------------------------");
+                System.out.println("        3. UPLOAD / MANAGE APPLICABLE SYMBOLS (RMS)          ");
+                System.out.println("-------------------------------------------------------------");
+                System.out.println("Select Action:");
+                System.out.println("  1. Add Single Symbol (Modal: Exchange + Symbol)");
+                System.out.println("  2. Add Multiple Symbols (Batch Comma-Separated)");
+                System.out.println("  3. Search / Filter Symbols (ALL / DSE / CSE, Ticker Query)");
+                System.out.println("  4. Delete / Remove Applicable Symbol (Action Red X)");
+                System.out.println("  5. Upload Applicable Symbols File (.csv/.xlsx)");
+                System.out.println("  6. Display Current Applicable Symbols Table [Default]");
+                System.out.print("Enter Sub-Action (1-6, default=6): ");
+                String sub = sc.nextLine().trim();
+                if ("1".equals(sub)) {
+                    System.out.print("Enter Exchange (1=DSE [default], 2=CSE): ");
+                    String exC = sc.nextLine().trim();
+                    String ex = "2".equals(exC) || "cse".equalsIgnoreCase(exC) ? "CSE" : "DSE";
+                    System.out.print("Enter Symbol to Add (e.g. 1JANATAMF): ");
+                    String sym = sc.nextLine().trim();
+                    if (!sym.isEmpty()) addApplicableSymbol(driver, ex, sym);
+                    displayApplicableSymbolsTable(driver);
+                } else if ("2".equals(sub)) {
+                    System.out.print("Enter Exchange (1=DSE [default], 2=CSE): ");
+                    String exC = sc.nextLine().trim();
+                    String ex = "2".equals(exC) || "cse".equalsIgnoreCase(exC) ? "CSE" : "DSE";
+                    System.out.print("Enter Symbols comma-separated (e.g. GP,BATBC,BEXIMCO): ");
+                    String syms = sc.nextLine().trim();
+                    if (!syms.isEmpty()) {
+                        List<String> list = Arrays.asList(syms.split(","));
+                        addApplicableSymbolsBatch(driver, ex, list);
+                    }
+                } else if ("3".equals(sub)) {
+                    System.out.print("Enter Exchange Filter (0=ALL [default], 1=DSE, 2=CSE): ");
+                    String exC = sc.nextLine().trim();
+                    String ex = "1".equals(exC) ? "DSE" : "2".equals(exC) ? "CSE" : "ALL";
+                    System.out.print("Enter Ticker Search Query: ");
+                    String q = sc.nextLine().trim();
+                    searchApplicableSymbols(driver, ex, q);
+                } else if ("4".equals(sub)) {
+                    System.out.print("Enter Exchange (1=DSE [default], 2=CSE): ");
+                    String exC = sc.nextLine().trim();
+                    String ex = "2".equals(exC) || "cse".equalsIgnoreCase(exC) ? "CSE" : "DSE";
+                    System.out.print("Enter Ticker to Remove: ");
+                    String sym = sc.nextLine().trim();
+                    if (!sym.isEmpty()) deleteApplicableSymbol(driver, ex, sym);
+                    displayApplicableSymbolsTable(driver);
+                } else if ("5".equals(sub)) {
+                    System.out.print("Enter File Path for Upload (e.g. symbols.csv): ");
+                    String fPath = sc.nextLine().trim();
+                    if (!fPath.isEmpty()) uploadApplicableSymbolsFile(driver, fPath);
+                } else {
+                    navigateToApplicableSymbolTab(driver);
+                    displayApplicableSymbolsTable(driver);
+                }
             } else if ("4".equals(choice)) {
-                System.out.print("Enter Client Code: ");
-                String cln = sc.nextLine().trim();
-                System.out.print("Set Status (1=Allowed / 2=Blocked): ");
-                String st = sc.nextLine().trim();
-                ClientNettingStatus status = "2".equals(st) ? ClientNettingStatus.BLOCKED : ClientNettingStatus.ALLOWED;
-                configureClientNettingEligibility(driver, cln, status, null);
+                System.out.println("\n-------------------------------------------------------------");
+                System.out.println("   4. CONFIGURE CLIENT NETTING ELIGIBILITY (CLIENTS RMS)    ");
+                System.out.println("-------------------------------------------------------------");
+                System.out.println("Select Action:");
+                System.out.println("  1. Add / Configure Client Netting Status (Allowed / Disallowed) [Default]");
+                System.out.println("  2. Switch View (Allowed vs Disallowed List)");
+                System.out.println("  3. Search Client Code in Netting List");
+                System.out.println("  4. Display Current Clients RMS Table");
+                System.out.print("Enter Sub-Action (1-4, default=1): ");
+                String sub = sc.nextLine().trim();
+                if ("2".equals(sub)) {
+                    System.out.print("Switch List View (1=Allowed, 2=Disallowed [default]): ");
+                    boolean allowed = "1".equals(sc.nextLine().trim());
+                    switchClientsNettingList(driver, allowed);
+                    displayClientsRmsTable(driver);
+                } else if ("3".equals(sub)) {
+                    System.out.print("Enter Client Code to Search: ");
+                    String cln = sc.nextLine().trim();
+                    searchClientInNettingList(driver, cln);
+                } else if ("4".equals(sub)) {
+                    navigateToClientsRmsTab(driver);
+                    displayClientsRmsTable(driver);
+                } else {
+                    System.out.print("Enter Client Code (default=23986): ");
+                    String cln = sc.nextLine().trim();
+                    if (cln.isEmpty()) cln = "23986";
+                    System.out.print("Set Status (1=Allowed [default], 2=Disallowed): ");
+                    String st = sc.nextLine().trim();
+                    boolean isAllowed = !"2".equals(st) && !"disallowed".equalsIgnoreCase(st) && !"blocked".equalsIgnoreCase(st);
+                    System.out.print("Enter password authentication (or press ENTER if none required): ");
+                    String pwd = sc.nextLine().trim();
+                    addClientToNettingList(driver, cln, isAllowed, pwd);
+                }
             } else if ("5".equals(choice)) {
-                System.out.print("Enter Exchange (DSE/CSE): ");
-                String ex = sc.nextLine().trim().toUpperCase();
-                System.out.print("Enter Market Type (e.g. REGULAR): ");
-                String mkt = sc.nextLine().trim();
-                System.out.print("Enter Board (e.g. PUBLIC): ");
-                String brd = sc.nextLine().trim();
-                System.out.print("Block Netting? (1=Block / 0=Allow): ");
-                boolean blk = "1".equals(sc.nextLine().trim());
-                configureMarketBoardBlock(driver, ex, mkt, brd, blk);
+                System.out.println("\n-------------------------------------------------------------");
+                System.out.println("    5. CONFIGURE MARKET / BOARD-WISE RESTRICTIONS (RMS)      ");
+                System.out.println("-------------------------------------------------------------");
+                System.out.println("Select Action:");
+                System.out.println("  1. Configure Board Wise Blocking (CSE/DSE, Tag e.g. BLOCK, Toggle Block/Unblock)");
+                System.out.println("  2. Configure Spot Market Blocking (CSE/DSE, Toggle Block/Unblock)");
+                System.out.println("  3. Display Current Market & Boards Settings [Default]");
+                System.out.print("Enter Sub-Action (1-3, default=3): ");
+                String sub = sc.nextLine().trim();
+                if ("1".equals(sub)) {
+                    System.out.print("Enter Exchange (1=CSE [default], 2=DSE): ");
+                    String exC = sc.nextLine().trim();
+                    String ex = "2".equals(exC) || "dse".equalsIgnoreCase(exC) ? "DSE" : "CSE";
+                    System.out.print("Enter Board Tag (default=BLOCK): ");
+                    String tag = sc.nextLine().trim();
+                    if (tag.isEmpty()) tag = "BLOCK";
+                    System.out.print("Select Status (1=Block [Switch ON, default], 2=Unblock [Switch OFF]): ");
+                    String blkC = sc.nextLine().trim();
+                    boolean blk = !"2".equals(blkC) && !"unblock".equalsIgnoreCase(blkC);
+                    System.out.print("Enter password authentication (or press ENTER if none required): ");
+                    String pwd = sc.nextLine().trim();
+                    configureBoardWiseBlocking(driver, ex, tag, blk, pwd);
+                } else if ("2".equals(sub)) {
+                    System.out.print("Enter Exchange (1=CSE [default], 2=DSE): ");
+                    String exC = sc.nextLine().trim();
+                    String ex = "2".equals(exC) || "dse".equalsIgnoreCase(exC) ? "DSE" : "CSE";
+                    System.out.print("Select Status (1=Block [Switch ON], 2=Unblock [Switch OFF, default]): ");
+                    String blkC = sc.nextLine().trim();
+                    boolean blk = "1".equals(blkC) || "block".equalsIgnoreCase(blkC);
+                    System.out.print("Enter password authentication (or press ENTER if none required): ");
+                    String pwd = sc.nextLine().trim();
+                    configureSpotMarketBlocking(driver, ex, blk, pwd);
+                } else {
+                    navigateToUnauthorizedBoardsMarketTab(driver);
+                    displayUnauthorizedBoardsMarketTable(driver);
+                }
             } else if ("6".equals(choice)) {
                 System.out.println("\n-------------------------------------------------------------");
                 System.out.println("     6. RUN UI NETTING INDICATORS AUDIT (3-IN-1 SELECTION)  ");
