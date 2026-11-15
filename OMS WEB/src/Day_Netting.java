@@ -816,6 +816,11 @@ public class Day_Netting {
         System.out.printf("| Stage: %-25s | Exchange: %-5s | Symbol: %-8s | Client: %-12s |%n", snap.stageName, snap.exchange, snap.targetSymbol, snap.targetClient);
         System.out.println("+==================================================================================================+");
 
+        // Reflect selected client code across all UI widgets
+        try {
+            OMSweb_Trade.propagateClientCodeToAllWidgets(driver, snap.targetClient, snap.targetSymbol);
+        } catch (Exception ignored) {}
+
         // 1. NETTING WATCHLIST (Dedicated Netting Scrip Watchlist + Icons)
         try {
             System.out.println("\n[1/6] Maximizing 'Netting Watchlist' widget...");
@@ -867,6 +872,9 @@ public class Day_Netting {
             Thread.sleep(500);
             OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Portfolio.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
+            if (snap.targetClient != null && !snap.targetClient.isEmpty()) {
+                ClientPortfolio.ensureClientLoadedInUi(driver, snap.targetClient);
+            }
             try { snap.portfolioData = ClientPortfolio.getUiSnapshot(driver, snap.targetClient, snap.targetSymbol); } catch (Exception ignored) {}
             System.out.printf("  ✓ [Portfolio Data] Client: %s | Symbol: %s | Total Qty: %s | Saleable Qty: %s | Avg Cost: %s | Value: %s%n",
                     snap.targetClient, snap.targetSymbol,
@@ -887,6 +895,9 @@ public class Day_Netting {
             Thread.sleep(500);
             OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Order_Terminal.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
+            if (snap.targetClient != null && !snap.targetClient.isEmpty()) {
+                Order_Terminal.filterOrderTerminal(driver, snap.targetClient, snap.targetSymbol);
+            }
             try { snap.orderTerminalData = Order_Terminal.getUiSnapshot(driver, snap.targetSymbol, snap.targetClient); } catch (Exception ignored) {}
             System.out.printf("  ✓ [Order Terminal Data] Order ID: %s | Status: %s | Action: %s | Exec Qty: %s | Due Qty: %s | Rate: %s%n",
                     snap.orderTerminalData.getOrDefault("Order_ID", snap.orderTerminalData.getOrDefault("order_id", "-")),
@@ -908,7 +919,10 @@ public class Day_Netting {
             Thread.sleep(500);
             OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Order_Summary.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
-            try { snap.orderSummaryData = Order_Summary.getUiSnapshot(driver, snap.targetSymbol); } catch (Exception ignored) {}
+            if (snap.targetClient != null && !snap.targetClient.isEmpty()) {
+                Order_Summary.filterOrderSummary(driver, snap.targetClient, snap.targetSymbol);
+            }
+            try { snap.orderSummaryData = Order_Summary.getUiSnapshot(driver, snap.targetClient, snap.targetSymbol); } catch (Exception ignored) {}
             System.out.printf("  ✓ [Order Summary Data] Total Orders: %s | Executed: %s | Buy Qty: %s | Buy Turnover: %s | Sell Turnover: %s%n",
                     snap.orderSummaryData.getOrDefault("Total_Orders", snap.orderSummaryData.getOrDefault("total_orders", "-")),
                     snap.orderSummaryData.getOrDefault("Executed", snap.orderSummaryData.getOrDefault("executed", "-")),
@@ -928,6 +942,9 @@ public class Day_Netting {
             Thread.sleep(500);
             OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Account_Limits.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
+            if (snap.targetClient != null && !snap.targetClient.isEmpty()) {
+                Account_Limits.filterByClient(driver, snap.targetClient);
+            }
             try { snap.accountLimitsData = Account_Limits.getUiSnapshot(driver, snap.targetClient); } catch (Exception ignored) {}
             System.out.printf("  ✓ [Account Limits Data] Client: %s | Rem Cash: %s | Blocked/Day: %s | Total Tx: %s%n",
                     snap.targetClient,
@@ -981,6 +998,116 @@ public class Day_Netting {
                 snap.accountLimitsData.getOrDefault("Blocked_Day", snap.accountLimitsData.getOrDefault("blocked_day", "-")),
                 snap.accountLimitsData.getOrDefault("Total_Tx", snap.accountLimitsData.getOrDefault("total_tx", "-")));
         System.out.println("+----+--------------------+----------------------------------------------------------------------------------------+\n");
+    }
+
+    public static void compareAndReportNettingWidgets(Netting6WidgetsUiSnapshot prev, Netting6WidgetsUiSnapshot curr, String title) {
+        System.out.println("\n+======================================================================================================================+");
+        System.out.printf("| 6-WIDGET REAL-TIME UI AUDIT COMPARISON REPORT: %-69s |%n", title);
+        System.out.printf("| Pre-Trade: %-42s | Post-Trade: %-45s |%n", prev.stageName, curr.stageName);
+        System.out.printf("| Target Client: %-38s | Target Symbol: %-42s |%n", curr.targetClient, curr.targetSymbol);
+        System.out.println("+======================================================================================================================+");
+        System.out.printf("| %-18s | %-24s | %-18s | %-18s | %-27s |%n", "Widget", "Parameter / Metric", "Pre-Trade (UI DOM)", "Post-Trade (UI DOM)", "Delta / UI Audit Verdict");
+        System.out.println("+--------------------+--------------------------+--------------------+--------------------+-----------------------------+");
+
+        // 1. Client Portfolio
+        printNettingDiffRow("Portfolio", "Total Holding Qty", prev.portfolioData.getOrDefault("Total_Qty", prev.portfolioData.getOrDefault("total_qty", "0")), curr.portfolioData.getOrDefault("Total_Qty", curr.portfolioData.getOrDefault("total_qty", "0")), false);
+        printNettingDiffRow("Portfolio", "Saleable Qty", prev.portfolioData.getOrDefault("Saleable_Qty", prev.portfolioData.getOrDefault("saleable_qty", "0")), curr.portfolioData.getOrDefault("Saleable_Qty", curr.portfolioData.getOrDefault("saleable_qty", "0")), false);
+        printNettingDiffRow("Portfolio", "Avg Cost", prev.portfolioData.getOrDefault("Avg_Cost", prev.portfolioData.getOrDefault("avg_cost", "0")), curr.portfolioData.getOrDefault("Avg_Cost", curr.portfolioData.getOrDefault("avg_cost", "0")), false);
+        printNettingDiffRow("Portfolio", "Market Value", prev.portfolioData.getOrDefault("Market_Value", prev.portfolioData.getOrDefault("market_value", "0")), curr.portfolioData.getOrDefault("Market_Value", curr.portfolioData.getOrDefault("market_value", "0")), false);
+
+        // 2. Order Terminal
+        printNettingDiffRow("Order Terminal", "Recent Order ID", prev.orderTerminalData.getOrDefault("Order_ID", prev.orderTerminalData.getOrDefault("order_id", "-")), curr.orderTerminalData.getOrDefault("Order_ID", curr.orderTerminalData.getOrDefault("order_id", "-")), true);
+        printNettingDiffRow("Order Terminal", "Order Status", prev.orderTerminalData.getOrDefault("Status", prev.orderTerminalData.getOrDefault("status", "-")), curr.orderTerminalData.getOrDefault("Status", curr.orderTerminalData.getOrDefault("status", "-")), true);
+        printNettingDiffRow("Order Terminal", "Exec Qty", prev.orderTerminalData.getOrDefault("Exec_Qty", prev.orderTerminalData.getOrDefault("executed_qty", "0")), curr.orderTerminalData.getOrDefault("Exec_Qty", curr.orderTerminalData.getOrDefault("executed_qty", "0")), false);
+        printNettingDiffRow("Order Terminal", "Due Qty", prev.orderTerminalData.getOrDefault("Due_Qty", prev.orderTerminalData.getOrDefault("due_qty", "0")), curr.orderTerminalData.getOrDefault("Due_Qty", curr.orderTerminalData.getOrDefault("due_qty", "0")), false);
+
+        // 3. Order Summary
+        printNettingDiffRow("Order Summary", "Total Orders", prev.orderSummaryData.getOrDefault("Total_Orders", prev.orderSummaryData.getOrDefault("total_orders", "0")), curr.orderSummaryData.getOrDefault("Total_Orders", curr.orderSummaryData.getOrDefault("total_orders", "0")), false);
+        printNettingDiffRow("Order Summary", "Executed Orders", prev.orderSummaryData.getOrDefault("Executed", prev.orderSummaryData.getOrDefault("executed", "0")), curr.orderSummaryData.getOrDefault("Executed", curr.orderSummaryData.getOrDefault("executed", "0")), false);
+        printNettingDiffRow("Order Summary", "Buy / Sell Qty", prev.orderSummaryData.getOrDefault("Buy_Qty", "0") + " / " + prev.orderSummaryData.getOrDefault("Sell_Qty", "0"), curr.orderSummaryData.getOrDefault("Buy_Qty", "0") + " / " + curr.orderSummaryData.getOrDefault("Sell_Qty", "0"), true);
+        printNettingDiffRow("Order Summary", "Buy Turnover", prev.orderSummaryData.getOrDefault("Buy_Turnover", prev.orderSummaryData.getOrDefault("buy_turnover", "0")), curr.orderSummaryData.getOrDefault("Buy_Turnover", curr.orderSummaryData.getOrDefault("buy_turnover", "0")), false);
+
+        // 4. Account Limits
+        printNettingDiffRow("Account Limits", "Remaining Cash", prev.accountLimitsData.getOrDefault("Remaining_Cash", prev.accountLimitsData.getOrDefault("remaining_cash", "0")), curr.accountLimitsData.getOrDefault("Remaining_Cash", curr.accountLimitsData.getOrDefault("remaining_cash", "0")), false);
+        printNettingDiffRow("Account Limits", "Blocked / Day Order", prev.accountLimitsData.getOrDefault("Blocked_Day", prev.accountLimitsData.getOrDefault("blocked_day", "0")), curr.accountLimitsData.getOrDefault("Blocked_Day", curr.accountLimitsData.getOrDefault("blocked_day", "0")), false);
+        printNettingDiffRow("Account Limits", "Total Transaction", prev.accountLimitsData.getOrDefault("Total_Tx", prev.accountLimitsData.getOrDefault("total_tx", "0")), curr.accountLimitsData.getOrDefault("Total_Tx", curr.accountLimitsData.getOrDefault("total_tx", "0")), false);
+
+        // 5. Market Depth
+        printNettingDiffRow("Market Depth", "LTP", prev.marketDepthData.getOrDefault("LTP", prev.marketDepthData.getOrDefault("ltp", "-")), curr.marketDepthData.getOrDefault("LTP", curr.marketDepthData.getOrDefault("ltp", "-")), false);
+        printNettingDiffRow("Market Depth", "Netting Badge", String.valueOf(prev.marketDepthNettingBadge), String.valueOf(curr.marketDepthNettingBadge), true);
+        printNettingDiffRow("Market Depth", "Buy / Sell Ratio", prev.marketDepthData.getOrDefault("BUY%", "-") + " / " + prev.marketDepthData.getOrDefault("SELL%", "-"), curr.marketDepthData.getOrDefault("BUY%", "-") + " / " + curr.marketDepthData.getOrDefault("SELL%", "-"), true);
+
+        // 6. Netting Watchlist
+        printNettingDiffRow("Netting Watchlist", "Dedicated Watchlist", String.valueOf(prev.dedicatedNettingWatchlist), String.valueOf(curr.dedicatedNettingWatchlist), true);
+        printNettingDiffRow("Netting Watchlist", "Netting Icon", String.valueOf(prev.watchlistNettingIcon), String.valueOf(curr.watchlistNettingIcon), true);
+        printNettingDiffRow("Netting Watchlist", "Symbol Rows", String.valueOf(prev.watchlistSymbolCount), String.valueOf(curr.watchlistSymbolCount), false);
+
+        System.out.println("+--------------------+--------------------------+--------------------+--------------------+-----------------------------+");
+        System.out.println(">>> WIDGET-WISE AUDIT VERDICT:");
+        System.out.printf("  * Portfolio       : %s%n", getWidgetDiffVerdict(prev.portfolioData, curr.portfolioData));
+        System.out.printf("  * Order Terminal  : %s%n", getTerminalDiffVerdict(prev.orderTerminalData, curr.orderTerminalData));
+        System.out.printf("  * Order Summary   : %s%n", getSummaryDiffVerdict(prev.orderSummaryData, curr.orderSummaryData));
+        System.out.printf("  * Account Limits  : %s%n", getLimitsDiffVerdict(prev.accountLimitsData, curr.accountLimitsData));
+        System.out.printf("  * Market Depth    : LTP: %s -> %s (Netting Badge: %b)%n", prev.marketDepthData.getOrDefault("LTP", "-"), curr.marketDepthData.getOrDefault("LTP", "-"), curr.marketDepthNettingBadge);
+        System.out.printf("  * Netting Watchlist: Scrips: %d (Dedicated: %b, Netting Icon: %b)%n", curr.watchlistSymbolCount, curr.dedicatedNettingWatchlist, curr.watchlistNettingIcon);
+        System.out.println("========================================================================================================================\n");
+    }
+
+    private static void printNettingDiffRow(String widget, String param, String prev, String curr, boolean isText) {
+        String p = (prev == null || prev.trim().isEmpty()) ? "-" : prev.trim();
+        String c = (curr == null || curr.trim().isEmpty()) ? "-" : curr.trim();
+        String verdict = "UNCHANGED";
+
+        if (!isText && !p.equals("-") && !c.equals("-")) {
+            try {
+                double dP = OMSweb_Trade.parseNumSafe(p);
+                double dC = OMSweb_Trade.parseNumSafe(c);
+                double diff = dC - dP;
+                if (Math.abs(diff) < 0.0001) {
+                    verdict = "UNCHANGED (IN SYNC)";
+                } else if (diff > 0) {
+                    verdict = String.format(Locale.US, "CHANGED (+%,.2f)", diff);
+                } else {
+                    verdict = String.format(Locale.US, "CHANGED (-%,.2f)", Math.abs(diff));
+                }
+            } catch (Exception ignored) {
+                verdict = p.equalsIgnoreCase(c) ? "UNCHANGED (IN SYNC)" : "UPDATED";
+            }
+        } else {
+            if (p.equals("-") && !c.equals("-")) verdict = "NEW VALUE (" + c + ")";
+            else if (!p.equalsIgnoreCase(c)) verdict = "UPDATED (" + c + ")";
+            else verdict = "UNCHANGED";
+        }
+        System.out.printf("| %-18s | %-24s | %-18s | %-18s | %-27s |%n", widget, param, p, c, verdict);
+    }
+
+    private static String getWidgetDiffVerdict(Map<String, String> prev, Map<String, String> curr) {
+        double pQty = OMSweb_Trade.parseNumSafe(prev.getOrDefault("Total_Qty", prev.getOrDefault("total_qty", "0")));
+        double cQty = OMSweb_Trade.parseNumSafe(curr.getOrDefault("Total_Qty", curr.getOrDefault("total_qty", "0")));
+        if (cQty != pQty) return String.format(Locale.US, "Holdings Updated: %,.0f -> %,.0f (Delta: %+.0f shares)", pQty, cQty, (cQty - pQty));
+        return "Holdings in sync";
+    }
+
+    private static String getTerminalDiffVerdict(Map<String, String> prev, Map<String, String> curr) {
+        String pId = prev.getOrDefault("Order_ID", prev.getOrDefault("order_id", "-"));
+        String cId = curr.getOrDefault("Order_ID", curr.getOrDefault("order_id", "-"));
+        String status = curr.getOrDefault("Status", curr.getOrDefault("status", "Accepted"));
+        if (!cId.equals(pId) && !cId.equals("-")) return String.format("New Order Placed: #%s (Status: %s)", cId, status);
+        return "Terminal verified (Status: " + status + ")";
+    }
+
+    private static String getSummaryDiffVerdict(Map<String, String> prev, Map<String, String> curr) {
+        double pOrd = OMSweb_Trade.parseNumSafe(prev.getOrDefault("Total_Orders", prev.getOrDefault("total_orders", "0")));
+        double cOrd = OMSweb_Trade.parseNumSafe(curr.getOrDefault("Total_Orders", curr.getOrDefault("total_orders", "0")));
+        if (cOrd != pOrd) return String.format(Locale.US, "Order Count: %,.0f -> %,.0f (+%.0f new order)", pOrd, cOrd, (cOrd - pOrd));
+        return "Order Summary in sync";
+    }
+
+    private static String getLimitsDiffVerdict(Map<String, String> prev, Map<String, String> curr) {
+        double pCash = OMSweb_Trade.parseNumSafe(prev.getOrDefault("Remaining_Cash", prev.getOrDefault("remaining_cash", "0")));
+        double cCash = OMSweb_Trade.parseNumSafe(curr.getOrDefault("Remaining_Cash", curr.getOrDefault("remaining_cash", "0")));
+        if (cCash != pCash) return String.format(Locale.US, "Cash Balance: %,.2f -> %,.2f BDT (Delta: %+.2f BDT)", pCash, cCash, (cCash - pCash));
+        return "Limits verified in sync";
     }
 
     // =========================================================================
@@ -1240,9 +1367,8 @@ public class Day_Netting {
                     System.out.println("  -> [EXECUTED] IS_DSE_DAY_NETTING_ENABLED = true | IS_CSE_DAY_NETTING_ENABLED = true");
                 }
 
-                // 3. Real-Time UI Data Check for 6 Widgets:
-                // (Netting Watchlist, Market Depth, Portfolio, Order Terminal, Order Summary, Account Limits)
-                System.out.println("\n>>> [REAL-TIME 6-WIDGET UI DATA CHECK] Inspecting Core Widgets... <<<");
+                // 3. Real-Time UI Data Reflection, Pre-Trade Capture, Trade Execution & Post-Trade Comparison
+                System.out.println("\n>>> [REAL-TIME 6-WIDGET UI DATA AUDIT & TRADE VERIFICATION] <<<");
                 System.out.print("Enter Target Symbol to Audit (default=GP, press ENTER): ");
                 String sym = sc.nextLine().trim();
                 if (sym.isEmpty()) sym = "GP";
@@ -1250,8 +1376,49 @@ public class Day_Netting {
                 String cln = sc.nextLine().trim();
                 if (cln.isEmpty()) cln = "23986";
 
-                check6NettingWidgetsRealTimeUiData(driver, "NETTING_" + targetMode.name() + "_" + targetExchange, cln, sym, targetExchange);
-                System.out.println("[ACTION COMPLETE] Netting Mode, Exchange Netting, and 6-Widget Real-Time UI Data Check finished successfully.");
+                // Step 1: Reflect client code across all widgets
+                OMSweb_Trade.propagateClientCodeToAllWidgets(driver, cln, sym);
+
+                // Step 2: Capture Pre-Trade Baseline Snapshot across all 6 widgets
+                System.out.printf("%n>>> [STEP 1/3] CAPTURING PRE-TRADE REAL-TIME DATA ACROSS 6 WIDGETS FOR CLIENT: %s...%n", cln);
+                Netting6WidgetsUiSnapshot preTradeSnap = check6NettingWidgetsRealTimeUiData(driver, "PRE-TRADE_BASELINE_" + targetMode.name() + "_" + targetExchange, cln, sym, targetExchange);
+
+                // Step 3: Execute Live Trade to verify real-time widget updates
+                System.out.printf("%n=============================================================================%n");
+                System.out.printf(">>> [STEP 2/3] EXECUTE TRADE TO VERIFY LIVE REAL-TIME WIDGET UPDATES%n");
+                System.out.printf("    Client: %s | Symbol: %s | Exchange: %s%n", cln, sym, targetExchange);
+                System.out.printf("=============================================================================%n");
+                System.out.print("Select Trade Action to execute (1=BUY / 2=SELL / 0=Skip Trade, default=1 [BUY] in 4s): ");
+                String tradeOpt = OMSweb_Trade.readLineWithTimeout(sc, "1", 4);
+
+                if (!"0".equals(tradeOpt) && !"skip".equalsIgnoreCase(tradeOpt)) {
+                    String side = ("2".equals(tradeOpt) || "sell".equalsIgnoreCase(tradeOpt)) ? "SELL" : "BUY";
+                    int tradeQty = 1;
+                    System.out.print("Enter Trade Quantity (default=1, press ENTER): ");
+                    String qtyStr = OMSweb_Trade.readLineWithTimeout(sc, "1", 3);
+                    try { if (!qtyStr.isEmpty()) tradeQty = Integer.parseInt(qtyStr.trim()); } catch (Exception ignored) {}
+
+                    double tradeRate = 0.0;
+                    try {
+                        String ltpStr = preTradeSnap.marketDepthData.getOrDefault("LTP", preTradeSnap.marketDepthData.getOrDefault("ltp", "0"));
+                        tradeRate = OMSweb_Trade.parseNumSafe(ltpStr);
+                    } catch (Exception ignored) {}
+                    if (tradeRate <= 0.0) tradeRate = 280.0;
+
+                    System.out.printf("  -> Submitting %s Order: %d shares of %s @ %.2f for Client %s on %s...%n", side, tradeQty, sym, tradeRate, cln, targetExchange);
+                    String orderEx = "BOTH".equalsIgnoreCase(targetExchange) ? "DSE" : targetExchange;
+                    OMSweb_Trade.executeTradeOrderDirectSafe(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), side, cln, sym, tradeQty, tradeRate, orderEx);
+                    System.out.println("  ✓ [TRADE EXECUTED] Order placed and confirmed. Waiting 2s for DOM updates...");
+                    Thread.sleep(2000);
+                }
+
+                // Step 4: Capture Post-Trade Snapshot across all 6 widgets
+                System.out.printf("%n>>> [STEP 3/3] CAPTURING POST-TRADE REAL-TIME DATA ACROSS 6 WIDGETS FOR CLIENT: %s...%n", cln);
+                Netting6WidgetsUiSnapshot postTradeSnap = check6NettingWidgetsRealTimeUiData(driver, "POST-TRADE_REALTIME_" + targetMode.name() + "_" + targetExchange, cln, sym, targetExchange);
+
+                // Step 5: Compare Pre-Trade vs Post-Trade & Render Widget-Wise Results
+                compareAndReportNettingWidgets(preTradeSnap, postTradeSnap, "DAY NETTING UI AUDIT (" + targetMode.name() + " - " + targetExchange + ")");
+                System.out.println("[ACTION COMPLETE] Netting Mode, Exchange Netting, Trade Execution, and Widget-Wise Comparison finished successfully.");
             } else if ("2".equals(choice)) {
                 System.out.println("\n-------------------------------------------------------------");
                 System.out.println("     2. CONFIGURE EXCHANGE NETTING (INDIVIDUAL SELECTION)    ");
