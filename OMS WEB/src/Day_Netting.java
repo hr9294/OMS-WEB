@@ -220,9 +220,20 @@ public class Day_Netting {
      * Configures the global DAY_NETTING_SETTINGS mode.
      */
     public static boolean configureNettingMode(WebDriver driver, NettingMode mode, String password) {
+        return configureNettingMode(driver, mode, password, true);
+    }
+
+    /**
+     * Configures the global DAY_NETTING_SETTINGS mode (None, Individual Exchange, Cross Exchange).
+     * Individually selectable:
+     * - None: Automatically executes both DSE & CSE netting as DISABLED.
+     * - Individual Exchange: Automatically executes both DSE & CSE netting as ENABLED.
+     * - Cross Exchange: Automatically executes both DSE & CSE netting as ENABLED (Cross-Netting).
+     */
+    public static boolean configureNettingMode(WebDriver driver, NettingMode mode, String password, boolean autoExecuteExchanges) {
         if (driver == null || mode == null) return false;
         try {
-            System.out.printf("\n[RMS NETTING] Setting DAY_NETTING_SETTINGS -> %s (%s)...%n", mode.getDisplayName(), mode.getDescription());
+            System.out.printf("\n[RMS NETTING] Configuring DAY_NETTING_SETTINGS -> %s (%s)...%n", mode.getDisplayName(), mode.getDescription());
             JavascriptExecutor js = (JavascriptExecutor) driver;
 
             js.executeScript(
@@ -261,6 +272,27 @@ public class Day_Netting {
             }
 
             System.out.printf("[RMS NETTING] DAY_NETTING_SETTINGS configured to: %s%n", mode.getDisplayName());
+
+            // Auto-execute exchange netting for those 2 (DSE & CSE):
+            if (autoExecuteExchanges) {
+                if (mode == NettingMode.NONE) {
+                    System.out.println("[RMS NETTING: AUTO-EXECUTE] Mode is NONE -> Executing Netting Disabled for both DSE & CSE...");
+                    setExchangeNettingEnabled(driver, "DSE", false, password);
+                    setExchangeNettingEnabled(driver, "CSE", false, password);
+                    System.out.println("  -> [EXECUTED] IS_DSE_DAY_NETTING_ENABLED = false | IS_CSE_DAY_NETTING_ENABLED = false");
+                } else if (mode == NettingMode.INDIVIDUAL_EXCHANGE) {
+                    System.out.println("[RMS NETTING: AUTO-EXECUTE] Mode is INDIVIDUAL EXCHANGE -> Executing Netting Enabled for both DSE & CSE...");
+                    setExchangeNettingEnabled(driver, "DSE", true, password);
+                    setExchangeNettingEnabled(driver, "CSE", true, password);
+                    System.out.println("  -> [EXECUTED] IS_DSE_DAY_NETTING_ENABLED = true | IS_CSE_DAY_NETTING_ENABLED = true (Individual Netting)");
+                } else if (mode == NettingMode.CROSS_EXCHANGE) {
+                    System.out.println("[RMS NETTING: AUTO-EXECUTE] Mode is CROSS EXCHANGE -> Executing Cross Netting Enabled for both DSE & CSE...");
+                    setExchangeNettingEnabled(driver, "DSE", true, password);
+                    setExchangeNettingEnabled(driver, "CSE", true, password);
+                    System.out.println("  -> [EXECUTED] IS_DSE_DAY_NETTING_ENABLED = true | IS_CSE_DAY_NETTING_ENABLED = true (Cross-Exchange Netting)");
+                }
+            }
+
             return true;
         } catch (Exception e) {
             System.out.println("[RMS NETTING: ERROR] Configuring mode: " + e.getMessage());
@@ -304,6 +336,17 @@ public class Day_Netting {
             System.out.println("[RMS NETTING: ERROR] Setting exchange netting: " + e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * Configures Exchange Netting for BOTH DSE and CSE simultaneously.
+     */
+    public static boolean setBothExchangesNettingEnabled(WebDriver driver, boolean enabled, String password) {
+        System.out.printf("\n[RMS NETTING] Configuring BOTH exchanges (DSE & CSE) Netting Enabled -> %b...%n", enabled);
+        boolean dse = setExchangeNettingEnabled(driver, "DSE", enabled, password);
+        boolean cse = setExchangeNettingEnabled(driver, "CSE", enabled, password);
+        System.out.printf("[RMS NETTING] BOTH Exchanges Netting Configuration: DSE=%b, CSE=%b%n", dse, cse);
+        return dse && cse;
     }
 
     /**
@@ -605,6 +648,78 @@ public class Day_Netting {
     }
 
     /**
+     * UI Audit Scope 1: Market Depth Netting Indicator (Section 5.1).
+     */
+    public static boolean auditMarketDepthIndicator(WebDriver driver, String symbol) {
+        System.out.println("\n+-----------------------------------------------------------------------------------------+");
+        System.out.printf("| [AUDIT 1/3] MARKET DEPTH NETTING INDICATOR (SECTION 5.1) - SYMBOL: %-19s |%n", symbol != null ? symbol : "DEFAULT");
+        System.out.println("+-----------------------------------------------------------------------------------------+");
+        boolean depthOk = verifyMarketDepthNettingIndicator(driver, symbol);
+        System.out.println("+----+-------------------------------------------+----------------------------------------+");
+        System.out.println("| #  | UI AUDIT ITEM                             | STATUS / VALUE                         |");
+        System.out.println("+----+-------------------------------------------+----------------------------------------+");
+        System.out.printf("| 1  | 5.1 Market Depth Netting Indicator        | %-38s |%n", depthOk ? "ACTIVE / DISPLAYED" : "DEFAULT / HIDDEN");
+        System.out.println("+----+-------------------------------------------+----------------------------------------+\n");
+        return depthOk;
+    }
+
+    /**
+     * UI Audit Scope 2: Watchlists Netting Indicators (Sections 5.2 - 5.4).
+     */
+    public static boolean auditWatchlistsIndicators(WebDriver driver, String symbol) {
+        System.out.println("\n+-----------------------------------------------------------------------------------------+");
+        System.out.printf("| [AUDIT 2/3] WATCHLISTS NETTING INDICATORS (SECTIONS 5.2 - 5.4) - SYMBOL: %-15s |%n", symbol != null ? symbol : "DEFAULT");
+        System.out.println("+-----------------------------------------------------------------------------------------+");
+        boolean defaultWatchlist = verifyDefaultNettingWatchlist(driver, symbol);
+        String hoverText = verifyExistingWatchlistNettingIconAndHover(driver, symbol);
+        boolean existingIcon = !hoverText.isEmpty();
+        boolean marketWatch = verifyMarketWatchNettingIndicator(driver, symbol);
+
+        System.out.println("+----+-------------------------------------------+----------------------------------------+");
+        System.out.println("| #  | UI AUDIT ITEM                             | STATUS / VALUE                         |");
+        System.out.println("+----+-------------------------------------------+----------------------------------------+");
+        System.out.printf("| 1  | 5.2 Default Netting Watchlist             | %-38s |%n", defaultWatchlist ? "PRESENT" : "NOT CONFIGURED");
+        System.out.printf("| 2  | 5.3 Existing Watchlist Netting Icon/Hover | %-38s |%n", existingIcon ? truncate(hoverText, 38) : "NONE");
+        System.out.printf("| 3  | 5.4 Market Watch Netting Indicator        | %-38s |%n", marketWatch ? "ACTIVE" : "NONE");
+        System.out.println("+----+-------------------------------------------+----------------------------------------+\n");
+        return defaultWatchlist || existingIcon || marketWatch;
+    }
+
+    /**
+     * UI Audit Scope 3: Order Window Netting Indicators (Sections 5.5 - 5.6).
+     */
+    public static boolean auditOrderWindowIndicators(WebDriver driver, String symbol, String clientCode) {
+        System.out.println("\n+-----------------------------------------------------------------------------------------+");
+        System.out.println("| [AUDIT 3/3] ORDER WINDOW NETTING INDICATORS (SECTIONS 5.5 - 5.6)                        |");
+        System.out.printf("| Target Symbol: %-15s | Target Client: %-37s |%n", symbol != null ? symbol : "-", clientCode != null ? clientCode : "-");
+        System.out.println("+-----------------------------------------------------------------------------------------+");
+        Map<String, Boolean> owEx = verifyOrderWindowExchangeNettingIndicators(driver, symbol);
+        boolean dse = owEx.getOrDefault("DSE", false);
+        boolean cse = owEx.getOrDefault("CSE", false);
+        boolean blocked = verifyOrderWindowClientNettingBlocked(driver, clientCode);
+
+        System.out.println("+----+-------------------------------------------+----------------------------------------+");
+        System.out.println("| #  | UI AUDIT ITEM                             | STATUS / VALUE                         |");
+        System.out.println("+----+-------------------------------------------+----------------------------------------+");
+        System.out.printf("| 1  | 5.5 Order Window DSE Indicator            | %-38s |%n", dse ? "ENABLED" : "DISABLED");
+        System.out.printf("| 2  | 5.5 Order Window CSE Indicator            | %-38s |%n", cse ? "ENABLED" : "DISABLED");
+        System.out.printf("| 3  | 5.6 Order Window Client Netting Blocked   | %-38s |%n", blocked ? "BLOCKED WARNING ACTIVE" : "CLIENT ALLOWED");
+        System.out.println("+----+-------------------------------------------+----------------------------------------+\n");
+        return dse || cse || blocked;
+    }
+
+    /**
+     * 3-in-1 Selection: Executes All 3 Audits Sequentially (Market Depth, Watchlists, Order Window).
+     */
+    public static NettingUIReport run3in1UIIndicatorsAudit(WebDriver driver, String symbol, String clientCode) {
+        System.out.println("\n=========================================================================================");
+        System.out.println("   >>> [3-IN-1 SELECTION] RUNNING ALL 3 UI NETTING AUDITS SEQUENTIALLY <<<               ");
+        System.out.println("   1. Market Depth Indicator -> 2. Watchlists Indicators -> 3. Order Window Indicators   ");
+        System.out.println("=========================================================================================");
+        return runFullUIIndicatorsAudit(driver, symbol, clientCode);
+    }
+
+    /**
      * Runs full UI indicator audit for all 6 requirements.
      */
     public static NettingUIReport runFullUIIndicatorsAudit(WebDriver driver, String symbol, String clientCode) {
@@ -820,13 +935,16 @@ public class Day_Netting {
 
         boolean running = true;
         while (running) {
-            System.out.println("\n[DAY NETTING] Select Action:");
+            System.out.println("\n=======================================================");
+            System.out.println("            DAY NETTING (SCRIP NETTING) ENGINE        ");
+            System.out.println("=======================================================");
+            System.out.println("Select Action:");
             System.out.println("  1. Configure Netting Mode (None / Individual / Cross Exchange)");
-            System.out.println("  2. Configure Exchange Netting (DSE / CSE Enable/Disable)");
+            System.out.println("  2. Configure Exchange Netting (DSE / CSE Enable/Disable - DSE / CSE / BOTH)");
             System.out.println("  3. Upload / Manage Applicable Symbols");
             System.out.println("  4. Configure Client Netting Eligibility (Allow / Block Client)");
             System.out.println("  5. Configure Market / Board-wise Restrictions");
-            System.out.println("  6. Run UI Netting Indicators Audit (Market Depth, Watchlists, Order Window)");
+            System.out.println("  6. Run UI Netting Indicators Audit (Market Depth, Watchlists, Order Window - 3-in-1)");
             System.out.println("  7. Run Full Automated Scrip Netting Test Suite (All 5 Scopes)");
             System.out.println("  0. Return to Main Menu");
 
@@ -847,20 +965,50 @@ public class Day_Netting {
                 running = false;
                 break;
             } else if ("1".equals(choice)) {
-                System.out.println("\nSelect Netting Mode: 1=None, 2=Individual Exchange, 3=Cross Exchange");
-                System.out.print("Choice (1-3): ");
+                System.out.println("\n-------------------------------------------------------------");
+                System.out.println("       1. CONFIGURE NETTING MODE (INDIVIDUAL SELECTION)      ");
+                System.out.println("-------------------------------------------------------------");
+                System.out.println("Select Netting Mode individually:");
+                System.out.println("  1. None (Netting disabled across the system)");
+                System.out.println("  2. Individual Exchange (Netting within same exchange)");
+                System.out.println("  3. Cross Exchange (Netting across DSE & CSE)");
+                System.out.print("Enter Choice (1-3): ");
                 String mChoice = sc.nextLine().trim();
-                NettingMode targetMode = "2".equals(mChoice) ? NettingMode.INDIVIDUAL_EXCHANGE :
-                                         "3".equals(mChoice) ? NettingMode.CROSS_EXCHANGE : NettingMode.NONE;
-                System.out.print("Enter password authentication (or press ENTER): ");
+                NettingMode targetMode = "2".equals(mChoice) || "individual".equalsIgnoreCase(mChoice) ? NettingMode.INDIVIDUAL_EXCHANGE :
+                                         "3".equals(mChoice) || "cross".equalsIgnoreCase(mChoice) ? NettingMode.CROSS_EXCHANGE : NettingMode.NONE;
+
+                System.out.print("Enter password authentication (or press ENTER if none required): ");
                 String pwd = sc.nextLine().trim();
-                configureNettingMode(driver, targetMode, pwd);
+                configureNettingMode(driver, targetMode, pwd, true);
             } else if ("2".equals(choice)) {
-                System.out.print("Enter Exchange (DSE/CSE): ");
-                String ex = sc.nextLine().trim().toUpperCase();
-                System.out.print("Enable Netting? (1=True / 0=False): ");
-                boolean en = "1".equals(sc.nextLine().trim());
-                setExchangeNettingEnabled(driver, ex, en, null);
+                System.out.println("\n-------------------------------------------------------------");
+                System.out.println("     2. CONFIGURE EXCHANGE NETTING (INDIVIDUAL SELECTION)    ");
+                System.out.println("-------------------------------------------------------------");
+                System.out.println("Select Target Exchange individually:");
+                System.out.println("  1. DSE (Dhaka Stock Exchange)");
+                System.out.println("  2. CSE (Chittagong Stock Exchange)");
+                System.out.println("  3. BOTH (DSE & CSE)");
+                System.out.print("Enter Choice (1-3, default=3): ");
+                String exChoice = sc.nextLine().trim();
+                if (exChoice.isEmpty()) exChoice = "3";
+
+                System.out.println("\nSelect Netting Status:");
+                System.out.println("  1. Enable Netting (True)");
+                System.out.println("  2. Disable Netting (False)");
+                System.out.print("Enter Choice (1-2, default=1): ");
+                String stChoice = sc.nextLine().trim();
+                boolean enable = !"2".equals(stChoice) && !"disable".equalsIgnoreCase(stChoice) && !"false".equalsIgnoreCase(stChoice);
+
+                System.out.print("Enter password authentication (or press ENTER if none required): ");
+                String pwd = sc.nextLine().trim();
+
+                if ("1".equals(exChoice) || "dse".equalsIgnoreCase(exChoice)) {
+                    setExchangeNettingEnabled(driver, "DSE", enable, pwd);
+                } else if ("2".equals(exChoice) || "cse".equalsIgnoreCase(exChoice)) {
+                    setExchangeNettingEnabled(driver, "CSE", enable, pwd);
+                } else {
+                    setBothExchangesNettingEnabled(driver, enable, pwd);
+                }
             } else if ("3".equals(choice)) {
                 System.out.print("Enter Exchange (DSE/CSE): ");
                 String ex = sc.nextLine().trim().toUpperCase();
@@ -886,13 +1034,36 @@ public class Day_Netting {
                 boolean blk = "1".equals(sc.nextLine().trim());
                 configureMarketBoardBlock(driver, ex, mkt, brd, blk);
             } else if ("6".equals(choice)) {
-                System.out.print("Enter Symbol to Audit (default=GP): ");
+                System.out.println("\n-------------------------------------------------------------");
+                System.out.println("     6. RUN UI NETTING INDICATORS AUDIT (3-IN-1 SELECTION)  ");
+                System.out.println("-------------------------------------------------------------");
+                System.out.println("Select Audit Scope individually or choose 3-in-1:");
+                System.out.println("  1. Market Depth Netting Indicator (Section 5.1)");
+                System.out.println("  2. Watchlists Netting Indicators (Default Watchlist 5.2, Existing Watchlists 5.3, Market Watch 5.4)");
+                System.out.println("  3. Order Window Netting Indicators (DSE/CSE Section 5.5, Client Blocked Status 5.6)");
+                System.out.println("  4. 3-in-1 Complete Audit (Execute All 3 Audits Sequentially) [Default]");
+                System.out.print("Enter Choice (1-4, default=4): ");
+                String auditChoice = sc.nextLine().trim();
+                if (auditChoice.isEmpty()) auditChoice = "4";
+
+                System.out.print("Enter Target Symbol to Audit (default=GP): ");
                 String sym = sc.nextLine().trim();
                 if (sym.isEmpty()) sym = "GP";
+
                 System.out.print("Enter Client Code to Audit (default=23986): ");
                 String cln = sc.nextLine().trim();
                 if (cln.isEmpty()) cln = "23986";
-                runFullUIIndicatorsAudit(driver, sym, cln);
+
+                if ("1".equals(auditChoice) || "depth".equalsIgnoreCase(auditChoice)) {
+                    auditMarketDepthIndicator(driver, sym);
+                } else if ("2".equals(auditChoice) || "watchlist".equalsIgnoreCase(auditChoice)) {
+                    auditWatchlistsIndicators(driver, sym);
+                } else if ("3".equals(auditChoice) || "order".equalsIgnoreCase(auditChoice)) {
+                    auditOrderWindowIndicators(driver, sym, cln);
+                } else {
+                    System.out.println("\n>>> Running 3-in-1 Selection: Executing All 3 UI Netting Audits... <<<");
+                    run3in1UIIndicatorsAudit(driver, sym, cln);
+                }
             } else if ("7".equals(choice) || "test".equalsIgnoreCase(choice)) {
                 runAllNettingTests(driver);
             } else {
