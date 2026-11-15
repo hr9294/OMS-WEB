@@ -189,24 +189,24 @@ public class ClientPortfolio {
         } catch (Exception ignored) {}
     }
 
-    private static void ensureClientLoadedInUi(WebDriver driver, String clientCode) {
+    public static void ensureClientLoadedInUi(WebDriver driver, String clientCode) {
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
             js.executeScript(
                 "var code = arguments[0];" +
-                "var inp = document.getElementById('portfolio_code_input');" +
-                "if (inp) inp.value = code;" +
+                "var inp = document.getElementById('portfolio_code_input') || document.querySelector('input[id*=\"portfolio\"], #account-portfolio input');" +
+                "if (inp) { inp.value = code; try { $(inp).trigger('input').trigger('change'); } catch(e){} }" +
                 "if (typeof selectSaleable === 'function') {" +
                 "    selectSaleable(code);" +
                 "} else if (window.$) {" +
-                "    $.get('shared/portfolio_code', function(data) {" +
+                "    $.get('shared/portfolio_code?clientcode=' + encodeURIComponent(code), function(data) {" +
                 "        $('#account-portfolio').html(data);" +
                 "        if (typeof selectSaleable === 'function') selectSaleable(code);" +
                 "    });" +
                 "}",
                 clientCode
             );
-            Thread.sleep(200);
+            Thread.sleep(450);
         } catch (Exception ignored) {}
     }
 

@@ -623,6 +623,9 @@ public class Account_Limits {
     }
 
     public static Map<String, String> getUiSnapshot(WebDriver driver, String clientCode) {
+        if (clientCode != null && !clientCode.trim().isEmpty()) {
+            filterByClient(driver, clientCode.trim());
+        }
         Map<String, String> uiData = fetchFromUiTables(driver);
         uiData.put("DATA_SOURCE", "UI Tables DOM");
         return uiData;

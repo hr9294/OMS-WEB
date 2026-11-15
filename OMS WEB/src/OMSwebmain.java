@@ -215,6 +215,12 @@ public class OMSwebmain {
                 }
             }
 
+            if (!"0".equals(engChoice) && !"exit".equalsIgnoreCase(engChoice) && !"quit".equalsIgnoreCase(engChoice)) {
+                try {
+                    OMSweb_Trade.handleIdlePopupIfPresent(driver);
+                } catch (Exception ignored) {}
+            }
+
             if ("0".equals(engChoice) || "exit".equalsIgnoreCase(engChoice) || "quit".equalsIgnoreCase(engChoice)) {
                 System.out.println("\n[UFTFAST OMS] User requested exit. Browser detached. Goodbye!");
                 keepSessionAlive = false;

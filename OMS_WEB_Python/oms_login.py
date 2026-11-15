@@ -17,6 +17,22 @@ def press_ok_automatically(driver: webdriver.Chrome) -> None:
     """Dismisses browser alerts, breach popups, or web modal OK buttons automatically."""
     time.sleep(0.8)
 
+    # 0. Check for "Reload Manually" / "You were idle!" modal
+    try:
+        reload_btns = driver.find_elements(By.XPATH, (
+            "//button[contains(normalize-space(), 'Reload Manually') or contains(text(), 'Reload Manually')] | "
+            "//a[contains(normalize-space(), 'Reload Manually') or contains(text(), 'Reload Manually')] | "
+            "//*[contains(text(), 'You were idle')]/ancestor::div[contains(@class,'modal') or contains(@class,'dialog') or contains(@class,'swal') or contains(@class,'popup') or contains(@class,'jconfirm')]//button"
+        ))
+        for btn in reload_btns:
+            if btn.is_displayed():
+                driver.execute_script("arguments[0].click();", btn)
+                print("[IDLE POPUP] Automatically clicked 'Reload Manually' button in DOM.")
+                time.sleep(1.5)
+                return
+    except Exception:
+        pass
+
     # 1. Check DOM modal buttons (e.g. OK, Confirm, Dismiss)
     try:
         xpath_query = (
@@ -124,6 +140,11 @@ def login(
 
     # Dismiss any leftover breach alerts or info modals
     press_ok_automatically(driver)
+    try:
+        import oms_trade
+        oms_trade.install_anti_idle_heartbeat(driver)
+    except Exception:
+        pass
     time.sleep(1.0)
 
     print("✔ [LOGIN] Authentication successful. Logged in as: " + usr)

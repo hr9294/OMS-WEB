@@ -37,6 +37,7 @@ def navigate_to_trade_page(driver: webdriver.Chrome, force: bool = False) -> Non
                 return false;
             """)
             if is_on_trade:
+                install_anti_idle_heartbeat(driver)
                 print("[NAV] Already on Trade portal. Keeping live real-time UI without reloading.")
                 return
         except Exception:
@@ -242,7 +243,166 @@ def install_symbol_whitespace_sanitizer(driver: webdriver.Chrome) -> None:
         pass
 
 
+def handle_idle_popup_if_present(driver: webdriver.Chrome) -> bool:
+    """
+    Checks if 'You were idle!' modal or 'Reload Manually' button is present.
+    If detected, clicks 'Reload Manually', waits for reload, restores Trade page and returns True.
+    Also ensures anti-idle heartbeat is active.
+    """
+    if not driver:
+        return False
+    try:
+        # 1. XPath detection
+        idle_xpaths = [
+            "//button[contains(normalize-space(), 'Reload Manually') or contains(text(), 'Reload Manually')]",
+            "//a[contains(normalize-space(), 'Reload Manually') or contains(text(), 'Reload Manually')]",
+            "//*[contains(text(), 'You were idle')]/ancestor::div[contains(@class,'modal') or contains(@class,'dialog') or contains(@class,'swal') or contains(@class,'popup') or contains(@class,'jconfirm') or contains(@class,'box')]//button",
+            "//button[contains(., 'Reload Manually') or contains(., 'reload manually')]"
+        ]
+        clicked = False
+        for xp in idle_xpaths:
+            try:
+                btns = driver.find_elements(By.XPATH, xp)
+                for b in btns:
+                    if b.is_displayed():
+                        print("[IDLE DETECTED] 'You were idle!' popup appeared. Clicking 'Reload Manually'...")
+                        try:
+                            b.click()
+                        except Exception:
+                            driver.execute_script("arguments[0].click();", b)
+                        clicked = True
+                        break
+            except Exception:
+                pass
+            if clicked:
+                break
+
+        # 2. JavaScript fallback
+        if not clicked:
+            res = driver.execute_script("""
+                try {
+                    var btns = document.querySelectorAll('button, a, .btn, .swal2-confirm, .swal-button, .jconfirm-btn');
+                    for (var i = 0; i < btns.length; i++) {
+                        var txt = (btns[i].innerText || btns[i].textContent || '').trim();
+                        if (txt.toLowerCase().indexOf('reload manually') !== -1) {
+                            btns[i].click();
+                            return true;
+                        }
+                    }
+                    var bodyText = document.body ? (document.body.innerText || document.body.textContent || '') : '';
+                    if (bodyText.indexOf('You were idle!') !== -1) {
+                        for (var j = 0; j < btns.length; j++) {
+                            if (btns[j].offsetParent !== null) {
+                                btns[j].click();
+                                return true;
+                            }
+                        }
+                        window.location.reload();
+                        return true;
+                    }
+                } catch(e) {}
+                return false;
+            """)
+            if res:
+                print("[IDLE DETECTED] Triggered 'Reload Manually' via JavaScript.")
+                clicked = True
+
+        if clicked:
+            print("[IDLE RECOVERY] Reloading page and restoring session...")
+            time.sleep(2.0)
+            end_wait = time.time() + 15
+            while time.time() < end_wait:
+                try:
+                    state = driver.execute_script("return document.readyState")
+                    if str(state).lower() == "complete":
+                        break
+                except Exception:
+                    pass
+                time.sleep(0.4)
+
+            # If redirected to login, re-login
+            try:
+                cur_url = driver.current_url or ""
+                if "login" in cur_url.lower():
+                    print("[IDLE RECOVERY] Session redirected to Login. Re-authenticating...")
+                    import oms_login
+                    oms_login.login(driver)
+            except Exception:
+                pass
+
+            # Restore Trade page
+            try:
+                navigate_to_trade_page(driver)
+            except Exception:
+                pass
+
+            install_anti_idle_heartbeat(driver)
+            print("[IDLE RECOVERY] Successfully recovered from idle state. Resuming execution.")
+            return True
+
+        install_anti_idle_heartbeat(driver)
+    except Exception:
+        pass
+    return False
+
+
+def install_anti_idle_heartbeat(driver: webdriver.Chrome) -> None:
+    """Injects client-side keep-alive event dispatcher and idle popup observer."""
+    if not driver:
+        return
+    try:
+        driver.execute_script("""
+            try {
+                if (!window._antiIdleInstalled) {
+                    window._antiIdleInstalled = true;
+                    setInterval(function() {
+                        try {
+                            window.dispatchEvent(new Event('mousemove'));
+                            window.dispatchEvent(new Event('keydown'));
+                            document.dispatchEvent(new Event('mousemove'));
+                        } catch(e) {}
+                    }, 8000);
+                }
+                if (!window._idleWatcherInstalled && window.MutationObserver) {
+                    window._idleWatcherInstalled = true;
+                    var obs = new MutationObserver(function() {
+                        try {
+                            var btns = document.querySelectorAll('button, a, .btn');
+                            for (var i = 0; i < btns.length; i++) {
+                                var txt = (btns[i].innerText || btns[i].textContent || '').trim();
+                                if (txt.toLowerCase().indexOf('reload manually') !== -1) {
+                                    console.log('[AUTO-RESOLVE] Idle popup intercepted! Clicking Reload Manually...');
+                                    btns[i].click();
+                                }
+                            }
+                        } catch(e) {}
+                    });
+                    obs.observe(document.body || document.documentElement, { childList: true, subtree: true });
+                }
+            } catch(e) {}
+        """)
+    except Exception:
+        pass
+
+
 def ensure_ui_unlocked(driver: webdriver.Chrome) -> bool:
+    """
+    Automatically detects and unblocks the UI if blocked, frozen, or locked:
+    0. Checks and handles 'You were idle!' popup.
+    1. Dismisses native browser alerts.
+    2. Closes lingering jQuery-Confirm dialogs, SweetAlerts, Bootbox modals.
+    3. Removes blocking backdrops (.modal-backdrop, .jconfirm-bg, .blockOverlay, #context-menu-layer).
+    4. Unfreezes document.body (removes .modal-open, restores pointer-events & overflow).
+    5. Force-enables locked or disabled form inputs (.order_submit_btn, inputs, buttons).
+    6. Brings active floating windows to top (zIndex = 9999).
+    """
+    if not driver:
+        return False
+    unblocked = False
+
+    # 0. Check and recover if 'You were idle!' appeared
+    if handle_idle_popup_if_present(driver):
+        unblocked = True
     """
     Automatically detects and unblocks the UI if blocked, frozen, or locked:
     1. Dismisses native browser alerts.

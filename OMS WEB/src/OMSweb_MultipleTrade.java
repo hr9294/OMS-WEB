@@ -830,6 +830,8 @@ public class OMSweb_MultipleTrade {
         int cycleIndex = 0;
 
         while (Duration.between(sessionStart, Instant.now()).compareTo(maxBudget) < 0 && (totalOrders <= 0 || (successCount + failedCount) < totalOrders)) {
+            // Check & recover if idle popup appeared
+            OMSweb_Trade.handleIdlePopupIfPresent(driver);
             TradeOrder templateOrder = pipeline.get(cycleIndex % pipeline.size());
             cycleIndex++;
             int currentOrderNum = successCount + failedCount + 1;
@@ -1673,6 +1675,7 @@ public class OMSweb_MultipleTrade {
 
     public static void dismissAnyOpenModal(WebDriver driver, JavascriptExecutor js) {
         try {
+            OMSweb_Trade.handleIdlePopupIfPresent(driver);
             try {
                 org.openqa.selenium.Alert alert = driver.switchTo().alert();
                 alert.dismiss();

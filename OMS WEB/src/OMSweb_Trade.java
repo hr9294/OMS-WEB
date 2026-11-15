@@ -2720,11 +2720,160 @@ public class OMSweb_Trade {
 
 	}
 
+		public static void navigateToTradePage(WebDriver driver) {
+		navigateToTradePage(driver, null, false);
+	}
+
+	// =========================================================================
+	// ANTI-IDLE & POPUP WATCHDOG: "You were idle! / Reload Manually"
+	// =========================================================================
+	public static boolean handleIdlePopupIfPresent(WebDriver driver) {
+		if (driver == null) return false;
+		try {
+			JavascriptExecutor js = (JavascriptExecutor) driver;
+
+			// 1. Direct check: Is there a "Reload Manually" button or "You were idle!" text visible?
+			List<WebElement> idleButtons = driver.findElements(By.xpath(
+				"//button[contains(normalize-space(), 'Reload Manually') or contains(text(), 'Reload Manually')] | " +
+				"//a[contains(normalize-space(), 'Reload Manually') or contains(text(), 'Reload Manually')] | " +
+				"//*[contains(text(), 'You were idle')]/ancestor::div[contains(@class,'modal') or contains(@class,'dialog') or contains(@class,'swal') or contains(@class,'popup') or contains(@class,'jconfirm') or contains(@class,'box')]//button | " +
+				"//button[contains(., 'Reload Manually') or contains(., 'reload manually')]"
+			));
+
+			boolean clicked = false;
+			for (WebElement btn : idleButtons) {
+				try {
+					if (btn.isDisplayed()) {
+						System.out.println("[IDLE DETECTED] 'You were idle!' popup appeared. Clicking 'Reload Manually'...");
+						try {
+							btn.click();
+						} catch (Exception clickEx) {
+							js.executeScript("arguments[0].click();", btn);
+						}
+						clicked = true;
+						break;
+					}
+				} catch (Exception ignored) {}
+			}
+
+			// 2. JavaScript query fallback if DOM element wasn't caught by XPath
+			if (!clicked) {
+				Object res = js.executeScript(
+					"try {" +
+					"    var btns = document.querySelectorAll('button, a, .btn, .swal2-confirm, .swal-button, .jconfirm-btn');" +
+					"    for (var i = 0; i < btns.length; i++) {" +
+					"        var txt = (btns[i].innerText || btns[i].textContent || '').trim();" +
+					"        if (txt.indexOf('Reload Manually') !== -1 || txt.toLowerCase() === 'reload manually') {" +
+					"            btns[i].click();" +
+					"            return true;" +
+					"        }" +
+					"    }" +
+					"    var bodyText = document.body ? (document.body.innerText || document.body.textContent || '') : '';" +
+					"    if (bodyText.indexOf('You were idle!') !== -1) {" +
+					"        for (var j = 0; j < btns.length; j++) {" +
+					"            if (btns[j].offsetParent !== null) {" +
+					"                btns[j].click();" +
+					"                return true;" +
+					"            }" +
+					"        }" +
+					"        window.location.reload();" +
+					"        return true;" +
+					"    }" +
+					"} catch(e) {}" +
+					"return false;"
+				);
+				if (Boolean.TRUE.equals(res)) {
+					System.out.println("[IDLE DETECTED] Triggered 'Reload Manually' via JavaScript.");
+					clicked = true;
+				}
+			}
+
+			if (clicked) {
+				System.out.println("[IDLE RECOVERY] Reloading page and restoring session...");
+				Thread.sleep(2000); // Give browser time to begin reload
+
+				// Wait for DOM readyState complete
+				long endWait = System.currentTimeMillis() + 15000;
+				while (System.currentTimeMillis() < endWait) {
+					try {
+						String state = String.valueOf(js.executeScript("return document.readyState"));
+						if ("complete".equalsIgnoreCase(state)) break;
+					} catch (Exception ignored) {}
+					Thread.sleep(400);
+				}
+
+				// Check if redirected to login page; if so, re-login
+				try {
+					String curUrl = driver.getCurrentUrl();
+					if (curUrl != null && curUrl.toLowerCase().contains("login")) {
+						System.out.println("[IDLE RECOVERY] Session redirected to Login. Re-authenticating...");
+						OMSweb_Login.main(driver, new Scanner(System.in));
+					}
+				} catch (Exception ignored) {}
+
+				// Re-navigate to Trade portal ensuring 6 widgets are active
+				try {
+					navigateToTradePage(driver);
+				} catch (Exception ignored) {}
+
+				installAntiIdleHeartbeat(driver);
+				System.out.println("[IDLE RECOVERY] Successfully recovered from idle state. Resuming execution.");
+				return true;
+			}
+
+			// Proactively keep page alive
+			installAntiIdleHeartbeat(driver);
+		} catch (Exception ignored) {}
+		return false;
+	}
+
+	public static void installAntiIdleHeartbeat(WebDriver driver) {
+		try {
+			if (driver == null) return;
+			JavascriptExecutor js = (JavascriptExecutor) driver;
+			js.executeScript(
+				"try {" +
+				"    if (!window._antiIdleInstalled) {" +
+				"        window._antiIdleInstalled = true;" +
+				"        setInterval(function() {" +
+				"            try {" +
+				"                window.dispatchEvent(new Event('mousemove'));" +
+				"                window.dispatchEvent(new Event('keydown'));" +
+				"                document.dispatchEvent(new Event('mousemove'));" +
+				"            } catch(e) {}" +
+				"        }, 8000);" +
+				"    }" +
+				"    if (!window._idleWatcherInstalled && window.MutationObserver) {" +
+				"        window._idleWatcherInstalled = true;" +
+				"        var obs = new MutationObserver(function() {" +
+				"            try {" +
+				"                var btns = document.querySelectorAll('button, a, .btn');" +
+				"                for (var i = 0; i < btns.length; i++) {" +
+				"                    var txt = (btns[i].innerText || btns[i].textContent || '').trim();" +
+				"                    if (txt.indexOf('Reload Manually') !== -1) {" +
+				"                        console.log('[AUTO-RESOLVE] Idle popup intercepted! Clicking Reload Manually...');" +
+				"                        btns[i].click();" +
+				"                    }" +
+				"                }" +
+				"            } catch(e) {}" +
+				"        });" +
+				"        obs.observe(document.body || document.documentElement, { childList: true, subtree: true });" +
+				"    }" +
+				"} catch(e) {}"
+			);
+		} catch (Exception ignored) {}
+	}
+
 	public static boolean ensureUIUnlocked(WebDriver driver) {
 
 		if (driver == null) return false;
 
 		boolean unblocked = false;
+
+		// 0. Automatic Idle Popup ("You were idle! / Reload Manually") Detection & Recovery
+		if (handleIdlePopupIfPresent(driver)) {
+			unblocked = true;
+		}
 
 		// 1. Dismiss native browser alerts
 
@@ -3419,6 +3568,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		try {
 
 			OMSweb_Login.pressOkAutomatically(driver);
+			installAntiIdleHeartbeat(driver);
 
 			// Check if already on Trade portal - NEVER reload or click navbar if already present unless force is requested
 

@@ -537,9 +537,16 @@ public class Position {
     /**
      * Extracts Position holdings directly from the visible UI table DOM.
      */
-    public static List<ClientPosition> getUiSnapshot(WebDriver driver, String symbol, String exchange) {
+    public static List<ClientPosition> getUiSnapshot(WebDriver driver, String clientCode, String symbol, String exchange) {
+        if (clientCode != null && !clientCode.trim().isEmpty()) {
+            filterByClientCode(driver, clientCode.trim());
+        }
         String cleanSym = cleanSymbol(symbol);
         return extractFromDomTable(driver, cleanSym);
+    }
+
+    public static List<ClientPosition> getUiSnapshot(WebDriver driver, String symbol, String exchange) {
+        return getUiSnapshot(driver, null, symbol, exchange);
     }
 
     @SuppressWarnings("unchecked")

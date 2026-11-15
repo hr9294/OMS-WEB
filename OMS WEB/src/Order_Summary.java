@@ -226,10 +226,17 @@ public class Order_Summary {
         return Collections.emptyMap();
     }
 
-    public static Map<String, String> getUiSnapshot(WebDriver driver, String symbol) {
+    public static Map<String, String> getUiSnapshot(WebDriver driver, String clientCode, String symbol) {
+        if (clientCode != null && !clientCode.trim().isEmpty()) {
+            filterOrderSummary(driver, clientCode.trim(), cleanSymbol(symbol));
+        }
         Map<String, String> uiData = fetchFromUiTables(driver, cleanSymbol(symbol));
         uiData.put("DATA_SOURCE", "UI Tables DOM");
         return uiData;
+    }
+
+    public static Map<String, String> getUiSnapshot(WebDriver driver, String symbol) {
+        return getUiSnapshot(driver, null, symbol);
     }
 
     private static Map<String, String> fetchFromUiTables(WebDriver driver, String symbol) {

@@ -92,6 +92,12 @@ def main() -> None:
             }
             mode = mode_map.get(choice, "trade")
 
+        # Check and handle idle popup if session was waiting
+        try:
+            oms_trade.handle_idle_popup_if_present(driver)
+        except Exception:
+            pass
+
         # Launch selected workflow
         if mode == "db-ltp":
             from db_market_data import print_public_board_summary
