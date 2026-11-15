@@ -71,6 +71,8 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 public class OMSweb_Trade {
 
 	public static String activeExchange = "DSE";
+	public static volatile String activeSymbol = "GP";
+	public static volatile String activeClientCode = "23986";
 
 	public static String readLineWithTimeout(Scanner sc, String defaultVal, int timeoutSeconds) {
 		if (sc == null) return defaultVal;
@@ -2728,8 +2730,166 @@ public class OMSweb_Trade {
 	}
 
 	// =========================================================================
-	// ANTI-IDLE & POPUP WATCHDOG: "You were idle! / Reload Manually"
+	// ANTI-IDLE & POPUP WATCHDOG: "You were idle! / Reload Manually" & RESTORATION
 	// =========================================================================
+
+	/**
+	 * Snapshots currently active UI settings (active symbol, client code, widget color, exchange)
+	 * from the live DOM before an idle reload or modal dismissal wipes them.
+	 */
+	public static void snapshotCurrentUiSettings(WebDriver driver) {
+		if (driver == null) return;
+		try {
+			JavascriptExecutor js = (JavascriptExecutor) driver;
+			Object raw = js.executeScript(
+				"try {" +
+				"    var res = {};" +
+				"    var mw = document.getElementById('marketwatch_symbol');" +
+				"    var oi = document.getElementById('order_instrument');" +
+				"    var ins = document.getElementById('instrument');" +
+				"    res.symbol = (mw && mw.value) ? mw.value : ((oi && oi.value) ? oi.value : ((ins && ins.value) ? ins.value : ''));" +
+				"    var occ = document.getElementById('order_client_code');" +
+				"    var pci = document.getElementById('portfolio_code_input');" +
+				"    res.clientCode = (occ && occ.value) ? occ.value : ((pci && pci.value) ? pci.value : '');" +
+				"    var sel = document.querySelector('.chooseColor .selectedColor');" +
+				"    if (sel) {" +
+				"        res.colorHex = sel.getAttribute('data-link-color') || sel.style.backgroundColor || '';" +
+				"    }" +
+				"    var xcg3 = document.getElementById('xcg3');" +
+				"    var xcg2 = document.getElementById('xcg2');" +
+				"    if (xcg3 && xcg3.checked) res.exchange = 'CSE';" +
+				"    else if (xcg2 && xcg2.checked) res.exchange = 'DSE';" +
+				"    return res;" +
+				"} catch(e) { return null; }"
+			);
+
+			if (raw instanceof Map) {
+				@SuppressWarnings("unchecked")
+				Map<String, Object> map = (Map<String, Object>) raw;
+				String sym = (String) map.get("symbol");
+				if (sym != null && !sym.trim().isEmpty()) {
+					activeSymbol = cleanSymbol(sym);
+				}
+				String cc = (String) map.get("clientCode");
+				if (cc != null && !cc.trim().isEmpty()) {
+					activeClientCode = cc.trim();
+				}
+				String ex = (String) map.get("exchange");
+				if (ex != null && !ex.trim().isEmpty()) {
+					activeExchange = ex.trim().toUpperCase();
+				}
+				String colorHex = (String) map.get("colorHex");
+				if (colorHex != null && !colorHex.trim().isEmpty()) {
+					for (int i = 0; i < COLOR_HEXES.length; i++) {
+						if (colorHex.toUpperCase().contains(COLOR_HEXES[i].substring(1, 7).toUpperCase()) ||
+							COLOR_HEXES[i].equalsIgnoreCase(colorHex.trim())) {
+							activeWidgetColorName = COLOR_NAMES[i];
+							activeWidgetColorHex = COLOR_HEXES[i];
+							isWidgetColorConfigured = true;
+							break;
+						}
+					}
+				}
+			}
+		} catch (Exception ignored) {}
+	}
+
+	/**
+	 * Restores all previously active UI settings immediately following an idle reload:
+	 * 1. GoldenLayout widget color links across all 6 widgets (Trade, Market Watch, Market Depth, Order Terminal, Position, Client Portfolio)
+	 * 2. Active symbol across Search, Market Watch, Order Entry, and Market Depth
+	 * 3. Active client code across Order Entry and Client Portfolio
+	 * 4. Active exchange (DSE / CSE) in Order Entry
+	 * 5. Anti-idle keepalive heartbeat and idle popup watcher
+	 */
+	public static void restoreAllPreviousSettings(WebDriver driver) {
+		if (driver == null) return;
+		try {
+			System.out.println("\n+-----------------------------------------------------------------------------+");
+			System.out.println("|  [IDLE RESTORATION] Automatically restoring previous UI settings after reload|");
+			System.out.println("+-----------------------------------------------------------------------------+");
+			WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(8));
+
+			// 1. Ensure on Trade page
+			navigateToTradePage(driver, wait, false);
+
+			// 2. Re-apply GoldenLayout widget color link to all 6 widgets
+			String targetColor = (activeWidgetColorName != null) ? activeWidgetColorName : "Turquoise";
+			String targetHex = (activeWidgetColorHex != null) ? activeWidgetColorHex : "#42EADDFF";
+			System.out.printf("[IDLE RESTORATION] Re-linking all 6 widgets to Color: %s (%s)...%n", targetColor, targetHex);
+			applyColorToAllWidgets(driver, targetColor, targetHex);
+			isWidgetColorConfigured = true;
+			activeWidgetColorName = targetColor;
+			activeWidgetColorHex = targetHex;
+
+			// 3. Re-apply Active Symbol and Client Code across Trade page and widgets
+			String symToRestore = (activeSymbol != null && !activeSymbol.trim().isEmpty()) ? activeSymbol : "GP";
+			String clientToRestore = (activeClientCode != null && !activeClientCode.trim().isEmpty()) ? activeClientCode : DEFAULT_CLIENT_CODE;
+			System.out.printf("[IDLE RESTORATION] Restoring Symbol [%s] and Client Code [%s] across all widgets...%n", symToRestore, clientToRestore);
+			restoreTradePageState(driver, symToRestore, clientToRestore);
+
+			// 4. Re-link Market Watch & Market Depth widgets for symbol
+			try {
+				Market_Watch.connectWidget(driver, symToRestore, activeExchange != null ? activeExchange : "DSE");
+			} catch (Exception ignored) {}
+			try {
+				Market_Depth.searchSymbolInDepth(driver, symToRestore, activeExchange != null ? activeExchange : "DSE");
+			} catch (Exception ignored) {}
+
+			// 5. Re-load Client Portfolio widget for client code
+			try {
+				ClientPortfolio.ensureClientLoadedInUi(driver, clientToRestore);
+			} catch (Exception ignored) {}
+
+			// 6. Restore Active Exchange in modal
+			try {
+				selectExchangeInModal(driver, activeExchange != null ? activeExchange : "DSE");
+			} catch (Exception ignored) {}
+
+			// 7. Re-install anti-idle heartbeat and DOM idle watcher
+			installAntiIdleHeartbeat(driver);
+
+			System.out.println("[IDLE RESTORATION] ✓ All previous settings successfully restored and visible.\n");
+		} catch (Exception e) {
+			System.out.println("[WARN: restoreAllPreviousSettings] " + e.getMessage());
+		}
+	}
+
+	/**
+	 * Checks if the page has reloaded (or idle occurred) resulting in unlinked widgets,
+	 * empty symbol, or wiped client code. If detected, automatically restores all settings.
+	 */
+	public static void ensureTradeSettingsRestored(WebDriver driver) {
+		if (driver == null) return;
+		try {
+			// First, handle any visible idle popup
+			if (handleIdlePopupIfPresent(driver)) {
+				return;
+			}
+
+			// If already on trade page, inspect if DOM lost color link or symbol
+			if (isAlreadyOnTradePage(driver)) {
+				JavascriptExecutor js = (JavascriptExecutor) driver;
+				Object needsRestoreObj = js.executeScript(
+					"try {" +
+					"    var selectedColors = document.querySelectorAll('.chooseColor .selectedColor');" +
+					"    var hasColors = selectedColors && selectedColors.length >= 2;" +
+					"    var mwSymbol = document.getElementById('marketwatch_symbol');" +
+					"    var oi = document.getElementById('order_instrument');" +
+					"    var hasSymbol = (mwSymbol && mwSymbol.value && mwSymbol.value.trim().length > 0) ||" +
+					"                    (oi && oi.value && oi.value.trim().length > 0);" +
+					"    var antiIdle = !!window._antiIdleInstalled;" +
+					"    return (!hasColors || !hasSymbol || !antiIdle);" +
+					"} catch(e) { return false; }"
+				);
+				if (Boolean.TRUE.equals(needsRestoreObj)) {
+					System.out.println("[IDLE WATCHDOG] Detected DOM settings reset (page reload detected). Restoring previous settings...");
+					restoreAllPreviousSettings(driver);
+				}
+			}
+		} catch (Exception ignored) {}
+	}
+
 	public static boolean handleIdlePopupIfPresent(WebDriver driver) {
 		if (driver == null) return false;
 		try {
@@ -2747,7 +2907,9 @@ public class OMSweb_Trade {
 			for (WebElement btn : idleButtons) {
 				try {
 					if (btn.isDisplayed()) {
-						System.out.println("[IDLE DETECTED] 'You were idle!' popup appeared. Clicking 'Reload Manually'...");
+						System.out.println("[IDLE DETECTED] 'You were idle!' popup appeared. Snapshotting live settings...");
+						snapshotCurrentUiSettings(driver);
+						System.out.println("[IDLE DETECTED] Clicking 'Reload Manually'...");
 						try {
 							btn.click();
 						} catch (Exception clickEx) {
@@ -2814,13 +2976,9 @@ public class OMSweb_Trade {
 					}
 				} catch (Exception ignored) {}
 
-				// Re-navigate to Trade portal ensuring 6 widgets are active
-				try {
-					navigateToTradePage(driver);
-				} catch (Exception ignored) {}
-
-				installAntiIdleHeartbeat(driver);
-				System.out.println("[IDLE RECOVERY] Successfully recovered from idle state. Resuming execution.");
+				// Restore all previous settings (widget colors, active symbol, client code, exchange)
+				restoreAllPreviousSettings(driver);
+				System.out.println("[IDLE RECOVERY] Successfully recovered from idle state and restored all settings. Resuming execution.");
 				return true;
 			}
 
@@ -2842,9 +3000,15 @@ public class OMSweb_Trade {
 				"            try {" +
 				"                window.dispatchEvent(new Event('mousemove'));" +
 				"                window.dispatchEvent(new Event('keydown'));" +
+				"                window.dispatchEvent(new Event('mousedown'));" +
+				"                window.dispatchEvent(new Event('scroll'));" +
 				"                document.dispatchEvent(new Event('mousemove'));" +
+				"                document.dispatchEvent(new Event('keydown'));" +
+				"                document.dispatchEvent(new Event('mousedown'));" +
+				"                if (typeof resetIdleTimer === 'function') resetIdleTimer();" +
+				"                if (typeof resetTimer === 'function') resetTimer();" +
 				"            } catch(e) {}" +
-				"        }, 8000);" +
+				"        }, 5000);" +
 				"    }" +
 				"    if (!window._idleWatcherInstalled && window.MutationObserver) {" +
 				"        window._idleWatcherInstalled = true;" +
@@ -2876,6 +3040,8 @@ public class OMSweb_Trade {
 		// 0. Automatic Idle Popup ("You were idle! / Reload Manually") Detection & Recovery
 		if (handleIdlePopupIfPresent(driver)) {
 			unblocked = true;
+		} else {
+			ensureTradeSettingsRestored(driver);
 		}
 
 		// 1. Dismiss native browser alerts
@@ -3465,6 +3631,13 @@ public class OMSweb_Trade {
 public static void restoreTradePageState(WebDriver driver, String symbol, String clientCode) {
 
 		try {
+
+			if (symbol != null && !symbol.trim().isEmpty()) {
+				activeSymbol = cleanSymbol(symbol);
+			}
+			if (clientCode != null && !clientCode.trim().isEmpty()) {
+				activeClientCode = clientCode.trim();
+			}
 
 			WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(6));
 
@@ -5910,6 +6083,12 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			}
 
 			System.out.printf("[WIDGET COLOR] Done: %d/%d widgets colored with %s.%n", successCount, results.size(), chosenColorName);
+
+			if (successCount > 0) {
+				isWidgetColorConfigured = true;
+				activeWidgetColorName = chosenColorName;
+				activeWidgetColorHex = targetHex;
+			}
 
 			return successCount > 0;
 

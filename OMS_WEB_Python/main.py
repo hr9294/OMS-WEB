@@ -92,9 +92,9 @@ def main() -> None:
             }
             mode = mode_map.get(choice, "trade")
 
-        # Check and handle idle popup if session was waiting
+        # Check and handle idle popup / settings restore if session was waiting
         try:
-            oms_trade.handle_idle_popup_if_present(driver)
+            oms_trade.ensure_trade_settings_restored(driver)
         except Exception:
             pass
 

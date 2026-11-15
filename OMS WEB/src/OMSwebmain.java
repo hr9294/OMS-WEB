@@ -217,7 +217,7 @@ public class OMSwebmain {
 
             if (!"0".equals(engChoice) && !"exit".equalsIgnoreCase(engChoice) && !"quit".equalsIgnoreCase(engChoice)) {
                 try {
-                    OMSweb_Trade.handleIdlePopupIfPresent(driver);
+                    OMSweb_Trade.ensureTradeSettingsRestored(driver);
                 } catch (Exception ignored) {}
             }
 

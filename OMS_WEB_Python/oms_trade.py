@@ -19,6 +19,35 @@ import client_portfolio
 import position
 import order_terminal
 
+active_symbol: str = DEFAULT_SYMBOL
+active_client_code: str = DEFAULT_CLIENT_CODE
+active_exchange: str = DEFAULT_EXCHANGE
+active_widget_color_name: str = "Turquoise"
+active_widget_color_hex: str = "#42EADDFF"
+
+
+def select_exchange_in_modal(driver: webdriver.Chrome, exchange: str = "DSE") -> None:
+    """Selects DSE (xcg2) or CSE (xcg3) in the Order Entry modal."""
+    if not driver:
+        return
+    try:
+        xcg_id = "xcg3" if str(exchange).upper() == "CSE" else "xcg2"
+        driver.execute_script("""
+            var el = document.getElementById(arguments[0]);
+            if (el) {
+                el.checked = true;
+                el.click();
+                if (typeof switch_exchange === 'function') switch_exchange(el);
+                var lbl = document.querySelector('label[for=' + arguments[0] + ']');
+                if (lbl) lbl.click();
+                var hidden = document.getElementById('exchange');
+                if (hidden) hidden.value = el.value;
+                if (window.$) $(el).trigger('change');
+            }
+        """, xcg_id)
+    except Exception:
+        pass
+
 
 def navigate_to_trade_page(driver: webdriver.Chrome, force: bool = False) -> None:
     """Navigates to the Trade page ONLY IF not already on it unless force=True. NEVER reloads if already on Trade!"""
@@ -167,6 +196,12 @@ def restore_trade_page_state(
     client_code: Optional[str] = None
 ) -> None:
     """Navigates back to the Trade page and restores the symbol, marketwatch, and client code."""
+    global active_symbol, active_client_code
+    if symbol:
+        active_symbol = oms_price.clean_symbol(symbol)
+    if client_code:
+        active_client_code = str(client_code).strip()
+
     navigate_to_trade_page(driver)
     if symbol:
         enter_instrument(driver, symbol)
@@ -243,10 +278,158 @@ def install_symbol_whitespace_sanitizer(driver: webdriver.Chrome) -> None:
         pass
 
 
+def snapshot_current_ui_settings(driver: webdriver.Chrome) -> None:
+    """Captures currently active symbol, client code, widget color, and exchange before reload."""
+    global active_symbol, active_client_code, active_exchange, active_widget_color_name, active_widget_color_hex
+    if not driver:
+        return
+    try:
+        data = driver.execute_script("""
+            try {
+                var res = {};
+                var mw = document.getElementById('marketwatch_symbol');
+                var oi = document.getElementById('order_instrument');
+                var ins = document.getElementById('instrument');
+                res.symbol = (mw && mw.value) ? mw.value : ((oi && oi.value) ? oi.value : ((ins && ins.value) ? ins.value : ''));
+
+                var occ = document.getElementById('order_client_code');
+                var pci = document.getElementById('portfolio_code_input');
+                res.clientCode = (occ && occ.value) ? occ.value : ((pci && pci.value) ? pci.value : '');
+
+                var sel = document.querySelector('.chooseColor .selectedColor');
+                if (sel) {
+                    res.colorHex = sel.getAttribute('data-link-color') || sel.style.backgroundColor || '';
+                }
+                var xcg3 = document.getElementById('xcg3');
+                var xcg2 = document.getElementById('xcg2');
+                if (xcg3 && xcg3.checked) res.exchange = 'CSE';
+                else if (xcg2 && xcg2.checked) res.exchange = 'DSE';
+
+                return res;
+            } catch(e) { return null; }
+        """)
+        if isinstance(data, dict):
+            sym = data.get("symbol")
+            if sym and str(sym).strip():
+                active_symbol = oms_price.clean_symbol(str(sym))
+            cc = data.get("clientCode")
+            if cc and str(cc).strip():
+                active_client_code = str(cc).strip()
+            ex = data.get("exchange")
+            if ex and str(ex).strip():
+                active_exchange = str(ex).strip().upper()
+            color_hex = data.get("colorHex")
+            if color_hex and str(color_hex).strip():
+                from config import COLOR_NAMES, COLOR_HEXES
+                for name, hex_val in zip(COLOR_NAMES, COLOR_HEXES):
+                    if hex_val.lower() in str(color_hex).lower():
+                        active_widget_color_name = name
+                        active_widget_color_hex = hex_val
+                        break
+    except Exception:
+        pass
+
+
+def restore_all_previous_settings(driver: webdriver.Chrome) -> None:
+    """
+    Restores all previously active UI settings immediately following an idle reload:
+    1. GoldenLayout widget color links across all 6 widgets
+    2. Active symbol across Search, Market Watch, Order Entry, Market Depth
+    3. Active client code across Order Entry and Client Portfolio
+    4. Active exchange (DSE / CSE) in Order Entry
+    5. Anti-idle keepalive heartbeat and idle popup watcher
+    """
+    global active_symbol, active_client_code, active_exchange, active_widget_color_name, active_widget_color_hex
+    if not driver:
+        return
+    try:
+        print("\n+-----------------------------------------------------------------------------+")
+        print("|  [IDLE RESTORATION] Automatically restoring previous UI settings after reload|")
+        print("+-----------------------------------------------------------------------------+")
+
+        # 1. Ensure on Trade page
+        navigate_to_trade_page(driver, force=False)
+
+        # 2. Re-apply GoldenLayout widget color link to all 6 widgets
+        target_color = active_widget_color_name or "Turquoise"
+        target_hex = active_widget_color_hex or "#42EADDFF"
+        print(f"[IDLE RESTORATION] Re-linking all 6 widgets to Color: {target_color} ({target_hex})...")
+        widget_color.apply_color_to_all_widgets(driver, target_color)
+
+        # 3. Re-apply Active Symbol and Client Code across Trade page and widgets
+        sym_to_restore = active_symbol or DEFAULT_SYMBOL
+        client_to_restore = active_client_code or DEFAULT_CLIENT_CODE
+        print(f"[IDLE RESTORATION] Restoring Symbol [{sym_to_restore}] and Client Code [{client_to_restore}] across all widgets...")
+        restore_trade_page_state(driver, sym_to_restore, client_to_restore)
+
+        # 4. Re-link Market Depth widget for symbol
+        try:
+            import market_depth
+            market_depth.search_symbol_in_depth(driver, sym_to_restore, active_exchange or "DSE")
+        except Exception:
+            pass
+
+        # 5. Re-load Client Portfolio widget for client code
+        try:
+            client_portfolio.ensure_client_loaded_in_ui(driver, client_to_restore)
+        except Exception:
+            pass
+
+        # 6. Restore Active Exchange in modal
+        try:
+            select_exchange_in_modal(driver, active_exchange or "DSE")
+        except Exception:
+            pass
+
+        # 7. Re-install anti-idle heartbeat and DOM idle watcher
+        install_anti_idle_heartbeat(driver)
+
+        print("[IDLE RESTORATION] ✓ All previous settings successfully restored and visible.\n")
+    except Exception as e:
+        print(f"[WARN: restore_all_previous_settings] {e}")
+
+
+def ensure_trade_settings_restored(driver: webdriver.Chrome) -> None:
+    """
+    Checks if the page has reloaded (or idle occurred) resulting in unlinked widgets,
+    empty symbol, or wiped client code. If detected, automatically restores all settings.
+    """
+    if not driver:
+        return
+    try:
+        if handle_idle_popup_if_present(driver):
+            return
+
+        is_trade = driver.execute_script("""
+            var href = (window.location.href || '').toLowerCase();
+            if (href.indexOf('trade_portal') !== -1) return true;
+            var mw = document.getElementById('marketwatch_symbol');
+            return mw && (mw.offsetParent !== null || mw.offsetWidth > 0);
+        """)
+        if is_trade:
+            needs_restore = driver.execute_script("""
+                try {
+                    var selectedColors = document.querySelectorAll('.chooseColor .selectedColor');
+                    var hasColors = selectedColors && selectedColors.length >= 2;
+                    var mwSymbol = document.getElementById('marketwatch_symbol');
+                    var oi = document.getElementById('order_instrument');
+                    var hasSymbol = (mwSymbol && mwSymbol.value && mwSymbol.value.trim().length > 0) ||
+                                    (oi && oi.value && oi.value.trim().length > 0);
+                    var antiIdle = !!window._antiIdleInstalled;
+                    return (!hasColors || !hasSymbol || !antiIdle);
+                } catch(e) { return false; }
+            """)
+            if needs_restore:
+                print("[IDLE WATCHDOG] Detected DOM settings reset (page reload detected). Restoring previous settings...")
+                restore_all_previous_settings(driver)
+    except Exception:
+        pass
+
+
 def handle_idle_popup_if_present(driver: webdriver.Chrome) -> bool:
     """
     Checks if 'You were idle!' modal or 'Reload Manually' button is present.
-    If detected, clicks 'Reload Manually', waits for reload, restores Trade page and returns True.
+    If detected, snapshots live settings, clicks 'Reload Manually', waits for reload, restores all settings and returns True.
     Also ensures anti-idle heartbeat is active.
     """
     if not driver:
@@ -265,7 +448,9 @@ def handle_idle_popup_if_present(driver: webdriver.Chrome) -> bool:
                 btns = driver.find_elements(By.XPATH, xp)
                 for b in btns:
                     if b.is_displayed():
-                        print("[IDLE DETECTED] 'You were idle!' popup appeared. Clicking 'Reload Manually'...")
+                        print("[IDLE DETECTED] 'You were idle!' popup appeared. Snapshotting live settings...")
+                        snapshot_current_ui_settings(driver)
+                        print("[IDLE DETECTED] Clicking 'Reload Manually'...")
                         try:
                             b.click()
                         except Exception:
@@ -330,14 +515,9 @@ def handle_idle_popup_if_present(driver: webdriver.Chrome) -> bool:
             except Exception:
                 pass
 
-            # Restore Trade page
-            try:
-                navigate_to_trade_page(driver)
-            except Exception:
-                pass
-
-            install_anti_idle_heartbeat(driver)
-            print("[IDLE RECOVERY] Successfully recovered from idle state. Resuming execution.")
+            # Restore all previous settings (widget colors, active symbol, client code, exchange)
+            restore_all_previous_settings(driver)
+            print("[IDLE RECOVERY] Successfully recovered from idle state and restored all settings. Resuming execution.")
             return True
 
         install_anti_idle_heartbeat(driver)
@@ -359,9 +539,15 @@ def install_anti_idle_heartbeat(driver: webdriver.Chrome) -> None:
                         try {
                             window.dispatchEvent(new Event('mousemove'));
                             window.dispatchEvent(new Event('keydown'));
+                            window.dispatchEvent(new Event('mousedown'));
+                            window.dispatchEvent(new Event('scroll'));
                             document.dispatchEvent(new Event('mousemove'));
+                            document.dispatchEvent(new Event('keydown'));
+                            document.dispatchEvent(new Event('mousedown'));
+                            if (typeof resetIdleTimer === 'function') resetIdleTimer();
+                            if (typeof resetTimer === 'function') resetTimer();
                         } catch(e) {}
-                    }, 8000);
+                    }, 5000);
                 }
                 if (!window._idleWatcherInstalled && window.MutationObserver) {
                     window._idleWatcherInstalled = true;
@@ -403,6 +589,8 @@ def ensure_ui_unlocked(driver: webdriver.Chrome) -> bool:
     # 0. Check and recover if 'You were idle!' appeared
     if handle_idle_popup_if_present(driver):
         unblocked = True
+    else:
+        ensure_trade_settings_restored(driver)
     """
     Automatically detects and unblocks the UI if blocked, frozen, or locked:
     1. Dismisses native browser alerts.

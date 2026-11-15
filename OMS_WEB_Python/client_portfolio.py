@@ -101,6 +101,29 @@ def get_snapshot(driver: webdriver.Chrome, client_code: str) -> Dict[str, str]:
     return details
 
 
+def ensure_client_loaded_in_ui(driver: webdriver.Chrome, client_code: str) -> None:
+    """Populates client code into Client Portfolio DOM input and triggers selectSaleable."""
+    if not driver or not client_code:
+        return
+    try:
+        driver.execute_script("""
+            var code = arguments[0];
+            var inp = document.getElementById('portfolio_code_input') || document.querySelector('input[id*="portfolio"], #account-portfolio input');
+            if (inp) { inp.value = code; try { $(inp).trigger('input').trigger('change'); } catch(e){} }
+            if (typeof selectSaleable === 'function') {
+                selectSaleable(code);
+            } else if (window.$) {
+                $.get('shared/portfolio_code?clientcode=' + encodeURIComponent(code), function(data) {
+                    $('#account-portfolio').html(data);
+                    if (typeof selectSaleable === 'function') selectSaleable(code);
+                });
+            }
+        """, str(client_code).strip())
+        time.sleep(0.4)
+    except Exception:
+        pass
+
+
 def print_portfolio(client_code: str, snapshot: Dict[str, str]) -> None:
     """Pretty prints client portfolio data."""
     print(f"\n+-------------------------------------------------------+")

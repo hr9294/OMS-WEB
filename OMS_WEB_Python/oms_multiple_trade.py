@@ -627,7 +627,7 @@ def check_price_exceed_warning(driver: webdriver.Chrome) -> Optional[str]:
 def dismiss_any_open_modal(driver: webdriver.Chrome) -> None:
     try:
         import oms_trade
-        oms_trade.handle_idle_popup_if_present(driver)
+        oms_trade.ensure_trade_settings_restored(driver)
         oms_trade.ensure_ui_unlocked(driver)
     except Exception: pass
 
@@ -1746,7 +1746,7 @@ def run_load_test(driver: webdriver.Chrome) -> None:
     while (time.time() - start_time) < max_duration_sec and (total_trades <= 0 or (success_count + failed_count) < total_trades):
         try:
             import oms_trade
-            oms_trade.handle_idle_popup_if_present(driver)
+            oms_trade.ensure_trade_settings_restored(driver)
         except Exception:
             pass
 

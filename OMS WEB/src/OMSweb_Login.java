@@ -103,20 +103,10 @@ public class OMSweb_Login {
             Thread.sleep(800); // Allow Chrome / DOM a brief moment to render popup if triggered
         } catch (InterruptedException ignored) {}
 
-        // 0. Check for "Reload Manually" / "You were idle!" modal
+        // 0. Check for "Reload Manually" / "You were idle!" modal with full snapshot & recovery
         try {
-            List<WebElement> reloadBtns = driver.findElements(By.xpath(
-                "//button[contains(normalize-space(), 'Reload Manually') or contains(text(), 'Reload Manually')] | " +
-                "//a[contains(normalize-space(), 'Reload Manually') or contains(text(), 'Reload Manually')] | " +
-                "//*[contains(text(), 'You were idle')]/ancestor::div[contains(@class,'modal') or contains(@class,'dialog') or contains(@class,'swal') or contains(@class,'popup') or contains(@class,'jconfirm')]//button"
-            ));
-            for (WebElement btn : reloadBtns) {
-                if (btn.isDisplayed()) {
-                    ((JavascriptExecutor) driver).executeScript("arguments[0].click();", btn);
-                    System.out.println("[IDLE POPUP] Automatically clicked 'Reload Manually' button in DOM.");
-                    Thread.sleep(1500);
-                    return;
-                }
+            if (OMSweb_Trade.handleIdlePopupIfPresent(driver)) {
+                return;
             }
         } catch (Exception ignored) {}
 
