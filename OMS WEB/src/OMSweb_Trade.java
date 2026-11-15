@@ -73,6 +73,8 @@ public class OMSweb_Trade {
 	public static String activeExchange = "DSE";
 	public static volatile String activeSymbol = "GP";
 	public static volatile String activeClientCode = "23986";
+	public static volatile boolean isRecoveringFromIdle = false;
+	public static volatile long lastIdleRecoveryTime = 0L;
 
 	public static String readLineWithTimeout(Scanner sc, String defaultVal, int timeoutSeconds) {
 		if (sc == null) return defaultVal;
@@ -2855,113 +2857,57 @@ public class OMSweb_Trade {
 		}
 	}
 
-	/**
-	 * Checks if the page has reloaded (or idle occurred) resulting in unlinked widgets,
-	 * empty symbol, or wiped client code. If detected, automatically restores all settings.
-	 */
-	public static void ensureTradeSettingsRestored(WebDriver driver) {
-		if (driver == null) return;
-		try {
-			// First, handle any visible idle popup
-			if (handleIdlePopupIfPresent(driver)) {
-				return;
-			}
-
-			// If already on trade page, inspect if DOM lost color link or symbol
-			if (isAlreadyOnTradePage(driver)) {
-				JavascriptExecutor js = (JavascriptExecutor) driver;
-				Object needsRestoreObj = js.executeScript(
-					"try {" +
-					"    var selectedColors = document.querySelectorAll('.chooseColor .selectedColor');" +
-					"    var hasColors = selectedColors && selectedColors.length >= 2;" +
-					"    var mwSymbol = document.getElementById('marketwatch_symbol');" +
-					"    var oi = document.getElementById('order_instrument');" +
-					"    var hasSymbol = (mwSymbol && mwSymbol.value && mwSymbol.value.trim().length > 0) ||" +
-					"                    (oi && oi.value && oi.value.trim().length > 0);" +
-					"    var antiIdle = !!window._antiIdleInstalled;" +
-					"    return (!hasColors || !hasSymbol || !antiIdle);" +
-					"} catch(e) { return false; }"
-				);
-				if (Boolean.TRUE.equals(needsRestoreObj)) {
-					System.out.println("[IDLE WATCHDOG] Detected DOM settings reset (page reload detected). Restoring previous settings...");
-					restoreAllPreviousSettings(driver);
-				}
-			}
-		} catch (Exception ignored) {}
-	}
-
 	public static boolean handleIdlePopupIfPresent(WebDriver driver) {
-		if (driver == null) return false;
-		try {
-			JavascriptExecutor js = (JavascriptExecutor) driver;
+		if (driver == null || isRecoveringFromIdle) return false;
+		// Cooldown: Do not re-trigger within 20 seconds of last recovery
+		if (System.currentTimeMillis() - lastIdleRecoveryTime < 20000L) {
+			return false;
+		}
 
-			// 1. Direct check: Is there a "Reload Manually" button or "You were idle!" text visible?
-			List<WebElement> idleButtons = driver.findElements(By.xpath(
+		try {
+			// Find visible "Reload Manually" button strictly inside an active visible modal
+			List<WebElement> candidates = driver.findElements(By.xpath(
 				"//button[contains(normalize-space(), 'Reload Manually') or contains(text(), 'Reload Manually')] | " +
-				"//a[contains(normalize-space(), 'Reload Manually') or contains(text(), 'Reload Manually')] | " +
-				"//*[contains(text(), 'You were idle')]/ancestor::div[contains(@class,'modal') or contains(@class,'dialog') or contains(@class,'swal') or contains(@class,'popup') or contains(@class,'jconfirm') or contains(@class,'box')]//button | " +
-				"//button[contains(., 'Reload Manually') or contains(., 'reload manually')]"
+				"//a[contains(normalize-space(), 'Reload Manually') or contains(text(), 'Reload Manually')]"
 			));
 
-			boolean clicked = false;
-			for (WebElement btn : idleButtons) {
+			WebElement visibleBtn = null;
+			for (WebElement btn : candidates) {
 				try {
-					if (btn.isDisplayed()) {
-						System.out.println("[IDLE DETECTED] 'You were idle!' popup appeared. Snapshotting live settings...");
-						snapshotCurrentUiSettings(driver);
-						System.out.println("[IDLE DETECTED] Clicking 'Reload Manually'...");
-						try {
-							btn.click();
-						} catch (Exception clickEx) {
-							js.executeScript("arguments[0].click();", btn);
-						}
-						clicked = true;
+					if (btn.isDisplayed() && btn.getSize().getWidth() > 0 && btn.getSize().getHeight() > 0) {
+						visibleBtn = btn;
 						break;
 					}
 				} catch (Exception ignored) {}
 			}
 
-			// 2. JavaScript query fallback if DOM element wasn't caught by XPath
-			if (!clicked) {
-				Object res = js.executeScript(
-					"try {" +
-					"    var btns = document.querySelectorAll('button, a, .btn, .swal2-confirm, .swal-button, .jconfirm-btn');" +
-					"    for (var i = 0; i < btns.length; i++) {" +
-					"        var txt = (btns[i].innerText || btns[i].textContent || '').trim();" +
-					"        if (txt.indexOf('Reload Manually') !== -1 || txt.toLowerCase() === 'reload manually') {" +
-					"            btns[i].click();" +
-					"            return true;" +
-					"        }" +
-					"    }" +
-					"    var bodyText = document.body ? (document.body.innerText || document.body.textContent || '') : '';" +
-					"    if (bodyText.indexOf('You were idle!') !== -1) {" +
-					"        for (var j = 0; j < btns.length; j++) {" +
-					"            if (btns[j].offsetParent !== null) {" +
-					"                btns[j].click();" +
-					"                return true;" +
-					"            }" +
-					"        }" +
-					"        window.location.reload();" +
-					"        return true;" +
-					"    }" +
-					"} catch(e) {}" +
-					"return false;"
-				);
-				if (Boolean.TRUE.equals(res)) {
-					System.out.println("[IDLE DETECTED] Triggered 'Reload Manually' via JavaScript.");
-					clicked = true;
-				}
+			if (visibleBtn == null) {
+				// No visible idle popup on screen! Absolutely do nothing.
+				return false;
 			}
 
-			if (clicked) {
+			// Modal is genuinely visible on screen!
+			isRecoveringFromIdle = true;
+			try {
+				System.out.println("\n[IDLE DETECTED] 'You were idle!' popup appeared on screen.");
+				System.out.println("[IDLE DETECTED] Snapshotting active settings before reload...");
+				snapshotCurrentUiSettings(driver);
+
+				System.out.println("[IDLE DETECTED] Clicking 'Reload Manually'...");
+				try {
+					visibleBtn.click();
+				} catch (Exception clickEx) {
+					((JavascriptExecutor) driver).executeScript("arguments[0].click();", visibleBtn);
+				}
+
 				System.out.println("[IDLE RECOVERY] Reloading page and restoring session...");
-				Thread.sleep(2000); // Give browser time to begin reload
+				Thread.sleep(2500); // Give browser time to begin reload
 
 				// Wait for DOM readyState complete
 				long endWait = System.currentTimeMillis() + 15000;
 				while (System.currentTimeMillis() < endWait) {
 					try {
-						String state = String.valueOf(js.executeScript("return document.readyState"));
+						String state = String.valueOf(((JavascriptExecutor) driver).executeScript("return document.readyState"));
 						if ("complete".equalsIgnoreCase(state)) break;
 					} catch (Exception ignored) {}
 					Thread.sleep(400);
@@ -2978,14 +2924,21 @@ public class OMSweb_Trade {
 
 				// Restore all previous settings (widget colors, active symbol, client code, exchange)
 				restoreAllPreviousSettings(driver);
-				System.out.println("[IDLE RECOVERY] Successfully recovered from idle state and restored all settings. Resuming execution.");
+				lastIdleRecoveryTime = System.currentTimeMillis();
+				System.out.println("[IDLE RECOVERY] ✓ Successfully restored all settings after reload. Resuming execution.\n");
 				return true;
+			} finally {
+				isRecoveringFromIdle = false;
 			}
-
-			// Proactively keep page alive
-			installAntiIdleHeartbeat(driver);
 		} catch (Exception ignored) {}
 		return false;
+	}
+
+	public static void ensureTradeSettingsRestored(WebDriver driver) {
+		if (driver == null || isRecoveringFromIdle) return;
+		try {
+			handleIdlePopupIfPresent(driver);
+		} catch (Exception ignored) {}
 	}
 
 	public static void installAntiIdleHeartbeat(WebDriver driver) {
@@ -3000,31 +2953,9 @@ public class OMSweb_Trade {
 				"            try {" +
 				"                window.dispatchEvent(new Event('mousemove'));" +
 				"                window.dispatchEvent(new Event('keydown'));" +
-				"                window.dispatchEvent(new Event('mousedown'));" +
-				"                window.dispatchEvent(new Event('scroll'));" +
 				"                document.dispatchEvent(new Event('mousemove'));" +
-				"                document.dispatchEvent(new Event('keydown'));" +
-				"                document.dispatchEvent(new Event('mousedown'));" +
-				"                if (typeof resetIdleTimer === 'function') resetIdleTimer();" +
-				"                if (typeof resetTimer === 'function') resetTimer();" +
 				"            } catch(e) {}" +
-				"        }, 5000);" +
-				"    }" +
-				"    if (!window._idleWatcherInstalled && window.MutationObserver) {" +
-				"        window._idleWatcherInstalled = true;" +
-				"        var obs = new MutationObserver(function() {" +
-				"            try {" +
-				"                var btns = document.querySelectorAll('button, a, .btn');" +
-				"                for (var i = 0; i < btns.length; i++) {" +
-				"                    var txt = (btns[i].innerText || btns[i].textContent || '').trim();" +
-				"                    if (txt.indexOf('Reload Manually') !== -1) {" +
-				"                        console.log('[AUTO-RESOLVE] Idle popup intercepted! Clicking Reload Manually...');" +
-				"                        btns[i].click();" +
-				"                    }" +
-				"                }" +
-				"            } catch(e) {}" +
-				"        });" +
-				"        obs.observe(document.body || document.documentElement, { childList: true, subtree: true });" +
+				"        }, 10000);" +
 				"    }" +
 				"} catch(e) {}"
 			);
@@ -3040,8 +2971,6 @@ public class OMSweb_Trade {
 		// 0. Automatic Idle Popup ("You were idle! / Reload Manually") Detection & Recovery
 		if (handleIdlePopupIfPresent(driver)) {
 			unblocked = true;
-		} else {
-			ensureTradeSettingsRestored(driver);
 		}
 
 		// 1. Dismiss native browser alerts
