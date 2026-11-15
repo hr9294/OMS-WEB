@@ -1806,6 +1806,9 @@ public class OMSweb_Trade {
 
 				Market_Watch.connectWidget(driver, instrument, snapshotExchange);
 
+				// Proactively reflect selected client code across all widgets
+				propagateClientCodeToAllWidgets(driver, clientCode, instrument);
+
 				System.out.printf("%n[AUDIT] Capturing PRE-TRADE Real-Time UI Snapshot across 7 Widgets (inc. Market Watch) for Client: %s...%n", clientCode);
 
 				SixWidgetUiSnapshot preTradeSnap = capture6WidgetsUiSnapshot(driver, "PRE-TRADE BASELINE", clientCode, instrument, snapshotExchange);
@@ -5066,7 +5069,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 	}
 
-	private static double parseNumSafe(String val) {
+	public static double parseNumSafe(String val) {
 
 		if (val == null) return 0.0;
 
@@ -6020,6 +6023,67 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 	}
 
+	
+	public static void propagateClientCodeToAllWidgets(WebDriver driver, String clientCode, String symbol) {
+		if (driver == null || clientCode == null || clientCode.trim().isEmpty()) return;
+		String cleanClient = clientCode.trim();
+		String cleanSym = (symbol != null) ? cleanSymbol(symbol) : "";
+		System.out.printf("%n>>> [CLIENT REFLECTION] Reflecting Client Code '%s' across all widgets (Order Window, Portfolio, Limits, Terminal, Summary, Position)...%n", cleanClient);
+
+		JavascriptExecutor js = (JavascriptExecutor) driver;
+
+		// 1. Order Window / Order Entry Form (order_client_code input & autocomplete)
+		try {
+			fillAndSelectAutocompleteSafely(driver, new WebDriverWait(driver, Duration.ofSeconds(3)), By.id("order_client_code"), cleanClient, false);
+			ensureClientCodeRetained(driver, cleanClient);
+		} catch (Exception ignored) {}
+
+		// 2. Client Portfolio Widget (portfolio_code_input & selectSaleable)
+		try {
+			ClientPortfolio.ensureClientLoadedInUi(driver, cleanClient);
+		} catch (Exception ignored) {}
+
+		// 3. Account Limits Widget (limit_client_code & filterByClient)
+		try {
+			js.executeScript(
+				"var code = arguments[0];" +
+				"var inp = document.getElementById('limit_client_code') || document.querySelector('div.account-limit input, div[id*=\"limit\"] input, div[id*=\"account\"] input');" +
+				"if (inp) { inp.value = code; try { $(inp).trigger('input').trigger('change'); } catch(e){} }",
+				cleanClient
+			);
+			Account_Limits.filterByClient(driver, cleanClient);
+		} catch (Exception ignored) {}
+
+		// 4. Order Terminal Widget (order_terminal_code & filterOrderTerminal)
+		try {
+			js.executeScript(
+				"var code = arguments[0];" +
+				"var inp = document.getElementById('order_terminal_code') || document.querySelector('input[id*=\"terminal_code\"], input[placeholder*=\"Search Code\"]');" +
+				"if (inp) { inp.value = code; try { $(inp).trigger('input').trigger('change'); } catch(e){} }",
+				cleanClient
+			);
+			Order_Terminal.filterOrderTerminal(driver, cleanClient, cleanSym);
+		} catch (Exception ignored) {}
+
+		// 5. Order Summary Widget (summary_client_code & filterOrderSummary)
+		try {
+			js.executeScript(
+				"var code = arguments[0];" +
+				"var inp = document.getElementById('summary_client_code') || document.querySelector('div.order-summary input[id*=\"client\"], div[id*=\"summary\"] input');" +
+				"if (inp) { inp.value = code; try { $(inp).trigger('input').trigger('change'); } catch(e){} }",
+				cleanClient
+			);
+			Order_Summary.filterOrderSummary(driver, cleanClient, cleanSym);
+		} catch (Exception ignored) {}
+
+		// 6. Position Widget (filterByClientCode)
+		try {
+			Position.filterByClientCode(driver, cleanClient);
+		} catch (Exception ignored) {}
+
+		System.out.printf("  ✓ [CLIENT REFLECTED] Target Client '%s' successfully propagated across all widgets.%n", cleanClient);
+	}
+
 	public static void refreshAndSyncAllWidgets(WebDriver driver, String symbol, String clientCode, String exchange) {
 
 		// Pure real-time DOM synchronization without switching tabs or reloading pages!
@@ -6338,6 +6402,10 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			maximizeWidget(driver, "Order Terminal");
 			saveScreenshot(driver, String.format("widget_maximized_%s_Order_Terminal.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
+			if (clientCode != null && !clientCode.trim().isEmpty()) {
+				Order_Terminal.filterOrderTerminal(driver, clientCode.trim(), cleanSymbol(symbol));
+			}
+
 			snap.orderTerminalUi = Order_Terminal.getUiSnapshot(driver, symbol, clientCode);
 
 			Object termRes = js.executeScript(
@@ -6534,7 +6602,11 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			maximizeWidget(driver, "Order Summary");
 			saveScreenshot(driver, String.format("widget_maximized_%s_Order_Summary.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
-			snap.orderSummaryUi = Order_Summary.getUiSnapshot(driver, symbol);
+			if (clientCode != null && !clientCode.trim().isEmpty()) {
+				Order_Summary.filterOrderSummary(driver, clientCode.trim(), cleanSymbol(symbol));
+			}
+
+			snap.orderSummaryUi = Order_Summary.getUiSnapshot(driver, clientCode, symbol);
 
 			Object sumRes = js.executeScript(
 
@@ -6802,7 +6874,11 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			maximizeWidget(driver, "Position");
 			saveScreenshot(driver, String.format("widget_maximized_%s_Position.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
-			List<Position.ClientPosition> allPositions = Position.getUiSnapshot(driver, symbol, exchange);
+			if (clientCode != null && !clientCode.trim().isEmpty()) {
+				Position.filterByClientCode(driver, clientCode.trim());
+			}
+
+			List<Position.ClientPosition> allPositions = Position.getUiSnapshot(driver, clientCode, symbol, exchange);
 
 			Position.ClientPosition matched = null;
 
