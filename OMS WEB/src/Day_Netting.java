@@ -940,11 +940,9 @@ public class Day_Netting {
             System.out.println("=======================================================");
             System.out.println("Select Action:");
             System.out.println("  1. Configure Netting Mode (None / Individual / Cross Exchange)");
-            System.out.println("  2. Configure Exchange Netting (DSE / CSE Enable/Disable - DSE / CSE / BOTH)");
             System.out.println("  3. Upload / Manage Applicable Symbols");
             System.out.println("  4. Configure Client Netting Eligibility (Allow / Block Client)");
             System.out.println("  5. Configure Market / Board-wise Restrictions");
-            System.out.println("  6. Run UI Netting Indicators Audit (Market Depth, Watchlists, Order Window - 3-in-1)");
             System.out.println("  7. Run Full Automated Scrip Netting Test Suite (All 5 Scopes)");
             System.out.println("  0. Return to Main Menu");
 
@@ -954,7 +952,7 @@ public class Day_Netting {
                 System.out.println("\n[DOCKER AUTOMATE MODE] Automatically selected Day Netting option: 7 (Full Test Suite)");
             } else {
                 while (choice.isEmpty()) {
-                    System.out.print("Enter Choice (0-7): ");
+                    System.out.print("Enter Choice (1, 3, 4, 5, 7 or 0=Return): ");
                     if (!sc.hasNextLine()) break;
                     choice = sc.nextLine().trim();
                 }
@@ -977,9 +975,49 @@ public class Day_Netting {
                 NettingMode targetMode = "2".equals(mChoice) || "individual".equalsIgnoreCase(mChoice) ? NettingMode.INDIVIDUAL_EXCHANGE :
                                          "3".equals(mChoice) || "cross".equalsIgnoreCase(mChoice) ? NettingMode.CROSS_EXCHANGE : NettingMode.NONE;
 
+                String targetExchange = "BOTH";
+                if (targetMode != NettingMode.NONE) {
+                    System.out.println("\nConfigure Exchange Netting (DSE / CSE / BOTH):");
+                    System.out.println("  1. DSE (Dhaka Stock Exchange)");
+                    System.out.println("  2. CSE (Chittagong Stock Exchange)");
+                    System.out.println("  3. BOTH (DSE & CSE) [Default]");
+                    System.out.print("Enter Choice (1-3, default=3): ");
+                    String exC = sc.nextLine().trim();
+                    if ("1".equals(exC) || "dse".equalsIgnoreCase(exC)) targetExchange = "DSE";
+                    else if ("2".equals(exC) || "cse".equalsIgnoreCase(exC)) targetExchange = "CSE";
+                    else targetExchange = "BOTH";
+                }
+
                 System.out.print("Enter password authentication (or press ENTER if none required): ");
                 String pwd = sc.nextLine().trim();
-                configureNettingMode(driver, targetMode, pwd, true);
+
+                // 1. Configure Netting Mode
+                configureNettingMode(driver, targetMode, pwd, false);
+
+                // 2. Execute Exchange Netting (DSE / CSE Enable/Disable)
+                System.out.println("\n>>> [INTEGRATED 2/2] Executing Exchange Netting for " + targetExchange + "... <<<");
+                if (targetMode == NettingMode.NONE) {
+                    setBothExchangesNettingEnabled(driver, false, pwd);
+                    System.out.println("  -> [EXECUTED] IS_DSE_DAY_NETTING_ENABLED = false | IS_CSE_DAY_NETTING_ENABLED = false");
+                } else if ("DSE".equals(targetExchange)) {
+                    setExchangeNettingEnabled(driver, "DSE", true, pwd);
+                } else if ("CSE".equals(targetExchange)) {
+                    setExchangeNettingEnabled(driver, "CSE", true, pwd);
+                } else {
+                    setBothExchangesNettingEnabled(driver, true, pwd);
+                }
+
+                // 3. Execute 3-in-1 UI Netting Indicators Audit (Market Depth, Watchlists, Order Window)
+                System.out.println("\n>>> [INTEGRATED 3-IN-1] Executing Complete UI Netting Indicators Audit... <<<");
+                System.out.print("Enter Target Symbol to Audit (default=GP, press ENTER): ");
+                String sym = sc.nextLine().trim();
+                if (sym.isEmpty()) sym = "GP";
+                System.out.print("Enter Target Client Code to Audit (default=23986, press ENTER): ");
+                String cln = sc.nextLine().trim();
+                if (cln.isEmpty()) cln = "23986";
+
+                run3in1UIIndicatorsAudit(driver, sym, cln);
+                System.out.println("[ACTION COMPLETE] Netting Mode, Exchange Netting, and 3-in-1 UI Audit finished successfully.");
             } else if ("2".equals(choice)) {
                 System.out.println("\n-------------------------------------------------------------");
                 System.out.println("     2. CONFIGURE EXCHANGE NETTING (INDIVIDUAL SELECTION)    ");
