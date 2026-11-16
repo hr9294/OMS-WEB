@@ -463,14 +463,36 @@ public class Position {
     }
 
     public static void filterByClientCode(WebDriver driver, String clientCode) {
+        if (driver == null || clientCode == null || clientCode.trim().isEmpty()) return;
+        String cleanClient = clientCode.trim();
         try {
-            WebElement codeInp = driver.findElement(By.xpath(
-                    "//input[contains(@placeholder,'Search Code')] | " +
-                    "//div[contains(@class,'position') or .//table[@id='symbol_position_table']]//input[contains(@placeholder,'Code')]"));
-            codeInp.clear();
-            codeInp.sendKeys(clientCode);
-            codeInp.sendKeys(Keys.ENTER);
-            Thread.sleep(800);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            js.executeScript(
+                "var code = arguments[0];\n" +
+                "var jq = window.jQuery;\n" +
+                "var cs = document.getElementById('client_search') || document.querySelector('input[name=\"client_search\"], #client_search');\n" +
+                "if (cs) {\n" +
+                "    cs.value = code;\n" +
+                "    if (jq) jq(cs).val(code);\n" +
+                "    if (typeof get_symbol_client === 'function') get_symbol_client(1);\n" +
+                "    if (typeof get_client_code_data === 'function') { try { get_client_code_data(cs); } catch(e){} }\n" +
+                "}\n",
+                cleanClient
+            );
+            Thread.sleep(400);
+
+            // Additional UI interaction fallback
+            try {
+                WebElement codeInp = driver.findElement(By.xpath(
+                        "//input[@id='client_search' or contains(@name,'client_search')] | " +
+                        "//div[contains(@class,'position') or .//table[@id='symbol_position_table']]//input[contains(@placeholder,'Code')]"));
+                if (codeInp.isDisplayed() && !cleanClient.equals(codeInp.getAttribute("value"))) {
+                    codeInp.clear();
+                    codeInp.sendKeys(cleanClient);
+                    codeInp.sendKeys(Keys.ENTER);
+                    Thread.sleep(400);
+                }
+            } catch (Exception ignored) {}
         } catch (Exception ignored) {}
     }
 

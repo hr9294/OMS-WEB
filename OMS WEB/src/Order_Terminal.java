@@ -34,8 +34,8 @@ public class Order_Terminal {
             "//li[contains(@class,'lm_tab') and (.//span[contains(text(),'Trade')] or contains(.,'Trade') or @title='Trade')]");
 
     // Filter Bar in Order Terminal Header
-    private static final By INPUT_CODE   = By.xpath("//input[contains(@id,'order_terminal_code') or @placeholder='Search Code']");
-    private static final By INPUT_SYMBOL = By.xpath("//input[contains(@id,'order_terminal_symbol') or @placeholder='Search Symbol']");
+    private static final By INPUT_CODE   = By.xpath("//input[@id='order_terminal_code_terminal_1' or contains(@id,'order_terminal_code') or contains(@class,'order_terminal_code')] | //input[@placeholder='Search Code' and ancestor::*[contains(@class,'order_terminal') or contains(@id,'terminal')]]");
+    private static final By INPUT_SYMBOL = By.xpath("//input[@id='order_terminal_symbol_terminal_1' or contains(@id,'order_terminal_symbol') or contains(@class,'order_terminal_symbol')] | //input[@placeholder='Search Symbol' and ancestor::*[contains(@class,'order_terminal') or contains(@id,'terminal')]]");
     private static final By BTN_CLEAR    = By.xpath("//button[contains(@id,'clear_filter') or normalize-space()='Clear']");
     private static final By BTN_RESET    = By.xpath("//button[contains(@id,'reset_filter') or normalize-space()='Reset']");
     private static final By REFRESH_BTN  = By.xpath("//div[contains(@class,'user_order_terminals')]//i[contains(@class,'refresh')] | //button[contains(@id,'refresh')]");
@@ -167,21 +167,63 @@ public class Order_Terminal {
     }
 
     public static void filterOrderTerminal(WebDriver driver, String clientCode, String symbol) {
+        if (driver == null) return;
+        String cleanClient = (clientCode != null) ? clientCode.trim() : "";
+        String cleanSym = (symbol != null) ? cleanSymbol(symbol) : "";
         try {
-            if (clientCode != null && !clientCode.isEmpty()) {
-                WebElement codeInput = driver.findElement(INPUT_CODE);
-                codeInput.clear();
-                codeInput.sendKeys(clientCode);
-                codeInput.sendKeys(Keys.ENTER);
-                Thread.sleep(300);
-            }
-            if (symbol != null && !symbol.isEmpty()) {
-                WebElement symInput = driver.findElement(INPUT_SYMBOL);
-                symInput.clear();
-                symInput.sendKeys(symbol);
-                symInput.sendKeys(Keys.ENTER);
-                Thread.sleep(300);
-            }
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            js.executeScript(
+                "var code = arguments[0];\n" +
+                "var sym = (arguments[1] || '').trim();\n" +
+                "var jq = window.jQuery;\n" +
+                "var otInputs = document.querySelectorAll('input[id*=\"order_terminal_code\"], input.order_terminal_code');\n" +
+                "if (otInputs.length === 0) {\n" +
+                "    var el = document.getElementById('order_terminal_code_terminal_1');\n" +
+                "    if (el) otInputs = [el];\n" +
+                "}\n" +
+                "for (var i = 0; i < otInputs.length; i++) {\n" +
+                "    var inp = otInputs[i];\n" +
+                "    if (code) inp.value = code;\n" +
+                "    if (jq) {\n" +
+                "        if (code) jq(inp).val(code);\n" +
+                "        jq(inp).trigger('orderTerminalCodeChanged');\n" +
+                "        if (typeof get_client_code_data === 'function') { try { get_client_code_data(inp); } catch(e){} }\n" +
+                "    }\n" +
+                "}\n" +
+                "if (sym) {\n" +
+                "    var otSyms = document.querySelectorAll('input[id*=\"order_terminal_symbol\"], input.order_terminal_symbol');\n" +
+                "    for (var j = 0; j < otSyms.length; j++) {\n" +
+                "        otSyms[j].value = sym;\n" +
+                "        if (jq) jq(otSyms[j]).val(sym).trigger('change');\n" +
+                "    }\n" +
+                "}\n" +
+                "if (typeof get_order_history === 'function') { try { get_order_history(); } catch(e){} }\n",
+                cleanClient,
+                cleanSym
+            );
+            Thread.sleep(400);
+
+            // Additional UI interaction fallback
+            try {
+                if (!cleanClient.isEmpty()) {
+                    WebElement codeInput = driver.findElement(INPUT_CODE);
+                    if (codeInput.isDisplayed() && !cleanClient.equals(codeInput.getAttribute("value"))) {
+                        codeInput.clear();
+                        codeInput.sendKeys(cleanClient);
+                        codeInput.sendKeys(Keys.ENTER);
+                        Thread.sleep(300);
+                    }
+                }
+                if (!cleanSym.isEmpty()) {
+                    WebElement symInput = driver.findElement(INPUT_SYMBOL);
+                    if (symInput.isDisplayed() && !cleanSym.equals(symInput.getAttribute("value"))) {
+                        symInput.clear();
+                        symInput.sendKeys(cleanSym);
+                        symInput.sendKeys(Keys.ENTER);
+                        Thread.sleep(300);
+                    }
+                }
+            } catch (Exception ignored) {}
         } catch (Exception ignored) {}
     }
 

@@ -190,23 +190,32 @@ public class ClientPortfolio {
     }
 
     public static void ensureClientLoadedInUi(WebDriver driver, String clientCode) {
+        if (driver == null || clientCode == null || clientCode.trim().isEmpty()) return;
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
             js.executeScript(
-                "var code = arguments[0];" +
-                "var inp = document.getElementById('portfolio_code_input') || document.querySelector('input[id*=\"portfolio\"], #account-portfolio input');" +
-                "if (inp) { inp.value = code; try { $(inp).trigger('input').trigger('change'); } catch(e){} }" +
-                "if (typeof selectSaleable === 'function') {" +
-                "    selectSaleable(code);" +
-                "} else if (window.$) {" +
-                "    $.get('shared/portfolio_code?clientcode=' + encodeURIComponent(code), function(data) {" +
-                "        $('#account-portfolio').html(data);" +
-                "        if (typeof selectSaleable === 'function') selectSaleable(code);" +
-                "    });" +
-                "}",
-                clientCode
+                "var code = arguments[0];\n" +
+                "var jq = window.jQuery;\n" +
+                "var p = document.getElementById('portfolio_code_input') || document.querySelector('input[name=\"portfolio_code_input\"], #account-portfolio input');\n" +
+                "var s = document.getElementById('saleable_code');\n" +
+                "var ap = document.getElementById('account-portfolio');\n" +
+                "if (s) s.value = code;\n" +
+                "if (p) {\n" +
+                "    p.value = code;\n" +
+                "    if (jq) {\n" +
+                "        jq(s).val(code);\n" +
+                "        jq(p).val(code);\n" +
+                "        jq.get('shared/portfolio_code', function(data) {\n" +
+                "            if (ap) ap.innerHTML = data;\n" +
+                "            if (typeof selectSaleable === 'function') selectSaleable(code);\n" +
+                "        });\n" +
+                "        if (typeof get_client_code_data === 'function') { try { get_client_code_data(p); } catch(e){} }\n" +
+                "    }\n" +
+                "}\n" +
+                "if (typeof selectSaleable === 'function') selectSaleable(code);\n",
+                clientCode.trim()
             );
-            Thread.sleep(450);
+            Thread.sleep(600);
         } catch (Exception ignored) {}
     }
 

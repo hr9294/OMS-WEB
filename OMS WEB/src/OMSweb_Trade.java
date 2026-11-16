@@ -6180,10 +6180,113 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		JavascriptExecutor js = (JavascriptExecutor) driver;
 
-		// 1. Order Window / Order Entry Form (order_client_code input & autocomplete)
+		// Execute master unified JavaScript propagator across DOM
 		try {
-			fillAndSelectAutocompleteSafely(driver, new WebDriverWait(driver, Duration.ofSeconds(3)), By.id("order_client_code"), cleanClient, false);
-			ensureClientCodeRetained(driver, cleanClient);
+			js.executeScript(
+				"var code = arguments[0];\n" +
+				"var sym = (arguments[1] || '').trim().toUpperCase();\n" +
+				"var jq = window.jQuery;\n" +
+				"try { if (typeof system_username !== 'undefined' && system_username) window.localStorage.setItem(system_username + '_last_selected_client_code', code); } catch(e){}\n" +
+				// 1. Client Portfolio Widget
+				"try {\n" +
+				"    var p = document.getElementById('portfolio_code_input') || document.querySelector('input[name=\"portfolio_code_input\"], #account-portfolio input');\n" +
+				"    var s = document.getElementById('saleable_code');\n" +
+				"    var ap = document.getElementById('account-portfolio');\n" +
+				"    if (s) s.value = code;\n" +
+				"    if (p) {\n" +
+				"        p.value = code;\n" +
+				"        if (jq) {\n" +
+				"            jq(s).val(code);\n" +
+				"            jq(p).val(code);\n" +
+				"            jq.get('shared/portfolio_code', function(data) {\n" +
+				"                if (ap) ap.innerHTML = data;\n" +
+				"                if (typeof selectSaleable === 'function') selectSaleable(code);\n" +
+				"            });\n" +
+				"            if (typeof get_client_code_data === 'function') { try { get_client_code_data(p); } catch(e){} }\n" +
+				"        }\n" +
+				"    }\n" +
+				"} catch(e){}\n" +
+				// 2. Order Terminal Widget
+				"try {\n" +
+				"    var otInputs = document.querySelectorAll('input[id*=\"order_terminal_code\"], input.order_terminal_code');\n" +
+				"    if (otInputs.length === 0) {\n" +
+				"        var el = document.getElementById('order_terminal_code_terminal_1');\n" +
+				"        if (el) otInputs = [el];\n" +
+				"    }\n" +
+				"    for (var i = 0; i < otInputs.length; i++) {\n" +
+				"        var otInp = otInputs[i];\n" +
+				"        otInp.value = code;\n" +
+				"        if (jq) {\n" +
+				"            jq(otInp).val(code);\n" +
+				"            jq(otInp).trigger('orderTerminalCodeChanged');\n" +
+				"            if (typeof get_client_code_data === 'function') { try { get_client_code_data(otInp); } catch(e){} }\n" +
+				"        }\n" +
+				"    }\n" +
+				"    if (typeof get_order_history === 'function') { try { get_order_history(); } catch(e){} }\n" +
+				"} catch(e){}\n" +
+				// 3. Order Summary Widget
+				"try {\n" +
+				"    var os = document.getElementById('order_summary_code') || document.querySelector('input[name=\"order_summary_code\"]');\n" +
+				"    if (os) {\n" +
+				"        os.value = code;\n" +
+				"        if (jq) jq(os).val(code);\n" +
+				"        if (typeof loadOrderSummary === 'function') loadOrderSummary();\n" +
+				"        if (typeof get_client_code_data === 'function') { try { get_client_code_data(os); } catch(e){} }\n" +
+				"    }\n" +
+				"} catch(e){}\n" +
+				// 4. Account Limits Widget
+				"try {\n" +
+				"    var al = document.getElementById('account_limit_code') || document.querySelector('input[name=\"account_limit_code\"]');\n" +
+				"    if (al) {\n" +
+				"        al.value = code;\n" +
+				"        if (jq) jq(al).val(code);\n" +
+				"        if (typeof get_account_limit === 'function') get_account_limit();\n" +
+				"        if (typeof get_client_code_data === 'function') { try { get_client_code_data(al); } catch(e){} }\n" +
+				"    }\n" +
+				"} catch(e){}\n" +
+				// 5. Position Widget
+				"try {\n" +
+				"    var cs = document.getElementById('client_search') || document.querySelector('input[name=\"client_search\"]');\n" +
+				"    if (cs) {\n" +
+				"        cs.value = code;\n" +
+				"        if (jq) jq(cs).val(code);\n" +
+				"        if (typeof get_symbol_client === 'function') get_symbol_client(1);\n" +
+				"        if (typeof get_client_code_data === 'function') { try { get_client_code_data(cs); } catch(e){} }\n" +
+				"    }\n" +
+				"} catch(e){}\n" +
+				// 6. Realized Gain
+				"try {\n" +
+				"    var rg = document.getElementById('realizegain_code');\n" +
+				"    if (rg) {\n" +
+				"        rg.value = code;\n" +
+				"        if (jq) jq(rg).val(code);\n" +
+				"        if (typeof loadRealizeGain === 'function') loadRealizeGain();\n" +
+				"        if (typeof get_client_code_data === 'function') { try { get_client_code_data(rg); } catch(e){} }\n" +
+				"    }\n" +
+				"} catch(e){}\n" +
+				// 7. Order Form / Modal
+				"try {\n" +
+				"    var oc = document.getElementById('order_client_code');\n" +
+				"    var gc = document.getElementById('global_client_code');\n" +
+				"    if (oc) { oc.value = code; if (jq) jq(oc).val(code).trigger('change'); }\n" +
+				"    if (gc) { gc.value = code; if (jq) jq(gc).val(code).trigger('change'); }\n" +
+				"    if (typeof set_client_code_data === 'function') { try { set_client_code_data(code); } catch(e){} }\n" +
+				"    if (typeof getClientInfo === 'function') { try { getClientInfo(); } catch(e){} }\n" +
+				"    if (typeof checkSaleable === 'function') { try { checkSaleable(); } catch(e){} }\n" +
+				"} catch(e){}\n",
+				cleanClient,
+				cleanSym
+			);
+		} catch (Exception ignored) {}
+
+		// 1. Order Window / Order Entry Form (if modal is currently open)
+		try {
+			WebElement oc = null;
+			try { oc = driver.findElement(By.id("order_client_code")); } catch (Exception ignored) {}
+			if (oc != null && oc.isDisplayed()) {
+				fillAndSelectAutocompleteSafely(driver, new WebDriverWait(driver, Duration.ofSeconds(1)), By.id("order_client_code"), cleanClient, false);
+				ensureClientCodeRetained(driver, cleanClient);
+			}
 		} catch (Exception ignored) {}
 
 		// 2. Client Portfolio Widget (portfolio_code_input & selectSaleable)
@@ -6191,36 +6294,18 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			ClientPortfolio.ensureClientLoadedInUi(driver, cleanClient);
 		} catch (Exception ignored) {}
 
-		// 3. Account Limits Widget (limit_client_code & filterByClient)
+		// 3. Account Limits Widget (account_limit_code & filterByClient)
 		try {
-			js.executeScript(
-				"var code = arguments[0];" +
-				"var inp = document.getElementById('limit_client_code') || document.querySelector('div.account-limit input, div[id*=\"limit\"] input, div[id*=\"account\"] input');" +
-				"if (inp) { inp.value = code; try { $(inp).trigger('input').trigger('change'); } catch(e){} }",
-				cleanClient
-			);
 			Account_Limits.filterByClient(driver, cleanClient);
 		} catch (Exception ignored) {}
 
 		// 4. Order Terminal Widget (order_terminal_code & filterOrderTerminal)
 		try {
-			js.executeScript(
-				"var code = arguments[0];" +
-				"var inp = document.getElementById('order_terminal_code') || document.querySelector('input[id*=\"terminal_code\"], input[placeholder*=\"Search Code\"]');" +
-				"if (inp) { inp.value = code; try { $(inp).trigger('input').trigger('change'); } catch(e){} }",
-				cleanClient
-			);
 			Order_Terminal.filterOrderTerminal(driver, cleanClient, cleanSym);
 		} catch (Exception ignored) {}
 
-		// 5. Order Summary Widget (summary_client_code & filterOrderSummary)
+		// 5. Order Summary Widget (order_summary_code & filterOrderSummary)
 		try {
-			js.executeScript(
-				"var code = arguments[0];" +
-				"var inp = document.getElementById('summary_client_code') || document.querySelector('div.order-summary input[id*=\"client\"], div[id*=\"summary\"] input');" +
-				"if (inp) { inp.value = code; try { $(inp).trigger('input').trigger('change'); } catch(e){} }",
-				cleanClient
-			);
 			Order_Summary.filterOrderSummary(driver, cleanClient, cleanSym);
 		} catch (Exception ignored) {}
 

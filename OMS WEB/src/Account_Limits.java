@@ -33,13 +33,13 @@ public class Account_Limits {
             "//li[contains(@class,'lm_tab') and (.//span[contains(text(),'Trade')] or contains(.,'Trade') or @title='Trade')]");
 
     // Filter Bar
-    private static final By INPUT_CLIENT_FILTER = By.xpath("//div[contains(@class,'account-limit') or contains(.,'Account Limit')]//input[1] | //input[@id='limit_client_code']");
+    private static final By INPUT_CLIENT_FILTER = By.xpath("//input[@id='account_limit_code' or contains(@name,'account_limit_code') or contains(@id,'limit_client_code')] | //div[contains(@class,'account-limit')]//input[1]");
     private static final By BTN_CLEAR           = By.xpath("//button[normalize-space()='Clear' or contains(@class,'btn-danger')]");
     private static final By REFRESH_BTN         = By.xpath("//div[contains(@class,'account-limit')]//i[contains(@class,'refresh')] | //button[contains(@id,'refresh')]");
 
     // Tables in Account Limits
-    private static final By CASH_TABLE          = By.xpath("//table[thead//th[contains(.,'Remaining Cash') or contains(.,'Initial Limit')]] | //div[contains(@class,'account-limit')]//table[1]");
-    private static final By CAPITAL_TABLE       = By.xpath("//table[thead//th[contains(.,'Exec Value') or contains(.,'Day Order')]] | //div[contains(@class,'account-limit')]//table[2]");
+    private static final By CASH_TABLE          = By.xpath("//table[@id='account_cash_summary'] | //table[thead//th[contains(.,'Remaining Cash') or contains(.,'Initial Limit')]] | //div[contains(@class,'account-limit')]//table[1]");
+    private static final By CAPITAL_TABLE       = By.xpath("//table[@id='account_limit_summary'] | //table[thead//th[contains(.,'Exec Value') or contains(.,'Day Order')]] | //div[contains(@class,'account-limit')]//table[2]");
 
     // =========================================================================
     // 2. MAIN ENTRY POINT (Matching your runner's signature)
@@ -541,17 +541,34 @@ public class Account_Limits {
     }
 
     public static void filterByClient(WebDriver driver, String clientCode) {
+        if (driver == null || clientCode == null || clientCode.trim().isEmpty()) return;
+        String cleanClient = clientCode.trim();
         try {
-            if (clientCode != null && !clientCode.isEmpty()) {
-                // Click Clear button first if present
-                try { driver.findElement(BTN_CLEAR).click(); } catch (Exception ignored) {}
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            js.executeScript(
+                "var code = arguments[0];\n" +
+                "var jq = window.jQuery;\n" +
+                "var al = document.getElementById('account_limit_code') || document.querySelector('input[name=\"account_limit_code\"], #account_limit_code');\n" +
+                "if (al) {\n" +
+                "    al.value = code;\n" +
+                "    if (jq) jq(al).val(code);\n" +
+                "    if (typeof get_account_limit === 'function') get_account_limit();\n" +
+                "    if (typeof get_client_code_data === 'function') { try { get_client_code_data(al); } catch(e){} }\n" +
+                "}\n",
+                cleanClient
+            );
+            Thread.sleep(400);
 
+            // Additional UI interaction fallback
+            try {
                 WebElement input = driver.findElement(INPUT_CLIENT_FILTER);
-                input.clear();
-                input.sendKeys(clientCode);
-                input.sendKeys(Keys.ENTER);
-                Thread.sleep(600);
-            }
+                if (input.isDisplayed() && !cleanClient.equals(input.getAttribute("value"))) {
+                    input.clear();
+                    input.sendKeys(cleanClient);
+                    input.sendKeys(Keys.ENTER);
+                    Thread.sleep(400);
+                }
+            } catch (Exception ignored) {}
         } catch (Exception ignored) {}
     }
 

@@ -33,14 +33,14 @@ public class Order_Summary {
             "//li[contains(@class,'lm_tab') and (.//span[contains(text(),'Trade')] or contains(.,'Trade') or @title='Trade')]");
 
     // Filter Inputs (Top bar in your screenshot)
-    private static final By INPUT_CLIENT_FILTER = By.xpath("//div[contains(@class,'order-summary') or contains(.,'Order Summary')]//input[1] | //input[@id='summary_client_code']");
-    private static final By INPUT_SEARCH_SYMBOL = By.xpath("//input[@placeholder='Search Symbol' or contains(@id,'search_symbol')]");
+    private static final By INPUT_CLIENT_FILTER = By.xpath("//input[@id='order_summary_code' or contains(@name,'order_summary_code')] | //div[contains(@class,'order-summary')]//input[1]");
+    private static final By INPUT_SEARCH_SYMBOL = By.xpath("//input[@id='order_summary_symbol' or contains(@name,'order_summary_symbol')] | //input[@placeholder='Search Symbol' or contains(@id,'search_symbol')]");
     private static final By BTN_CLEAR           = By.xpath("//button[normalize-space()='Clear' or contains(@class,'btn-danger')]");
     private static final By REFRESH_BTN         = By.xpath("//div[contains(@class,'order-summary')]//i[contains(@class,'refresh')] | //button[contains(@id,'refresh')]");
 
     // Tables
-    private static final By DETAIL_TABLE        = By.xpath("//table[thead//th[contains(.,'B Qty') or contains(.,'Total Ordr')]] | //div[contains(@class,'order-summary')]//table[last()]");
-    private static final By SUMMARY_SIDE_TABLE  = By.xpath("//table[thead//th[contains(.,'Ord Qty') or contains(.,'Exec Value')]] | //div[contains(@class,'order-summary')]//table[1]");
+    private static final By DETAIL_TABLE        = By.xpath("//table[@id='ordsum-order-table'] | //table[thead//th[contains(.,'B Qty') or contains(.,'Total Ordr')]] | //div[contains(@class,'order-summary')]//table[last()]");
+    private static final By SUMMARY_SIDE_TABLE  = By.xpath("//table[@id='ordsum-summary-table'] | //table[thead//th[contains(.,'Ord Qty') or contains(.,'Exec Value')]] | //div[contains(@class,'order-summary')]//table[1]");
     private static final By DETAIL_TABLE_HEADERS= By.xpath(".//thead//th");
     private static final String SYMBOL_ROW_XPATH = ".//tbody//tr[td[normalize-space()='%s']]";
 
@@ -130,22 +130,54 @@ public class Order_Summary {
     }
 
     public static void filterOrderSummary(WebDriver driver, String clientCode, String symbol) {
+        if (driver == null) return;
+        String cleanClient = (clientCode != null) ? clientCode.trim() : "";
+        String cleanSym = (symbol != null) ? cleanSymbol(symbol) : "";
         try {
-            // 1. Enter Client Code in the left box (if provided)
-            if (clientCode != null && !clientCode.trim().isEmpty()) {
-                WebElement clientBox = driver.findElement(INPUT_CLIENT_FILTER);
-                clientBox.clear();
-                clientBox.sendKeys(clientCode);
-                clientBox.sendKeys(Keys.ENTER);
-            }
-            // 2. Enter Symbol in the middle Search box
-            if (symbol != null && !symbol.trim().isEmpty()) {
-                WebElement searchBox = driver.findElement(INPUT_SEARCH_SYMBOL);
-                searchBox.clear();
-                searchBox.sendKeys(symbol);
-                searchBox.sendKeys(Keys.ENTER);
-            }
-            Thread.sleep(600);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            js.executeScript(
+                "var code = arguments[0];\n" +
+                "var sym = (arguments[1] || '').trim();\n" +
+                "var jq = window.jQuery;\n" +
+                "var os = document.getElementById('order_summary_code') || document.querySelector('input[name=\"order_summary_code\"]');\n" +
+                "if (os && code) {\n" +
+                "    os.value = code;\n" +
+                "    if (jq) jq(os).val(code);\n" +
+                "}\n" +
+                "if (sym) {\n" +
+                "    var osSym = document.getElementById('order_summary_symbol') || document.querySelector('input[name=\"order_summary_symbol\"]');\n" +
+                "    if (osSym) {\n" +
+                "        osSym.value = sym;\n" +
+                "        if (jq) jq(osSym).val(sym);\n" +
+                "    }\n" +
+                "}\n" +
+                "if (typeof loadOrderSummary === 'function') loadOrderSummary();\n" +
+                "if (typeof get_client_code_data === 'function' && os) { try { get_client_code_data(os); } catch(e){} }\n",
+                cleanClient,
+                cleanSym
+            );
+            Thread.sleep(400);
+
+            // Additional UI interaction fallback
+            try {
+                if (!cleanClient.isEmpty()) {
+                    WebElement clientBox = driver.findElement(INPUT_CLIENT_FILTER);
+                    if (clientBox.isDisplayed() && !cleanClient.equals(clientBox.getAttribute("value"))) {
+                        clientBox.clear();
+                        clientBox.sendKeys(cleanClient);
+                        clientBox.sendKeys(Keys.ENTER);
+                    }
+                }
+                if (!cleanSym.isEmpty()) {
+                    WebElement searchBox = driver.findElement(INPUT_SEARCH_SYMBOL);
+                    if (searchBox.isDisplayed() && !cleanSym.equals(searchBox.getAttribute("value"))) {
+                        searchBox.clear();
+                        searchBox.sendKeys(cleanSym);
+                        searchBox.sendKeys(Keys.ENTER);
+                    }
+                }
+                Thread.sleep(300);
+            } catch (Exception ignored) {}
         } catch (Exception ignored) {}
     }
 

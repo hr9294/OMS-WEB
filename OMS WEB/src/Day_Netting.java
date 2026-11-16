@@ -1951,11 +1951,12 @@ public class Day_Netting {
             System.out.println("\n[3/6] Maximizing 'Client Portfolio' widget...");
             OMSweb_Trade.maximizeWidget(driver, "Portfolio");
             Thread.sleep(500);
-            OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Portfolio.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
             if (snap.targetClient != null && !snap.targetClient.isEmpty()) {
                 ClientPortfolio.ensureClientLoadedInUi(driver, snap.targetClient);
+                Thread.sleep(400);
             }
+            OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Portfolio.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
             try { snap.portfolioData = ClientPortfolio.getUiSnapshot(driver, snap.targetClient, snap.targetSymbol); } catch (Exception ignored) {}
             System.out.printf("  ✓ [Portfolio Data] Client: %s | Symbol: %s | Total Qty: %s | Saleable Qty: %s | Avg Cost: %s | Value: %s%n",
                     snap.targetClient, snap.targetSymbol,
@@ -1974,11 +1975,12 @@ public class Day_Netting {
             System.out.println("\n[4/6] Maximizing 'Order Terminal' widget...");
             OMSweb_Trade.maximizeWidget(driver, "Order Terminal");
             Thread.sleep(500);
-            OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Order_Terminal.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
             if (snap.targetClient != null && !snap.targetClient.isEmpty()) {
                 Order_Terminal.filterOrderTerminal(driver, snap.targetClient, snap.targetSymbol);
+                Thread.sleep(400);
             }
+            OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Order_Terminal.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
             try { snap.orderTerminalData = Order_Terminal.getUiSnapshot(driver, snap.targetSymbol, snap.targetClient); } catch (Exception ignored) {}
             System.out.printf("  ✓ [Order Terminal Data] Order ID: %s | Status: %s | Action: %s | Exec Qty: %s | Due Qty: %s | Rate: %s%n",
                     snap.orderTerminalData.getOrDefault("Order_ID", snap.orderTerminalData.getOrDefault("order_id", "-")),
@@ -1998,11 +2000,12 @@ public class Day_Netting {
             System.out.println("\n[5/6] Maximizing 'Order Summary' widget...");
             OMSweb_Trade.maximizeWidget(driver, "Order Summary");
             Thread.sleep(500);
-            OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Order_Summary.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
             if (snap.targetClient != null && !snap.targetClient.isEmpty()) {
                 Order_Summary.filterOrderSummary(driver, snap.targetClient, snap.targetSymbol);
+                Thread.sleep(400);
             }
+            OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Order_Summary.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
             try { snap.orderSummaryData = Order_Summary.getUiSnapshot(driver, snap.targetClient, snap.targetSymbol); } catch (Exception ignored) {}
             System.out.printf("  ✓ [Order Summary Data] Total Orders: %s | Executed: %s | Buy Qty: %s | Buy Turnover: %s | Sell Turnover: %s%n",
                     snap.orderSummaryData.getOrDefault("Total_Orders", snap.orderSummaryData.getOrDefault("total_orders", "-")),
@@ -2021,11 +2024,12 @@ public class Day_Netting {
             System.out.println("\n[6/6] Maximizing 'Account Limits' widget...");
             OMSweb_Trade.maximizeWidget(driver, "Account Limits");
             Thread.sleep(500);
-            OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Account_Limits.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
             if (snap.targetClient != null && !snap.targetClient.isEmpty()) {
                 Account_Limits.filterByClient(driver, snap.targetClient);
+                Thread.sleep(400);
             }
+            OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Account_Limits.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
             try { snap.accountLimitsData = Account_Limits.getUiSnapshot(driver, snap.targetClient); } catch (Exception ignored) {}
             System.out.printf("  ✓ [Account Limits Data] Client: %s | Rem Cash: %s | Blocked/Day: %s | Total Tx: %s%n",
                     snap.targetClient,
