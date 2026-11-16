@@ -761,7 +761,7 @@ public class Day_Netting {
             JavascriptExecutor js = (JavascriptExecutor) driver;
 
             // 1. Click '+ Add Symbol' button to open modal
-            Boolean modalOpened = (Boolean) js.executeScript(
+            js.executeScript(
                 "var btns = Array.from(document.querySelectorAll('button, a.btn, a, .btn'));\n" +
                 "var addBtn = btns.find(function(b) { var t = (b.innerText||b.textContent||'').trim().toLowerCase(); return t.indexOf('+ add symbol') !== -1 || (t.indexOf('add symbol') !== -1 && t.indexOf('✓') === -1); });\n" +
                 "if (addBtn) { if (window.jQuery) window.jQuery(addBtn).trigger('click'); addBtn.click(); return true; }\n" +
@@ -770,7 +770,7 @@ public class Day_Netting {
             Thread.sleep(500);
 
             // 2. Inside modal, select Exchange dropdown, enter symbol, and click '✓ Add Symbol'
-            Boolean submitted = (Boolean) js.executeScript(
+            js.executeScript(
                 "var ex = arguments[0];\n" +
                 "var sym = arguments[1];\n" +
                 "var modal = document.querySelector('.modal, [role=\"dialog\"], .popup, [class*=\"modal\"], [class*=\"dialog\"], body');\n" +
@@ -858,7 +858,7 @@ public class Day_Netting {
             System.out.printf("[RMS APPLICABLE SYMBOLS] Deleting Symbol: %s on Exchange: %s...%n", sym, ex);
             JavascriptExecutor js = (JavascriptExecutor) driver;
 
-            Boolean deleted = (Boolean) js.executeScript(
+            js.executeScript(
                 "var ex = arguments[0];\n" +
                 "var sym = arguments[1];\n" +
                 "var rows = Array.from(document.querySelectorAll('table tbody tr, tr'));\n" +
