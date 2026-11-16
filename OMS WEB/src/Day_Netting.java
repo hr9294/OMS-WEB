@@ -2384,11 +2384,9 @@ public class Day_Netting {
         while (running) {
             System.out.println("\nSelect Action:");
             System.out.println("  1. Configure Netting Mode (None / Individual / Cross Exchange)");
-            System.out.println("  2. Configure Exchange Netting (DSE / CSE / Both)");
             System.out.println("  3. Upload / Manage Applicable Symbols");
             System.out.println("  4. Configure Client Netting Eligibility (Allow / Block Client)");
             System.out.println("  5. Configure Market / Board-wise Restrictions");
-            System.out.println("  6. Run UI Netting Indicators Audit (3-in-1 Selection)");
             System.out.println("  7. Run Full Automated Scrip Netting Test Suite (All 5 Scopes)");
             System.out.println("  0. Return to Main Menu");
 
@@ -2398,7 +2396,7 @@ public class Day_Netting {
                 System.out.println("\n[DOCKER AUTOMATE MODE] Automatically selected Day Netting option: 7 (Full Test Suite)");
             } else {
                 while (choice.isEmpty()) {
-                    System.out.print("Enter Choice (1-7, or 0=Return): ");
+                    System.out.print("Enter Choice (1, 3, 4, 5, 7 or 0=Return): ");
                     if (!sc.hasNextLine()) break;
                     choice = sc.nextLine().trim();
                 }
@@ -2767,6 +2765,7 @@ public class Day_Netting {
             System.out.println("=============================================================================\n");
         } catch (Exception e) {
             System.err.println("[DAY NETTING ERROR] " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
