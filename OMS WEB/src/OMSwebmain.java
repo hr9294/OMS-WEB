@@ -200,7 +200,7 @@ public class OMSwebmain {
                 // MANUAL MODE: Wait for user choice with 3-minute idle auto-reload watchdog
                 while (engChoice.isEmpty()) {
                     System.out.print("Enter Choice (1-6 to execute, 0=Exit): ");
-                    engChoice = OMSweb_Trade.readLineWithIdleWatchdog(driver, sc, 180);
+                    engChoice = readLineWithIdleWatchdog(driver, sc, 180);
                     if (engChoice.isEmpty()) {
                         break;
                     }
@@ -257,6 +257,105 @@ public class OMSwebmain {
             System.out.println(" [ACTION FINISHED] Completed successfully. Session is ACTIVE in browser.");
             System.out.println(" Selection menu will now reappear below for your further action.");
             System.out.println("=============================================================================");
+        }
+    }
+
+    public static String readLineWithIdleWatchdog(WebDriver driver, Scanner sc, int idleSeconds) {
+        if (sc == null) return "";
+        long timeoutMs = idleSeconds * 1000L;
+        long idleStart = System.currentTimeMillis();
+
+        // Ensure watchdog is installed in browser
+        try {
+            if (driver != null) {
+                JavascriptExecutor js = (JavascriptExecutor) driver;
+                js.executeScript(
+                    "try {\n" +
+                    "    if (!window._idleAutoReloadWatchdogInstalled) {\n" +
+                    "        window._idleAutoReloadWatchdogInstalled = true;\n" +
+                    "        window._lastActivityTimestamp = Date.now();\n" +
+                    "        var markActive = function() { window._lastActivityTimestamp = Date.now(); };\n" +
+                    "        ['mousemove', 'mousedown', 'keydown', 'keypress', 'click', 'scroll', 'touchstart', 'focus'].forEach(function(ev) {\n" +
+                    "            window.addEventListener(ev, markActive, { passive: true, capture: true });\n" +
+                    "            document.addEventListener(ev, markActive, { passive: true, capture: true });\n" +
+                    "        });\n" +
+                    "        setInterval(function() {\n" +
+                    "            try {\n" +
+                    "                var m = document.getElementById('autoReloadModal');\n" +
+                    "                if (m && (m.classList.contains('show') || window.getComputedStyle(m).display !== 'none' || (m.innerText && m.innerText.indexOf('You were idle') !== -1 && m.offsetParent !== null))) {\n" +
+                    "                    console.log('[WATCHDOG] Idle modal detected! Reloading page...');\n" +
+                    "                    location.reload();\n" +
+                    "                    return;\n" +
+                    "                }\n" +
+                    "                var elapsed = Date.now() - (window._lastActivityTimestamp || Date.now());\n" +
+                    "                if (elapsed >= 180000) { // 3 minutes idle = 180000 ms\n" +
+                    "                    console.log('[WATCHDOG] 3 minutes idle reached. Reloading page...');\n" +
+                    "                    window._lastActivityTimestamp = Date.now();\n" +
+                    "                    location.reload();\n" +
+                    "                }\n" +
+                    "            } catch(e) {}\n" +
+                    "        }, 1000);\n" +
+                    "    }\n" +
+                    "} catch(e) {}\n"
+                );
+            }
+        } catch (Exception ignored) {}
+
+        while (true) {
+            try {
+                if (System.in.available() > 0) {
+                    if (sc.hasNextLine()) {
+                        String input = sc.nextLine().trim();
+                        return input;
+                    }
+                }
+            } catch (Exception ignored) {}
+
+            // 1. Check if browser idle modal appeared
+            try {
+                if (driver != null) {
+                    JavascriptExecutor js = (JavascriptExecutor) driver;
+                    Boolean isIdleModalVisible = (Boolean) js.executeScript(
+                        "try {\n" +
+                        "    var m = document.getElementById('autoReloadModal');\n" +
+                        "    if (m && (m.classList.contains('show') || m.style.display === 'block' || window.getComputedStyle(m).display !== 'none')) return true;\n" +
+                        "    var btn = Array.from(document.querySelectorAll('button, a')).find(function(b) { return (b.innerText || '').indexOf('Reload Manually') !== -1; });\n" +
+                        "    if (btn && btn.offsetParent !== null) return true;\n" +
+                        "    var txt = (document.body ? document.body.innerText : '');\n" +
+                        "    return txt.indexOf('You were idle!') !== -1 && txt.indexOf('Reload Manually') !== -1;\n" +
+                        "} catch(e) { return false; }"
+                    );
+                    if (Boolean.TRUE.equals(isIdleModalVisible)) {
+                        System.out.println("\n[IDLE DETECTED] 'You were idle!' popup appeared on screen. Reloading page...");
+                        js.executeScript(
+                            "try {\n" +
+                            "    var btn = document.querySelector('#autoReloadModal button, button[onclick*=\"reload\"]');\n" +
+                            "    if (btn) btn.click(); else location.reload();\n" +
+                            "} catch(e) { location.reload(); }\n"
+                        );
+                        Thread.sleep(2500);
+                        try { OMSweb_Trade.restoreAllPreviousSettings(driver); } catch (Exception ignored) {}
+                        idleStart = System.currentTimeMillis();
+                    }
+                }
+            } catch (Exception ignored) {}
+
+            // 2. Check if 3 minutes idle reached
+            if (driver != null && System.currentTimeMillis() - idleStart >= timeoutMs) {
+                System.out.printf("%n[IDLE 3-MIN WATCHDOG] 3 minutes (%ds) idle without input. Reloading page and restoring session...%n", idleSeconds);
+                try {
+                    JavascriptExecutor js = (JavascriptExecutor) driver;
+                    js.executeScript("location.reload();");
+                    Thread.sleep(2500);
+                    try { OMSweb_Trade.restoreAllPreviousSettings(driver); } catch (Exception ignored) {}
+                } catch (Exception e) {
+                    try { driver.navigate().refresh(); } catch (Exception ignored) {}
+                }
+                idleStart = System.currentTimeMillis();
+                System.out.print("Enter Choice: ");
+            }
+
+            try { Thread.sleep(200); } catch (Exception ignored) {}
         }
     }
 }
