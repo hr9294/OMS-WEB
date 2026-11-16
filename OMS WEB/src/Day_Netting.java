@@ -2381,6 +2381,7 @@ public class Day_Netting {
             if (driver != null) {
                 JavascriptExecutor js = (JavascriptExecutor) driver;
                 js.executeScript(
+                    "var idleLimit = arguments[0] || 300000;\n" +
                     "try {\n" +
                     "    if (!window._idleAutoReloadWatchdogInstalled) {\n" +
                     "        window._idleAutoReloadWatchdogInstalled = true;\n" +
@@ -2399,15 +2400,16 @@ public class Day_Netting {
                     "                    return;\n" +
                     "                }\n" +
                     "                var elapsed = Date.now() - (window._lastActivityTimestamp || Date.now());\n" +
-                    "                if (elapsed >= 180000) { // 3 minutes idle = 180000 ms\n" +
-                    "                    console.log('[WATCHDOG] 3 minutes idle reached. Reloading page...');\n" +
+                    "                if (elapsed >= idleLimit) { // 5 minutes idle = 300000 ms\n" +
+                    "                    console.log('[WATCHDOG] ' + Math.round(idleLimit / 60000) + ' minutes idle reached. Reloading page...');\n" +
                     "                    window._lastActivityTimestamp = Date.now();\n" +
                     "                    location.reload();\n" +
                     "                }\n" +
                     "            } catch(e) {}\n" +
                     "        }, 1000);\n" +
                     "    }\n" +
-                    "} catch(e) {}\n"
+                    "} catch(e) {}\n",
+                    timeoutMs
                 );
             }
         } catch (Exception ignored) {}
@@ -2451,9 +2453,9 @@ public class Day_Netting {
                 }
             } catch (Exception ignored) {}
 
-            // 2. Check if 3 minutes idle reached
+            // 2. Check if idle timeout reached (e.g. 5 minutes)
             if (driver != null && System.currentTimeMillis() - idleStart >= timeoutMs) {
-                System.out.printf("%n[IDLE 3-MIN WATCHDOG] 3 minutes (%ds) idle without input. Reloading page and restoring session...%n", idleSeconds);
+                System.out.printf("%n[IDLE %d-MIN WATCHDOG] %d minutes (%ds) idle without input. Reloading page and restoring session...%n", (idleSeconds / 60), (idleSeconds / 60), idleSeconds);
                 try {
                     JavascriptExecutor js = (JavascriptExecutor) driver;
                     js.executeScript("location.reload();");
@@ -2500,7 +2502,7 @@ public class Day_Netting {
             } else {
                 while (choice.isEmpty()) {
                     System.out.print("Enter Choice (1, 3, 4, 5, 7 or 0=Return): ");
-                    choice = readLineWithIdleWatchdog(driver, sc, 180);
+                    choice = readLineWithIdleWatchdog(driver, sc, 300);
                     if (choice.isEmpty()) break;
                 }
             }

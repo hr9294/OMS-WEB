@@ -3017,8 +3017,8 @@ public class OMSweb_Trade {
 				"                    return;\n" +
 				"                }\n" +
 				"                var elapsed = Date.now() - (window._lastActivityTimestamp || Date.now());\n" +
-				"                if (elapsed >= 180000) { // 3 minutes idle = 180000 ms\n" +
-				"                    console.log('[WATCHDOG] 3 minutes idle reached. Reloading page...');\n" +
+				"                if (elapsed >= 300000) { // 5 minutes idle = 300000 ms\n" +
+				"                    console.log('[WATCHDOG] 5 minutes idle reached. Reloading page...');\n" +
 				"                    window._lastActivityTimestamp = Date.now();\n" +
 				"                    location.reload();\n" +
 				"                }\n" +
@@ -3055,9 +3055,9 @@ public class OMSweb_Trade {
 				}
 			} catch (Exception ignored) {}
 
-			// 2. Check if 3 minutes idle reached
+			// 2. Check if idle timeout reached (e.g. 5 minutes)
 			if (driver != null && System.currentTimeMillis() - idleStart >= timeoutMs) {
-				System.out.printf("%n[IDLE 3-MIN WATCHDOG] 3 minutes (%ds) idle without input. Reloading page and restoring session...%n", idleSeconds);
+				System.out.printf("%n[IDLE %d-MIN WATCHDOG] %d minutes (%ds) idle without input. Reloading page and restoring session...%n", (idleSeconds / 60), (idleSeconds / 60), idleSeconds);
 				try {
 					JavascriptExecutor js = (JavascriptExecutor) driver;
 					js.executeScript("location.reload();");

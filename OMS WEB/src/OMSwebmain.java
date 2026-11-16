@@ -197,10 +197,10 @@ public class OMSwebmain {
                 engChoice = (envAction != null && !envAction.trim().isEmpty()) ? envAction.trim() : "1";
                 System.out.printf("\n[DOCKER AUTOMATE MODE] Automatically selected action: %s%n", engChoice);
             } else {
-                // MANUAL MODE: Wait for user choice with 3-minute idle auto-reload watchdog
+                // MANUAL MODE: Wait for user choice with 5-minute idle auto-reload watchdog
                 while (engChoice.isEmpty()) {
                     System.out.print("Enter Choice (1-6 to execute, 0=Exit): ");
-                    engChoice = readLineWithIdleWatchdog(driver, sc, 180);
+                    engChoice = readLineWithIdleWatchdog(driver, sc, 300);
                     if (engChoice.isEmpty()) {
                         break;
                     }
@@ -270,6 +270,7 @@ public class OMSwebmain {
             if (driver != null) {
                 JavascriptExecutor js = (JavascriptExecutor) driver;
                 js.executeScript(
+                    "var idleLimit = arguments[0] || 300000;\n" +
                     "try {\n" +
                     "    if (!window._idleAutoReloadWatchdogInstalled) {\n" +
                     "        window._idleAutoReloadWatchdogInstalled = true;\n" +
@@ -288,15 +289,16 @@ public class OMSwebmain {
                     "                    return;\n" +
                     "                }\n" +
                     "                var elapsed = Date.now() - (window._lastActivityTimestamp || Date.now());\n" +
-                    "                if (elapsed >= 180000) { // 3 minutes idle = 180000 ms\n" +
-                    "                    console.log('[WATCHDOG] 3 minutes idle reached. Reloading page...');\n" +
+                    "                if (elapsed >= idleLimit) { // 5 minutes idle = 300000 ms\n" +
+                    "                    console.log('[WATCHDOG] ' + Math.round(idleLimit / 60000) + ' minutes idle reached. Reloading page...');\n" +
                     "                    window._lastActivityTimestamp = Date.now();\n" +
                     "                    location.reload();\n" +
                     "                }\n" +
                     "            } catch(e) {}\n" +
                     "        }, 1000);\n" +
                     "    }\n" +
-                    "} catch(e) {}\n"
+                    "} catch(e) {}\n",
+                    timeoutMs
                 );
             }
         } catch (Exception ignored) {}
@@ -340,9 +342,9 @@ public class OMSwebmain {
                 }
             } catch (Exception ignored) {}
 
-            // 2. Check if 3 minutes idle reached
+            // 2. Check if idle timeout reached (e.g. 5 minutes)
             if (driver != null && System.currentTimeMillis() - idleStart >= timeoutMs) {
-                System.out.printf("%n[IDLE 3-MIN WATCHDOG] 3 minutes (%ds) idle without input. Reloading page and restoring session...%n", idleSeconds);
+                System.out.printf("%n[IDLE %d-MIN WATCHDOG] %d minutes (%ds) idle without input. Reloading page and restoring session...%n", (idleSeconds / 60), (idleSeconds / 60), idleSeconds);
                 try {
                     JavascriptExecutor js = (JavascriptExecutor) driver;
                     js.executeScript("location.reload();");
