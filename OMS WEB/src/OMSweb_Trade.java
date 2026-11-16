@@ -2294,6 +2294,11 @@ public class OMSweb_Trade {
 		if (driver == null || locator == null || value == null || value.trim().isEmpty()) return;
 
 		String cleanVal = value.trim();
+		if (!isSymbol) {
+			activeClientCode = cleanVal;
+		} else {
+			activeSymbol = cleanSymbol(cleanVal);
+		}
 
 		String targetSymbolVal = isSymbol ? toPublicSymbol(cleanVal) : cleanVal;
 
@@ -2752,7 +2757,10 @@ public class OMSweb_Trade {
 				"    res.symbol = (mw && mw.value) ? mw.value : ((oi && oi.value) ? oi.value : ((ins && ins.value) ? ins.value : ''));" +
 				"    var occ = document.getElementById('order_client_code');" +
 				"    var pci = document.getElementById('portfolio_code_input');" +
-				"    res.clientCode = (occ && occ.value) ? occ.value : ((pci && pci.value) ? pci.value : '');" +
+				"    var lcc = document.getElementById('limit_client_code');" +
+				"    var otc = document.getElementById('order_terminal_code');" +
+				"    var scc = document.getElementById('summary_client_code');" +
+				"    res.clientCode = (occ && occ.value) ? occ.value : ((pci && pci.value) ? pci.value : ((lcc && lcc.value) ? lcc.value : ((otc && otc.value) ? otc.value : ((scc && scc.value) ? scc.value : ''))));" +
 				"    var sel = document.querySelector('.chooseColor .selectedColor');" +
 				"    if (sel) {" +
 				"        res.colorHex = sel.getAttribute('data-link-color') || sel.style.backgroundColor || '';" +
@@ -2798,11 +2806,12 @@ public class OMSweb_Trade {
 
 	/**
 	 * Restores all previously active UI settings immediately following an idle reload:
-	 * 1. GoldenLayout widget color links across all 6 widgets (Trade, Market Watch, Market Depth, Order Terminal, Position, Client Portfolio)
-	 * 2. Active symbol across Search, Market Watch, Order Entry, and Market Depth
-	 * 3. Active client code across Order Entry and Client Portfolio
-	 * 4. Active exchange (DSE / CSE) in Order Entry
-	 * 5. Anti-idle keepalive heartbeat and idle popup watcher
+	 * 1. Waits for GoldenLayout UI containers to mount in the DOM
+	 * 2. GoldenLayout widget color links across all widgets
+	 * 3. Active symbol across Search, Market Watch, Order Entry, and Market Depth
+	 * 4. Selected client code propagated across ALL widgets (Order Window, Portfolio, Limits, Terminal, Summary, Position)
+	 * 5. Active exchange (DSE / CSE) in Order Entry modal
+	 * 6. Anti-idle keepalive heartbeat
 	 */
 	public static void restoreAllPreviousSettings(WebDriver driver) {
 		if (driver == null) return;
@@ -2815,11 +2824,37 @@ public class OMSweb_Trade {
 			// 1. Ensure on Trade page
 			navigateToTradePage(driver, wait, false);
 
-			// 2. Re-apply GoldenLayout widget color link to all 6 widgets
+			// 1.1 Wait for GoldenLayout UI widgets to mount in DOM
+			System.out.println("[IDLE RESTORATION] Waiting for GoldenLayout UI widgets to mount in DOM...");
+			long endWaitWidgets = System.currentTimeMillis() + 12000;
+			while (System.currentTimeMillis() < endWaitWidgets) {
+				try {
+					JavascriptExecutor js = (JavascriptExecutor) driver;
+					Boolean ready = (Boolean) js.executeScript(
+						"var cc = document.querySelectorAll('.chooseColor');\n" +
+						"var mw = document.getElementById('marketwatch_symbol');\n" +
+						"var oi = document.getElementById('order_instrument');\n" +
+						"var occ = document.getElementById('order_client_code');\n" +
+						"var pci = document.getElementById('portfolio_code_input');\n" +
+						"return (cc && cc.length >= 2) || (mw !== null) || (oi !== null) || (occ !== null) || (pci !== null);\n"
+					);
+					if (Boolean.TRUE.equals(ready)) {
+						Thread.sleep(800); // Allow GoldenLayout rendering and event listeners to stabilize
+						break;
+					}
+				} catch (Exception ignored) {}
+				Thread.sleep(300);
+			}
+
+			// 2. Re-apply GoldenLayout widget color link to all widgets
 			String targetColor = (activeWidgetColorName != null) ? activeWidgetColorName : "Turquoise";
 			String targetHex = (activeWidgetColorHex != null) ? activeWidgetColorHex : "#42EADDFF";
-			System.out.printf("[IDLE RESTORATION] Re-linking all 6 widgets to Color: %s (%s)...%n", targetColor, targetHex);
-			applyColorToAllWidgets(driver, targetColor, targetHex);
+			System.out.printf("[IDLE RESTORATION] Re-linking all widgets to Color: %s (%s)...%n", targetColor, targetHex);
+			boolean colored = applyColorToAllWidgets(driver, targetColor, targetHex);
+			if (!colored) {
+				Thread.sleep(600);
+				applyColorToAllWidgets(driver, targetColor, targetHex);
+			}
 			isWidgetColorConfigured = true;
 			activeWidgetColorName = targetColor;
 			activeWidgetColorHex = targetHex;
@@ -2830,7 +2865,10 @@ public class OMSweb_Trade {
 			System.out.printf("[IDLE RESTORATION] Restoring Symbol [%s] and Client Code [%s] across all widgets...%n", symToRestore, clientToRestore);
 			restoreTradePageState(driver, symToRestore, clientToRestore);
 
-			// 4. Re-link Market Watch & Market Depth widgets for symbol
+			// 4. Propagate selected Client Code across ALL widgets (Order Window, Portfolio, Limits, Terminal, Summary, Position)
+			propagateClientCodeToAllWidgets(driver, clientToRestore, symToRestore);
+
+			// 5. Re-link Market Watch & Market Depth widgets for symbol
 			try {
 				Market_Watch.connectWidget(driver, symToRestore, activeExchange != null ? activeExchange : "DSE");
 			} catch (Exception ignored) {}
@@ -2838,17 +2876,12 @@ public class OMSweb_Trade {
 				Market_Depth.searchSymbolInDepth(driver, symToRestore, activeExchange != null ? activeExchange : "DSE");
 			} catch (Exception ignored) {}
 
-			// 5. Re-load Client Portfolio widget for client code
-			try {
-				ClientPortfolio.ensureClientLoadedInUi(driver, clientToRestore);
-			} catch (Exception ignored) {}
-
 			// 6. Restore Active Exchange in modal
 			try {
 				selectExchangeInModal(driver, activeExchange != null ? activeExchange : "DSE");
 			} catch (Exception ignored) {}
 
-			// 7. Re-install anti-idle heartbeat and DOM idle watcher
+			// 7. Re-install anti-idle heartbeat
 			installAntiIdleHeartbeat(driver);
 
 			System.out.println("[IDLE RESTORATION] ✓ All previous settings successfully restored and visible.\n");
@@ -2868,7 +2901,9 @@ public class OMSweb_Trade {
 			// Find visible "Reload Manually" button strictly inside an active visible modal
 			List<WebElement> candidates = driver.findElements(By.xpath(
 				"//button[contains(normalize-space(), 'Reload Manually') or contains(text(), 'Reload Manually')] | " +
-				"//a[contains(normalize-space(), 'Reload Manually') or contains(text(), 'Reload Manually')]"
+				"//a[contains(normalize-space(), 'Reload Manually') or contains(text(), 'Reload Manually')] | " +
+				"//*[contains(translate(normalize-space(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'reload manually')] | " +
+				"//*[contains(text(), 'You were idle')]/ancestor::div[contains(@class,'modal') or contains(@class,'dialog') or contains(@class,'swal') or contains(@class,'popup') or contains(@class,'box') or contains(@class,'content')]//button"
 			));
 
 			WebElement visibleBtn = null;
@@ -2922,7 +2957,7 @@ public class OMSweb_Trade {
 					}
 				} catch (Exception ignored) {}
 
-				// Restore all previous settings (widget colors, active symbol, client code, exchange)
+				// Restore all previous settings (widget colors, active symbol, client code across all widgets, exchange)
 				restoreAllPreviousSettings(driver);
 				lastIdleRecoveryTime = System.currentTimeMillis();
 				System.out.println("[IDLE RECOVERY] ✓ Successfully restored all settings after reload. Resuming execution.\n");
@@ -2937,7 +2972,33 @@ public class OMSweb_Trade {
 	public static void ensureTradeSettingsRestored(WebDriver driver) {
 		if (driver == null || isRecoveringFromIdle) return;
 		try {
-			handleIdlePopupIfPresent(driver);
+			// Check if idle popup appeared
+			if (handleIdlePopupIfPresent(driver)) return;
+
+			// Cooldown check
+			if (System.currentTimeMillis() - lastIdleRecoveryTime < 15000L) {
+				return;
+			}
+
+			// Check if page was refreshed/reloaded in the background (e.g. idle timer reloaded before handleIdlePopup, or user manual reload)
+			if (isAlreadyOnTradePage(driver)) {
+				JavascriptExecutor js = (JavascriptExecutor) driver;
+				Boolean needsRestore = (Boolean) js.executeScript(
+					"try {" +
+					"    if (window._antiIdleInstalled) return false;" +
+					"    var ready = (document.readyState === 'complete');" +
+					"    var hasForm = (document.getElementById('order_instrument') !== null) ||" +
+					"                  (document.getElementById('order_client_code') !== null) ||" +
+					"                  (document.querySelectorAll('.chooseColor').length >= 2);" +
+					"    return ready && hasForm;" +
+					"} catch(e) { return false; }"
+				);
+				if (Boolean.TRUE.equals(needsRestore)) {
+					System.out.println("\n[IDLE RESTORATION] Detected page reload (anti-idle reset). Restoring all previous UI settings...");
+					restoreAllPreviousSettings(driver);
+					lastIdleRecoveryTime = System.currentTimeMillis();
+				}
+			}
 		} catch (Exception ignored) {}
 	}
 
@@ -2971,6 +3032,8 @@ public class OMSweb_Trade {
 		// 0. Automatic Idle Popup ("You were idle! / Reload Manually") Detection & Recovery
 		if (handleIdlePopupIfPresent(driver)) {
 			unblocked = true;
+		} else {
+			ensureTradeSettingsRestored(driver);
 		}
 
 		// 1. Dismiss native browser alerts
@@ -3570,84 +3633,57 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 			WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(6));
 
-			navigateToTradePage(driver, wait);
+			navigateToTradePage(driver, wait, false);
+
+			JavascriptExecutor js = (JavascriptExecutor) driver;
 
 			// 1. Populate Target Symbol into Search & Marketwatch & Order Entry
-
 			if (symbol != null && !symbol.trim().isEmpty()) {
 
 				String sym = cleanSymbol(symbol);
+				String pubSym = toPublicSymbol(sym);
 
+				// Search input (#instrument)
 				try {
-
-					WebElement searchSym = driver.findElement(By.id("instrument"));
-
-					searchSym.clear();
-
-					searchSym.sendKeys(sym);
-
-					searchSym.sendKeys(Keys.ARROW_DOWN);
-
-					searchSym.sendKeys(Keys.ENTER);
-
-					Thread.sleep(200);
-
+					js.executeScript(
+						"var el = document.getElementById('instrument');" +
+						"if (el) { el.value = arguments[0]; if (window.jQuery) { $(el).val(arguments[0]).trigger('input').trigger('change'); } }",
+						sym
+					);
 				} catch (Exception ignored) {}
 
+				// Market Watch input (#marketwatch_symbol)
 				try {
-
-					WebElement mwInput = driver.findElement(By.id("marketwatch_symbol"));
-
-					mwInput.clear();
-
-					mwInput.sendKeys(sym);
-
-					mwInput.sendKeys(Keys.ARROW_DOWN);
-
-					mwInput.sendKeys(Keys.ENTER);
-
-					Thread.sleep(200);
-
+					js.executeScript(
+						"var el = document.getElementById('marketwatch_symbol');" +
+						"if (el) { el.value = arguments[0]; if (window.jQuery) { $(el).val(arguments[0]).trigger('input').trigger('change'); } }",
+						sym
+					);
 				} catch (Exception ignored) {}
 
+				// Order Entry input (#order_instrument)
 				try {
-
-					WebElement orderInst = driver.findElement(By.id("order_instrument"));
-
-					orderInst.clear();
-
-					String pubSym = toPublicSymbol(sym);
-
-					orderInst.sendKeys(pubSym);
-
-					orderInst.sendKeys(Keys.ARROW_DOWN);
-
-					orderInst.sendKeys(Keys.ENTER);
-
+					js.executeScript(
+						"var el = document.getElementById('order_instrument');" +
+						"if (el) { el.value = arguments[0]; if (window.jQuery) { $(el).val(arguments[0]).trigger('input').trigger('change'); } }",
+						pubSym
+					);
 					ensureSymbolBoardRetained(driver, pubSym);
-
 				} catch (Exception ignored) {}
 
 			}
 
 			// 2. Populate Client Code into Order Entry
-
 			if (clientCode != null && !clientCode.trim().isEmpty()) {
 
+				String cleanCode = clientCode.trim();
 				try {
-
-					WebElement clientInp = driver.findElement(By.id("order_client_code"));
-
-					clientInp.clear();
-
-					clientInp.sendKeys(clientCode.trim());
-
-					clientInp.sendKeys(Keys.ARROW_DOWN);
-
-					clientInp.sendKeys(Keys.ENTER);
-
-					Thread.sleep(200);
-
+					js.executeScript(
+						"var el = document.getElementById('order_client_code');" +
+						"if (el) { el.value = arguments[0]; if (window.jQuery) { $(el).val(arguments[0]).trigger('input').trigger('change'); } }",
+						cleanCode
+					);
+					ensureClientCodeRetained(driver, cleanCode);
 				} catch (Exception ignored) {}
 
 			}
@@ -6136,6 +6172,10 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		if (driver == null || clientCode == null || clientCode.trim().isEmpty()) return;
 		String cleanClient = clientCode.trim();
 		String cleanSym = (symbol != null) ? cleanSymbol(symbol) : "";
+		activeClientCode = cleanClient;
+		if (symbol != null && !symbol.trim().isEmpty()) {
+			activeSymbol = cleanSym;
+		}
 		System.out.printf("%n>>> [CLIENT REFLECTION] Reflecting Client Code '%s' across all widgets (Order Window, Portfolio, Limits, Terminal, Summary, Position)...%n", cleanClient);
 
 		JavascriptExecutor js = (JavascriptExecutor) driver;

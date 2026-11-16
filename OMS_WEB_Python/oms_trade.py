@@ -202,25 +202,30 @@ def restore_trade_page_state(
     if client_code:
         active_client_code = str(client_code).strip()
 
-    navigate_to_trade_page(driver)
+    navigate_to_trade_page(driver, force=False)
     if symbol:
-        enter_instrument(driver, symbol)
+        clean_sym = oms_price.clean_symbol(symbol)
         try:
-            order_inst = driver.find_element(By.ID, "order_instrument")
-            order_inst.clear()
-            order_inst.send_keys(oms_price.clean_symbol(symbol))
-            order_inst.send_keys(Keys.ARROW_DOWN)
-            order_inst.send_keys(Keys.ENTER)
+            driver.execute_script("""
+                var sym = arguments[0];
+                var s = document.getElementById('instrument');
+                if (s) { s.value = sym; if (window.jQuery) { $(s).val(sym).trigger('input').trigger('change'); } }
+                var mw = document.getElementById('marketwatch_symbol');
+                if (mw) { mw.value = sym; if (window.jQuery) { $(mw).val(sym).trigger('input').trigger('change'); } }
+                var oi = document.getElementById('order_instrument');
+                if (oi) { oi.value = sym; if (window.jQuery) { $(oi).val(sym).trigger('input').trigger('change'); } }
+            """, clean_sym)
         except Exception:
             pass
 
     if client_code:
+        clean_cln = str(client_code).strip()
         try:
-            client_inp = driver.find_element(By.ID, "order_client_code")
-            client_inp.clear()
-            client_inp.send_keys(str(client_code).strip())
-            client_inp.send_keys(Keys.ARROW_DOWN)
-            client_inp.send_keys(Keys.ENTER)
+            driver.execute_script("""
+                var cln = arguments[0];
+                var el = document.getElementById('order_client_code');
+                if (el) { el.value = cln; if (window.jQuery) { $(el).val(cln).trigger('input').trigger('change'); } }
+            """, clean_cln)
         except Exception:
             pass
 
@@ -294,7 +299,10 @@ def snapshot_current_ui_settings(driver: webdriver.Chrome) -> None:
 
                 var occ = document.getElementById('order_client_code');
                 var pci = document.getElementById('portfolio_code_input');
-                res.clientCode = (occ && occ.value) ? occ.value : ((pci && pci.value) ? pci.value : '');
+                var lcc = document.getElementById('limit_client_code');
+                var otc = document.getElementById('order_terminal_code');
+                var scc = document.getElementById('summary_client_code');
+                res.clientCode = (occ && occ.value) ? occ.value : ((pci && pci.value) ? pci.value : ((lcc && lcc.value) ? lcc.value : ((otc && otc.value) ? otc.value : ((scc && scc.value) ? scc.value : ''))));
 
                 var sel = document.querySelector('.chooseColor .selectedColor');
                 if (sel) {
@@ -330,14 +338,118 @@ def snapshot_current_ui_settings(driver: webdriver.Chrome) -> None:
         pass
 
 
+def propagate_client_code_to_all_widgets(
+    driver: webdriver.Chrome,
+    client_code: str,
+    symbol: Optional[str] = None
+) -> None:
+    """
+    Reflects the selected client code across ALL widgets:
+    1. Order Window / Order Entry Form (#order_client_code)
+    2. Client Portfolio Widget (#portfolio_code_input & selectSaleable)
+    3. Account Limits Widget (#limit_client_code & filter)
+    4. Order Terminal Widget (#order_terminal_code & filter)
+    5. Order Summary Widget (#summary_client_code & filter)
+    6. Position Widget (filterByClientCode)
+    """
+    global active_client_code, active_symbol
+    if not driver or not client_code or not str(client_code).strip():
+        return
+    clean_client = str(client_code).strip()
+    clean_sym = oms_price.clean_symbol(symbol) if symbol else (active_symbol or "")
+    active_client_code = clean_client
+    if symbol:
+        active_symbol = clean_sym
+
+    print(f"\n>>> [CLIENT REFLECTION] Reflecting Client Code '{clean_client}' across all widgets (Order Window, Portfolio, Limits, Terminal, Summary, Position)...")
+
+    # 1. Order Window / Order Entry Form
+    try:
+        driver.execute_script("""
+            var code = arguments[0];
+            var inp = document.getElementById('order_client_code');
+            if (inp) {
+                inp.value = code;
+                if (window.jQuery) { $(inp).val(code).trigger('input').trigger('change'); }
+            }
+        """, clean_client)
+    except Exception:
+        pass
+
+    # 2. Client Portfolio Widget
+    try:
+        import client_portfolio
+        client_portfolio.ensure_client_loaded_in_ui(driver, clean_client)
+    except Exception:
+        pass
+
+    # 3. Account Limits Widget
+    try:
+        driver.execute_script("""
+            var code = arguments[0];
+            var inp = document.getElementById('limit_client_code') || document.querySelector('div.account-limit input, div[id*="limit"] input, div[id*="account"] input');
+            if (inp) {
+                inp.value = code;
+                if (window.jQuery) { $(inp).trigger('input').trigger('change'); }
+            }
+        """, clean_client)
+    except Exception:
+        pass
+
+    # 4. Order Terminal Widget
+    try:
+        driver.execute_script("""
+            var code = arguments[0];
+            var inp = document.getElementById('order_terminal_code') || document.querySelector('input[id*="terminal_code"], input[placeholder*="Search Code"]');
+            if (inp) {
+                inp.value = code;
+                if (window.jQuery) { $(inp).trigger('input').trigger('change'); }
+            }
+        """, clean_client)
+    except Exception:
+        pass
+
+    # 5. Order Summary Widget
+    try:
+        driver.execute_script("""
+            var code = arguments[0];
+            var inp = document.getElementById('summary_client_code') || document.querySelector('div.order-summary input[id*="client"], div[id*="summary"] input');
+            if (inp) {
+                inp.value = code;
+                if (window.jQuery) { $(inp).trigger('input').trigger('change'); }
+            }
+        """, clean_client)
+    except Exception:
+        pass
+
+    # 6. Position Widget
+    try:
+        driver.execute_script("""
+            var code = arguments[0];
+            var inp = document.querySelector('div[id*="position"] input[placeholder*="Code"], input#position_client_code');
+            if (inp) {
+                inp.value = code;
+                if (window.jQuery) { $(inp).trigger('input').trigger('change'); }
+            }
+            if (typeof filterByClientCode === 'function') {
+                filterByClientCode(code);
+            }
+        """, clean_client)
+    except Exception:
+        pass
+
+    print(f"  ✓ [CLIENT REFLECTED] Target Client '{clean_client}' successfully propagated across all widgets.")
+
+
 def restore_all_previous_settings(driver: webdriver.Chrome) -> None:
     """
     Restores all previously active UI settings immediately following an idle reload:
-    1. GoldenLayout widget color links across all 6 widgets
-    2. Active symbol across Search, Market Watch, Order Entry, Market Depth
-    3. Active client code across Order Entry and Client Portfolio
-    4. Active exchange (DSE / CSE) in Order Entry
-    5. Anti-idle keepalive heartbeat and idle popup watcher
+    1. Waits for GoldenLayout UI containers to mount in the DOM
+    2. GoldenLayout widget color links across all 6 widgets
+    3. Active symbol across Search, Market Watch, Order Entry, Market Depth
+    4. Selected client code propagated across ALL widgets
+    5. Active exchange (DSE / CSE) in Order Entry modal
+    6. Anti-idle keepalive heartbeat
     """
     global active_symbol, active_client_code, active_exchange, active_widget_color_name, active_widget_color_hex
     if not driver:
@@ -350,11 +462,34 @@ def restore_all_previous_settings(driver: webdriver.Chrome) -> None:
         # 1. Ensure on Trade page
         navigate_to_trade_page(driver, force=False)
 
+        # 1.1 Wait for GoldenLayout UI widgets to mount in DOM
+        print("[IDLE RESTORATION] Waiting for GoldenLayout UI widgets to mount in DOM...")
+        end_wait = time.time() + 12.0
+        while time.time() < end_wait:
+            try:
+                ready = driver.execute_script("""
+                    var cc = document.querySelectorAll('.chooseColor');
+                    var mw = document.getElementById('marketwatch_symbol');
+                    var oi = document.getElementById('order_instrument');
+                    var occ = document.getElementById('order_client_code');
+                    var pci = document.getElementById('portfolio_code_input');
+                    return (cc && cc.length >= 2) || (mw !== null) || (oi !== null) || (occ !== null) || (pci !== null);
+                """)
+                if ready:
+                    time.sleep(0.8)
+                    break
+            except Exception:
+                pass
+            time.sleep(0.3)
+
         # 2. Re-apply GoldenLayout widget color link to all 6 widgets
         target_color = active_widget_color_name or "Turquoise"
         target_hex = active_widget_color_hex or "#42EADDFF"
         print(f"[IDLE RESTORATION] Re-linking all 6 widgets to Color: {target_color} ({target_hex})...")
-        widget_color.apply_color_to_all_widgets(driver, target_color)
+        colored = widget_color.apply_color_to_all_widgets(driver, target_color)
+        if not colored:
+            time.sleep(0.6)
+            widget_color.apply_color_to_all_widgets(driver, target_color)
 
         # 3. Re-apply Active Symbol and Client Code across Trade page and widgets
         sym_to_restore = active_symbol or DEFAULT_SYMBOL
@@ -362,16 +497,13 @@ def restore_all_previous_settings(driver: webdriver.Chrome) -> None:
         print(f"[IDLE RESTORATION] Restoring Symbol [{sym_to_restore}] and Client Code [{client_to_restore}] across all widgets...")
         restore_trade_page_state(driver, sym_to_restore, client_to_restore)
 
-        # 4. Re-link Market Depth widget for symbol
+        # 4. Propagate selected Client Code across ALL widgets
+        propagate_client_code_to_all_widgets(driver, client_to_restore, sym_to_restore)
+
+        # 5. Re-link Market Depth widget for symbol
         try:
             import market_depth
             market_depth.search_symbol_in_depth(driver, sym_to_restore, active_exchange or "DSE")
-        except Exception:
-            pass
-
-        # 5. Re-load Client Portfolio widget for client code
-        try:
-            client_portfolio.ensure_client_loaded_in_ui(driver, client_to_restore)
         except Exception:
             pass
 
@@ -381,7 +513,7 @@ def restore_all_previous_settings(driver: webdriver.Chrome) -> None:
         except Exception:
             pass
 
-        # 7. Re-install anti-idle heartbeat and DOM idle watcher
+        # 7. Re-install anti-idle heartbeat
         install_anti_idle_heartbeat(driver)
 
         print("[IDLE RESTORATION] ✓ All previous settings successfully restored and visible.\n")
@@ -404,7 +536,9 @@ def handle_idle_popup_if_present(driver: webdriver.Chrome) -> bool:
     try:
         candidates = driver.find_elements(By.XPATH, (
             "//button[contains(normalize-space(), 'Reload Manually') or contains(text(), 'Reload Manually')] | "
-            "//a[contains(normalize-space(), 'Reload Manually') or contains(text(), 'Reload Manually')]"
+            "//a[contains(normalize-space(), 'Reload Manually') or contains(text(), 'Reload Manually')] | "
+            "//*[contains(translate(normalize-space(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'reload manually')] | "
+            "//*[contains(text(), 'You were idle')]/ancestor::div[contains(@class,'modal') or contains(@class,'dialog') or contains(@class,'swal') or contains(@class,'popup') or contains(@class,'box') or contains(@class,'content')]//button"
         ))
         visible_btn = None
         for b in candidates:
@@ -465,10 +599,31 @@ def handle_idle_popup_if_present(driver: webdriver.Chrome) -> bool:
 
 
 def ensure_trade_settings_restored(driver: webdriver.Chrome) -> None:
+    global is_recovering_from_idle, last_idle_recovery_time
     if not driver or is_recovering_from_idle:
         return
     try:
-        handle_idle_popup_if_present(driver)
+        if handle_idle_popup_if_present(driver):
+            return
+
+        if (time.time() - last_idle_recovery_time) < 15.0:
+            return
+
+        if is_already_on_trade_page(driver):
+            needs_restore = driver.execute_script("""
+                try {
+                    if (window._antiIdleInstalled) return false;
+                    var ready = (document.readyState === 'complete');
+                    var hasForm = (document.getElementById('order_instrument') !== null) ||
+                                  (document.getElementById('order_client_code') !== null) ||
+                                  (document.querySelectorAll('.chooseColor').length >= 2);
+                    return ready && hasForm;
+                } catch(e) { return false; }
+            """)
+            if needs_restore:
+                print("\n[IDLE RESTORATION] Detected page reload (anti-idle reset). Restoring all previous UI settings...")
+                restore_all_previous_settings(driver)
+                last_idle_recovery_time = time.time()
     except Exception:
         pass
 
@@ -514,6 +669,8 @@ def ensure_ui_unlocked(driver: webdriver.Chrome) -> bool:
     # 0. Check and recover if 'You were idle!' appeared
     if handle_idle_popup_if_present(driver):
         unblocked = True
+    else:
+        ensure_trade_settings_restored(driver)
 
     # 1. Native alert dismissal
     try:
