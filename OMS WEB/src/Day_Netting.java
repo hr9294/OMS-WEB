@@ -2401,8 +2401,8 @@ public class Day_Netting {
             } else {
                 while (choice.isEmpty()) {
                     System.out.print("Enter Choice (1, 3, 4, 5, 7 or 0=Return): ");
-                    if (!sc.hasNextLine()) break;
-                    choice = sc.nextLine().trim();
+                    choice = OMSweb_Trade.readLineWithIdleWatchdog(driver, sc, 180);
+                    if (choice.isEmpty()) break;
                 }
             }
 

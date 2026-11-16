@@ -197,20 +197,12 @@ public class OMSwebmain {
                 engChoice = (envAction != null && !envAction.trim().isEmpty()) ? envAction.trim() : "1";
                 System.out.printf("\n[DOCKER AUTOMATE MODE] Automatically selected action: %s%n", engChoice);
             } else {
-                // MANUAL MODE: Flush any residual empty line and wait for explicit user choice
+                // MANUAL MODE: Wait for user choice with 3-minute idle auto-reload watchdog
                 while (engChoice.isEmpty()) {
                     System.out.print("Enter Choice (1-6 to execute, 0=Exit): ");
-                    try {
-                        if (!sc.hasNextLine()) {
-                            break;
-                        }
-                        engChoice = sc.nextLine().trim();
-                    } catch (Exception e) {
-                        sc = new Scanner(System.in);
-                        if (!sc.hasNextLine()) {
-                            break;
-                        }
-                        engChoice = sc.nextLine().trim();
+                    engChoice = OMSweb_Trade.readLineWithIdleWatchdog(driver, sc, 180);
+                    if (engChoice.isEmpty()) {
+                        break;
                     }
                 }
             }

@@ -2892,32 +2892,23 @@ public class OMSweb_Trade {
 
 	public static boolean handleIdlePopupIfPresent(WebDriver driver) {
 		if (driver == null || isRecoveringFromIdle) return false;
-		// Cooldown: Do not re-trigger within 20 seconds of last recovery
-		if (System.currentTimeMillis() - lastIdleRecoveryTime < 20000L) {
-			return false;
-		}
 
 		try {
-			// Find visible "Reload Manually" button strictly inside an active visible modal
-			List<WebElement> candidates = driver.findElements(By.xpath(
-				"//button[contains(normalize-space(), 'Reload Manually') or contains(text(), 'Reload Manually')] | " +
-				"//a[contains(normalize-space(), 'Reload Manually') or contains(text(), 'Reload Manually')] | " +
-				"//*[contains(translate(normalize-space(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'reload manually')] | " +
-				"//*[contains(text(), 'You were idle')]/ancestor::div[contains(@class,'modal') or contains(@class,'dialog') or contains(@class,'swal') or contains(@class,'popup') or contains(@class,'box') or contains(@class,'content')]//button"
-			));
+			// Direct check if autoReloadModal or "You were idle!" is active in DOM
+			JavascriptExecutor js = (JavascriptExecutor) driver;
+			Boolean isIdleModalVisible = (Boolean) js.executeScript(
+				"try {\n" +
+				"    var m = document.getElementById('autoReloadModal');\n" +
+				"    if (m && (m.classList.contains('show') || m.style.display === 'block' || window.getComputedStyle(m).display !== 'none')) return true;\n" +
+				"    var btn = Array.from(document.querySelectorAll('button, a')).find(function(b) { return (b.innerText || '').indexOf('Reload Manually') !== -1; });\n" +
+				"    if (btn && btn.offsetParent !== null) return true;\n" +
+				"    var txt = (document.body ? document.body.innerText : '');\n" +
+				"    return txt.indexOf('You were idle!') !== -1 && txt.indexOf('Reload Manually') !== -1;\n" +
+				"} catch(e) { return false; }"
+			);
 
-			WebElement visibleBtn = null;
-			for (WebElement btn : candidates) {
-				try {
-					if (btn.isDisplayed() && btn.getSize().getWidth() > 0 && btn.getSize().getHeight() > 0) {
-						visibleBtn = btn;
-						break;
-					}
-				} catch (Exception ignored) {}
-			}
-
-			if (visibleBtn == null) {
-				// No visible idle popup on screen! Absolutely do nothing.
+			if (!Boolean.TRUE.equals(isIdleModalVisible)) {
+				// No idle popup on screen
 				return false;
 			}
 
@@ -2928,12 +2919,13 @@ public class OMSweb_Trade {
 				System.out.println("[IDLE DETECTED] Snapshotting active settings before reload...");
 				snapshotCurrentUiSettings(driver);
 
-				System.out.println("[IDLE DETECTED] Clicking 'Reload Manually'...");
-				try {
-					visibleBtn.click();
-				} catch (Exception clickEx) {
-					((JavascriptExecutor) driver).executeScript("arguments[0].click();", visibleBtn);
-				}
+				System.out.println("[IDLE DETECTED] Clicking 'Reload Manually' / triggering page reload...");
+				js.executeScript(
+					"try {\n" +
+					"    var btn = document.querySelector('#autoReloadModal button, button[onclick*=\"reload\"]');\n" +
+					"    if (btn) btn.click(); else location.reload();\n" +
+					"} catch(e) { location.reload(); }\n"
+				);
 
 				System.out.println("[IDLE RECOVERY] Reloading page and restoring session...");
 				Thread.sleep(2500); // Give browser time to begin reload
@@ -2942,7 +2934,7 @@ public class OMSweb_Trade {
 				long endWait = System.currentTimeMillis() + 15000;
 				while (System.currentTimeMillis() < endWait) {
 					try {
-						String state = String.valueOf(((JavascriptExecutor) driver).executeScript("return document.readyState"));
+						String state = String.valueOf(js.executeScript("return document.readyState"));
 						if ("complete".equalsIgnoreCase(state)) break;
 					} catch (Exception ignored) {}
 					Thread.sleep(400);
@@ -3007,20 +2999,79 @@ public class OMSweb_Trade {
 			if (driver == null) return;
 			JavascriptExecutor js = (JavascriptExecutor) driver;
 			js.executeScript(
-				"try {" +
-				"    if (!window._antiIdleInstalled) {" +
-				"        window._antiIdleInstalled = true;" +
-				"        setInterval(function() {" +
-				"            try {" +
-				"                window.dispatchEvent(new Event('mousemove'));" +
-				"                window.dispatchEvent(new Event('keydown'));" +
-				"                document.dispatchEvent(new Event('mousemove'));" +
-				"            } catch(e) {}" +
-				"        }, 10000);" +
-				"    }" +
-				"} catch(e) {}"
+				"try {\n" +
+				"    if (!window._idleAutoReloadWatchdogInstalled) {\n" +
+				"        window._idleAutoReloadWatchdogInstalled = true;\n" +
+				"        window._lastActivityTimestamp = Date.now();\n" +
+				"        var markActive = function() { window._lastActivityTimestamp = Date.now(); };\n" +
+				"        ['mousemove', 'mousedown', 'keydown', 'keypress', 'click', 'scroll', 'touchstart', 'focus'].forEach(function(ev) {\n" +
+				"            window.addEventListener(ev, markActive, { passive: true, capture: true });\n" +
+				"            document.addEventListener(ev, markActive, { passive: true, capture: true });\n" +
+				"        });\n" +
+				"        setInterval(function() {\n" +
+				"            try {\n" +
+				"                var m = document.getElementById('autoReloadModal');\n" +
+				"                if (m && (m.classList.contains('show') || window.getComputedStyle(m).display !== 'none' || (m.innerText && m.innerText.indexOf('You were idle') !== -1 && m.offsetParent !== null))) {\n" +
+				"                    console.log('[WATCHDOG] Idle modal detected! Reloading page...');\n" +
+				"                    location.reload();\n" +
+				"                    return;\n" +
+				"                }\n" +
+				"                var elapsed = Date.now() - (window._lastActivityTimestamp || Date.now());\n" +
+				"                if (elapsed >= 180000) { // 3 minutes idle = 180000 ms\n" +
+				"                    console.log('[WATCHDOG] 3 minutes idle reached. Reloading page...');\n" +
+				"                    window._lastActivityTimestamp = Date.now();\n" +
+				"                    location.reload();\n" +
+				"                }\n" +
+				"            } catch(e) {}\n" +
+				"        }, 1000);\n" +
+				"    }\n" +
+				"} catch(e) {}\n"
 			);
 		} catch (Exception ignored) {}
+	}
+
+	public static String readLineWithIdleWatchdog(WebDriver driver, Scanner sc, int idleSeconds) {
+		if (sc == null) return "";
+		long timeoutMs = idleSeconds * 1000L;
+		long idleStart = System.currentTimeMillis();
+
+		// Ensure watchdog is installed in browser
+		try { installAntiIdleHeartbeat(driver); } catch (Exception ignored) {}
+
+		while (true) {
+			try {
+				if (System.in.available() > 0) {
+					if (sc.hasNextLine()) {
+						String input = sc.nextLine().trim();
+						return input;
+					}
+				}
+			} catch (Exception ignored) {}
+
+			// 1. Check if browser idle modal appeared
+			try {
+				if (driver != null && handleIdlePopupIfPresent(driver)) {
+					idleStart = System.currentTimeMillis();
+				}
+			} catch (Exception ignored) {}
+
+			// 2. Check if 3 minutes idle reached
+			if (driver != null && System.currentTimeMillis() - idleStart >= timeoutMs) {
+				System.out.printf("%n[IDLE 3-MIN WATCHDOG] 3 minutes (%ds) idle without input. Reloading page and restoring session...%n", idleSeconds);
+				try {
+					JavascriptExecutor js = (JavascriptExecutor) driver;
+					js.executeScript("location.reload();");
+					Thread.sleep(2000);
+					restoreAllPreviousSettings(driver);
+				} catch (Exception e) {
+					try { driver.navigate().refresh(); } catch (Exception ignored) {}
+				}
+				idleStart = System.currentTimeMillis();
+				System.out.print("Enter Choice: ");
+			}
+
+			try { Thread.sleep(200); } catch (Exception ignored) {}
+		}
 	}
 
 	public static boolean ensureUIUnlocked(WebDriver driver) {
