@@ -390,9 +390,7 @@ public class Day_Netting {
                 System.out.println("  ✓ [SAVE CHANGES] 'Save Changes' button clicked successfully.");
             }
 
-            if (password != null && !password.isEmpty()) {
-                submitPasswordAuthentication(driver, password);
-            }
+            submitPasswordAuthentication(driver, password);
             Thread.sleep(1200);
 
             // Display live verification table from UI
@@ -495,9 +493,7 @@ public class Day_Netting {
                 "if (sb) { if (window.jQuery) window.jQuery(sb).trigger('click'); sb.click(); }\n"
             );
 
-            if (password != null && !password.isEmpty()) {
-                submitPasswordAuthentication(driver, password);
-            }
+            submitPasswordAuthentication(driver, password);
             Thread.sleep(800);
             System.out.printf("[RMS NETTING] ALLOW_Z_AND_SPOT_NETTING set to: %b%n", enabled);
             return true;
@@ -559,9 +555,7 @@ public class Day_Netting {
             );
 
             // Handle security password authentication if prompt appears
-            if (password != null && !password.isEmpty()) {
-                submitPasswordAuthentication(driver, password);
-            }
+            submitPasswordAuthentication(driver, password);
 
             System.out.printf("[RMS NETTING] DAY_NETTING_SETTINGS configured to: %s%n", mode.getDisplayName());
 
@@ -648,9 +642,7 @@ public class Day_Netting {
                 "if (sb) { if (window.jQuery) window.jQuery(sb).trigger('click'); sb.click(); }\n"
             );
 
-            if (password != null && !password.isEmpty()) {
-                submitPasswordAuthentication(driver, password);
-            }
+            submitPasswordAuthentication(driver, password);
 
             System.out.printf("[RMS NETTING] Exchange %s Netting Enabled set to: %b%n", ex, enabled);
             return true;
@@ -675,7 +667,8 @@ public class Day_Netting {
      * Handles password authentication for critical netting configuration changes during trading hours.
      */
     public static boolean submitPasswordAuthentication(WebDriver driver, String password) {
-        if (driver == null || password == null) return false;
+        if (driver == null) return false;
+        String effectivePwd = (password != null && !password.trim().isEmpty() && !password.trim().equals("1")) ? password.trim() : "12345";
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
             Object promptFound = js.executeScript(
@@ -694,11 +687,11 @@ public class Day_Netting {
                 "    return true;\n" +
                 "}\n" +
                 "return false;",
-                password
+                effectivePwd
             );
 
             if (Boolean.TRUE.equals(promptFound)) {
-                System.out.println("[SECURITY: AUTH] Password authentication prompt detected and credentials submitted.");
+                System.out.printf("[SECURITY: AUTH] Password authentication prompt detected; submitted credentials (%s).%n", effectivePwd.replaceAll(".", "*"));
                 Thread.sleep(600);
                 dismissOverlays(driver);
                 return true;
@@ -1159,9 +1152,7 @@ public class Day_Netting {
             );
             Thread.sleep(600);
 
-            if (password != null && !password.isEmpty()) {
-                submitPasswordAuthentication(driver, password);
-            }
+            submitPasswordAuthentication(driver, password);
 
             // Sync with window registry
             js.executeScript(
@@ -1352,9 +1343,7 @@ public class Day_Netting {
                 System.out.println("  ✓ [SAVE CHANGES] Board Wise Blocking saved successfully.");
             }
 
-            if (password != null && !password.isEmpty()) {
-                submitPasswordAuthentication(driver, password);
-            }
+            submitPasswordAuthentication(driver, password);
             Thread.sleep(600);
             displayUnauthorizedBoardsMarketTable(driver);
             return true;
@@ -1411,9 +1400,7 @@ public class Day_Netting {
                 System.out.println("  ✓ [SAVE CHANGES] Spot Market Blocking saved successfully.");
             }
 
-            if (password != null && !password.isEmpty()) {
-                submitPasswordAuthentication(driver, password);
-            }
+            submitPasswordAuthentication(driver, password);
             Thread.sleep(600);
             displayUnauthorizedBoardsMarketTable(driver);
             return true;
@@ -2449,6 +2436,8 @@ public class Day_Netting {
                         Thread.sleep(2500);
                         try { OMSweb_Trade.restoreAllPreviousSettings(driver); } catch (Exception ignored) {}
                         idleStart = System.currentTimeMillis();
+                        System.out.println("\n[IDLE WATCHDOG] Page reloaded & UI state restored. You are at the Day Netting Administration Menu.");
+                        System.out.print("Enter Choice (1-7, 0=Return): ");
                     }
                 }
             } catch (Exception ignored) {}
@@ -2465,7 +2454,8 @@ public class Day_Netting {
                     try { driver.navigate().refresh(); } catch (Exception ignored) {}
                 }
                 idleStart = System.currentTimeMillis();
-                System.out.print("Enter Choice: ");
+                System.out.println("\n[IDLE WATCHDOG] Page reloaded & UI state restored. You are at the Day Netting Administration Menu.");
+                System.out.print("Enter Choice (1-7, 0=Return): ");
             }
 
             try { Thread.sleep(200); } catch (Exception ignored) {}
@@ -2552,7 +2542,7 @@ public class Day_Netting {
                 boolean allowZSpot = "1".equals(zChoice) || "true".equalsIgnoreCase(zChoice) || "enable".equalsIgnoreCase(zChoice);
                 System.out.printf("[ALLOW_Z_AND_SPOT_NETTING SELECTED] %b%n", allowZSpot);
 
-                System.out.print("Enter password authentication (or press ENTER if none required): ");
+                System.out.print("Enter password authentication (default=12345, or press ENTER): ");
                 String pwd = sc.nextLine().trim();
 
                 boolean dseNetting = true;
@@ -2686,7 +2676,7 @@ public class Day_Netting {
                 String stChoice = sc.nextLine().trim();
                 boolean enable = !"2".equals(stChoice) && !"disable".equalsIgnoreCase(stChoice) && !"false".equalsIgnoreCase(stChoice);
 
-                System.out.print("Enter password authentication (or press ENTER if none required): ");
+                System.out.print("Enter password authentication (default=12345, or press ENTER): ");
                 String pwd = sc.nextLine().trim();
 
                 if ("1".equals(exChoice) || "dse".equalsIgnoreCase(exChoice)) {
@@ -2781,7 +2771,7 @@ public class Day_Netting {
                     System.out.print("Set Status (1=Allowed [default], 2=Disallowed): ");
                     String st = sc.nextLine().trim();
                     boolean isAllowed = !"2".equals(st) && !"disallowed".equalsIgnoreCase(st) && !"blocked".equalsIgnoreCase(st);
-                    System.out.print("Enter password authentication (or press ENTER if none required): ");
+                    System.out.print("Enter password authentication (default=12345, or press ENTER): ");
                     String pwd = sc.nextLine().trim();
                     addClientToNettingList(driver, cln, isAllowed, pwd);
                 }
@@ -2805,7 +2795,7 @@ public class Day_Netting {
                     System.out.print("Select Status (1=Block [Switch ON, default], 2=Unblock [Switch OFF]): ");
                     String blkC = sc.nextLine().trim();
                     boolean blk = !"2".equals(blkC) && !"unblock".equalsIgnoreCase(blkC);
-                    System.out.print("Enter password authentication (or press ENTER if none required): ");
+                    System.out.print("Enter password authentication (default=12345, or press ENTER): ");
                     String pwd = sc.nextLine().trim();
                     configureBoardWiseBlocking(driver, ex, tag, blk, pwd);
                 } else if ("2".equals(sub)) {
@@ -2815,7 +2805,7 @@ public class Day_Netting {
                     System.out.print("Select Status (1=Block [Switch ON], 2=Unblock [Switch OFF, default]): ");
                     String blkC = sc.nextLine().trim();
                     boolean blk = "1".equals(blkC) || "block".equalsIgnoreCase(blkC);
-                    System.out.print("Enter password authentication (or press ENTER if none required): ");
+                    System.out.print("Enter password authentication (default=12345, or press ENTER): ");
                     String pwd = sc.nextLine().trim();
                     configureSpotMarketBlocking(driver, ex, blk, pwd);
                 } else {

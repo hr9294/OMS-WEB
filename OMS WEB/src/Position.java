@@ -81,20 +81,9 @@ public class Position {
     public static final String[] COLOR_HEXES = { "#42EADDFF", "#FEE715FF", "#F95700ff", "#06d001", "#EB0506", "#FF3EA5FF" };
 
     public static void runWidgetColorSelection(WebDriver driver, Scanner sc) throws InterruptedException {
-        System.out.println("\n=== Position Widget Color Link ===");
-        System.out.println("1.Turquoise  2.Yellow  3.Orange");
-        System.out.println("4.Green      5.Red     6.Pink");
-        System.out.print("Enter choice (1-6, or press Enter to skip): ");
-        String input = sc.nextLine().trim();
-        if (input.isEmpty()) return;
-        int colorChoice;
-        try {
-            colorChoice = Integer.parseInt(input);
-        } catch (NumberFormatException e) {
-            return;
-        }
-        if (colorChoice < 1 || colorChoice > 6) return;
-        setWidgetColor(driver, colorChoice);
+        System.out.println("\n[WIDGET COLOR] Automatically linking Position widget to Turquoise (#42EADDFF)...");
+        setWidgetColor(driver, 1);
+        System.out.println("✓ [WIDGET COLOR] Position widget linked to Turquoise (#42EADDFF).");
     }
 
     public static boolean setWidgetColor(WebDriver driver, int colorChoice) {
