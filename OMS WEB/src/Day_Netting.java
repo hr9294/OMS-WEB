@@ -2628,15 +2628,23 @@ public class Day_Netting {
 
                     double tradeRate = 0.0;
                     try {
-                        String ltpStr = preTradeSnap.marketDepthData.getOrDefault("LTP", preTradeSnap.marketDepthData.getOrDefault("ltp", "0"));
+                        String ltpStr = preTradeSnap.marketDepthData.getOrDefault("Last", preTradeSnap.marketDepthData.getOrDefault("LTP", "0"));
                         tradeRate = OMSweb_Trade.parseNumSafe(ltpStr);
                     } catch (Exception ignored) {}
-                    if (tradeRate <= 0.0) tradeRate = 280.0;
+                    System.out.printf("Enter %s Rate (default=auto from Market Depth / DB, or press ENTER): ", side);
+                    String rStr = sc.nextLine().trim();
+                    if (!rStr.isEmpty()) {
+                        try { tradeRate = Double.parseDouble(rStr.replaceAll("[^0-9.]", "")); } catch (Exception ignored) {}
+                    }
 
-                    System.out.printf("  -> Submitting %s Order: %d shares of %s @ %.2f for Client %s on %s...%n", side, tradeQty, sym, tradeRate, cln, targetExchange);
+                    System.out.printf("  -> Submitting %s Order: %d shares of %s for Client %s on %s (with Resilient Market Depth & DB Retry)...%n", side, tradeQty, sym, cln, targetExchange);
                     String orderEx = "BOTH".equalsIgnoreCase(targetExchange) ? "DSE" : targetExchange;
-                    OMSweb_Trade.executeTradeOrderDirectSafe(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), side, cln, sym, tradeQty, tradeRate, orderEx);
-                    System.out.println("  ✓ [TRADE EXECUTED] Order placed and confirmed. Waiting 2s for DOM updates...");
+                    boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), side, cln, sym, tradeQty, tradeRate, orderEx, 5);
+                    if (success) {
+                        System.out.println("  ✓ [TRADE EXECUTED] Accepted order placed and confirmed. Waiting 2s for DOM updates...");
+                    } else {
+                        System.out.println("  [TRADE WARNING] Could not get an Accepted order after retrying with Market Depth & DB prices.");
+                    }
                     Thread.sleep(2000);
                 }
 

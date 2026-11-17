@@ -1851,12 +1851,21 @@ public class OMSweb_Trade {
 				}
 
 				// Active DOM polling waiting for WebSocket order update without reloading
-
 				waitForTerminalDomStatus(driver, "Accepted", 3);
 
 				// Extract and display that accepted order data directly from Order Terminal table
-
 				Map<String, String> actionOrder = fetchTerminalOrderForAction(driver, clientCode, instrument, "accept");
+				String termStatus = checkLatestTerminalOrderStatus(driver, clientCode, instrument, sideText);
+
+				if ("REJECTED".equalsIgnoreCase(termStatus) || actionOrder.isEmpty() || !actionOrder.containsKey("Status") || !"Accepted".equalsIgnoreCase(actionOrder.get("Status"))) {
+					System.out.printf("%n[ORDER REJECTED / NOT ACCEPTED] Initial order for %s (%s) was rejected by exchange!%n", instrument, clientCode);
+					System.out.println(">>> [AUTO-RESILIENT RETRY] Trying multiple times with smart Market Depth & DB prices (ltp, ycp, sh, sl, ch, cl, dh, dl)...");
+					boolean retrySuccess = executeTradeOrderWithResilientRetry(driver, wait, sideText, clientCode, instrument, tradeQty, 0.0, snapshotExchange, 5);
+					if (retrySuccess) {
+						waitForTerminalDomStatus(driver, "Accepted", 3);
+						actionOrder = fetchTerminalOrderForAction(driver, clientCode, instrument, "accept");
+					}
+				}
 
 				printActionOrderTerminalTable("NORMAL TRADE [ACCEPTED ORDER] - REAL-TIME ORDER RECORD", actionOrder);
 
@@ -9033,110 +9042,281 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 	}
 
-	public static void executeTradeOrderDirectSafe(WebDriver driver, WebDriverWait wait, String side, String clientCode, String symbol, int qty, double rate, String exchange) throws InterruptedException {
+	public static String checkLatestTerminalOrderStatus(WebDriver driver, String clientCode, String symbol, String side) {
+		if (driver == null) return "UNKNOWN";
+		try {
+			JavascriptExecutor js = (JavascriptExecutor) driver;
+			String cleanSym = (symbol != null) ? cleanSymbol(symbol).toUpperCase() : "";
+			String cleanClient = (clientCode != null) ? clientCode.trim() : "";
+			String cleanSide = (side != null) ? side.trim().toUpperCase() : "";
 
-		if (!isAlreadyOnTradePage(driver)) {
+			Object res = js.executeScript(
+				"var cln = (arguments[0] || '').trim().toLowerCase();\n" +
+				"var sym = (arguments[1] || '').trim().toUpperCase();\n" +
+				"var side = (arguments[2] || '').trim().toUpperCase();\n" +
+				"// 1. Check active toast/alert notifications\n" +
+				"var toasts = document.querySelectorAll('.toast, .noty_body, .alert, .swal2-html-container');\n" +
+				"for (var t = 0; t < toasts.length; t++) {\n" +
+				"    var msg = (toasts[t].innerText || '').toLowerCase();\n" +
+				"    if (msg.includes('rejected') || msg.includes('order reject')) return 'REJECTED';\n" +
+				"}\n" +
+				"// 2. Check Order Terminal Table top rows\n" +
+				"var tbl = document.getElementById('order_terminal_table') || document.querySelector('table.order_terminal_table') || document.querySelector('table[id*=market_table]');\n" +
+				"if (tbl) {\n" +
+				"    var rows = tbl.querySelectorAll('tbody tr');\n" +
+				"    for (var i = 0; i < Math.min(rows.length, 10); i++) {\n" +
+				"        var r = rows[i];\n" +
+				"        var rowText = (r.innerText || '').toUpperCase();\n" +
+				"        if (cln.length > 0 && !rowText.toLowerCase().includes(cln)) continue;\n" +
+				"        if (sym.length > 0 && !rowText.includes(sym)) continue;\n" +
+				"        if (side.length > 0 && !rowText.includes(side)) continue;\n" +
+				"        if (rowText.includes('ACCEPTED') || rowText.includes('ACCEPT') || rowText.includes('FILLED') || rowText.includes('TRADE EXECUTED')) return 'ACCEPTED';\n" +
+				"        if (rowText.includes('REJECTED') || rowText.includes('REJECT')) return 'REJECTED';\n" +
+				"    }\n" +
+				"}\n" +
+				"return 'UNKNOWN';",
+				cleanClient, cleanSym, cleanSide
+			);
+			return res != null ? res.toString() : "UNKNOWN";
+		} catch (Exception e) {
+			return "UNKNOWN";
+		}
+	}
 
-			navigateToTradePage(driver, wait, false);
+	public static List<Double> collectSmartMarketPrices(WebDriver driver, String symbol, String exchange, String side, double initialRate) {
+		Set<Double> candidates = new LinkedHashSet<>();
+		String cleanSym = cleanSymbol(symbol);
+		String ex = (exchange != null && !exchange.isEmpty()) ? exchange : "DSE";
+		boolean isBuy = "BUY".equalsIgnoreCase(side);
 
-			Thread.sleep(600);
+		double ltp = 0.0;
+		double ycp = 0.0;
+		double sh = 0.0; // Static High / Upper Circuit Breaker
+		double sl = 0.0; // Static Low / Lower Circuit Breaker
+		double ch = 0.0; // Current High / Circuit High
+		double cl = 0.0; // Current Low / Circuit Low
+		double dh = 0.0; // Day High
+		double dl = 0.0; // Day Low
+		double bestAsk = 0.0;
+		double bestBid = 0.0;
 
+		// 1. Fetch from Market Depth (UI DOM + API)
+		try {
+			Map<String, String> depth = Market_Depth.getSnapshot(driver, cleanSym, ex);
+			if (depth != null && !depth.isEmpty()) {
+				ltp = parseNumSafe(depth.getOrDefault("Last", depth.getOrDefault("LTP", "0")));
+				ycp = parseNumSafe(depth.getOrDefault("YCP", depth.getOrDefault("Close", "0")));
+				sh = parseNumSafe(depth.getOrDefault("SH", "0"));
+				sl = parseNumSafe(depth.getOrDefault("SL", "0"));
+				ch = parseNumSafe(depth.getOrDefault("CH", "0"));
+				cl = parseNumSafe(depth.getOrDefault("CL", "0"));
+				dh = parseNumSafe(depth.getOrDefault("DH", depth.getOrDefault("High", "0")));
+				dl = parseNumSafe(depth.getOrDefault("DL", depth.getOrDefault("Low", "0")));
+				bestAsk = parseNumSafe(depth.getOrDefault("Best_Ask_Price", depth.getOrDefault("Ask_L1_Price", "0")));
+				bestBid = parseNumSafe(depth.getOrDefault("Best_Bid_Price", depth.getOrDefault("Bid_L1_Price", "0")));
+			}
+		} catch (Exception ignored) {}
+
+		// 2. Fetch from Database (OMSweb_DBMarketData)
+		try {
+			OMSweb_DBMarketData.PublicSymbolLtp dbLtp = OMSweb_DBMarketData.getCachedSymbol(cleanSym, ex);
+			if (dbLtp != null) {
+				if (ltp <= 0.0 && dbLtp.ltp > 0.0) ltp = dbLtp.ltp;
+				if (ycp <= 0.0 && dbLtp.ycp > 0.0) ycp = dbLtp.ycp;
+				if (sh <= 0.0 && dbLtp.circuitUp > 0.0) sh = dbLtp.circuitUp;
+				if (sl <= 0.0 && dbLtp.circuitDown > 0.0) sl = dbLtp.circuitDown;
+				if (dh <= 0.0 && dbLtp.high > 0.0) dh = dbLtp.high;
+				if (dl <= 0.0 && dbLtp.low > 0.0) dl = dbLtp.low;
+			}
+		} catch (Exception ignored) {}
+
+		// Normalize circuit limits
+		double upperLimit = (sh > 0) ? sh : ((ch > 0) ? ch : 0.0);
+		double lowerLimit = (sl > 0) ? sl : ((cl > 0) ? cl : 0.0);
+
+		System.out.printf("%n[MARKET DEPTH & DB AUDIT: %s (%s)]%n", cleanSym, ex);
+		System.out.printf("  * LTP: %.2f | YCP: %.2f | Best Ask: %.2f | Best Bid: %.2f%n", ltp, ycp, bestAsk, bestBid);
+		System.out.printf("  * Circuit Limits: [%.2f (SL/CL) - %.2f (SH/CH)]%n", lowerLimit, upperLimit);
+		System.out.printf("  * Day Range: [%.2f (DL) - %.2f (DH)]%n", dl, dh);
+
+		// Include initial rate if provided
+		if (initialRate > 0.0) candidates.add(Math.round(initialRate * 100.0) / 100.0);
+
+		if (isBuy) {
+			// Priority for BUY:
+			// 1. Best Ask (Immediate match / fill)
+			// 2. LTP (Last Traded Price)
+			// 3. Best Bid
+			// 4. Mid-point between circuit limits (SL + SH) / 2
+			// 5. YCP (Yesterday Close)
+			// 6. DL (Day Low)
+			// 7. DH (Day High)
+			// 8. Safe margin above SL (SL + 0.5)
+			if (bestAsk > 0.0) candidates.add(Math.round(bestAsk * 100.0) / 100.0);
+			if (ltp > 0.0) candidates.add(Math.round(ltp * 100.0) / 100.0);
+			if (bestBid > 0.0) candidates.add(Math.round(bestBid * 100.0) / 100.0);
+			if (upperLimit > 0.0 && lowerLimit > 0.0) {
+				double mid = Math.round(((upperLimit + lowerLimit) / 2.0) * 10.0) / 10.0;
+				candidates.add(mid);
+			}
+			if (ycp > 0.0) candidates.add(Math.round(ycp * 100.0) / 100.0);
+			if (dl > 0.0) candidates.add(Math.round(dl * 100.0) / 100.0);
+			if (dh > 0.0) candidates.add(Math.round(dh * 100.0) / 100.0);
+			if (lowerLimit > 0.0) candidates.add(Math.round((lowerLimit + 0.5) * 100.0) / 100.0);
+			if (upperLimit > 0.0) candidates.add(Math.round((upperLimit - 0.5) * 100.0) / 100.0);
+		} else {
+			// Priority for SELL:
+			// 1. Best Bid (Immediate match / fill)
+			// 2. LTP
+			// 3. Best Ask
+			// 4. Mid-point between circuit limits
+			// 5. YCP
+			// 6. DH or DL
+			if (bestBid > 0.0) candidates.add(Math.round(bestBid * 100.0) / 100.0);
+			if (ltp > 0.0) candidates.add(Math.round(ltp * 100.0) / 100.0);
+			if (bestAsk > 0.0) candidates.add(Math.round(bestAsk * 100.0) / 100.0);
+			if (upperLimit > 0.0 && lowerLimit > 0.0) {
+				double mid = Math.round(((upperLimit + lowerLimit) / 2.0) * 10.0) / 10.0;
+				candidates.add(mid);
+			}
+			if (ycp > 0.0) candidates.add(Math.round(ycp * 100.0) / 100.0);
+			if (dh > 0.0) candidates.add(Math.round(dh * 100.0) / 100.0);
+			if (dl > 0.0) candidates.add(Math.round(dl * 100.0) / 100.0);
+			if (upperLimit > 0.0) candidates.add(Math.round((upperLimit - 0.5) * 100.0) / 100.0);
+			if (lowerLimit > 0.0) candidates.add(Math.round((lowerLimit + 0.5) * 100.0) / 100.0);
 		}
 
+		// Filter out invalid prices outside circuit breaker limits
+		List<Double> validRates = new ArrayList<>();
+		for (Double rate : candidates) {
+			if (rate == null || rate <= 0.0) continue;
+			if (upperLimit > 0.0 && rate > upperLimit) {
+				System.out.printf("  [CIRCUIT EXCLUDED] Rate %.2f exceeds Upper Circuit Limit (SH=%.2f)%n", rate, upperLimit);
+				continue;
+			}
+			if (lowerLimit > 0.0 && rate < lowerLimit) {
+				System.out.printf("  [CIRCUIT EXCLUDED] Rate %.2f is below Lower Circuit Limit (SL=%.2f)%n", rate, lowerLimit);
+				continue;
+			}
+			if (!validRates.contains(rate)) {
+				validRates.add(rate);
+			}
+		}
+
+		if (validRates.isEmpty()) {
+			if (ltp > 0.0) validRates.add(ltp);
+			else if (ycp > 0.0) validRates.add(ycp);
+			else validRates.add(initialRate > 0.0 ? initialRate : 280.0);
+		}
+
+		System.out.printf("  -> Candidates to try in sequence: %s%n", validRates);
+		return validRates;
+	}
+
+	public static void submitSingleOrderAttempt(WebDriver driver, WebDriverWait wait, String side, String clientCode, String symbol, int qty, double rate, String exchange) throws InterruptedException {
+		if (!isAlreadyOnTradePage(driver)) {
+			navigateToTradePage(driver, wait, false);
+			Thread.sleep(600);
+		}
 		JavascriptExecutor js = (JavascriptExecutor) driver;
 
 		if ("BUY".equalsIgnoreCase(side)) {
-
 			try {
-
 				Account_Limits.ClientCashRecord cashRec = Account_Limits.fetchClientCashRecordFromDb(clientCode);
-
 				if (cashRec != null) {
-
-					System.out.printf("[DB CLIENT CASH] Buyer: %s | Cash Balance: %,.2f BDT | Mature: %,.2f BDT | Order Val: %,.2f BDT (Table: public.clients_cash)%n",
-
+					System.out.printf("[DB CLIENT CASH] Buyer: %s | Cash Balance: %,.2f BDT | Mature: %,.2f BDT | Order Val: %,.2f BDT%n",
 							clientCode, cashRec.getCash(), cashRec.getMatureBalance(), (qty * rate));
-
-					showFrontendBanner(driver, String.format("[CLIENT CASH: %s] Balance: %,.2f BDT (DB public.clients_cash)", clientCode, cashRec.getCash()), "#10b981");
-
+					showFrontendBanner(driver, String.format("[CLIENT CASH: %s] Balance: %,.2f BDT", clientCode, cashRec.getCash()), "#10b981");
 				}
-
 			} catch (Exception ignored) {}
-
 		}
 
 		js.executeScript("try { var c = document.querySelectorAll('.wb-close, .winbox .wb-close, .modal .close'); for (var i=0; i<c.length; i++) c[i].click(); } catch(e){}");
-
 		Thread.sleep(300);
 
 		String xpath = "//div[@title='Place " + side.toUpperCase() + " Order'] | //button[normalize-space()='" + side.toUpperCase() + "'] | //div[contains(@class,'new_" + side.toLowerCase() + "_order')]";
-
 		List<WebElement> btns = driver.findElements(By.xpath(xpath));
-
 		if (!btns.isEmpty()) {
-
 			js.executeScript("arguments[0].click();", btns.get(0));
-
 		}
-
 		Thread.sleep(500);
 
 		selectExchangeInModal(driver, exchange != null ? exchange : "DSE");
-
 		Thread.sleep(150);
 
 		fillOrderFields(driver, wait, symbol, String.valueOf(qty), clientCode);
 
 		String rateFormatted = String.format(Locale.US, "%.2f", rate);
-
 		try {
-
 			WebElement rInp = driver.findElement(By.id("limit_order_rate"));
-
 			if (rInp.isDisplayed()) { rInp.clear(); rInp.sendKeys(rateFormatted); }
-
 			else { js.executeScript("arguments[0].value = arguments[1]; $(arguments[0]).trigger('input').trigger('change');", rInp, rateFormatted); }
-
 		} catch (Exception e) {
-
 			js.executeScript("var el = document.getElementById('limit_order_rate'); if(el){ el.value = arguments[0]; $(el).trigger('input').trigger('change'); }", rateFormatted);
-
 		}
 
 		displayCommissionOnOrderWindow(driver, clientCode, qty, rate);
 
 		Boolean clicked = (Boolean) js.executeScript(
-
 			"var side = arguments[0].toUpperCase();\n" +
-
 			"var btns = Array.from(document.querySelectorAll('.form-submit-btn-holder button, button.btn-buy, button.btn-sell, .td-btn button, .order_submit_btn'));\n" +
-
 			"var target = btns.find(function(b) { var t = (b.innerText||b.textContent||'').trim().toUpperCase(); return t === side || t.indexOf(side) !== -1; });\n" +
-
 			"if (target) { $(target).prop('disabled', false).removeAttr('disabled'); if (window.jQuery) $(target).trigger('click'); target.click(); return true; }\n" +
-
 			"return false;",
-
 			side.toUpperCase()
-
 		);
-
 		if (!Boolean.TRUE.equals(clicked)) {
-
 			submitOrder(driver, side.toUpperCase());
-
 		}
-
 		Thread.sleep(400);
 
 		autoConfirmOrderOrCancellation(driver, wait);
-
 		Thread.sleep(1200);
-
 		dismissLingeringAutocomplete(driver);
-
 		js.executeScript("try { var c = document.querySelectorAll('.wb-close, .winbox .wb-close'); for (var i=0; i<c.length; i++) c[i].click(); } catch(e){}");
+	}
 
+	public static boolean executeTradeOrderWithResilientRetry(WebDriver driver, WebDriverWait wait, String side, String clientCode, String symbol, int qty, double initialRate, String exchange, int maxRetries) throws InterruptedException {
+		List<Double> candidateRates = collectSmartMarketPrices(driver, symbol, exchange, side, initialRate);
+		int attempts = Math.min(candidateRates.size(), Math.max(maxRetries, 3));
+		boolean orderAccepted = false;
+
+		for (int i = 0; i < attempts; i++) {
+			double currentRate = candidateRates.get(i);
+			System.out.printf("%n-----------------------------------------------------------------------------%n");
+			System.out.printf(">>> [ORDER ATTEMPT %d/%d] Submitting %s: %d shares of %s @ %.2f (Client: %s | %s)...%n",
+					(i + 1), attempts, side.toUpperCase(), qty, symbol, currentRate, clientCode, exchange);
+			System.out.printf("-----------------------------------------------------------------------------%n");
+
+			submitSingleOrderAttempt(driver, wait, side, clientCode, symbol, qty, currentRate, exchange);
+			Thread.sleep(1500);
+
+			String status = checkLatestTerminalOrderStatus(driver, clientCode, symbol, side);
+			System.out.printf("  -> Exchange Order Terminal Status: [%s]%n", status);
+
+			if ("ACCEPTED".equalsIgnoreCase(status)) {
+				System.out.printf("  ✓ [ORDER ACCEPTED] Successfully placed ACCEPTED %s order @ %.2f on attempt %d!%n",
+						side.toUpperCase(), currentRate, (i + 1));
+				lastAcceptedPrice = currentRate;
+				orderAccepted = true;
+				break;
+			} else {
+				System.out.printf("  ✗ [ORDER REJECTED] Order @ %.2f was REJECTED by exchange for %s!%n", currentRate, symbol);
+				if (i + 1 < attempts) {
+					System.out.printf("  -> Switching to next smart candidate rate (Attempt %d/%d)...%n", (i + 2), attempts);
+				}
+				Thread.sleep(800);
+			}
+		}
+
+		if (!orderAccepted) {
+			System.out.printf("%n[ORDER PLACEMENT WARNING] All %d rate attempts were rejected by the exchange.%n", attempts);
+		}
+		return orderAccepted;
+	}
+
+	public static void executeTradeOrderDirectSafe(WebDriver driver, WebDriverWait wait, String side, String clientCode, String symbol, int qty, double rate, String exchange) throws InterruptedException {
+		executeTradeOrderWithResilientRetry(driver, wait, side, clientCode, symbol, qty, rate, exchange, 5);
 	}
 
 	public static void runNormalTradeBothDSEAndCSEAndExport(WebDriver driver, Scanner sc) throws InterruptedException {
