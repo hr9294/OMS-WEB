@@ -1859,17 +1859,11 @@ public class OMSweb_Trade {
 
 				if ("REJECTED".equalsIgnoreCase(termStatus) || actionOrder.isEmpty() || !actionOrder.containsKey("Status") || !"Accepted".equalsIgnoreCase(actionOrder.get("Status"))) {
 					System.out.printf("%n[ORDER REJECTED / NOT ACCEPTED] Initial order for %s (%s) was rejected by exchange!%n", instrument, clientCode);
-					System.out.print("Do you want to retry with smart Market Depth & DB prices to place an Accepted order? (1=YES / 0=Keep Rejected [Default], default=0): ");
-					String retryInp = sc.hasNextLine() ? sc.nextLine().trim() : "0";
-					if ("1".equals(retryInp) || "yes".equalsIgnoreCase(retryInp) || "y".equalsIgnoreCase(retryInp)) {
-						System.out.println(">>> [AUTO-RESILIENT RETRY] Trying multiple times with smart Market Depth & DB prices (ltp, ycp, sh, sl, ch, cl, dh, dl)...");
-						boolean retrySuccess = executeTradeOrderWithResilientRetry(driver, wait, sideText, clientCode, instrument, tradeQty, 0.0, snapshotExchange, 5);
-						if (retrySuccess) {
-							waitForTerminalDomStatus(driver, "Accepted", 3);
-							actionOrder = fetchTerminalOrderForAction(driver, clientCode, instrument, "accept");
-						}
-					} else {
-						System.out.println("  -> Kept rejected order as-is (remaining previous one).");
+					System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying with smart Market Depth & DB prices (ltp, ycp, sh, sl, ch, cl, dh, dl) until an Accepted order is placed...");
+					boolean retrySuccess = executeTradeOrderWithResilientRetry(driver, wait, sideText, clientCode, instrument, tradeQty, 0.0, snapshotExchange, 6);
+					if (retrySuccess) {
+						waitForTerminalDomStatus(driver, "Accepted", 3);
+						actionOrder = fetchTerminalOrderForAction(driver, clientCode, instrument, "accept");
 					}
 				}
 
