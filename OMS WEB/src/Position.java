@@ -305,6 +305,7 @@ public class Position {
             }
 
             System.out.println("[NAV] Position widget is hidden/inactive. Activating Position tab...");
+            try { if (OMSweb_Trade.openWidgetTab(driver, "Position")) return true; } catch (Exception ignored) {}
 
             // 1. Direct tab click via JS
             Boolean clicked = (Boolean) js.executeScript(

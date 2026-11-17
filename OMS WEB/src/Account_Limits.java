@@ -542,6 +542,7 @@ public class Account_Limits {
 
     public static void filterByClient(WebDriver driver, String clientCode) {
         if (driver == null || clientCode == null || clientCode.trim().isEmpty()) return;
+        try { OMSweb_Trade.openWidgetTab(driver, "Account Limits"); } catch (Exception ignored) {}
         String cleanClient = clientCode.trim();
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
@@ -640,6 +641,7 @@ public class Account_Limits {
     }
 
     public static Map<String, String> getUiSnapshot(WebDriver driver, String clientCode) {
+        try { OMSweb_Trade.openWidgetTab(driver, "Account Limits"); } catch (Exception ignored) {}
         if (clientCode != null && !clientCode.trim().isEmpty()) {
             filterByClient(driver, clientCode.trim());
         }

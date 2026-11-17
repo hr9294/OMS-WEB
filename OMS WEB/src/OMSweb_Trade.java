@@ -251,76 +251,255 @@ public class OMSweb_Trade {
 
 	// =========================================================================
 
-	public static boolean maximizeWidget(WebDriver driver, String widgetTitleKeyword) {
-
+	/**
+	 * Finds a widget by title/keyword across all GoldenLayout stacks and activates/opens its tab.
+	 * If multiple widgets share the same stack (e.g. Order Summary and Account Limits),
+	 * this method locates the exact tab, dispatches mousedown/click/touch events, triggers jQuery
+	 * events, calls GoldenLayout setActiveContentItem if available, and ensures the tab and its content
+	 * container become active and visible.
+	 */
+	public static boolean openWidgetTab(WebDriver driver, String widgetTitleKeyword) {
 		if (driver == null || widgetTitleKeyword == null || widgetTitleKeyword.trim().isEmpty()) return false;
-
 		JavascriptExecutor js = (JavascriptExecutor) driver;
-
 		try {
+			String script =
+				"var kw = (arguments[0] || '').toLowerCase().trim();\n" +
+				"if (!kw) return false;\n" +
+				"\n" +
+				"function computeScore(tabText, tabTitle, keyword) {\n" +
+				"    var k = keyword.toLowerCase().trim();\n" +
+				"    var t1 = (tabText || '').toLowerCase().trim();\n" +
+				"    var t2 = (tabTitle || '').toLowerCase().trim();\n" +
+				"    var tClean = t1.replace(/[\\u2715\\u274c\\u00d7x]/gi, '').trim();\n" +
+				"    if (t1 === k || t2 === k || tClean === k) return 100;\n" +
+				"    if (k.indexOf('limit') !== -1 || k.indexOf('account') !== -1) {\n" +
+				"        if (tClean === 'account limits' || tClean === 'account limit' || tClean === 'accounts limit') return 95;\n" +
+				"        if (tClean.indexOf('account limit') !== -1 || tClean.indexOf('accounts limit') !== -1) return 90;\n" +
+				"        if (tClean === 'limits' || tClean === 'limit') return 75;\n" +
+				"        if (tClean.indexOf('limit') !== -1) return 70;\n" +
+				"    }\n" +
+				"    if (k.indexOf('summary') !== -1) {\n" +
+				"        if (tClean === 'order summary' || tClean === 'orders summary') return 95;\n" +
+				"        if (tClean.indexOf('summary') !== -1) return 85;\n" +
+				"    }\n" +
+				"    if (k.indexOf('terminal') !== -1 || k.indexOf('execution') !== -1) {\n" +
+				"        if (tClean === 'order terminal' || tClean === 'orders terminal') return 95;\n" +
+				"        if (tClean.indexOf('terminal') !== -1) return 85;\n" +
+				"    }\n" +
+				"    if (k.indexOf('portfolio') !== -1) {\n" +
+				"        if (tClean === 'portfolio' || tClean.indexOf('portfolio') !== -1) return 95;\n" +
+				"    }\n" +
+				"    if (k.indexOf('depth') !== -1) {\n" +
+				"        if (tClean === 'market depth' || tClean.indexOf('depth') !== -1) return 95;\n" +
+				"    }\n" +
+				"    if (k.indexOf('position') !== -1) {\n" +
+				"        if (tClean === 'position' || tClean.indexOf('position') !== -1) return 95;\n" +
+				"    }\n" +
+				"    if (k.indexOf('watchlist') !== -1 || k.indexOf('market watch') !== -1) {\n" +
+				"        if (tClean.indexOf('watchlist') !== -1 || tClean.indexOf('market watch') !== -1) return 90;\n" +
+				"    }\n" +
+				"    if (tClean.indexOf(k) !== -1 || k.indexOf(tClean) !== -1) return 60;\n" +
+				"    return 0;\n" +
+				"}\n" +
+				"\n" +
+				"function activateTab(tab, stack) {\n" +
+				"    if (!tab) return false;\n" +
+				"    ['pointerdown', 'mousedown', 'touchstart', 'pointerup', 'mouseup', 'touchend', 'click'].forEach(function(evName) {\n" +
+				"        try {\n" +
+				"            var ev = new MouseEvent(evName, { bubbles: true, cancelable: true, view: window });\n" +
+				"            tab.dispatchEvent(ev);\n" +
+				"            var title = tab.querySelector('.lm_title');\n" +
+				"            if (title) title.dispatchEvent(new MouseEvent(evName, { bubbles: true, cancelable: true, view: window }));\n" +
+				"        } catch(e) {}\n" +
+				"    });\n" +
+				"    var jq = window.jQuery || window.$;\n" +
+				"    if (jq) {\n" +
+				"        try {\n" +
+				"            jq(tab).trigger('mousedown').trigger('mouseup').trigger('click');\n" +
+				"            var title = tab.querySelector('.lm_title');\n" +
+				"            if (title) jq(title).trigger('mousedown').trigger('mouseup').trigger('click');\n" +
+				"        } catch(e) {}\n" +
+				"    }\n" +
+				"    try {\n" +
+				"        var ci = tab.__contentItem || (jq && jq(tab).data('contentItem')) || tab._contentItem;\n" +
+				"        if (ci && ci.parent && typeof ci.parent.setActiveContentItem === 'function') {\n" +
+				"            ci.parent.setActiveContentItem(ci);\n" +
+				"        } else if (stack) {\n" +
+				"            var stackCi = (jq && jq(stack).data('contentItem')) || stack.__contentItem;\n" +
+				"            if (stackCi && typeof stackCi.setActiveContentItem === 'function') {\n" +
+				"                var allTabs = Array.from(stack.querySelectorAll('.lm_header .lm_tab, .lm_tab'));\n" +
+				"                var idx = allTabs.indexOf(tab);\n" +
+				"                if (idx >= 0 && stackCi.contentItems && stackCi.contentItems[idx]) {\n" +
+				"                    stackCi.setActiveContentItem(stackCi.contentItems[idx]);\n" +
+				"                }\n" +
+				"            }\n" +
+				"        }\n" +
+				"    } catch(e) {}\n" +
+				"    try {\n" +
+				"        if (stack) {\n" +
+				"            var allTabs = Array.from(stack.querySelectorAll('.lm_header .lm_tab, .lm_tab'));\n" +
+				"            var targetIdx = allTabs.indexOf(tab);\n" +
+				"            if (targetIdx >= 0) {\n" +
+				"                allTabs.forEach(function(t, i) {\n" +
+				"                    if (i === targetIdx) t.classList.add('lm_active');\n" +
+				"                    else t.classList.remove('lm_active');\n" +
+				"                });\n" +
+				"                var itemContainers = Array.from(stack.querySelectorAll('.lm_items > .lm_item_container, .lm_items > .lm_item'));\n" +
+				"                if (itemContainers.length > targetIdx) {\n" +
+				"                    itemContainers.forEach(function(c, i) {\n" +
+				"                        if (i === targetIdx) {\n" +
+				"                            c.style.display = 'block';\n" +
+				"                            c.style.visibility = 'visible';\n" +
+				"                            c.style.zIndex = '1';\n" +
+				"                            c.classList.remove('lm_hidden');\n" +
+				"                        } else {\n" +
+				"                            c.style.display = 'none';\n" +
+				"                            c.style.zIndex = '0';\n" +
+				"                            c.classList.add('lm_hidden');\n" +
+				"                        }\n" +
+				"                    });\n" +
+				"                }\n" +
+				"            }\n" +
+				"        }\n" +
+				"    } catch(e) {}\n" +
+				"    return true;\n" +
+				"}\n" +
+				"\n" +
+				"var stacks = Array.from(document.querySelectorAll('.lm_stack'));\n" +
+				"var bestMatch = null;\n" +
+				"var highestScore = 0;\n" +
+				"\n" +
+				"for (var i = 0; i < stacks.length; i++) {\n" +
+				"    var st = stacks[i];\n" +
+				"    var tabs = Array.from(st.querySelectorAll('.lm_header .lm_tab, .lm_tab'));\n" +
+				"    for (var j = 0; j < tabs.length; j++) {\n" +
+				"        var tText = tabs[j].innerText || '';\n" +
+				"        var tTitle = tabs[j].getAttribute('title') || '';\n" +
+				"        var score = computeScore(tText, tTitle, kw);\n" +
+				"        if (score > highestScore) {\n" +
+				"            highestScore = score;\n" +
+				"            bestMatch = { stack: st, tab: tabs[j], text: tText, index: j };\n" +
+				"        }\n" +
+				"    }\n" +
+				"}\n" +
+				"\n" +
+				"if (!bestMatch || highestScore < 50) {\n" +
+				"    var dropTabs = Array.from(document.querySelectorAll('.lm_tabdropdown_list .lm_tab, .lm_tabdropdown_list li'));\n" +
+				"    for (var k = 0; k < dropTabs.length; k++) {\n" +
+				"        var dText = dropTabs[k].innerText || '';\n" +
+				"        var dTitle = dropTabs[k].getAttribute('title') || '';\n" +
+				"        var dScore = computeScore(dText, dTitle, kw);\n" +
+				"        if (dScore > highestScore) {\n" +
+				"            highestScore = dScore;\n" +
+				"            bestMatch = { stack: dropTabs[k].closest('.lm_stack') || stacks[0], tab: dropTabs[k], text: dText, isDropdown: true };\n" +
+				"        }\n" +
+				"    }\n" +
+				"}\n" +
+				"\n" +
+				"if (bestMatch && bestMatch.tab) {\n" +
+				"    activateTab(bestMatch.tab, bestMatch.stack);\n" +
+				"    return true;\n" +
+				"}\n" +
+				"return false;";
 
-			Boolean maxed = (Boolean) js.executeScript(
-
-				"var kw = arguments[0].toLowerCase();" +
-
-				"var stacks = document.querySelectorAll('.lm_stack');" +
-
-				"var matchedStack = null;" +
-
-				"for (var i = 0; i < stacks.length; i++) {" +
-
-				"    var st = stacks[i];" +
-
-				"    var tabs = Array.from(st.querySelectorAll('.lm_tab'));" +
-
-				"    for (var j = 0; j < tabs.length; j++) {" +
-
-				"        var t = (tabs[j].innerText || tabs[j].getAttribute('title') || '').toLowerCase();" +
-
-				"        if (t.includes(kw)) {" +
-
-				"            matchedStack = st;" +
-
-				"            if (!tabs[j].classList.contains('lm_active')) {" +
-
-				"                tabs[j].click();" +
-
-				"            }" +
-
-				"            break;" +
-
-				"        }" +
-
-				"    }" +
-
-				"    if (matchedStack) break;" +
-
-				"}" +
-
-				"if (!matchedStack) return false;" +
-
-				"var maxBtn = matchedStack.querySelector('.lm_controls .lm_maximise, .lm_controls [title*=max], .lm_controls [title*=Max]');" +
-
-				"if (maxBtn) { maxBtn.click(); return true; }" +
-
-				"return false;",
-
-				widgetTitleKeyword.trim()
-
-			);
-
-			Thread.sleep(500);
-
-			return Boolean.TRUE.equals(maxed);
-
+			Object res = js.executeScript(script, widgetTitleKeyword.trim());
+			Thread.sleep(300);
+			return Boolean.TRUE.equals(res);
 		} catch (Exception e) {
-
-			System.err.println("[WARN: MaximizeWidget] " + e.getMessage());
-
+			System.err.println("[WARN: openWidgetTab] " + e.getMessage());
 			return false;
-
 		}
+	}
 
+	public static boolean maximizeWidget(WebDriver driver, String widgetTitleKeyword) {
+		if (driver == null || widgetTitleKeyword == null || widgetTitleKeyword.trim().isEmpty()) return false;
+		JavascriptExecutor js = (JavascriptExecutor) driver;
+		try {
+			// Step 1: Ensure the specific tab inside its stack is activated/opened
+			openWidgetTab(driver, widgetTitleKeyword);
+			Thread.sleep(200);
+
+			// Step 2: Maximize the matched stack container
+			String script =
+				"var kw = (arguments[0] || '').toLowerCase().trim();\n" +
+				"if (!kw) return false;\n" +
+				"\n" +
+				"function computeScore(tabText, tabTitle, keyword) {\n" +
+				"    var k = keyword.toLowerCase().trim();\n" +
+				"    var t1 = (tabText || '').toLowerCase().trim();\n" +
+				"    var t2 = (tabTitle || '').toLowerCase().trim();\n" +
+				"    var tClean = t1.replace(/[\\u2715\\u274c\\u00d7x]/gi, '').trim();\n" +
+				"    if (t1 === k || t2 === k || tClean === k) return 100;\n" +
+				"    if (k.indexOf('limit') !== -1 || k.indexOf('account') !== -1) {\n" +
+				"        if (tClean === 'account limits' || tClean === 'account limit' || tClean === 'accounts limit') return 95;\n" +
+				"        if (tClean.indexOf('account limit') !== -1 || tClean.indexOf('accounts limit') !== -1) return 90;\n" +
+				"        if (tClean === 'limits' || tClean === 'limit') return 75;\n" +
+				"    }\n" +
+				"    if (k.indexOf('summary') !== -1) {\n" +
+				"        if (tClean === 'order summary' || tClean === 'orders summary') return 95;\n" +
+				"        if (tClean.indexOf('summary') !== -1) return 85;\n" +
+				"    }\n" +
+				"    if (k.indexOf('terminal') !== -1 || k.indexOf('execution') !== -1) {\n" +
+				"        if (tClean === 'order terminal' || tClean === 'orders terminal') return 95;\n" +
+				"        if (tClean.indexOf('terminal') !== -1) return 85;\n" +
+				"    }\n" +
+				"    if (k.indexOf('portfolio') !== -1 && (tClean === 'portfolio' || tClean.indexOf('portfolio') !== -1)) return 95;\n" +
+				"    if (k.indexOf('depth') !== -1 && (tClean === 'market depth' || tClean.indexOf('depth') !== -1)) return 95;\n" +
+				"    if (k.indexOf('position') !== -1 && (tClean === 'position' || tClean.indexOf('position') !== -1)) return 95;\n" +
+				"    if ((k.indexOf('watchlist') !== -1 || k.indexOf('market watch') !== -1) && (tClean.indexOf('watchlist') !== -1 || tClean.indexOf('market watch') !== -1)) return 90;\n" +
+				"    if (tClean.indexOf(k) !== -1 || k.indexOf(tClean) !== -1) return 60;\n" +
+				"    return 0;\n" +
+				"}\n" +
+				"\n" +
+				"var stacks = Array.from(document.querySelectorAll('.lm_stack'));\n" +
+				"var bestStack = null;\n" +
+				"var highestScore = 0;\n" +
+				"\n" +
+				"for (var i = 0; i < stacks.length; i++) {\n" +
+				"    var st = stacks[i];\n" +
+				"    var tabs = Array.from(st.querySelectorAll('.lm_header .lm_tab, .lm_tab'));\n" +
+				"    for (var j = 0; j < tabs.length; j++) {\n" +
+				"        var score = computeScore(tabs[j].innerText, tabs[j].getAttribute('title'), kw);\n" +
+				"        if (score > highestScore) {\n" +
+				"            highestScore = score;\n" +
+				"            bestStack = st;\n" +
+				"        }\n" +
+				"    }\n" +
+				"}\n" +
+				"\n" +
+				"if (!bestStack) return false;\n" +
+				"\n" +
+				"// Un-maximize any other stack if currently maximized\n" +
+				"var allMaxed = Array.from(document.querySelectorAll('.lm_stack.lm_maximised, .lm_maximised .lm_stack, .lm_maximised'));\n" +
+				"allMaxed.forEach(function(m) {\n" +
+				"    if (m !== bestStack && !bestStack.contains(m) && !m.contains(bestStack)) {\n" +
+				"        var rBtn = m.querySelector('.lm_controls .lm_minimise, .lm_controls [title*=\"minimise\" i], .lm_controls [title*=\"restore\" i]');\n" +
+				"        if (rBtn) rBtn.click();\n" +
+				"    }\n" +
+				"});\n" +
+				"\n" +
+				"var isAlreadyMaxed = bestStack.classList.contains('lm_maximised') || (bestStack.closest('.lm_maximised') !== null);\n" +
+				"if (!isAlreadyMaxed) {\n" +
+				"    var maxBtn = bestStack.querySelector('.lm_controls .lm_maximise, .lm_controls [title*=max], .lm_controls [title*=Max]');\n" +
+				"    if (maxBtn) {\n" +
+				"        maxBtn.click();\n" +
+				"    }\n" +
+				"}\n" +
+				"\n" +
+				"return true;";
+
+			Object res = js.executeScript(script, widgetTitleKeyword.trim());
+			Thread.sleep(400);
+
+			// Step 3: Re-verify that target tab remains active inside the maximized stack
+			openWidgetTab(driver, widgetTitleKeyword);
+			Thread.sleep(300);
+
+			return Boolean.TRUE.equals(res);
+		} catch (Exception e) {
+			System.err.println("[WARN: MaximizeWidget] " + e.getMessage());
+			return false;
+		}
 	}
 
 	public static boolean minimizeOrRestoreWidget(WebDriver driver) {

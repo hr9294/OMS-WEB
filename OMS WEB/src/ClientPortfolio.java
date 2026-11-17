@@ -143,6 +143,7 @@ public class ClientPortfolio {
 
     public static void navigateToPortfolio(WebDriver driver) {
         try {
+            if (OMSweb_Trade.openWidgetTab(driver, "Portfolio")) return;
             JavascriptExecutor js = (JavascriptExecutor) driver;
             Boolean clicked = (Boolean) js.executeScript(
                 "var tab = document.querySelector('li.lm_tab[title=\"Portfolio\"], div[title=\"Portfolio\"], a[title=\"Portfolio\"]');" +

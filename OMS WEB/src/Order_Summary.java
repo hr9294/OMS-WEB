@@ -131,6 +131,7 @@ public class Order_Summary {
 
     public static void filterOrderSummary(WebDriver driver, String clientCode, String symbol) {
         if (driver == null) return;
+        try { OMSweb_Trade.openWidgetTab(driver, "Order Summary"); } catch (Exception ignored) {}
         String cleanClient = (clientCode != null) ? clientCode.trim() : "";
         String cleanSym = (symbol != null) ? cleanSymbol(symbol) : "";
         try {
@@ -259,6 +260,7 @@ public class Order_Summary {
     }
 
     public static Map<String, String> getUiSnapshot(WebDriver driver, String clientCode, String symbol) {
+        try { OMSweb_Trade.openWidgetTab(driver, "Order Summary"); } catch (Exception ignored) {}
         if (clientCode != null && !clientCode.trim().isEmpty()) {
             filterOrderSummary(driver, clientCode.trim(), cleanSymbol(symbol));
         }
