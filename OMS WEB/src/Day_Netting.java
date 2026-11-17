@@ -2637,13 +2637,26 @@ public class Day_Netting {
                         try { tradeRate = Double.parseDouble(rStr.replaceAll("[^0-9.]", "")); } catch (Exception ignored) {}
                     }
 
-                    System.out.printf("  -> Submitting %s Order: %d shares of %s for Client %s on %s (with Resilient Market Depth & DB Retry)...%n", side, tradeQty, sym, cln, targetExchange);
+                    System.out.printf("  -> Submitting %s Order: %d shares of %s for Client %s on %s (Rate: %.2f)...%n", side, tradeQty, sym, cln, targetExchange, tradeRate);
                     String orderEx = "BOTH".equalsIgnoreCase(targetExchange) ? "DSE" : targetExchange;
-                    boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), side, cln, sym, tradeQty, tradeRate, orderEx, 5);
-                    if (success) {
-                        System.out.println("  ✓ [TRADE EXECUTED] Accepted order placed and confirmed. Waiting 2s for DOM updates...");
+                    OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), side, cln, sym, tradeQty, tradeRate, orderEx);
+                    Thread.sleep(1500);
+
+                    String status = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, cln, sym, side);
+                    System.out.printf("  -> Exchange Order Terminal Status: [%s]%n", status);
+
+                    if ("REJECTED".equalsIgnoreCase(status)) {
+                        System.out.printf("  ✗ [ORDER REJECTED] Order for %s @ %.2f was rejected by exchange.%n", sym, tradeRate);
+                        System.out.print("Do you want to retry with smart Market Depth & DB prices to place an Accepted order? (1=YES / 0=Keep Rejected [Default], default=0): ");
+                        String retInp = sc.hasNextLine() ? sc.nextLine().trim() : "0";
+                        if ("1".equals(retInp) || "yes".equalsIgnoreCase(retInp)) {
+                            System.out.println(">>> Retrying multiple times with smart Market Depth & DB prices (ltp, ycp, sh, sl, ch, cl, dh, dl)...");
+                            OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), side, cln, sym, tradeQty, 0.0, orderEx, 5);
+                        } else {
+                            System.out.println("  -> Kept rejected order as-is (remaining previous one).");
+                        }
                     } else {
-                        System.out.println("  [TRADE WARNING] Could not get an Accepted order after retrying with Market Depth & DB prices.");
+                        System.out.println("  ✓ [TRADE EXECUTED] Accepted order placed and confirmed. Waiting 2s for DOM updates...");
                     }
                     Thread.sleep(2000);
                 }
