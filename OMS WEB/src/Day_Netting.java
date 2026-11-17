@@ -2613,15 +2613,18 @@ public class Day_Netting {
                 System.out.printf(">>> [STEP 2/3] EXECUTE TRADE TO VERIFY LIVE REAL-TIME WIDGET UPDATES%n");
                 System.out.printf("    Client: %s | Symbol: %s | Exchange: %s%n", cln, sym, targetExchange);
                 System.out.printf("=============================================================================%n");
-                System.out.print("Select Trade Action to execute (1=BUY / 2=SELL / 0=Skip Trade, default=1 [BUY] in 4s): ");
-                String tradeOpt = OMSweb_Trade.readLineWithTimeout(sc, "1", 4);
+                System.out.print("Select Trade Action to execute (1=BUY / 2=SELL / 0=Skip Trade, default=1 [BUY]): ");
+                String tradeOpt = sc.nextLine().trim();
+                if (tradeOpt.isEmpty()) tradeOpt = "1";
 
                 if (!"0".equals(tradeOpt) && !"skip".equalsIgnoreCase(tradeOpt)) {
                     String side = ("2".equals(tradeOpt) || "sell".equalsIgnoreCase(tradeOpt)) ? "SELL" : "BUY";
                     int tradeQty = 1;
                     System.out.print("Enter Trade Quantity (default=1, press ENTER): ");
-                    String qtyStr = OMSweb_Trade.readLineWithTimeout(sc, "1", 3);
-                    try { if (!qtyStr.isEmpty()) tradeQty = Integer.parseInt(qtyStr.trim()); } catch (Exception ignored) {}
+                    String qtyStr = sc.nextLine().trim();
+                    if (!qtyStr.isEmpty()) {
+                        try { tradeQty = Integer.parseInt(qtyStr.trim()); } catch (Exception ignored) {}
+                    }
 
                     double tradeRate = 0.0;
                     try {

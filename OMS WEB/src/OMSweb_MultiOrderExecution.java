@@ -122,22 +122,38 @@ public class OMSweb_MultiOrderExecution {
     // =========================================================================
     // 2. NON-BLOCKING CONSOLE READER & MAIN ENTRY POINTS
     // =========================================================================
+    public static boolean isAutomatedMode() {
+        return "true".equalsIgnoreCase(System.getenv("CI"))
+                || "true".equalsIgnoreCase(System.getenv("HEADLESS"))
+                || "true".equalsIgnoreCase(System.getenv("DOCKER_MODE"))
+                || "true".equalsIgnoreCase(System.getenv("AUTOMATE_MODE"))
+                || "true".equalsIgnoreCase(System.getProperty("AUTOMATE_MODE"));
+    }
+
     public static String readLineWithTimeout(Scanner sc, String defaultVal, int timeoutSeconds) {
         if (sc == null) return defaultVal;
-        try {
-            long end = System.currentTimeMillis() + (timeoutSeconds * 1000L);
-            while (System.currentTimeMillis() < end) {
-                if (System.in.available() > 0) {
-                    if (sc.hasNextLine()) {
+        if (isAutomatedMode()) {
+            try {
+                long end = System.currentTimeMillis() + (timeoutSeconds * 1000L);
+                while (System.currentTimeMillis() < end) {
+                    if (System.in.available() > 0 && sc.hasNextLine()) {
                         String res = sc.nextLine().trim();
                         return res.isEmpty() ? defaultVal : res;
                     }
+                    Thread.sleep(50);
                 }
-                Thread.sleep(50);
+                System.out.println(" [Auto-proceed default: " + defaultVal + "]");
+                return defaultVal;
+            } catch (Exception e) {
+                return defaultVal;
             }
-            System.out.println(" [Auto-proceed default: " + defaultVal + "]");
-            return defaultVal;
-        } catch (Exception e) {
+        } else {
+            try {
+                if (sc.hasNextLine()) {
+                    String res = sc.nextLine().trim();
+                    return res.isEmpty() ? defaultVal : res;
+                }
+            } catch (Exception ignored) {}
             return defaultVal;
         }
     }
