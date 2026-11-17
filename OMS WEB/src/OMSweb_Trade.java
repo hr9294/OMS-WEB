@@ -113,6 +113,28 @@ public class OMSweb_Trade {
 		}
 	}
 
+	public static String readLineWithAutoTimeout(Scanner sc, String defaultVal, int timeoutSeconds) {
+		if (sc == null) {
+			System.out.println(" [Auto-selected: " + defaultVal + "]");
+			return defaultVal;
+		}
+		try {
+			long end = System.currentTimeMillis() + (timeoutSeconds * 1000L);
+			while (System.currentTimeMillis() < end) {
+				if (System.in.available() > 0 && sc.hasNextLine()) {
+					String res = sc.nextLine().trim();
+					return res.isEmpty() ? defaultVal : res;
+				}
+				Thread.sleep(50);
+			}
+			System.out.println(" [Auto-selected: " + defaultVal + "]");
+			return defaultVal;
+		} catch (Exception e) {
+			System.out.println(" [Auto-selected: " + defaultVal + "]");
+			return defaultVal;
+		}
+	}
+
 	public static void showFrontendBanner(WebDriver driver, String msg, String borderColor) {
 
 		try {
@@ -5983,7 +6005,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		if (isWidgetColorConfigured) {
 
-			System.out.printf("[WIDGET COLOR] Already configured as %s (%s). Skipping duplicate setup.%n",
+			System.out.printf("[WIDGET COLOR] Already configured as %s (%s). Skipping duplicate prompt.%n",
 
 					activeWidgetColorName != null ? activeWidgetColorName : "Linked",
 
@@ -5993,11 +6015,37 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		}
 
-		String chosenColorName = COLOR_NAMES[0]; // Turquoise (Default)
+		System.out.println("\n=== Widget Color Link ===");
 
-		String targetHex = COLOR_HEXES[0];       // #42EADDFF
+		System.out.println("1.Turquoise (Default) 2.Yellow 3.Orange");
 
-		System.out.println("\n[WIDGET COLOR] Automatically linking all widgets to Color Group: " + chosenColorName + " (" + targetHex + ")...");
+		System.out.println("4.Green 5.Red 6.Pink");
+
+		System.out.print("Enter choice (1-6, default 1 [Turquoise] in 2s): ");
+
+		String input = readLineWithAutoTimeout(sc, "1", 2);
+
+		if (input.isEmpty()) input = "1";
+
+		int colorChoice;
+
+		try {
+
+			colorChoice = Integer.parseInt(input);
+
+		} catch (NumberFormatException e) {
+
+			colorChoice = 1;
+
+		}
+
+		if (colorChoice < 1 || colorChoice > 6) colorChoice = 1;
+
+		String chosenColorName = COLOR_NAMES[colorChoice - 1];
+
+		String targetHex = COLOR_HEXES[colorChoice - 1];
+
+		System.out.println("\n[WIDGET COLOR] Applying " + chosenColorName + " (" + targetHex + ") to all widgets...");
 
 		applyColorToAllWidgets(driver, chosenColorName, targetHex);
 
@@ -6007,7 +6055,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		activeWidgetColorHex = targetHex;
 
-		System.out.printf("✓ [WIDGET COLOR] Automatically configured all widgets to %s (%s).%n", chosenColorName, targetHex);
+		System.out.printf("✓ [WIDGET COLOR] Successfully linked all widgets to %s (%s).%n", chosenColorName, targetHex);
 
 		Thread.sleep(500);
 

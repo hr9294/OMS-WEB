@@ -81,9 +81,21 @@ public class Position {
     public static final String[] COLOR_HEXES = { "#42EADDFF", "#FEE715FF", "#F95700ff", "#06d001", "#EB0506", "#FF3EA5FF" };
 
     public static void runWidgetColorSelection(WebDriver driver, Scanner sc) throws InterruptedException {
-        System.out.println("\n[WIDGET COLOR] Automatically linking Position widget to Turquoise (#42EADDFF)...");
-        setWidgetColor(driver, 1);
-        System.out.println("✓ [WIDGET COLOR] Position widget linked to Turquoise (#42EADDFF).");
+        System.out.println("\n=== Position Widget Color Link ===");
+        System.out.println("1.Turquoise (Default) 2.Yellow 3.Orange");
+        System.out.println("4.Green      5.Red     6.Pink");
+        System.out.print("Enter choice (1-6, default 1 [Turquoise] in 2s): ");
+        String input = readLineWithAutoTimeout(sc, "1", 2);
+        if (input.isEmpty()) input = "1";
+        int colorChoice;
+        try {
+            colorChoice = Integer.parseInt(input);
+        } catch (NumberFormatException e) {
+            colorChoice = 1;
+        }
+        if (colorChoice < 1 || colorChoice > 6) colorChoice = 1;
+        setWidgetColor(driver, colorChoice);
+        System.out.printf("✓ [WIDGET COLOR] Position widget linked to %s (%s).%n", COLOR_NAMES[colorChoice - 1], COLOR_HEXES[colorChoice - 1]);
     }
 
     public static boolean setWidgetColor(WebDriver driver, int colorChoice) {
@@ -1481,6 +1493,28 @@ public class Position {
                     return res.isEmpty() ? defaultVal : res;
                 }
             } catch (Exception ignored) {}
+            return defaultVal;
+        }
+    }
+
+    public static String readLineWithAutoTimeout(Scanner sc, String defaultVal, int timeoutSeconds) {
+        if (sc == null) {
+            System.out.println(" [Auto-selected: " + defaultVal + "]");
+            return defaultVal;
+        }
+        try {
+            long end = System.currentTimeMillis() + (timeoutSeconds * 1000L);
+            while (System.currentTimeMillis() < end) {
+                if (System.in.available() > 0 && sc.hasNextLine()) {
+                    String res = sc.nextLine().trim();
+                    return res.isEmpty() ? defaultVal : res;
+                }
+                Thread.sleep(50);
+            }
+            System.out.println(" [Auto-selected: " + defaultVal + "]");
+            return defaultVal;
+        } catch (Exception e) {
+            System.out.println(" [Auto-selected: " + defaultVal + "]");
             return defaultVal;
         }
     }
