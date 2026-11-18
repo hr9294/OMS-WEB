@@ -2837,13 +2837,7 @@ public class Day_Netting {
                 }
                 System.out.printf("[EXCHANGE SELECTED] %s (Default: DSE)%n", targetExchange);
 
-                System.out.println("\nSelect Allow Z & Spot Netting (ALLOW_Z_AND_SPOT_NETTING):");
-                System.out.println("  1. Enable (True - Investor can buy Z and Spot share without mature balance)");
-                System.out.println("  2. Disable (False) [Default]");
-                System.out.print("Enter Choice (1-2, default=2): ");
-                String zChoice = sc.nextLine().trim();
-                boolean allowZSpot = "1".equals(zChoice) || "true".equalsIgnoreCase(zChoice) || "enable".equalsIgnoreCase(zChoice);
-                System.out.printf("[ALLOW_Z_AND_SPOT_NETTING SELECTED] %b%n", allowZSpot);
+                boolean allowZSpot = false;
 
                 System.out.print("Enter password authentication (default=12345, or press ENTER): ");
                 String pwd = sc.nextLine().trim();
