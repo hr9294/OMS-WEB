@@ -2188,6 +2188,9 @@ public class Day_Netting {
             }
         } catch (Exception ignored) {}
 
+        // Ensure GoldenLayout is restored to normal grid before starting widget audit
+        OMSweb_Trade.minimizeOrRestoreWidget(driver);
+
         // 1. NETTING WATCHLIST (Dedicated Netting Scrip Watchlist + Icons)
         try {
             System.out.println("\n[1/6] Maximizing 'Netting Watchlist' widget...");

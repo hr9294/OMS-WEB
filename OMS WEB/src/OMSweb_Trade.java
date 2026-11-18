@@ -304,22 +304,8 @@ public class OMSweb_Trade {
 				"\n" +
 				"function activateTab(tab, stack) {\n" +
 				"    if (!tab) return false;\n" +
-				"    ['pointerdown', 'mousedown', 'touchstart', 'pointerup', 'mouseup', 'touchend', 'click'].forEach(function(evName) {\n" +
-				"        try {\n" +
-				"            var ev = new MouseEvent(evName, { bubbles: true, cancelable: true, view: window });\n" +
-				"            tab.dispatchEvent(ev);\n" +
-				"            var title = tab.querySelector('.lm_title');\n" +
-				"            if (title) title.dispatchEvent(new MouseEvent(evName, { bubbles: true, cancelable: true, view: window }));\n" +
-				"        } catch(e) {}\n" +
-				"    });\n" +
 				"    var jq = window.jQuery || window.$;\n" +
-				"    if (jq) {\n" +
-				"        try {\n" +
-				"            jq(tab).trigger('mousedown').trigger('mouseup').trigger('click');\n" +
-				"            var title = tab.querySelector('.lm_title');\n" +
-				"            if (title) jq(title).trigger('mousedown').trigger('mouseup').trigger('click');\n" +
-				"        } catch(e) {}\n" +
-				"    }\n" +
+				"    // 1. Try GoldenLayout API first (cleanest, zero drag side-effects)\n" +
 				"    try {\n" +
 				"        var ci = tab.__contentItem || (jq && jq(tab).data('contentItem')) || tab._contentItem;\n" +
 				"        if (ci && ci.parent && typeof ci.parent.setActiveContentItem === 'function') {\n" +
@@ -335,6 +321,27 @@ public class OMSweb_Trade {
 				"            }\n" +
 				"        }\n" +
 				"    } catch(e) {}\n" +
+				"    // 2. Dispatch clean mouse events and trigger jQuery\n" +
+				"    ['mousedown', 'mouseup', 'click'].forEach(function(evName) {\n" +
+				"        try {\n" +
+				"            var ev = new MouseEvent(evName, { bubbles: true, cancelable: true, view: window, clientX: 100, clientY: 100 });\n" +
+				"            tab.dispatchEvent(ev);\n" +
+				"            var title = tab.querySelector('.lm_title');\n" +
+				"            if (title) title.dispatchEvent(new MouseEvent(evName, { bubbles: true, cancelable: true, view: window, clientX: 100, clientY: 100 }));\n" +
+				"        } catch(e) {}\n" +
+				"    });\n" +
+				"    if (jq) {\n" +
+				"        try {\n" +
+				"            jq(tab).trigger('mousedown').trigger('mouseup').trigger('click');\n" +
+				"            var title = tab.querySelector('.lm_title');\n" +
+				"            if (title) jq(title).trigger('mousedown').trigger('mouseup').trigger('click');\n" +
+				"        } catch(e) {}\n" +
+				"    }\n" +
+				"    // 3. Immediately clean up any accidental drag proxies created by mousedown\n" +
+				"    var dragProxies = document.querySelectorAll('.lm_dragProxy, .lm_dropTargetIndicator, .lm_transition_indicator');\n" +
+				"    for (var dp = 0; dp < dragProxies.length; dp++) {\n" +
+				"        try { dragProxies[dp].parentNode.removeChild(dragProxies[dp]); } catch(e) {}\n" +
+				"    }\n" +
 				"    try {\n" +
 				"        if (stack) {\n" +
 				"            var allTabs = Array.from(stack.querySelectorAll('.lm_header .lm_tab, .lm_tab'));\n" +
@@ -473,10 +480,19 @@ public class OMSweb_Trade {
 				"var allMaxed = Array.from(document.querySelectorAll('.lm_stack.lm_maximised, .lm_maximised .lm_stack, .lm_maximised'));\n" +
 				"allMaxed.forEach(function(m) {\n" +
 				"    if (m !== bestStack && !bestStack.contains(m) && !m.contains(bestStack)) {\n" +
-				"        var rBtn = m.querySelector('.lm_controls .lm_minimise, .lm_controls [title*=\"minimise\" i], .lm_controls [title*=\"restore\" i]');\n" +
-				"        if (rBtn) rBtn.click();\n" +
+				"        var rBtn = m.querySelector('.lm_controls .lm_minimise, .lm_controls [title*=\"minimise\" i], .lm_controls [title*=\"restore\" i], .lm_controls .lm_maximise');\n" +
+				"        if (rBtn) {\n" +
+				"            if (window.jQuery) { try { window.jQuery(rBtn).trigger('click'); } catch(e) {} }\n" +
+				"            try { rBtn.click(); } catch(e) {}\n" +
+				"        }\n" +
+				"        m.classList.remove('lm_maximised');\n" +
 				"    }\n" +
 				"});\n" +
+				"// Clean up any lingering drag proxies or indicators\n" +
+				"var dragProxies = document.querySelectorAll('.lm_dragProxy, .lm_dropTargetIndicator, .lm_transition_indicator');\n" +
+				"for (var dp = 0; dp < dragProxies.length; dp++) {\n" +
+				"    try { dragProxies[dp].parentNode.removeChild(dragProxies[dp]); } catch(e) {}\n" +
+				"}\n" +
 				"\n" +
 				"var isAlreadyMaxed = bestStack.classList.contains('lm_maximised') || (bestStack.closest('.lm_maximised') !== null);\n" +
 				"if (!isAlreadyMaxed) {\n" +
@@ -503,39 +519,55 @@ public class OMSweb_Trade {
 	}
 
 	public static boolean minimizeOrRestoreWidget(WebDriver driver) {
-
 		if (driver == null) return false;
-
 		JavascriptExecutor js = (JavascriptExecutor) driver;
-
 		try {
-
 			Boolean restored = (Boolean) js.executeScript(
-
-				"var restoreBtn = document.querySelector('.lm_controls .lm_minimise, .lm_controls .lm_maximise[title*=\\\"min\\\" i], .lm_controls [title*=\\\"minimise\\\" i], .lm_controls [title*=\\\"restore\\\" i]');" +
-
-				"if (restoreBtn) { restoreBtn.click(); return true; }" +
-
-				"var maxed = document.querySelector('.lm_maximised .lm_controls .lm_maximise');" +
-
-				"if (maxed) { maxed.click(); return true; }" +
-
-				"return false;"
-
+				"var jq = window.jQuery || window.$;\n" +
+				"var changed = false;\n" +
+				"\n" +
+				"// 1. Locate all stacks or items currently marked lm_maximised\n" +
+				"var maxedStacks = Array.from(document.querySelectorAll('.lm_maximised, .lm_stack.lm_maximised'));\n" +
+				"for (var i = 0; i < maxedStacks.length; i++) {\n" +
+				"    var m = maxedStacks[i];\n" +
+				"    var btn = m.querySelector('.lm_controls .lm_minimise, .lm_controls [title*=\"minimise\" i], .lm_controls [title*=\"restore\" i], .lm_controls .lm_maximise');\n" +
+				"    if (btn) {\n" +
+				"        if (jq) { try { jq(btn).trigger('click'); changed = true; } catch(e) {} }\n" +
+				"        try { btn.click(); changed = true; } catch(e) {}\n" +
+				"    }\n" +
+				"    try {\n" +
+				"        var ci = m.__contentItem || (jq && jq(m).data('contentItem')) || m._contentItem;\n" +
+				"        if (ci && typeof ci.toggleMaximise === 'function') {\n" +
+				"            ci.toggleMaximise();\n" +
+				"            changed = true;\n" +
+				"        }\n" +
+				"    } catch(e) {}\n" +
+				"    m.classList.remove('lm_maximised');\n" +
+				"}\n" +
+				"\n" +
+				"// 2. Fallback check for any lingering restore button anywhere\n" +
+				"var anyRestore = document.querySelector('.lm_controls .lm_minimise, .lm_controls [title*=\"minimise\" i], .lm_controls [title*=\"restore\" i]');\n" +
+				"if (anyRestore) {\n" +
+				"    if (jq) { try { jq(anyRestore).trigger('click'); changed = true; } catch(e) {} }\n" +
+				"    try { anyRestore.click(); changed = true; } catch(e) {}\n" +
+				"}\n" +
+				"\n" +
+				"// 3. Clean up any lingering GoldenLayout drag shields or proxies that block clicks\n" +
+				"var dragProxies = document.querySelectorAll('.lm_dragProxy, .lm_dropTargetIndicator, .lm_transition_indicator');\n" +
+				"for (var dp = 0; dp < dragProxies.length; dp++) {\n" +
+				"    try { dragProxies[dp].parentNode.removeChild(dragProxies[dp]); changed = true; } catch(e) {}\n" +
+				"}\n" +
+				"\n" +
+				"// 4. Force reflow to recalculate all widget layouts properly\n" +
+				"try { window.dispatchEvent(new Event('resize')); } catch(e) {}\n" +
+				"return changed;"
 			);
-
 			Thread.sleep(400);
-
 			return Boolean.TRUE.equals(restored);
-
 		} catch (Exception e) {
-
 			System.err.println("[WARN: MinimizeWidget] " + e.getMessage());
-
 			return false;
-
 		}
-
 	}
 
 	public static void checkWidgetWithMaximizeAndSnapshot(WebDriver driver, String widgetTitle, String stageName, String clientCode, String symbol) {
@@ -3461,6 +3493,34 @@ public class OMSweb_Trade {
 				"    var activeWindow = document.querySelector('.wb-active, .winbox, div.form-submit-btn-holder');" +
 
 				"    if (activeWindow && activeWindow.style) { activeWindow.style.zIndex = '9999'; }" +
+
+				"    var maxed = document.querySelectorAll('.lm_maximised, .lm_stack.lm_maximised');" +
+
+				"    for (var mx = 0; mx < maxed.length; mx++) {" +
+
+				"        var rBtn = maxed[mx].querySelector('.lm_controls .lm_minimise, .lm_controls [title*=\"minimise\" i], .lm_controls [title*=\"restore\" i], .lm_controls .lm_maximise');" +
+
+				"        if (rBtn) {" +
+
+				"            try { if (window.jQuery) window.jQuery(rBtn).trigger('click'); rBtn.click(); changed = true; } catch(e) {}" +
+
+				"        }" +
+
+				"        maxed[mx].classList.remove('lm_maximised');" +
+
+				"        changed = true;" +
+
+				"    }" +
+
+				"    var dragProxies = document.querySelectorAll('.lm_dragProxy, .lm_dropTargetIndicator, .lm_transition_indicator');" +
+
+				"    for (var dp = 0; dp < dragProxies.length; dp++) {" +
+
+				"        try { dragProxies[dp].parentNode.removeChild(dragProxies[dp]); changed = true; } catch(e) {}" +
+
+				"    }" +
+
+				"    try { window.dispatchEvent(new Event('resize')); } catch(e) {}" +
 
 				"} catch(e) {}" +
 
