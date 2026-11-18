@@ -2916,52 +2916,126 @@ public class Day_Netting {
                 System.out.printf(">>> [STEP 2/3] EXECUTE TRADE TO VERIFY LIVE REAL-TIME WIDGET UPDATES%n");
                 System.out.printf("    Client: %s | Symbol: %s | Board: %s | Exchange: %s%n", cln, sym, board, targetExchange);
                 System.out.printf("=============================================================================%n");
-                System.out.print("Select Trade Action to execute (1=BUY / 2=SELL / 0=Skip Trade, default=1 [BUY]): ");
+                System.out.println("Select Trade Action to execute:");
+                System.out.println("  1. BUY  (Single Buy Order)");
+                System.out.println("  2. SELL (Single Sell Order)");
+                System.out.println("  3. BOTH (BUY then SELL - Complete Day Netting Round-Trip) [Default]");
+                System.out.println("  0. Skip Trade");
+                System.out.print("Select Trade Action to execute (1=BUY / 2=SELL / 3=BOTH [Default for Day Netting] / 0=Skip Trade, default=3 [BOTH]): ");
                 String tradeOpt = sc.nextLine().trim();
-                if (tradeOpt.isEmpty()) tradeOpt = "1";
+                if (tradeOpt.isEmpty()) tradeOpt = "3";
 
-                if (!"0".equals(tradeOpt) && !"skip".equalsIgnoreCase(tradeOpt)) {
-                    String side = ("2".equals(tradeOpt) || "sell".equalsIgnoreCase(tradeOpt)) ? "SELL" : "BUY";
+                String tradeAction = "BOTH";
+                if ("0".equals(tradeOpt) || "skip".equalsIgnoreCase(tradeOpt)) {
+                    tradeAction = "SKIP";
+                } else if ("1".equals(tradeOpt) || "buy".equalsIgnoreCase(tradeOpt)) {
+                    tradeAction = "BUY";
+                } else if ("2".equals(tradeOpt) || "sell".equalsIgnoreCase(tradeOpt)) {
+                    tradeAction = "SELL";
+                } else {
+                    tradeAction = "BOTH"; // "3", "both", "dual", "b", or default
+                }
+
+                if (!"SKIP".equals(tradeAction)) {
                     int tradeQty = 1;
-                    System.out.print("Enter Trade Quantity (default=1, press ENTER): ");
+                    System.out.print("Enter Trade Quantity per side (default=1, press ENTER): ");
                     String qtyStr = sc.nextLine().trim();
                     if (!qtyStr.isEmpty()) {
                         try { tradeQty = Integer.parseInt(qtyStr.trim()); } catch (Exception ignored) {}
                     }
 
-                    double tradeRate = 0.0;
+                    double defaultRate = 0.0;
                     try {
                         String ltpStr = preTradeSnap.marketDepthData.getOrDefault("Last", preTradeSnap.marketDepthData.getOrDefault("LTP", "0"));
-                        tradeRate = OMSweb_Trade.parseNumSafe(ltpStr);
+                        defaultRate = OMSweb_Trade.parseNumSafe(ltpStr);
                     } catch (Exception ignored) {}
-                    System.out.printf("Enter %s Rate (default=auto from Market Depth / DB, or press ENTER): ", side);
+
+                    double tradeRate = defaultRate;
+                    System.out.printf("Enter Trade Rate (default=auto %.2f from Market Depth / DB, or press ENTER): ", defaultRate);
                     String rStr = sc.nextLine().trim();
                     if (!rStr.isEmpty()) {
                         try { tradeRate = Double.parseDouble(rStr.replaceAll("[^0-9.]", "")); } catch (Exception ignored) {}
                     }
 
                     String tradeInstrument = "PUBLIC".equalsIgnoreCase(board) ? sym : (sym + "." + board);
-                    System.out.printf("  -> Submitting %s Order: %d shares of %s (Board: %s) for Client %s on %s (Rate: %.2f)...%n", side, tradeQty, sym, board, cln, targetExchange, tradeRate);
                     String orderEx = "BOTH".equalsIgnoreCase(targetExchange) ? "DSE" : targetExchange;
-                    OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), side, cln, tradeInstrument, tradeQty, tradeRate, orderEx);
-                    Thread.sleep(1500);
 
-                    String status = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, cln, sym, side);
-                    System.out.printf("  -> Exchange Order Terminal Status: [%s]%n", status);
+                    if ("BOTH".equals(tradeAction)) {
+                        // =============================================================
+                        // DUAL TRADE EXECUTION: LEG 1/2 (BUY) THEN LEG 2/2 (SELL)
+                        // =============================================================
+                        System.out.printf("%n>>> [DAY NETTING DUAL TRADE: LEG 1/2 - BUY] Submitting BUY Order: %d shares of %s (Board: %s) for Client %s on %s (Rate: %.2f)...%n",
+                                tradeQty, sym, board, cln, targetExchange, tradeRate);
+                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, tradeQty, tradeRate, orderEx);
+                        Thread.sleep(1500);
 
-                    if ("REJECTED".equalsIgnoreCase(status)) {
-                        System.out.printf("  ✗ [ORDER REJECTED] Initial order for %s @ %.2f was rejected by exchange!%n", tradeInstrument, tradeRate);
-                        System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying with smart Market Depth & DB prices (ltp, ycp, sh, sl, ch, cl, dh, dl) until an Accepted order is placed...");
-                        boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), side, cln, tradeInstrument, tradeQty, 0.0, orderEx, 6);
-                        if (success) {
-                            System.out.println("  ✓ [TRADE EXECUTED] Accepted order successfully placed and confirmed. Waiting 2s for DOM updates...");
+                        String buyStatus = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, cln, sym, "BUY");
+                        System.out.printf("  -> Exchange Order Terminal BUY Status: [%s]%n", buyStatus);
+
+                        if ("REJECTED".equalsIgnoreCase(buyStatus)) {
+                            System.out.printf("  ✗ [BUY ORDER REJECTED] Initial BUY order for %s @ %.2f was rejected by exchange!%n", tradeInstrument, tradeRate);
+                            System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying BUY with smart Market Depth & DB prices (ltp, ycp, sh, sl, ch, cl, dh, dl) until an Accepted order is placed...");
+                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, tradeQty, 0.0, orderEx, 6);
+                            if (success) {
+                                System.out.println("  ✓ [LEG 1/2 COMPLETE] Accepted BUY order successfully placed. Waiting 2s before SELL leg...");
+                            } else {
+                                System.out.println("  [TRADE WARNING] Could not get an Accepted BUY order after retrying with Market Depth & DB prices.");
+                            }
                         } else {
-                            System.out.println("  [TRADE WARNING] Could not get an Accepted order after retrying with Market Depth & DB prices.");
+                            System.out.println("  ✓ [LEG 1/2 COMPLETE] Accepted BUY order placed and confirmed. Waiting 2s before SELL leg...");
                         }
+                        Thread.sleep(2000);
+
+                        System.out.printf("%n>>> [DAY NETTING DUAL TRADE: LEG 2/2 - SELL] Submitting SELL Order: %d shares of %s (Board: %s) for Client %s on %s (Rate: %.2f)...%n",
+                                tradeQty, sym, board, cln, targetExchange, tradeRate);
+                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, tradeQty, tradeRate, orderEx);
+                        Thread.sleep(1500);
+
+                        String sellStatus = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, cln, sym, "SELL");
+                        System.out.printf("  -> Exchange Order Terminal SELL Status: [%s]%n", sellStatus);
+
+                        if ("REJECTED".equalsIgnoreCase(sellStatus)) {
+                            System.out.printf("  ✗ [SELL ORDER REJECTED] Initial SELL order for %s @ %.2f was rejected by exchange!%n", tradeInstrument, tradeRate);
+                            System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying SELL with smart Market Depth & DB prices (ltp, ycp, sh, sl, ch, cl, dh, dl) until an Accepted order is placed...");
+                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, tradeQty, 0.0, orderEx, 6);
+                            if (success) {
+                                System.out.println("  ✓ [LEG 2/2 COMPLETE] Accepted SELL order successfully placed.");
+                            } else {
+                                System.out.println("  [TRADE WARNING] Could not get an Accepted SELL order after retrying with Market Depth & DB prices.");
+                            }
+                        } else {
+                            System.out.println("  ✓ [LEG 2/2 COMPLETE] Accepted SELL order placed and confirmed.");
+                        }
+
+                        System.out.printf("%n  ✓ [DAY NETTING DUAL TRADE COMPLETE] Both BUY and SELL legs successfully executed (%d shares %s).%n", tradeQty, sym);
+                        System.out.println("     Scrip Netting active in OMS Web & qRMS. Waiting 2s for real-time widget updates...");
+                        Thread.sleep(2000);
+
                     } else {
-                        System.out.println("  ✓ [TRADE EXECUTED] Accepted order placed and confirmed. Waiting 2s for DOM updates...");
+                        // Single Leg Execution: BUY or SELL
+                        String side = tradeAction;
+                        System.out.printf("  -> Submitting %s Order: %d shares of %s (Board: %s) for Client %s on %s (Rate: %.2f)...%n",
+                                side, tradeQty, sym, board, cln, targetExchange, tradeRate);
+                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), side, cln, tradeInstrument, tradeQty, tradeRate, orderEx);
+                        Thread.sleep(1500);
+
+                        String status = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, cln, sym, side);
+                        System.out.printf("  -> Exchange Order Terminal Status: [%s]%n", status);
+
+                        if ("REJECTED".equalsIgnoreCase(status)) {
+                            System.out.printf("  ✗ [ORDER REJECTED] Initial order for %s @ %.2f was rejected by exchange!%n", tradeInstrument, tradeRate);
+                            System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying with smart Market Depth & DB prices (ltp, ycp, sh, sl, ch, cl, dh, dl) until an Accepted order is placed...");
+                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), side, cln, tradeInstrument, tradeQty, 0.0, orderEx, 6);
+                            if (success) {
+                                System.out.println("  ✓ [TRADE EXECUTED] Accepted order successfully placed and confirmed. Waiting 2s for DOM updates...");
+                            } else {
+                                System.out.println("  [TRADE WARNING] Could not get an Accepted order after retrying with Market Depth & DB prices.");
+                            }
+                        } else {
+                            System.out.println("  ✓ [TRADE EXECUTED] Accepted order placed and confirmed. Waiting 2s for DOM updates...");
+                        }
+                        Thread.sleep(2000);
                     }
-                    Thread.sleep(2000);
                 }
 
                 // Step 4: Capture Post-Trade Snapshot across all 6 widgets
