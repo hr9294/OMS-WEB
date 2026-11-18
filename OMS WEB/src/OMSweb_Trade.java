@@ -207,42 +207,20 @@ public class OMSweb_Trade {
 
 	}
 
-	public static final String CURRENT_ARTIFACT_DIR = "C:/Users/Hasibur Rahman/.gemini/antigravity/brain/e97cfc56-db00-4743-82f5-75664c6a224f";
-
 	public static void saveScreenshot(WebDriver driver, String filename) {
-
 		try {
-
 			File src = ((TakesScreenshot) driver).getScreenshotAs(OutputType.FILE);
-
-			String artifactDir = CURRENT_ARTIFACT_DIR;
-
 			String screenshotsDir = "d:/Anitgravity/screenshots";
-
-			new File(artifactDir).mkdirs();
-
-			new File(screenshotsDir).mkdirs();
-
+			File dir = new File(screenshotsDir);
+			if (!dir.exists()) dir.mkdirs();
 			File targetFile = new File(filename);
-
-			File dest1 = targetFile.isAbsolute() ? targetFile : new File(artifactDir, targetFile.getName());
-
-			File dest2 = new File(screenshotsDir, targetFile.getName());
-
-			if (dest1.getParentFile() != null) dest1.getParentFile().mkdirs();
-
-			Files.copy(src.toPath(), dest1.toPath(), StandardCopyOption.REPLACE_EXISTING);
-
-			Files.copy(src.toPath(), dest2.toPath(), StandardCopyOption.REPLACE_EXISTING);
-
-			System.out.println("[SCREENSHOT CAPTURED] " + dest1.getAbsolutePath());
-
+			File dest = targetFile.isAbsolute() ? targetFile : new File(dir, targetFile.getName());
+			if (dest.getParentFile() != null && !dest.getParentFile().exists()) dest.getParentFile().mkdirs();
+			Files.copy(src.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING);
+			System.out.println("[SCREENSHOT CAPTURED] " + dest.getAbsolutePath());
 		} catch (Exception e) {
-
 			System.err.println("[WARN: Screenshot] " + e.getMessage());
-
 		}
-
 	}
 
 	// =========================================================================
@@ -321,54 +299,34 @@ public class OMSweb_Trade {
 				"            }\n" +
 				"        }\n" +
 				"    } catch(e) {}\n" +
-				"    // 2. Dispatch clean mouse events and trigger jQuery\n" +
-				"    ['mousedown', 'mouseup', 'click'].forEach(function(evName) {\n" +
-				"        try {\n" +
-				"            var ev = new MouseEvent(evName, { bubbles: true, cancelable: true, view: window, clientX: 100, clientY: 100 });\n" +
-				"            tab.dispatchEvent(ev);\n" +
-				"            var title = tab.querySelector('.lm_title');\n" +
-				"            if (title) title.dispatchEvent(new MouseEvent(evName, { bubbles: true, cancelable: true, view: window, clientX: 100, clientY: 100 }));\n" +
-				"        } catch(e) {}\n" +
-				"    });\n" +
+				"    // 2. Safe native click on tab title (zero mousedown, preventing drag proxy freeze)\n" +
+				"    try {\n" +
+				"        var title = tab.querySelector('.lm_title');\n" +
+				"        if (title) title.click();\n" +
+				"        else tab.click();\n" +
+				"    } catch(e) {}\n" +
 				"    if (jq) {\n" +
 				"        try {\n" +
-				"            jq(tab).trigger('mousedown').trigger('mouseup').trigger('click');\n" +
 				"            var title = tab.querySelector('.lm_title');\n" +
-				"            if (title) jq(title).trigger('mousedown').trigger('mouseup').trigger('click');\n" +
+				"            if (title) jq(title).trigger('click');\n" +
+				"            else jq(tab).trigger('click');\n" +
 				"        } catch(e) {}\n" +
 				"    }\n" +
-				"    // 3. Immediately clean up any accidental drag proxies created by mousedown\n" +
+				"    // 3. Mark tab visually active\n" +
+				"    try {\n" +
+				"        if (stack) {\n" +
+				"            var allTabs = Array.from(stack.querySelectorAll('.lm_header .lm_tab, .lm_tab'));\n" +
+				"            for (var t = 0; t < allTabs.length; t++) {\n" +
+				"                if (allTabs[t] === tab) allTabs[t].classList.add('lm_active');\n" +
+				"                else allTabs[t].classList.remove('lm_active');\n" +
+				"            }\n" +
+				"        }\n" +
+				"    } catch(e) {}\n" +
+				"    // 4. Immediately clean up any accidental drag proxies\n" +
 				"    var dragProxies = document.querySelectorAll('.lm_dragProxy, .lm_dropTargetIndicator, .lm_transition_indicator');\n" +
 				"    for (var dp = 0; dp < dragProxies.length; dp++) {\n" +
 				"        try { dragProxies[dp].parentNode.removeChild(dragProxies[dp]); } catch(e) {}\n" +
 				"    }\n" +
-				"    try {\n" +
-				"        if (stack) {\n" +
-				"            var allTabs = Array.from(stack.querySelectorAll('.lm_header .lm_tab, .lm_tab'));\n" +
-				"            var targetIdx = allTabs.indexOf(tab);\n" +
-				"            if (targetIdx >= 0) {\n" +
-				"                allTabs.forEach(function(t, i) {\n" +
-				"                    if (i === targetIdx) t.classList.add('lm_active');\n" +
-				"                    else t.classList.remove('lm_active');\n" +
-				"                });\n" +
-				"                var itemContainers = Array.from(stack.querySelectorAll('.lm_items > .lm_item_container, .lm_items > .lm_item'));\n" +
-				"                if (itemContainers.length > targetIdx) {\n" +
-				"                    itemContainers.forEach(function(c, i) {\n" +
-				"                        if (i === targetIdx) {\n" +
-				"                            c.style.display = 'block';\n" +
-				"                            c.style.visibility = 'visible';\n" +
-				"                            c.style.zIndex = '1';\n" +
-				"                            c.classList.remove('lm_hidden');\n" +
-				"                        } else {\n" +
-				"                            c.style.display = 'none';\n" +
-				"                            c.style.zIndex = '0';\n" +
-				"                            c.classList.add('lm_hidden');\n" +
-				"                        }\n" +
-				"                    });\n" +
-				"                }\n" +
-				"            }\n" +
-				"        }\n" +
-				"    } catch(e) {}\n" +
 				"    return true;\n" +
 				"}\n" +
 				"\n" +
@@ -476,38 +434,55 @@ public class OMSweb_Trade {
 				"\n" +
 				"if (!bestStack) return false;\n" +
 				"\n" +
-				"// Un-maximize any other stack if currently maximized\n" +
-				"var allMaxed = Array.from(document.querySelectorAll('.lm_stack.lm_maximised, .lm_maximised .lm_stack, .lm_maximised'));\n" +
-				"allMaxed.forEach(function(m) {\n" +
-				"    if (m !== bestStack && !bestStack.contains(m) && !m.contains(bestStack)) {\n" +
-				"        var rBtn = m.querySelector('.lm_controls .lm_minimise, .lm_controls [title*=\"minimise\" i], .lm_controls [title*=\"restore\" i], .lm_controls .lm_maximise');\n" +
-				"        if (rBtn) {\n" +
-				"            if (window.jQuery) { try { window.jQuery(rBtn).trigger('click'); } catch(e) {} }\n" +
-				"            try { rBtn.click(); } catch(e) {}\n" +
+				"function getLayoutManager() {\n" +
+				"    if (window.myLayout && typeof window.myLayout._$maximiseItem === 'function') return window.myLayout;\n" +
+				"    var stacks = document.querySelectorAll('.lm_stack, .lm_item, .lm_root');\n" +
+				"    for (var i = 0; i < stacks.length; i++) {\n" +
+				"        var ci = stacks[i].__contentItem || (window.jQuery && window.jQuery(stacks[i]).data('contentItem')) || stacks[i]._contentItem;\n" +
+				"        if (ci && ci.layoutManager && typeof ci.layoutManager._$maximiseItem === 'function') {\n" +
+				"            return ci.layoutManager;\n" +
 				"        }\n" +
-				"        m.classList.remove('lm_maximised');\n" +
 				"    }\n" +
-				"});\n" +
+				"    return null;\n" +
+				"}\n" +
+				"\n" +
+				"var lm = getLayoutManager();\n" +
+				"var targetCi = bestStack.__contentItem || (window.jQuery && window.jQuery(bestStack).data('contentItem')) || bestStack._contentItem;\n" +
+				"var maxDone = false;\n" +
+				"\n" +
+				"if (lm && targetCi && typeof lm._$maximiseItem === 'function') {\n" +
+				"    try {\n" +
+				"        if (lm._maximisedItem !== targetCi) {\n" +
+				"            lm._$maximiseItem(targetCi);\n" +
+				"        }\n" +
+				"        maxDone = true;\n" +
+				"    } catch(e) {}\n" +
+				"}\n" +
+				"\n" +
+				"if (!maxDone) {\n" +
+				"    var isAlreadyMax = bestStack.classList.contains('lm_maximised');\n" +
+				"    if (!isAlreadyMax) {\n" +
+				"        var maxBtn = bestStack.querySelector('.lm_controls .lm_maximise, .lm_controls [title*=\"maximise\" i]');\n" +
+				"        if (maxBtn) {\n" +
+				"            try { maxBtn.click(); maxDone = true; } catch(e) {}\n" +
+				"        }\n" +
+				"    } else {\n" +
+				"        maxDone = true;\n" +
+				"    }\n" +
+				"}\n" +
+				"\n" +
 				"// Clean up any lingering drag proxies or indicators\n" +
 				"var dragProxies = document.querySelectorAll('.lm_dragProxy, .lm_dropTargetIndicator, .lm_transition_indicator');\n" +
 				"for (var dp = 0; dp < dragProxies.length; dp++) {\n" +
 				"    try { dragProxies[dp].parentNode.removeChild(dragProxies[dp]); } catch(e) {}\n" +
 				"}\n" +
 				"\n" +
-				"var isAlreadyMaxed = bestStack.classList.contains('lm_maximised') || (bestStack.closest('.lm_maximised') !== null);\n" +
-				"if (!isAlreadyMaxed) {\n" +
-				"    var maxBtn = bestStack.querySelector('.lm_controls .lm_maximise, .lm_controls [title*=max], .lm_controls [title*=Max]');\n" +
-				"    if (maxBtn) {\n" +
-				"        maxBtn.click();\n" +
-				"    }\n" +
-				"}\n" +
-				"\n" +
-				"return true;";
+				"return maxDone;";
 
 			Object res = js.executeScript(script, widgetTitleKeyword.trim());
 			Thread.sleep(400);
 
-			// Step 3: Re-verify that target tab remains active inside the maximized stack
+			// Step 4: Re-verify that target tab remains active inside the maximized stack
 			openWidgetTab(driver, widgetTitleKeyword);
 			Thread.sleep(300);
 
@@ -523,42 +498,60 @@ public class OMSweb_Trade {
 		JavascriptExecutor js = (JavascriptExecutor) driver;
 		try {
 			Boolean restored = (Boolean) js.executeScript(
-				"var jq = window.jQuery || window.$;\n" +
+				"function getLayoutManager() {\n" +
+				"    if (window.myLayout && typeof window.myLayout._$maximiseItem === 'function') return window.myLayout;\n" +
+				"    var stacks = document.querySelectorAll('.lm_stack, .lm_item, .lm_root');\n" +
+				"    for (var i = 0; i < stacks.length; i++) {\n" +
+				"        var ci = stacks[i].__contentItem || (window.jQuery && window.jQuery(stacks[i]).data('contentItem')) || stacks[i]._contentItem;\n" +
+				"        if (ci && ci.layoutManager && typeof ci.layoutManager._$maximiseItem === 'function') {\n" +
+				"            return ci.layoutManager;\n" +
+				"        }\n" +
+				"    }\n" +
+				"    return null;\n" +
+				"}\n" +
+				"\n" +
+				"var lm = getLayoutManager();\n" +
 				"var changed = false;\n" +
 				"\n" +
-				"// 1. Locate all stacks or items currently marked lm_maximised\n" +
+				"// 1. Primary: GoldenLayout API _$maximiseItem(null) (idempotent, official restore)\n" +
+				"if (lm && typeof lm._$maximiseItem === 'function') {\n" +
+				"    if (lm._maximisedItem !== null) {\n" +
+				"        try {\n" +
+				"            lm._$maximiseItem(null);\n" +
+				"            changed = true;\n" +
+				"        } catch(e) {}\n" +
+				"    }\n" +
+				"    if (typeof lm.updateSize === 'function') {\n" +
+				"        try { lm.updateSize(); } catch(e) {}\n" +
+				"    }\n" +
+				"}\n" +
+				"\n" +
+				"// 2. Secondary fallback: check DOM for .lm_maximised and click restore button ONCE\n" +
 				"var maxedStacks = Array.from(document.querySelectorAll('.lm_maximised, .lm_stack.lm_maximised'));\n" +
 				"for (var i = 0; i < maxedStacks.length; i++) {\n" +
 				"    var m = maxedStacks[i];\n" +
 				"    var btn = m.querySelector('.lm_controls .lm_minimise, .lm_controls [title*=\"minimise\" i], .lm_controls [title*=\"restore\" i], .lm_controls .lm_maximise');\n" +
 				"    if (btn) {\n" +
-				"        if (jq) { try { jq(btn).trigger('click'); changed = true; } catch(e) {} }\n" +
 				"        try { btn.click(); changed = true; } catch(e) {}\n" +
 				"    }\n" +
-				"    try {\n" +
-				"        var ci = m.__contentItem || (jq && jq(m).data('contentItem')) || m._contentItem;\n" +
-				"        if (ci && typeof ci.toggleMaximise === 'function') {\n" +
-				"            ci.toggleMaximise();\n" +
-				"            changed = true;\n" +
-				"        }\n" +
-				"    } catch(e) {}\n" +
-				"    m.classList.remove('lm_maximised');\n" +
 				"}\n" +
 				"\n" +
-				"// 2. Fallback check for any lingering restore button anywhere\n" +
-				"var anyRestore = document.querySelector('.lm_controls .lm_minimise, .lm_controls [title*=\"minimise\" i], .lm_controls [title*=\"restore\" i]');\n" +
-				"if (anyRestore) {\n" +
-				"    if (jq) { try { jq(anyRestore).trigger('click'); changed = true; } catch(e) {} }\n" +
-				"    try { anyRestore.click(); changed = true; } catch(e) {}\n" +
+				"// 3. Ensure no stacks have lingering inline style.display = 'none'\n" +
+				"var allStacks = document.querySelectorAll('.lm_stack');\n" +
+				"for (var s = 0; s < allStacks.length; s++) {\n" +
+				"    if (allStacks[s].style.display === 'none') {\n" +
+				"        allStacks[s].style.display = '';\n" +
+				"        changed = true;\n" +
+				"    }\n" +
 				"}\n" +
 				"\n" +
-				"// 3. Clean up any lingering GoldenLayout drag shields or proxies that block clicks\n" +
+				"// 4. Clean up any drag proxies, indicators, or drop targets\n" +
 				"var dragProxies = document.querySelectorAll('.lm_dragProxy, .lm_dropTargetIndicator, .lm_transition_indicator');\n" +
 				"for (var dp = 0; dp < dragProxies.length; dp++) {\n" +
 				"    try { dragProxies[dp].parentNode.removeChild(dragProxies[dp]); changed = true; } catch(e) {}\n" +
 				"}\n" +
 				"\n" +
-				"// 4. Force reflow to recalculate all widget layouts properly\n" +
+				"// 5. Force GoldenLayout and browser to reflow all grid items back to their grid dimensions\n" +
 				"try { window.dispatchEvent(new Event('resize')); } catch(e) {}\n" +
 				"return changed;"
 			);
@@ -597,6 +590,8 @@ public class OMSweb_Trade {
 		} finally {
 
 			boolean isRestored = minimizeOrRestoreWidget(driver);
+
+			try { Thread.sleep(600); } catch (Exception ignored) {}
 
 			System.out.printf("  ✓ Restored '%s' back to grid layout (Restored=%s)%n", widgetTitle, isRestored);
 
@@ -6753,6 +6748,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		try {
 			maximizeWidget(driver, "Portfolio");
+			Thread.sleep(600);
 			saveScreenshot(driver, String.format("widget_maximized_%s_Portfolio.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
 			snap.portfolioUi = ClientPortfolio.getUiSnapshot(driver, clientCode, symbol);
@@ -6901,12 +6897,14 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		} finally {
 			minimizeOrRestoreWidget(driver);
+			try { Thread.sleep(600); } catch (Exception ignored) {}
 		}
 
 		// 2. Market Depth (UI DOM - Summary Quotes & 5-Level Book Rows)
 
 		try {
 			maximizeWidget(driver, "Market Depth");
+			Thread.sleep(600);
 			saveScreenshot(driver, String.format("widget_maximized_%s_Market_Depth.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
 			snap.marketDepthUi = Market_Depth.getUiSnapshot(driver);
@@ -7005,12 +7003,14 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		} finally {
 			minimizeOrRestoreWidget(driver);
+			try { Thread.sleep(600); } catch (Exception ignored) {}
 		}
 
 		// 3. Order Terminal (UI DOM - Summary & Selected Symbol Order Rows With All Columns)
 
 		try {
 			maximizeWidget(driver, "Order Terminal");
+			Thread.sleep(600);
 			saveScreenshot(driver, String.format("widget_maximized_%s_Order_Terminal.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
 			if (clientCode != null && !clientCode.trim().isEmpty()) {
@@ -7205,12 +7205,14 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		} finally {
 			minimizeOrRestoreWidget(driver);
+			try { Thread.sleep(600); } catch (Exception ignored) {}
 		}
 
 		// 4. Order Summary (UI DOM - Summary & Breakdown Rows)
 
 		try {
 			maximizeWidget(driver, "Order Summary");
+			Thread.sleep(600);
 			saveScreenshot(driver, String.format("widget_maximized_%s_Order_Summary.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
 			if (clientCode != null && !clientCode.trim().isEmpty()) {
@@ -7331,12 +7333,14 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		} finally {
 			minimizeOrRestoreWidget(driver);
+			try { Thread.sleep(600); } catch (Exception ignored) {}
 		}
 
 		// 5. Account Limits (UI DOM - Cash & Capital Table All Rows)
 
 		try {
 			maximizeWidget(driver, "Account Limits");
+			Thread.sleep(600);
 			saveScreenshot(driver, String.format("widget_maximized_%s_Account_Limits.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
 			snap.accountLimitsUi = Account_Limits.getUiSnapshot(driver, clientCode);
@@ -7477,12 +7481,14 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		} finally {
 			minimizeOrRestoreWidget(driver);
+			try { Thread.sleep(600); } catch (Exception ignored) {}
 		}
 
 		// 6. Position (UI DOM - Target Client & Selected Symbol Position Rows)
 
 		try {
 			maximizeWidget(driver, "Position");
+			Thread.sleep(600);
 			saveScreenshot(driver, String.format("widget_maximized_%s_Position.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
 			if (clientCode != null && !clientCode.trim().isEmpty()) {
@@ -7559,12 +7565,14 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		} finally {
 			minimizeOrRestoreWidget(driver);
+			try { Thread.sleep(600); } catch (Exception ignored) {}
 		}
 
 		// 7. Market Watch (UI DOM - Target Symbol Row with all 20 columns)
 
 		try {
 			maximizeWidget(driver, "Market Watch");
+			Thread.sleep(600);
 			saveScreenshot(driver, String.format("widget_maximized_%s_Market_Watch.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
 			snap.marketWatchUi = Market_Watch.getUiSnapshot(driver, snap.targetSymbol);
@@ -7595,6 +7603,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		} finally {
 			minimizeOrRestoreWidget(driver);
+			try { Thread.sleep(600); } catch (Exception ignored) {}
 		}
 
 		return snap;

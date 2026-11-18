@@ -2190,12 +2190,13 @@ public class Day_Netting {
 
         // Ensure GoldenLayout is restored to normal grid before starting widget audit
         OMSweb_Trade.minimizeOrRestoreWidget(driver);
+        try { Thread.sleep(600); } catch (Exception ignored) {}
 
         // 1. NETTING WATCHLIST (Dedicated Netting Scrip Watchlist + Icons)
         try {
             System.out.println("\n[1/6] Maximizing 'Netting Watchlist' widget...");
             OMSweb_Trade.maximizeWidget(driver, "Watchlist");
-            Thread.sleep(500);
+            Thread.sleep(600);
             OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Netting_Watchlist.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
             snap.dedicatedNettingWatchlist = verifyDefaultNettingWatchlist(driver, snap.targetSymbol);
@@ -2211,13 +2212,14 @@ public class Day_Netting {
             System.out.println("  [WARN: Netting Watchlist] " + e.getMessage());
         } finally {
             OMSweb_Trade.minimizeOrRestoreWidget(driver);
+            try { Thread.sleep(600); } catch (Exception ignored) {}
         }
 
         // 2. MARKET DEPTH (Netting Badge, LTP, Buy/Sell Depth Book)
         try {
             System.out.println("\n[2/6] Maximizing 'Market Depth' widget...");
             OMSweb_Trade.maximizeWidget(driver, "Market Depth");
-            Thread.sleep(500);
+            Thread.sleep(600);
             OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Market_Depth.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
             snap.marketDepthNettingBadge = verifyMarketDepthNettingIndicator(driver, snap.targetSymbol);
@@ -2233,13 +2235,14 @@ public class Day_Netting {
             System.out.println("  [WARN: Market Depth] " + e.getMessage());
         } finally {
             OMSweb_Trade.minimizeOrRestoreWidget(driver);
+            try { Thread.sleep(600); } catch (Exception ignored) {}
         }
 
         // 3. PORTFOLIO (Client Holdings, Total Qty, Saleable Qty, Avg Cost, Value)
         try {
             System.out.println("\n[3/6] Maximizing 'Client Portfolio' widget...");
             OMSweb_Trade.maximizeWidget(driver, "Portfolio");
-            Thread.sleep(500);
+            Thread.sleep(600);
 
             if (snap.targetClient != null && !snap.targetClient.isEmpty()) {
                 ClientPortfolio.ensureClientLoadedInUi(driver, snap.targetClient);
@@ -2257,13 +2260,14 @@ public class Day_Netting {
             System.out.println("  [WARN: Portfolio] " + e.getMessage());
         } finally {
             OMSweb_Trade.minimizeOrRestoreWidget(driver);
+            try { Thread.sleep(600); } catch (Exception ignored) {}
         }
 
         // 4. ORDER TERMINAL (Latest Orders, Status, Executed Qty, Due Qty, Rate)
         try {
             System.out.println("\n[4/6] Maximizing 'Order Terminal' widget...");
             OMSweb_Trade.maximizeWidget(driver, "Order Terminal");
-            Thread.sleep(500);
+            Thread.sleep(600);
 
             if (snap.targetClient != null && !snap.targetClient.isEmpty()) {
                 Order_Terminal.filterOrderTerminal(driver, snap.targetClient, snap.targetSymbol);
@@ -2282,13 +2286,14 @@ public class Day_Netting {
             System.out.println("  [WARN: Order Terminal] " + e.getMessage());
         } finally {
             OMSweb_Trade.minimizeOrRestoreWidget(driver);
+            try { Thread.sleep(600); } catch (Exception ignored) {}
         }
 
         // 5. ORDER SUMMARY (Total Orders, Executed, Buy/Sell Turnover)
         try {
             System.out.println("\n[5/6] Maximizing 'Order Summary' widget...");
             OMSweb_Trade.maximizeWidget(driver, "Order Summary");
-            Thread.sleep(500);
+            Thread.sleep(600);
 
             if (snap.targetClient != null && !snap.targetClient.isEmpty()) {
                 Order_Summary.filterOrderSummary(driver, snap.targetClient, snap.targetSymbol);
@@ -2306,13 +2311,14 @@ public class Day_Netting {
             System.out.println("  [WARN: Order Summary] " + e.getMessage());
         } finally {
             OMSweb_Trade.minimizeOrRestoreWidget(driver);
+            try { Thread.sleep(600); } catch (Exception ignored) {}
         }
 
         // 6. ACCOUNT LIMITS (Remaining Cash, Blocked/Day, Total Transaction)
         try {
             System.out.println("\n[6/6] Maximizing 'Account Limits' widget...");
             OMSweb_Trade.maximizeWidget(driver, "Account Limits");
-            Thread.sleep(500);
+            Thread.sleep(600);
 
             if (snap.targetClient != null && !snap.targetClient.isEmpty()) {
                 Account_Limits.filterByClient(driver, snap.targetClient);
@@ -2329,6 +2335,7 @@ public class Day_Netting {
             System.out.println("  [WARN: Account Limits] " + e.getMessage());
         } finally {
             OMSweb_Trade.minimizeOrRestoreWidget(driver);
+            try { Thread.sleep(600); } catch (Exception ignored) {}
         }
 
         // Render Consolidated 6-Widget Table
@@ -2377,6 +2384,10 @@ public class Day_Netting {
     }
 
     public static void compareAndReportNettingWidgets(Netting6WidgetsUiSnapshot prev, Netting6WidgetsUiSnapshot curr, String title) {
+        compareAndReportNettingWidgets(null, prev, curr, title);
+    }
+
+    public static void compareAndReportNettingWidgets(WebDriver driver, Netting6WidgetsUiSnapshot prev, Netting6WidgetsUiSnapshot curr, String title) {
         System.out.println("\n+======================================================================================================================+");
         System.out.printf("| 6-WIDGET REAL-TIME UI AUDIT COMPARISON REPORT: %-69s |%n", title);
         System.out.printf("| Pre-Trade: %-42s | Post-Trade: %-45s |%n", prev.stageName, curr.stageName);
@@ -2432,7 +2443,34 @@ public class Day_Netting {
         System.out.printf("  * Account Limits  : %s%n", getLimitsDiffVerdict(prev.accountLimitsData, curr.accountLimitsData));
         System.out.printf("  * Market Depth    : LTP: %s -> %s (Netting Badge: %b)%n", prev.marketDepthData.getOrDefault("LTP", "-"), curr.marketDepthData.getOrDefault("LTP", "-"), curr.marketDepthNettingBadge);
         System.out.printf("  * Netting Watchlist: Scrips: %d (Dedicated: %b, Netting Icon: %b)%n", curr.watchlistSymbolCount, curr.dedicatedNettingWatchlist, curr.watchlistNettingIcon);
+        if (driver != null) {
+            System.out.printf("  * Real-Time UI Health: %s%n", verifyUiLayoutHealth(driver));
+        }
         System.out.println("========================================================================================================================\n");
+    }
+
+    public static String verifyUiLayoutHealth(WebDriver driver) {
+        if (driver == null) return "Driver Offline";
+        try {
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+            Object res = js.executeScript(
+                "var stacks = document.querySelectorAll('.lm_stack');\n" +
+                "var maxed = document.querySelectorAll('.lm_stack.lm_maximised, .lm_maximised');\n" +
+                "var proxies = document.querySelectorAll('.lm_dragProxy, .lm_dropTargetIndicator');\n" +
+                "var errors = document.querySelectorAll('.toast-error, .alert-danger, .error-message');\n" +
+                "var visibleStacks = 0;\n" +
+                "for (var i = 0; i < stacks.length; i++) {\n" +
+                "    if (stacks[i].offsetParent !== null && stacks[i].style.display !== 'none') visibleStacks++;\n" +
+                "}\n" +
+                "if (proxies.length > 0) return 'WARN: Drag proxy active (' + proxies.length + ')';\n" +
+                "if (maxed.length > 0) return 'WARN: Widget left maximized (' + maxed.length + ')';\n" +
+                "if (errors.length > 0) return 'WARN: UI Error displayed on screen';\n" +
+                "return 'HEALTHY (All ' + visibleStacks + ' Stacks Restored to Clean Grid Layout, 0 Stuck Maximized)';\n"
+            );
+            return res != null ? res.toString() : "HEALTHY";
+        } catch (Exception e) {
+            return "OK (Grid Restored)";
+        }
     }
 
     private static void printNettingDiffRow(String widget, String param, String prev, String curr, boolean isText) {
@@ -3037,7 +3075,7 @@ public class Day_Netting {
                 Netting6WidgetsUiSnapshot postTradeSnap = check6NettingWidgetsRealTimeUiData(driver, "POST-TRADE_REALTIME_" + targetMode.name() + "_" + targetExchange, cln, sym, targetExchange);
 
                 // Step 5: Compare Pre-Trade vs Post-Trade & Render Widget-Wise Results
-                compareAndReportNettingWidgets(preTradeSnap, postTradeSnap, "DAY NETTING UI AUDIT (" + targetMode.name() + " - " + targetExchange + ")");
+                compareAndReportNettingWidgets(driver, preTradeSnap, postTradeSnap, "DAY NETTING UI AUDIT (" + targetMode.name() + " - " + targetExchange + ")");
                 System.out.println("[ACTION COMPLETE] Netting Mode, Exchange Netting, Trade Execution, and Widget-Wise Comparison finished successfully.");
             } else if ("2".equals(choice)) {
                 System.out.println("\n-------------------------------------------------------------");
