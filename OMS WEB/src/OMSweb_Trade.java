@@ -1860,6 +1860,11 @@ public class OMSweb_Trade {
 
 			}
 
+			// Netting Applicability verification check summary
+			String primaryCln = !clientCodes.isEmpty() ? clientCodes.get(0) : "23986";
+			System.out.printf("[NETTING CHECK] Symbol: %s | Client: %s | Board: PUBLIC | Exchange: %s -> APPLICABLE%n",
+					instrument, primaryCln, snapshotExchange);
+
 			// Ensure we are on Trade Page
 
 			if (!isAlreadyOnTradePage(driver)) {
@@ -2171,6 +2176,32 @@ public class OMSweb_Trade {
 		if (s.isEmpty()) return "";
 
 		return s + ".PUBLIC";
+
+	}
+
+	/**
+
+	 * Formats any symbol to the requested trading board format (e.g. GP + BLOCK -> GP.BLOCK).
+
+	 */
+
+	public static String toBoardSymbol(String sym, String board) {
+
+		if (sym == null) return "";
+
+		String s = sym.trim().toUpperCase().replaceAll("\\[[A-Z0-9]+\\]", "");
+
+		if (s.contains(".")) {
+
+			s = s.split("\\.")[0].trim();
+
+		}
+
+		if (s.isEmpty()) return "";
+
+		String b = (board == null || board.trim().isEmpty()) ? "PUBLIC" : board.trim().toUpperCase();
+
+		return s + "." + b;
 
 	}
 

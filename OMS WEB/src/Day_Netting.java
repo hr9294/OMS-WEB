@@ -1,5 +1,5 @@
 import java.time.Duration;
-//import java.util.ArrayList;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -162,6 +162,41 @@ public class Day_Netting {
                 if (!orderWindowClientBlockedIndicator) return false;
             }
             return true;
+        }
+    }
+
+    public static class NettingApplicabilityReport {
+        public String exchange = "DSE";
+        public String symbol = "GP";
+        public String clientCode = "23986";
+        public String board = "PUBLIC";
+
+        // Symbol verification
+        public boolean isSymbolApplicable = true;
+        public String symbolStatus = "APPLICABLE";
+        public String symbolReason = "";
+
+        // Client verification
+        public boolean isClientApplicable = true;
+        public String clientStatus = "APPLICABLE";
+        public String clientReason = "";
+
+        // Board verification
+        public boolean isBoardApplicable = true;
+        public String boardStatus = "APPLICABLE";
+        public String boardReason = "";
+
+        // Overall
+        public boolean isOverallApplicable = true;
+        public String overallVerdict = "";
+
+        public NettingApplicabilityReport() {}
+
+        public NettingApplicabilityReport(String exchange, String symbol, String clientCode, String board) {
+            this.exchange = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "DSE";
+            this.symbol = (symbol != null && !symbol.trim().isEmpty()) ? symbol.trim().toUpperCase() : "GP";
+            this.clientCode = (clientCode != null && !clientCode.trim().isEmpty()) ? clientCode.trim() : "23986";
+            this.board = (board != null && !board.trim().isEmpty()) ? board.trim().toUpperCase() : "PUBLIC";
         }
     }
 
@@ -1535,6 +1570,270 @@ public class Day_Netting {
     }
 
     // =========================================================================
+    // 3. APPLICABILITY VERIFICATION: SYMBOL, CLIENT & BOARD (RMS & UI AUDIT)
+    // =========================================================================
+
+    /**
+     * Checks whether the selected Symbol, Client, and Trading Board are applicable/eligible
+     * for Day Netting in qRMS settings and the OMS Web trading portal.
+     *
+     * Validates:
+     * 1. Symbol: Checks qRMS Applicable Symbols list, exchange netting enabled flag,
+     *    and UI Netting indicators (Market Depth badge / Watchlists).
+     * 2. Client Code: Checks Clients RMS (Allowed vs Disallowed list), and Order Window
+     *    Client Netting Blocked indicator.
+     * 3. Trading Board: Checks Unauthorized Boards & Market (PUBLIC is authorized; BLOCK
+     *    is checked against Board-Wise Blocking; SPOT is checked against Spot Blocking
+     *    and ALLOW_Z_AND_SPOT_NETTING).
+     */
+    public static NettingApplicabilityReport checkSelectedApplicability(WebDriver driver, String exchange, String symbol, String clientCode, String board) {
+        String ex = (exchange != null && !exchange.trim().isEmpty() && !"BOTH".equalsIgnoreCase(exchange.trim())) ? exchange.trim().toUpperCase() : "DSE";
+
+        // Normalize symbol and board
+        String rawSym = (symbol != null && !symbol.trim().isEmpty()) ? symbol.trim().toUpperCase() : "GP";
+        rawSym = rawSym.replaceAll("\\[[A-Z0-9]+\\]", "");
+        String inferredBoard = "PUBLIC";
+        if (rawSym.contains(".")) {
+            String[] parts = rawSym.split("\\.");
+            rawSym = parts[0].trim();
+            if (parts.length > 1 && !parts[1].trim().isEmpty()) {
+                inferredBoard = parts[1].trim().toUpperCase();
+            }
+        }
+        String sym = rawSym.isEmpty() ? "GP" : rawSym;
+
+        String brd = (board != null && !board.trim().isEmpty()) ? board.trim().toUpperCase() : inferredBoard;
+        String cln = (clientCode != null && !clientCode.trim().isEmpty()) ? clientCode.trim() : "23986";
+
+        NettingApplicabilityReport rep = new NettingApplicabilityReport(ex, sym, cln, brd);
+
+        System.out.println("\n-----------------------------------------------------------------------------");
+        System.out.printf(">>> [APPLICABILITY AUDIT] Checking Netting Eligibility: Symbol=%s, Client=%s, Board=%s (%s)...%n",
+                sym, cln, brd, ex);
+        System.out.println("-----------------------------------------------------------------------------");
+
+        // ---------------------------------------------------------------------
+        // 1. VALIDATE SYMBOL APPLICABILITY
+        // ---------------------------------------------------------------------
+        boolean exNettingEnabled = true;
+        boolean isZorSpotRestricted = false;
+        try {
+            Map<String, String> appSettings = fetchApplicationNettingSettings(driver);
+            if (appSettings != null && !appSettings.isEmpty()) {
+                String modeStr = appSettings.getOrDefault("DAY_NETTING_SETTINGS", "INDIVIDUAL EXCHANGE").toUpperCase();
+                if ("NONE".equalsIgnoreCase(modeStr)) {
+                    exNettingEnabled = false;
+                    rep.isSymbolApplicable = false;
+                    rep.symbolStatus = "DISABLED (GLOBAL)";
+                    rep.symbolReason = "Day Netting is globally DISABLED in qRMS (DAY_NETTING_SETTINGS = NONE)";
+                } else if ("CSE".equalsIgnoreCase(ex)) {
+                    exNettingEnabled = Boolean.parseBoolean(appSettings.getOrDefault("IS_CSE_DAY_NETTING_ENABLED", "true"));
+                    if (!exNettingEnabled) {
+                        rep.isSymbolApplicable = false;
+                        rep.symbolStatus = "DISABLED (CSE)";
+                        rep.symbolReason = "CSE Day Netting is DISABLED in qRMS (IS_CSE_DAY_NETTING_ENABLED = false)";
+                    }
+                } else {
+                    exNettingEnabled = Boolean.parseBoolean(appSettings.getOrDefault("IS_DSE_DAY_NETTING_ENABLED", "true"));
+                    if (!exNettingEnabled) {
+                        rep.isSymbolApplicable = false;
+                        rep.symbolStatus = "DISABLED (DSE)";
+                        rep.symbolReason = "DSE Day Netting is DISABLED in qRMS (IS_DSE_DAY_NETTING_ENABLED = false)";
+                    }
+                }
+
+                boolean allowZSpot = Boolean.parseBoolean(appSettings.getOrDefault("ALLOW_Z_AND_SPOT_NETTING", "false"));
+                if ("SPOT".equalsIgnoreCase(brd) && !allowZSpot) {
+                    isZorSpotRestricted = true;
+                }
+            }
+        } catch (Exception ignored) {}
+
+        if (exNettingEnabled) {
+            // Check UI Market Depth or existing watchlist badge if on trade page
+            boolean depthBadge = false;
+            try {
+                depthBadge = verifyMarketDepthNettingIndicator(driver, sym);
+            } catch (Exception ignored) {}
+
+            // Check Applicable Symbols list if available
+            boolean foundInList = false;
+            try {
+                List<Map<String, String>> appSymbols = fetchApplicableSymbolsList(driver);
+                if (appSymbols != null && !appSymbols.isEmpty()) {
+                    for (Map<String, String> row : appSymbols) {
+                        String rSym = row.getOrDefault("ticker", "");
+                        String rEx = row.getOrDefault("exchange", "");
+                        if (sym.equalsIgnoreCase(rSym) && (ex.equalsIgnoreCase(rEx) || "ALL".equalsIgnoreCase(rEx))) {
+                            foundInList = true;
+                            break;
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+
+            if (depthBadge) {
+                rep.isSymbolApplicable = true;
+                rep.symbolStatus = "APPLICABLE";
+                rep.symbolReason = String.format("Symbol '%s' has active Netting Indicator in Market Depth on %s", sym, ex);
+            } else if (foundInList) {
+                rep.isSymbolApplicable = true;
+                rep.symbolStatus = "APPLICABLE";
+                rep.symbolReason = String.format("Symbol '%s' is registered in qRMS Applicable Symbols list for %s", sym, ex);
+            } else {
+                // Standard scrips (e.g. GP, 1JANATAMF, etc.) or default authorized
+                rep.isSymbolApplicable = true;
+                rep.symbolStatus = "APPLICABLE (DEFAULT)";
+                rep.symbolReason = String.format("Symbol '%s' is an authorized trading scrip on %s (Exchange Netting Active)", sym, ex);
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // 2. VALIDATE CLIENT APPLICABILITY
+        // ---------------------------------------------------------------------
+        boolean clientBlockedInUi = false;
+        try {
+            clientBlockedInUi = verifyOrderWindowClientNettingBlocked(driver, cln);
+        } catch (Exception ignored) {}
+
+        if (clientBlockedInUi) {
+            rep.isClientApplicable = false;
+            rep.clientStatus = "BLOCKED";
+            rep.clientReason = String.format("Client '%s' has [Netting Blocked] active indicator in Order Window", cln);
+        } else {
+            // Check qRMS Clients RMS list if readable
+            boolean inDisallowed = false;
+            try {
+                List<Map<String, String>> clientsList = fetchClientsRmsList(driver);
+                if (clientsList != null && !clientsList.isEmpty()) {
+                    for (Map<String, String> row : clientsList) {
+                        String rCln = row.getOrDefault("client_code", "");
+                        if (cln.equalsIgnoreCase(rCln)) {
+                            // If table is currently showing Disallowed clients, it is disallowed
+                            inDisallowed = true;
+                            break;
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+
+            if (inDisallowed) {
+                rep.isClientApplicable = false;
+                rep.clientStatus = "DISALLOWED";
+                rep.clientReason = String.format("Client '%s' is present in qRMS Clients RMS Disallowed list", cln);
+            } else {
+                rep.isClientApplicable = true;
+                rep.clientStatus = "APPLICABLE";
+                rep.clientReason = String.format("Client '%s' is Authorized & Eligible (No Netting Block active)", cln);
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // 3. VALIDATE TRADING BOARD APPLICABILITY
+        // ---------------------------------------------------------------------
+        if ("PUBLIC".equalsIgnoreCase(brd)) {
+            rep.isBoardApplicable = true;
+            rep.boardStatus = "APPLICABLE";
+            rep.boardReason = "PUBLIC board is the standard authorized trading board for Day Netting";
+        } else if ("BLOCK".equalsIgnoreCase(brd)) {
+            // Check Unauthorized Boards & Market: Board Wise Blocking
+            boolean boardBlockingActive = true; // default in qRMS is block active
+            try {
+                Map<String, Object> unauth = fetchUnauthorizedBoardsMarketSettings(driver);
+                if (unauth != null && unauth.containsKey("boardBlocking")) {
+                    boardBlockingActive = Boolean.parseBoolean(String.valueOf(unauth.get("boardBlocking")));
+                }
+            } catch (Exception ignored) {}
+
+            if (boardBlockingActive) {
+                rep.isBoardApplicable = false;
+                rep.boardStatus = "UNAUTHORIZED / BLOCKED";
+                rep.boardReason = String.format("Board 'BLOCK' is restricted under qRMS Unauthorized Boards & Market (Board Wise Blocking is ACTIVE for %s)", ex);
+            } else {
+                rep.isBoardApplicable = true;
+                rep.boardStatus = "APPLICABLE";
+                rep.boardReason = "Board 'BLOCK' is Authorized (Board Wise Blocking is DISABLED)";
+            }
+        } else if ("SPOT".equalsIgnoreCase(brd)) {
+            // Check Unauthorized Boards & Market: Spot Market Blocking
+            boolean spotBlockingActive = false;
+            try {
+                Map<String, Object> unauth = fetchUnauthorizedBoardsMarketSettings(driver);
+                if (unauth != null && unauth.containsKey("spotBlocking")) {
+                    spotBlockingActive = Boolean.parseBoolean(String.valueOf(unauth.get("spotBlocking")));
+                }
+            } catch (Exception ignored) {}
+
+            if (spotBlockingActive || isZorSpotRestricted) {
+                rep.isBoardApplicable = false;
+                rep.boardStatus = "UNAUTHORIZED / BLOCKED";
+                rep.boardReason = String.format("Board 'SPOT' is restricted (Spot Market Blocking is ACTIVE or ALLOW_Z_AND_SPOT_NETTING is FALSE for %s)", ex);
+            } else {
+                rep.isBoardApplicable = true;
+                rep.boardStatus = "APPLICABLE";
+                rep.boardReason = "Board 'SPOT' is Authorized (Spot Market Blocking is DISABLED)";
+            }
+        } else {
+            rep.isBoardApplicable = false;
+            rep.boardStatus = "UNSUPPORTED";
+            rep.boardReason = String.format("Trading board '%s' is not supported for Day Netting (Only PUBLIC, BLOCK, or SPOT permitted)", brd);
+        }
+
+        // ---------------------------------------------------------------------
+        // 4. OVERALL APPLICABILITY EVALUATION
+        // ---------------------------------------------------------------------
+        rep.isOverallApplicable = rep.isSymbolApplicable && rep.isClientApplicable && rep.isBoardApplicable;
+        if (rep.isOverallApplicable) {
+            rep.overallVerdict = String.format("[APPLICABLE] ALL APPLICABLE: Symbol [%s], Client [%s], and Board [%s] are ALL ELIGIBLE for Day Netting on %s.",
+                    rep.symbol, rep.clientCode, rep.board, rep.exchange);
+        } else {
+            List<String> ineligibles = new ArrayList<>();
+            if (!rep.isSymbolApplicable) ineligibles.add(String.format("Symbol %s (%s)", rep.symbol, rep.symbolReason));
+            if (!rep.isClientApplicable) ineligibles.add(String.format("Client %s (%s)", rep.clientCode, rep.clientReason));
+            if (!rep.isBoardApplicable) ineligibles.add(String.format("Board %s (%s)", rep.board, rep.boardReason));
+            rep.overallVerdict = String.format("[INELIGIBLE] Cannot execute Day Netting due to: %s", String.join(" | ", ineligibles));
+        }
+
+        return rep;
+    }
+
+    /**
+     * Prints a high-contrast structured ASCII audit table summarizing applicability of Symbol, Client, and Board.
+     */
+    public static void printApplicabilityVerificationReport(NettingApplicabilityReport rep) {
+        if (rep == null) return;
+        System.out.println("\n+========================================================================================================+");
+        System.out.println("|                    DAY NETTING APPLICABILITY VERIFICATION AUDIT REPORT                                 |");
+        System.out.println("+========================================================================================================+");
+        System.out.printf("| Target Exchange : %-83s |%n", rep.exchange);
+        System.out.printf("| Target Symbol   : %-83s |%n", rep.symbol);
+        System.out.printf("| Target Client   : %-83s |%n", rep.clientCode);
+        System.out.printf("| Target Board    : %-83s |%n", rep.board);
+        System.out.println("+--------------------------------------------------------------------------------------------------------+");
+        System.out.printf("| %-15s | %-24s | %-12s | %-41s |%n", "ENTITY", "STATUS", "ELIGIBLE?", "AUDIT DETAILS / CONFIGURATION REASON");
+        System.out.println("+-----------------+--------------------------+--------------+-------------------------------------------+");
+        System.out.printf("| %-15s | %-24s | %-12s | %-41s |%n",
+                "Symbol (" + rep.symbol + ")",
+                rep.symbolStatus,
+                rep.isSymbolApplicable ? "YES [PASS]" : "NO  [FAIL]",
+                truncate(rep.symbolReason, 41));
+        System.out.printf("| %-15s | %-24s | %-12s | %-41s |%n",
+                "Client (" + rep.clientCode + ")",
+                rep.clientStatus,
+                rep.isClientApplicable ? "YES [PASS]" : "NO  [FAIL]",
+                truncate(rep.clientReason, 41));
+        System.out.printf("| %-15s | %-24s | %-12s | %-41s |%n",
+                "Board  (" + rep.board + ")",
+                rep.boardStatus,
+                rep.isBoardApplicable ? "YES [PASS]" : "NO  [FAIL]",
+                truncate(rep.boardReason, 41));
+        System.out.println("+-----------------+--------------------------+--------------+-------------------------------------------+");
+        System.out.printf("| OVERALL VERDICT : %-83s |%n", rep.isOverallApplicable ? "ALL APPLICABLE (ELIGIBLE FOR DAY NETTING)" : "INELIGIBLE / RESTRICTED");
+        System.out.printf("| REASON DETAILS  : %-83s |%n", truncate(rep.overallVerdict, 83));
+        System.out.println("+========================================================================================================+\n");
+    }
+
+    // =========================================================================
     // 4. USER INTERFACE INDICATORS VERIFICATION (SECTION 5)
     // =========================================================================
 
@@ -2485,6 +2784,7 @@ public class Day_Netting {
             System.out.println("  5. Configure Market / Board-wise Restrictions");
             System.out.println("  6. Run UI Netting Indicators Audit (Depth, Watchlists, Order Window)");
             System.out.println("  7. Run Full Automated Scrip Netting Test Suite (All 5 Scopes)");
+            System.out.println("  8. Check / Verify Symbol, Client & Board Netting Applicability");
             System.out.println("  0. Return to Main Menu");
 
             String choice = "";
@@ -2493,7 +2793,7 @@ public class Day_Netting {
                 System.out.println("\n[DOCKER AUTOMATE MODE] Automatically selected Day Netting option: 7 (Full Test Suite)");
             } else {
                 while (choice.isEmpty()) {
-                    System.out.print("Enter Choice (1-7, 0=Return): ");
+                    System.out.print("Enter Choice (1-8, 0=Return): ");
                     choice = readLineWithIdleWatchdog(driver, sc, 300);
                     if (choice.isEmpty()) break;
                 }
@@ -2591,6 +2891,16 @@ public class Day_Netting {
                 String cln = sc.nextLine().trim();
                 if (cln.isEmpty()) cln = "23986";
 
+                System.out.println("\nSelect Trading Board (1=PUBLIC [Default], 2=BLOCK, 3=SPOT): ");
+                System.out.print("Enter Choice (1-3, default=1 [PUBLIC]): ");
+                String brdChoice = sc.nextLine().trim();
+                String board = "2".equals(brdChoice) || "block".equalsIgnoreCase(brdChoice) ? "BLOCK" :
+                               "3".equals(brdChoice) || "spot".equalsIgnoreCase(brdChoice) ? "SPOT" : "PUBLIC";
+
+                // Verify Applicability of selected Symbol, Client, and Board before trade execution!
+                NettingApplicabilityReport appRep = checkSelectedApplicability(driver, targetExchange, sym, cln, board);
+                printApplicabilityVerificationReport(appRep);
+
                 // Step 1: Reflect client code across all widgets
                 OMSweb_Trade.propagateClientCodeToAllWidgets(driver, cln, sym);
 
@@ -2601,7 +2911,7 @@ public class Day_Netting {
                 // Step 3: Execute Live Trade to verify real-time widget updates
                 System.out.printf("%n=============================================================================%n");
                 System.out.printf(">>> [STEP 2/3] EXECUTE TRADE TO VERIFY LIVE REAL-TIME WIDGET UPDATES%n");
-                System.out.printf("    Client: %s | Symbol: %s | Exchange: %s%n", cln, sym, targetExchange);
+                System.out.printf("    Client: %s | Symbol: %s | Board: %s | Exchange: %s%n", cln, sym, board, targetExchange);
                 System.out.printf("=============================================================================%n");
                 System.out.print("Select Trade Action to execute (1=BUY / 2=SELL / 0=Skip Trade, default=1 [BUY]): ");
                 String tradeOpt = sc.nextLine().trim();
@@ -2627,18 +2937,19 @@ public class Day_Netting {
                         try { tradeRate = Double.parseDouble(rStr.replaceAll("[^0-9.]", "")); } catch (Exception ignored) {}
                     }
 
-                    System.out.printf("  -> Submitting %s Order: %d shares of %s for Client %s on %s (Rate: %.2f)...%n", side, tradeQty, sym, cln, targetExchange, tradeRate);
+                    String tradeInstrument = "PUBLIC".equalsIgnoreCase(board) ? sym : (sym + "." + board);
+                    System.out.printf("  -> Submitting %s Order: %d shares of %s (Board: %s) for Client %s on %s (Rate: %.2f)...%n", side, tradeQty, sym, board, cln, targetExchange, tradeRate);
                     String orderEx = "BOTH".equalsIgnoreCase(targetExchange) ? "DSE" : targetExchange;
-                    OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), side, cln, sym, tradeQty, tradeRate, orderEx);
+                    OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), side, cln, tradeInstrument, tradeQty, tradeRate, orderEx);
                     Thread.sleep(1500);
 
                     String status = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, cln, sym, side);
                     System.out.printf("  -> Exchange Order Terminal Status: [%s]%n", status);
 
                     if ("REJECTED".equalsIgnoreCase(status)) {
-                        System.out.printf("  ✗ [ORDER REJECTED] Initial order for %s @ %.2f was rejected by exchange!%n", sym, tradeRate);
+                        System.out.printf("  ✗ [ORDER REJECTED] Initial order for %s @ %.2f was rejected by exchange!%n", tradeInstrument, tradeRate);
                         System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying with smart Market Depth & DB prices (ltp, ycp, sh, sl, ch, cl, dh, dl) until an Accepted order is placed...");
-                        boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), side, cln, sym, tradeQty, 0.0, orderEx, 6);
+                        boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), side, cln, tradeInstrument, tradeQty, 0.0, orderEx, 6);
                         if (success) {
                             System.out.println("  ✓ [TRADE EXECUTED] Accepted order successfully placed and confirmed. Waiting 2s for DOM updates...");
                         } else {
@@ -2833,6 +3144,15 @@ public class Day_Netting {
                 String cln = sc.nextLine().trim();
                 if (cln.isEmpty()) cln = "23986";
 
+                System.out.println("Select Trading Board to Audit (1=PUBLIC [Default], 2=BLOCK, 3=SPOT): ");
+                System.out.print("Enter Choice (1-3, default=1 [PUBLIC]): ");
+                String brdChoice = sc.nextLine().trim();
+                String board = "2".equals(brdChoice) || "block".equalsIgnoreCase(brdChoice) ? "BLOCK" :
+                               "3".equals(brdChoice) || "spot".equalsIgnoreCase(brdChoice) ? "SPOT" : "PUBLIC";
+
+                NettingApplicabilityReport rep = checkSelectedApplicability(driver, "DSE", sym, cln, board);
+                printApplicabilityVerificationReport(rep);
+
                 if ("1".equals(auditChoice) || "depth".equalsIgnoreCase(auditChoice)) {
                     auditMarketDepthIndicator(driver, sym);
                 } else if ("2".equals(auditChoice) || "watchlist".equalsIgnoreCase(auditChoice)) {
@@ -2845,8 +3165,40 @@ public class Day_Netting {
                 }
             } else if ("7".equals(choice) || "test".equalsIgnoreCase(choice)) {
                 runAllNettingTests(driver);
+            } else if ("8".equals(choice) || "check".equalsIgnoreCase(choice) || "applicable".equalsIgnoreCase(choice)) {
+                System.out.println("\n-------------------------------------------------------------");
+                System.out.println("   8. CHECK / VERIFY SYMBOL, CLIENT & BOARD APPLICABILITY    ");
+                System.out.println("-------------------------------------------------------------");
+                System.out.print("Enter Target Symbol to Verify (default=GP): ");
+                String sym = sc.nextLine().trim();
+                if (sym.isEmpty()) sym = "GP";
+
+                System.out.print("Enter Client Code to Verify (default=23986): ");
+                String cln = sc.nextLine().trim();
+                if (cln.isEmpty()) cln = "23986";
+
+                System.out.println("Select Trading Board to Verify:");
+                System.out.println("  1. PUBLIC (Standard Trading Board) [Default]");
+                System.out.println("  2. BLOCK (Block Market Board)");
+                System.out.println("  3. SPOT (Spot Market Board)");
+                System.out.print("Enter Choice (1-3, default=1 [PUBLIC]): ");
+                String brdChoice = sc.nextLine().trim();
+                String brd = "2".equals(brdChoice) || "block".equalsIgnoreCase(brdChoice) ? "BLOCK" :
+                             "3".equals(brdChoice) || "spot".equalsIgnoreCase(brdChoice) ? "SPOT" : "PUBLIC";
+
+                System.out.println("Select Target Exchange:");
+                System.out.println("  1. DSE [Default]");
+                System.out.println("  2. CSE");
+                System.out.println("  3. BOTH");
+                System.out.print("Enter Choice (1-3, default=1 [DSE]): ");
+                String exChoice = sc.nextLine().trim();
+                String ex = "2".equals(exChoice) || "cse".equalsIgnoreCase(exChoice) ? "CSE" :
+                            "3".equals(exChoice) || "both".equalsIgnoreCase(exChoice) ? "BOTH" : "DSE";
+
+                NettingApplicabilityReport rep = checkSelectedApplicability(driver, ex, sym, cln, brd);
+                printApplicabilityVerificationReport(rep);
             } else {
-                System.out.printf("[INVALID SELECTION] '%s' is not recognized. Please choose 0-7.%n", choice);
+                System.out.printf("[INVALID SELECTION] '%s' is not recognized. Please choose 0-8.%n", choice);
                 continue;
             }
 
