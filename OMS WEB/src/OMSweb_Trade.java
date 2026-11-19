@@ -229,140 +229,106 @@ public class OMSweb_Trade {
 
 	// =========================================================================
 
+			/**
+	 * Waits for GoldenLayout to finish mounting its DOM after page load/reload,
+	 * preventing black/frozen screen access before components are initialized.
+	 */
+	public static boolean waitForGoldenLayoutMounted(WebDriver driver, int timeoutSec) {
+		if (driver == null) return false;
+		long deadline = System.currentTimeMillis() + (timeoutSec * 1000L);
+		JavascriptExecutor js = (JavascriptExecutor) driver;
+		while (System.currentTimeMillis() < deadline) {
+			try {
+				Boolean mounted = (Boolean) js.executeScript(
+					"var tw = window.tradingwindow || window.myLayout;\n" +
+					"var stacks = document.querySelectorAll('.lm_stack');\n" +
+					"return Boolean((tw && tw.isInitialised) || stacks.length >= 5);"
+				);
+				if (Boolean.TRUE.equals(mounted)) return true;
+			} catch (Exception ignored) {}
+			try { Thread.sleep(300); } catch (InterruptedException ignored) {}
+		}
+		return false;
+	}
+
 	/**
 	 * Finds a widget by title/keyword across all GoldenLayout stacks and activates/opens its tab.
 	 * If multiple widgets share the same stack (e.g. Order Summary and Account Limits),
-	 * this method locates the exact tab, dispatches mousedown/click/touch events, triggers jQuery
-	 * events, calls GoldenLayout setActiveContentItem if available, and ensures the tab and its content
-	 * container become active and visible.
+	 * this method uses GoldenLayout's native setActiveContentItem API via window.tradingwindow
+	 * to cleanly switch the active tab without creating drag proxies or disrupting layout.
 	 */
 	public static boolean openWidgetTab(WebDriver driver, String widgetTitleKeyword) {
 		if (driver == null || widgetTitleKeyword == null || widgetTitleKeyword.trim().isEmpty()) return false;
+		waitForGoldenLayoutMounted(driver, 5);
 		JavascriptExecutor js = (JavascriptExecutor) driver;
 		try {
 			String script =
 				"var kw = (arguments[0] || '').toLowerCase().trim();\n" +
 				"if (!kw) return false;\n" +
+				"var tw = window.tradingwindow || window.myLayout;\n" +
 				"\n" +
-				"function computeScore(tabText, tabTitle, keyword) {\n" +
+				"function computeScore(tabText, keyword) {\n" +
 				"    var k = keyword.toLowerCase().trim();\n" +
-				"    var t1 = (tabText || '').toLowerCase().trim();\n" +
-				"    var t2 = (tabTitle || '').toLowerCase().trim();\n" +
-				"    var tClean = t1.replace(/[\\u2715\\u274c\\u00d7x]/gi, '').trim();\n" +
-				"    if (t1 === k || t2 === k || tClean === k) return 100;\n" +
-				"    if (k.indexOf('limit') !== -1 || k.indexOf('account') !== -1) {\n" +
-				"        if (tClean === 'account limits' || tClean === 'account limit' || tClean === 'accounts limit') return 95;\n" +
-				"        if (tClean.indexOf('account limit') !== -1 || tClean.indexOf('accounts limit') !== -1) return 90;\n" +
-				"        if (tClean === 'limits' || tClean === 'limit') return 75;\n" +
-				"        if (tClean.indexOf('limit') !== -1) return 70;\n" +
+				"    var t = (tabText || '').toLowerCase().trim();\n" +
+				"    var tClean = t.replace(/[\\u2715\\u274c\\u00d7x]/gi, '').trim();\n" +
+				"    if (t === k || tClean === k) return 100;\n" +
+				"    if (k === 'watchlist') {\n" +
+				"        if (tClean.indexOf('watchlist') !== -1) return 98;\n" +
+				"        if (tClean.indexOf('market watch') !== -1) return 60;\n" +
 				"    }\n" +
-				"    if (k.indexOf('summary') !== -1) {\n" +
-				"        if (tClean === 'order summary' || tClean === 'orders summary') return 95;\n" +
-				"        if (tClean.indexOf('summary') !== -1) return 85;\n" +
+				"    if (k === 'market watch') {\n" +
+				"        if (tClean.indexOf('market watch') !== -1) return 98;\n" +
+				"        if (tClean.indexOf('watchlist') !== -1) return 60;\n" +
 				"    }\n" +
-				"    if (k.indexOf('terminal') !== -1 || k.indexOf('execution') !== -1) {\n" +
-				"        if (tClean === 'order terminal' || tClean === 'orders terminal') return 95;\n" +
-				"        if (tClean.indexOf('terminal') !== -1) return 85;\n" +
-				"    }\n" +
-				"    if (k.indexOf('portfolio') !== -1) {\n" +
-				"        if (tClean === 'portfolio' || tClean.indexOf('portfolio') !== -1) return 95;\n" +
-				"    }\n" +
-				"    if (k.indexOf('depth') !== -1) {\n" +
-				"        if (tClean === 'market depth' || tClean.indexOf('depth') !== -1) return 95;\n" +
-				"    }\n" +
-				"    if (k.indexOf('position') !== -1) {\n" +
-				"        if (tClean === 'position' || tClean.indexOf('position') !== -1) return 95;\n" +
-				"    }\n" +
-				"    if (k.indexOf('watchlist') !== -1 || k.indexOf('market watch') !== -1) {\n" +
-				"        if (tClean.indexOf('watchlist') !== -1 || tClean.indexOf('market watch') !== -1) return 90;\n" +
-				"    }\n" +
+				"    if (k.indexOf('limit') !== -1 && (tClean.indexOf('limit') !== -1 || tClean.indexOf('account') !== -1)) return 95;\n" +
+				"    if (k.indexOf('summary') !== -1 && tClean.indexOf('summary') !== -1) return 95;\n" +
+				"    if (k.indexOf('terminal') !== -1 && tClean.indexOf('terminal') !== -1) return 95;\n" +
+				"    if (k.indexOf('portfolio') !== -1 && tClean.indexOf('portfolio') !== -1) return 95;\n" +
+				"    if (k.indexOf('depth') !== -1 && tClean.indexOf('depth') !== -1) return 95;\n" +
+				"    if (k.indexOf('position') !== -1 && tClean.indexOf('position') !== -1) return 95;\n" +
 				"    if (tClean.indexOf(k) !== -1 || k.indexOf(tClean) !== -1) return 60;\n" +
 				"    return 0;\n" +
 				"}\n" +
 				"\n" +
-				"function activateTab(tab, stack) {\n" +
-				"    if (!tab) return false;\n" +
-				"    var jq = window.jQuery || window.$;\n" +
-				"    // 1. Try GoldenLayout API first (cleanest, zero drag side-effects)\n" +
-				"    try {\n" +
-				"        var ci = tab.__contentItem || (jq && jq(tab).data('contentItem')) || tab._contentItem;\n" +
-				"        if (ci && ci.parent && typeof ci.parent.setActiveContentItem === 'function') {\n" +
-				"            ci.parent.setActiveContentItem(ci);\n" +
-				"        } else if (stack) {\n" +
-				"            var stackCi = (jq && jq(stack).data('contentItem')) || stack.__contentItem;\n" +
-				"            if (stackCi && typeof stackCi.setActiveContentItem === 'function') {\n" +
-				"                var allTabs = Array.from(stack.querySelectorAll('.lm_header .lm_tab, .lm_tab'));\n" +
-				"                var idx = allTabs.indexOf(tab);\n" +
-				"                if (idx >= 0 && stackCi.contentItems && stackCi.contentItems[idx]) {\n" +
-				"                    stackCi.setActiveContentItem(stackCi.contentItems[idx]);\n" +
-				"                }\n" +
-				"            }\n" +
+				"// 1. Primary: GoldenLayout internal API via window.tradingwindow\n" +
+				"if (tw && tw.root) {\n" +
+				"    var allStacks = [];\n" +
+				"    function findStacks(item) {\n" +
+				"        if (!item) return;\n" +
+				"        if (item.type === 'stack') allStacks.push(item);\n" +
+				"        if (item.contentItems) {\n" +
+				"            for (var i = 0; i < item.contentItems.length; i++) findStacks(item.contentItems[i]);\n" +
 				"        }\n" +
-				"    } catch(e) {}\n" +
-				"    // 2. Safe native click on tab title (zero mousedown, preventing drag proxy freeze)\n" +
-				"    try {\n" +
-				"        var title = tab.querySelector('.lm_title');\n" +
-				"        if (title) title.click();\n" +
-				"        else tab.click();\n" +
-				"    } catch(e) {}\n" +
-				"    if (jq) {\n" +
+				"    }\n" +
+				"    findStacks(tw.root);\n" +
+				"    var bestStack = null, bestComp = null, maxScore = 0;\n" +
+				"    for (var s = 0; s < allStacks.length; s++) {\n" +
+				"        var stack = allStacks[s];\n" +
+				"        for (var c = 0; c < stack.contentItems.length; c++) {\n" +
+				"            var comp = stack.contentItems[c];\n" +
+				"            var title = (comp.config && comp.config.title) ? comp.config.title : '';\n" +
+				"            var sc = computeScore(title, kw);\n" +
+				"            if (sc > maxScore) { maxScore = sc; bestStack = stack; bestComp = comp; }\n" +
+				"        }\n" +
+				"    }\n" +
+				"    if (bestStack && bestComp && maxScore >= 60) {\n" +
 				"        try {\n" +
-				"            var title = tab.querySelector('.lm_title');\n" +
-				"            if (title) jq(title).trigger('click');\n" +
-				"            else jq(tab).trigger('click');\n" +
+				"            bestStack.setActiveContentItem(bestComp);\n" +
+				"            return true;\n" +
 				"        } catch(e) {}\n" +
 				"    }\n" +
-				"    // 3. Mark tab visually active\n" +
-				"    try {\n" +
-				"        if (stack) {\n" +
-				"            var allTabs = Array.from(stack.querySelectorAll('.lm_header .lm_tab, .lm_tab'));\n" +
-				"            for (var t = 0; t < allTabs.length; t++) {\n" +
-				"                if (allTabs[t] === tab) allTabs[t].classList.add('lm_active');\n" +
-				"                else allTabs[t].classList.remove('lm_active');\n" +
-				"            }\n" +
-				"        }\n" +
-				"    } catch(e) {}\n" +
-				"    // 4. Immediately clean up any accidental drag proxies\n" +
-				"    var dragProxies = document.querySelectorAll('.lm_dragProxy, .lm_dropTargetIndicator, .lm_transition_indicator');\n" +
-				"    for (var dp = 0; dp < dragProxies.length; dp++) {\n" +
-				"        try { dragProxies[dp].parentNode.removeChild(dragProxies[dp]); } catch(e) {}\n" +
-				"    }\n" +
-				"    return true;\n" +
 				"}\n" +
 				"\n" +
-				"var stacks = Array.from(document.querySelectorAll('.lm_stack'));\n" +
-				"var bestMatch = null;\n" +
-				"var highestScore = 0;\n" +
-				"\n" +
-				"for (var i = 0; i < stacks.length; i++) {\n" +
-				"    var st = stacks[i];\n" +
-				"    var tabs = Array.from(st.querySelectorAll('.lm_header .lm_tab, .lm_tab'));\n" +
-				"    for (var j = 0; j < tabs.length; j++) {\n" +
-				"        var tText = tabs[j].innerText || '';\n" +
-				"        var tTitle = tabs[j].getAttribute('title') || '';\n" +
-				"        var score = computeScore(tText, tTitle, kw);\n" +
-				"        if (score > highestScore) {\n" +
-				"            highestScore = score;\n" +
-				"            bestMatch = { stack: st, tab: tabs[j], text: tText, index: j };\n" +
-				"        }\n" +
-				"    }\n" +
+				"// 2. Fallback: DOM tab click\n" +
+				"var tabs = Array.from(document.querySelectorAll('.lm_header .lm_tab, .lm_tab'));\n" +
+				"var bestTab = null, bestScore = 0;\n" +
+				"for (var t = 0; t < tabs.length; t++) {\n" +
+				"    var sc = computeScore(tabs[t].innerText, kw);\n" +
+				"    if (sc > bestScore) { bestScore = sc; bestTab = tabs[t]; }\n" +
 				"}\n" +
-				"\n" +
-				"if (!bestMatch || highestScore < 50) {\n" +
-				"    var dropTabs = Array.from(document.querySelectorAll('.lm_tabdropdown_list .lm_tab, .lm_tabdropdown_list li'));\n" +
-				"    for (var k = 0; k < dropTabs.length; k++) {\n" +
-				"        var dText = dropTabs[k].innerText || '';\n" +
-				"        var dTitle = dropTabs[k].getAttribute('title') || '';\n" +
-				"        var dScore = computeScore(dText, dTitle, kw);\n" +
-				"        if (dScore > highestScore) {\n" +
-				"            highestScore = dScore;\n" +
-				"            bestMatch = { stack: dropTabs[k].closest('.lm_stack') || stacks[0], tab: dropTabs[k], text: dText, isDropdown: true };\n" +
-				"        }\n" +
-				"    }\n" +
-				"}\n" +
-				"\n" +
-				"if (bestMatch && bestMatch.tab) {\n" +
-				"    activateTab(bestMatch.tab, bestMatch.stack);\n" +
+				"if (bestTab && bestScore >= 60) {\n" +
+				"    var titleEl = bestTab.querySelector('.lm_title');\n" +
+				"    if (titleEl) titleEl.click(); else bestTab.click();\n" +
 				"    return true;\n" +
 				"}\n" +
 				"return false;";
@@ -378,113 +344,88 @@ public class OMSweb_Trade {
 
 	public static boolean maximizeWidget(WebDriver driver, String widgetTitleKeyword) {
 		if (driver == null || widgetTitleKeyword == null || widgetTitleKeyword.trim().isEmpty()) return false;
+		waitForGoldenLayoutMounted(driver, 5);
 		JavascriptExecutor js = (JavascriptExecutor) driver;
 		try {
-			// Step 1: Ensure the specific tab inside its stack is activated/opened
-			openWidgetTab(driver, widgetTitleKeyword);
-			Thread.sleep(200);
-
-			// Step 2: Maximize the matched stack container
 			String script =
 				"var kw = (arguments[0] || '').toLowerCase().trim();\n" +
 				"if (!kw) return false;\n" +
+				"var tw = window.tradingwindow || window.myLayout;\n" +
 				"\n" +
-				"function computeScore(tabText, tabTitle, keyword) {\n" +
+				"function computeScore(tabText, keyword) {\n" +
 				"    var k = keyword.toLowerCase().trim();\n" +
-				"    var t1 = (tabText || '').toLowerCase().trim();\n" +
-				"    var t2 = (tabTitle || '').toLowerCase().trim();\n" +
-				"    var tClean = t1.replace(/[\\u2715\\u274c\\u00d7x]/gi, '').trim();\n" +
-				"    if (t1 === k || t2 === k || tClean === k) return 100;\n" +
-				"    if (k.indexOf('limit') !== -1 || k.indexOf('account') !== -1) {\n" +
-				"        if (tClean === 'account limits' || tClean === 'account limit' || tClean === 'accounts limit') return 95;\n" +
-				"        if (tClean.indexOf('account limit') !== -1 || tClean.indexOf('accounts limit') !== -1) return 90;\n" +
-				"        if (tClean === 'limits' || tClean === 'limit') return 75;\n" +
+				"    var t = (tabText || '').toLowerCase().trim();\n" +
+				"    var tClean = t.replace(/[\\u2715\\u274c\\u00d7x]/gi, '').trim();\n" +
+				"    if (t === k || tClean === k) return 100;\n" +
+				"    if (k === 'watchlist') {\n" +
+				"        if (tClean.indexOf('watchlist') !== -1) return 98;\n" +
+				"        if (tClean.indexOf('market watch') !== -1) return 60;\n" +
 				"    }\n" +
-				"    if (k.indexOf('summary') !== -1) {\n" +
-				"        if (tClean === 'order summary' || tClean === 'orders summary') return 95;\n" +
-				"        if (tClean.indexOf('summary') !== -1) return 85;\n" +
+				"    if (k === 'market watch') {\n" +
+				"        if (tClean.indexOf('market watch') !== -1) return 98;\n" +
+				"        if (tClean.indexOf('watchlist') !== -1) return 60;\n" +
 				"    }\n" +
-				"    if (k.indexOf('terminal') !== -1 || k.indexOf('execution') !== -1) {\n" +
-				"        if (tClean === 'order terminal' || tClean === 'orders terminal') return 95;\n" +
-				"        if (tClean.indexOf('terminal') !== -1) return 85;\n" +
-				"    }\n" +
-				"    if (k.indexOf('portfolio') !== -1 && (tClean === 'portfolio' || tClean.indexOf('portfolio') !== -1)) return 95;\n" +
-				"    if (k.indexOf('depth') !== -1 && (tClean === 'market depth' || tClean.indexOf('depth') !== -1)) return 95;\n" +
-				"    if (k.indexOf('position') !== -1 && (tClean === 'position' || tClean.indexOf('position') !== -1)) return 95;\n" +
-				"    if ((k.indexOf('watchlist') !== -1 || k.indexOf('market watch') !== -1) && (tClean.indexOf('watchlist') !== -1 || tClean.indexOf('market watch') !== -1)) return 90;\n" +
+				"    if (k.indexOf('limit') !== -1 && (tClean.indexOf('limit') !== -1 || tClean.indexOf('account') !== -1)) return 95;\n" +
+				"    if (k.indexOf('summary') !== -1 && tClean.indexOf('summary') !== -1) return 95;\n" +
+				"    if (k.indexOf('terminal') !== -1 && tClean.indexOf('terminal') !== -1) return 95;\n" +
+				"    if (k.indexOf('portfolio') !== -1 && tClean.indexOf('portfolio') !== -1) return 95;\n" +
+				"    if (k.indexOf('depth') !== -1 && tClean.indexOf('depth') !== -1) return 95;\n" +
+				"    if (k.indexOf('position') !== -1 && tClean.indexOf('position') !== -1) return 95;\n" +
 				"    if (tClean.indexOf(k) !== -1 || k.indexOf(tClean) !== -1) return 60;\n" +
 				"    return 0;\n" +
 				"}\n" +
 				"\n" +
-				"var stacks = Array.from(document.querySelectorAll('.lm_stack'));\n" +
-				"var bestStack = null;\n" +
-				"var highestScore = 0;\n" +
+				"// 1. Primary: GoldenLayout API _$maximiseItem via window.tradingwindow\n" +
+				"if (tw && tw.root) {\n" +
+				"    var allStacks = [];\n" +
+				"    function findStacks(item) {\n" +
+				"        if (!item) return;\n" +
+				"        if (item.type === 'stack') allStacks.push(item);\n" +
+				"        if (item.contentItems) {\n" +
+				"            for (var i = 0; i < item.contentItems.length; i++) findStacks(item.contentItems[i]);\n" +
+				"        }\n" +
+				"    }\n" +
+				"    findStacks(tw.root);\n" +
+				"    var bestStack = null, bestComp = null, maxScore = 0;\n" +
+				"    for (var s = 0; s < allStacks.length; s++) {\n" +
+				"        var stack = allStacks[s];\n" +
+				"        for (var c = 0; c < stack.contentItems.length; c++) {\n" +
+				"            var comp = stack.contentItems[c];\n" +
+				"            var title = (comp.config && comp.config.title) ? comp.config.title : '';\n" +
+				"            var sc = computeScore(title, kw);\n" +
+				"            if (sc > maxScore) { maxScore = sc; bestStack = stack; bestComp = comp; }\n" +
+				"        }\n" +
+				"    }\n" +
+				"    if (bestStack && bestComp && maxScore >= 60) {\n" +
+				"        try { bestStack.setActiveContentItem(bestComp); } catch(e) {}\n" +
+				"        try {\n" +
+				"            if (tw._maximisedItem !== bestStack) {\n" +
+				"                tw._$maximiseItem(bestStack);\n" +
+				"            }\n" +
+				"            return true;\n" +
+				"        } catch(e) {}\n" +
+				"    }\n" +
+				"}\n" +
 				"\n" +
-				"for (var i = 0; i < stacks.length; i++) {\n" +
-				"    var st = stacks[i];\n" +
+				"// 2. Secondary fallback: DOM controls maximise button click\n" +
+				"var domStacks = Array.from(document.querySelectorAll('.lm_stack'));\n" +
+				"for (var i = 0; i < domStacks.length; i++) {\n" +
+				"    var st = domStacks[i];\n" +
 				"    var tabs = Array.from(st.querySelectorAll('.lm_header .lm_tab, .lm_tab'));\n" +
 				"    for (var j = 0; j < tabs.length; j++) {\n" +
-				"        var score = computeScore(tabs[j].innerText, tabs[j].getAttribute('title'), kw);\n" +
-				"        if (score > highestScore) {\n" +
-				"            highestScore = score;\n" +
-				"            bestStack = st;\n" +
+				"        if (computeScore(tabs[j].innerText, kw) >= 60) {\n" +
+				"            var maxBtn = st.querySelector('.lm_controls .lm_maximise');\n" +
+				"            if (maxBtn && maxBtn.getAttribute('title') !== 'minimise') {\n" +
+				"                maxBtn.click();\n" +
+				"                return true;\n" +
+				"            }\n" +
 				"        }\n" +
 				"    }\n" +
 				"}\n" +
-				"\n" +
-				"if (!bestStack) return false;\n" +
-				"\n" +
-				"function getLayoutManager() {\n" +
-				"    if (window.myLayout && typeof window.myLayout._$maximiseItem === 'function') return window.myLayout;\n" +
-				"    var stacks = document.querySelectorAll('.lm_stack, .lm_item, .lm_root');\n" +
-				"    for (var i = 0; i < stacks.length; i++) {\n" +
-				"        var ci = stacks[i].__contentItem || (window.jQuery && window.jQuery(stacks[i]).data('contentItem')) || stacks[i]._contentItem;\n" +
-				"        if (ci && ci.layoutManager && typeof ci.layoutManager._$maximiseItem === 'function') {\n" +
-				"            return ci.layoutManager;\n" +
-				"        }\n" +
-				"    }\n" +
-				"    return null;\n" +
-				"}\n" +
-				"\n" +
-				"var lm = getLayoutManager();\n" +
-				"var targetCi = bestStack.__contentItem || (window.jQuery && window.jQuery(bestStack).data('contentItem')) || bestStack._contentItem;\n" +
-				"var maxDone = false;\n" +
-				"\n" +
-				"if (lm && targetCi && typeof lm._$maximiseItem === 'function') {\n" +
-				"    try {\n" +
-				"        if (lm._maximisedItem !== targetCi) {\n" +
-				"            lm._$maximiseItem(targetCi);\n" +
-				"        }\n" +
-				"        maxDone = true;\n" +
-				"    } catch(e) {}\n" +
-				"}\n" +
-				"\n" +
-				"if (!maxDone) {\n" +
-				"    var isAlreadyMax = bestStack.classList.contains('lm_maximised');\n" +
-				"    if (!isAlreadyMax) {\n" +
-				"        var maxBtn = bestStack.querySelector('.lm_controls .lm_maximise, .lm_controls [title*=\"maximise\" i]');\n" +
-				"        if (maxBtn) {\n" +
-				"            try { maxBtn.click(); maxDone = true; } catch(e) {}\n" +
-				"        }\n" +
-				"    } else {\n" +
-				"        maxDone = true;\n" +
-				"    }\n" +
-				"}\n" +
-				"\n" +
-				"// Clean up any lingering drag proxies or indicators\n" +
-				"var dragProxies = document.querySelectorAll('.lm_dragProxy, .lm_dropTargetIndicator, .lm_transition_indicator');\n" +
-				"for (var dp = 0; dp < dragProxies.length; dp++) {\n" +
-				"    try { dragProxies[dp].parentNode.removeChild(dragProxies[dp]); } catch(e) {}\n" +
-				"}\n" +
-				"\n" +
-				"return maxDone;";
+				"return false;";
 
 			Object res = js.executeScript(script, widgetTitleKeyword.trim());
 			Thread.sleep(400);
-
-			// Step 4: Re-verify that target tab remains active inside the maximized stack
-			openWidgetTab(driver, widgetTitleKeyword);
-			Thread.sleep(300);
 
 			return Boolean.TRUE.equals(res);
 		} catch (Exception e) {
@@ -498,42 +439,24 @@ public class OMSweb_Trade {
 		JavascriptExecutor js = (JavascriptExecutor) driver;
 		try {
 			Boolean restored = (Boolean) js.executeScript(
-				"function getLayoutManager() {\n" +
-				"    if (window.myLayout && typeof window.myLayout._$maximiseItem === 'function') return window.myLayout;\n" +
-				"    var stacks = document.querySelectorAll('.lm_stack, .lm_item, .lm_root');\n" +
-				"    for (var i = 0; i < stacks.length; i++) {\n" +
-				"        var ci = stacks[i].__contentItem || (window.jQuery && window.jQuery(stacks[i]).data('contentItem')) || stacks[i]._contentItem;\n" +
-				"        if (ci && ci.layoutManager && typeof ci.layoutManager._$maximiseItem === 'function') {\n" +
-				"            return ci.layoutManager;\n" +
-				"        }\n" +
-				"    }\n" +
-				"    return null;\n" +
-				"}\n" +
-				"\n" +
-				"var lm = getLayoutManager();\n" +
+				"var tw = window.tradingwindow || window.myLayout;\n" +
 				"var changed = false;\n" +
 				"\n" +
-				"// 1. Primary: GoldenLayout API _$maximiseItem(null) (idempotent, official restore)\n" +
-				"if (lm && typeof lm._$maximiseItem === 'function') {\n" +
-				"    if (lm._maximisedItem !== null) {\n" +
-				"        try {\n" +
-				"            lm._$maximiseItem(null);\n" +
-				"            changed = true;\n" +
-				"        } catch(e) {}\n" +
-				"    }\n" +
-				"    if (typeof lm.updateSize === 'function') {\n" +
-				"        try { lm.updateSize(); } catch(e) {}\n" +
-				"    }\n" +
+				"// 1. Primary: GoldenLayout official API _$minimiseItem (idempotent, restores exact grid layout)\n" +
+				"if (tw && tw._maximisedItem && typeof tw._$minimiseItem === 'function') {\n" +
+				"    try {\n" +
+				"        tw._$minimiseItem(tw._maximisedItem);\n" +
+				"        changed = true;\n" +
+				"    } catch(e) {}\n" +
+				"}\n" +
+				"if (tw && typeof tw.updateSize === 'function') {\n" +
+				"    try { tw.updateSize(); } catch(e) {}\n" +
 				"}\n" +
 				"\n" +
-				"// 2. Secondary fallback: check DOM for .lm_maximised and click restore button ONCE\n" +
-				"var maxedStacks = Array.from(document.querySelectorAll('.lm_maximised, .lm_stack.lm_maximised'));\n" +
-				"for (var i = 0; i < maxedStacks.length; i++) {\n" +
-				"    var m = maxedStacks[i];\n" +
-				"    var btn = m.querySelector('.lm_controls .lm_minimise, .lm_controls [title*=\"minimise\" i], .lm_controls [title*=\"restore\" i], .lm_controls .lm_maximise');\n" +
-				"    if (btn) {\n" +
-				"        try { btn.click(); changed = true; } catch(e) {}\n" +
-				"    }\n" +
+				"// 2. Secondary fallback: check DOM for restore button with title minimise\n" +
+				"var restoreBtns = Array.from(document.querySelectorAll('.lm_controls [title*=\"minimise\" i], .lm_controls [title*=\"restore\" i]'));\n" +
+				"for (var r = 0; r < restoreBtns.length; r++) {\n" +
+				"    try { restoreBtns[r].click(); changed = true; } catch(e) {}\n" +
 				"}\n" +
 				"\n" +
 				"// 3. Ensure no stacks have lingering inline style.display = 'none'\n" +
