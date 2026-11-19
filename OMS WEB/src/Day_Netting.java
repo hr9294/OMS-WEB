@@ -1847,11 +1847,12 @@ public class Day_Netting {
             Object res = js.executeScript(
                 "var sym = (arguments[0] || '').trim().toUpperCase();\n" +
                 "// Look near symbol input, market depth headers, or depth container\n" +
-                "var depth = document.querySelector('#market_depth, .market-depth, [id*=\"depth\"], .depth-container');\n" +
+                "var depth = document.querySelector('#market-depth-request, #market_depth, .market-depth, [id*=\"depth\"], .depth-container');\n" +
                 "if (!depth) depth = document;\n" +
-                "var icons = depth.querySelectorAll('i.fa-compress, i.fa-exchange, .netting-indicator, .netting-icon, [title*=\"Netting\" i], [title*=\"netting enabled\" i], .badge-netting, span.netting');\n" +
+                "var icons = depth.querySelectorAll('#netting_icon_market_depth, i[id*=\"netting_icon\"], i.fa-check-circle[title*=\"Netting\" i], i.fa-compress, i.fa-exchange, .netting-indicator, .netting-icon, [title*=\"Netting\" i], [title*=\"netting enabled\" i], .badge-netting, span.netting');\n" +
                 "for (var i = 0; i < icons.length; i++) {\n" +
-                "    if (icons[i].offsetParent !== null) return true;\n" +
+                "    var ic = icons[i];\n" +
+                "    if (ic.offsetParent !== null || (ic.style.display !== 'none' && window.getComputedStyle(ic).display !== 'none')) return true;\n" +
                 "}\n" +
                 "return false;",
                 symbol

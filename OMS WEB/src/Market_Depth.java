@@ -129,24 +129,49 @@ public class Market_Depth {
             js.executeScript(
                 "var sym = (arguments[0] || '').trim().toUpperCase();\n" +
                 "var ex = (arguments[1] || 'DSE').trim().toUpperCase();\n" +
-                "var exSelects = document.querySelectorAll('select[id*=\"exchange_mktdpt\"], select.md_exch');\n" +
+                "// 1. Select Exchange in Market Depth\n" +
+                "var exSelects = document.querySelectorAll('select[id*=\"exchange_market_depth\"], select[id*=\"exchange_mktdpt\"], select[id*=\"exchange_mkt\"], select.custom-select-drop, select.md_exch');\n" +
                 "exSelects.forEach(function(s) {\n" +
-                "    s.value = ex;\n" +
-                "    if (typeof change_mkt_exchange === 'function') change_mkt_exchange(ex, s.id);\n" +
+                "    for (var i = 0; i < s.options.length; i++) {\n" +
+                "        var opt = s.options[i];\n" +
+                "        if (opt.value.toUpperCase() === ex || opt.text.toUpperCase() === ex) {\n" +
+                "            s.selectedIndex = i;\n" +
+                "            s.value = opt.value;\n" +
+                "            break;\n" +
+                "        }\n" +
+                "    }\n" +
                 "    s.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                "    if (typeof change_mkt_exchange === 'function') {\n" +
+                "        try { change_mkt_exchange(ex, s.id); } catch(e) {}\n" +
+                "    }\n" +
                 "});\n" +
-                "var inputs = document.querySelectorAll('input[id*=\"symbol_mktdpt\"], input.mktdpt_symbol_name, input[id*=\"depth_symbol\"]');\n" +
+                "// 2. Set Symbol input and trigger getmktdepth with sym.PUBLIC\n" +
+                "var inputs = document.querySelectorAll('input[id*=\"symbol_market_depth\"], input[id*=\"symbol_mktdpt\"], input.mktdpt_symbol_name, input[id*=\"depth_symbol\"]');\n" +
+                "var symDotBoard = sym.indexOf('.') !== -1 ? sym : (sym + '.PUBLIC');\n" +
                 "inputs.forEach(function(i) {\n" +
                 "    i.value = sym;\n" +
                 "    i.dispatchEvent(new Event('input', { bubbles: true }));\n" +
                 "    i.dispatchEvent(new Event('change', { bubbles: true }));\n" +
                 "    if (typeof getmktdepth === 'function') {\n" +
-                "        try { getmktdepth(sym + '.PUBLIC', i.id); } catch(e) { getmktdepth(sym, i.id); }\n" +
+                "        try { getmktdepth(symDotBoard, i.id); } catch(e) { getmktdepth(sym, i.id); }\n" +
                 "    }\n" +
                 "});\n",
                 symbol, ex
             );
-            Thread.sleep(800);
+
+            // 3. Poll until DOM table has real values (not '-'), max 3.5 seconds
+            long deadline = System.currentTimeMillis() + 3500L;
+            while (System.currentTimeMillis() < deadline) {
+                try {
+                    Boolean populated = (Boolean) js.executeScript(
+                        "var lastTd = document.querySelector('table.marketdepth-table tr:nth-child(2) td:first-child');\n" +
+                        "var val = lastTd ? lastTd.innerText.trim() : '';\n" +
+                        "return Boolean(val && val !== '-');\n"
+                    );
+                    if (Boolean.TRUE.equals(populated)) break;
+                } catch (Exception ignored) {}
+                Thread.sleep(150);
+            }
         } catch (Exception e) {
             try {
                 WebElement input = driver.findElement(INPUT_DEPTH_SYMBOL);
@@ -263,12 +288,15 @@ public class Market_Depth {
                 "        }" +
                 "    }" +
                 "}" +
+                "if (res['Last']) res['LTP'] = res['Last'];" +
+                "if (res['DH']) res['HIGH'] = res['DH'];" +
+                "if (res['DL']) res['LOW'] = res['DL'];" +
                 "if (res['L.Vol']) res['L.vol'] = res['L.Vol'];" +
                 "if (res['52Wk']) res['52 wk'] = res['52Wk'];" +
-                "var buySpan = document.querySelector('span[class*=\"buypercent\"]');" +
-                "var sellSpan = document.querySelector('span[class*=\"sellpercent\"]');" +
-                "if (buySpan) res['Buy_Percent'] = buySpan.innerText.trim();" +
-                "if (sellSpan) res['Sell_Percent'] = sellSpan.innerText.trim();" +
+                "var buyEl = document.querySelector('.progress-bar-success, span[class*=\"buypercent\"], .buypercent');" +
+                "var sellEl = document.querySelector('.progress-bar-danger, span[class*=\"sellpercent\"], .sellpercent');" +
+                "if (buyEl) { res['Buy_Percent'] = buyEl.innerText.trim(); res['BUY%'] = buyEl.innerText.trim(); }" +
+                "if (sellEl) { res['Sell_Percent'] = sellEl.innerText.trim(); res['SELL%'] = sellEl.innerText.trim(); }" +
                 "var depthTables = document.querySelectorAll('div[id^=\"depthdata_\"] table, table.market-depth-bidAndask-data-table');" +
                 "for (var dt = 0; dt < depthTables.length; dt++) {" +
                 "    var dTable = depthTables[dt];" +
