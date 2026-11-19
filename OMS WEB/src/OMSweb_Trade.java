@@ -6828,9 +6828,20 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		try {
 			maximizeWidget(driver, "Market Depth");
 			Thread.sleep(600);
+
+			if (symbol != null && !symbol.trim().isEmpty()) {
+				Market_Depth.searchSymbolInDepth(driver, symbol, "DSE");
+				Thread.sleep(800);
+			}
+
 			saveScreenshot(driver, String.format("widget_maximized_%s_Market_Depth.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
-			snap.marketDepthUi = Market_Depth.getUiSnapshot(driver);
+			try {
+				snap.marketDepthUi = Market_Depth.getSnapshot(driver, symbol, "DSE");
+			} catch (Exception ignored) {}
+			if (snap.marketDepthUi == null || snap.marketDepthUi.isEmpty()) {
+				snap.marketDepthUi = Market_Depth.getUiSnapshot(driver);
+			}
 
 			Object depthRes = js.executeScript(
 

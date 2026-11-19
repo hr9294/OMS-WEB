@@ -2220,17 +2220,35 @@ public class Day_Netting {
             System.out.println("\n[2/6] Maximizing 'Market Depth' widget...");
             OMSweb_Trade.maximizeWidget(driver, "Market Depth");
             Thread.sleep(600);
+
+            // 1. Load target symbol and exchange into Market Depth to populate quote & 5-level book
+            if (snap.targetSymbol != null && !snap.targetSymbol.isEmpty()) {
+                Market_Depth.searchSymbolInDepth(driver, snap.targetSymbol, snap.exchange);
+                Thread.sleep(800);
+            }
+
+            // 2. Capture screenshot with symbol, quotes, and depth book fully loaded
             OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Market_Depth.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
+            // 3. Verify Netting Indicator on loaded Market Depth widget
             snap.marketDepthNettingBadge = verifyMarketDepthNettingIndicator(driver, snap.targetSymbol);
-            try { snap.marketDepthData = Market_Depth.getUiSnapshot(driver); } catch (Exception ignored) {}
+
+            // 4. Collect Market Depth Data (API + UI DOM combined)
+            try {
+                snap.marketDepthData = Market_Depth.getSnapshot(driver, snap.targetSymbol, snap.exchange);
+            } catch (Exception ignored) {}
+            if (snap.marketDepthData == null || snap.marketDepthData.isEmpty()) {
+                try { snap.marketDepthData = Market_Depth.getUiSnapshot(driver); } catch (Exception ignored) {}
+            }
+            if (snap.marketDepthData == null) snap.marketDepthData = new LinkedHashMap<>();
+
             System.out.printf("  ✓ [Market Depth Data] Symbol: %s | Netting Badge: %b | LTP: %s | High: %s | Low: %s | Buy%%: %s | Sell%%: %s%n",
                     snap.targetSymbol, snap.marketDepthNettingBadge,
                     snap.marketDepthData.getOrDefault("LTP", snap.marketDepthData.getOrDefault("ltp", "-")),
                     snap.marketDepthData.getOrDefault("HIGH", snap.marketDepthData.getOrDefault("high", "-")),
                     snap.marketDepthData.getOrDefault("LOW", snap.marketDepthData.getOrDefault("low", "-")),
-                    snap.marketDepthData.getOrDefault("BUY%", snap.marketDepthData.getOrDefault("buy_percent", "-")),
-                    snap.marketDepthData.getOrDefault("SELL%", snap.marketDepthData.getOrDefault("sell_percent", "-")));
+                    snap.marketDepthData.getOrDefault("BUY%", snap.marketDepthData.getOrDefault("Buy_Percent", snap.marketDepthData.getOrDefault("buy_percent", "-"))),
+                    snap.marketDepthData.getOrDefault("SELL%", snap.marketDepthData.getOrDefault("Sell_Percent", snap.marketDepthData.getOrDefault("sell_percent", "-"))));
         } catch (Exception e) {
             System.out.println("  [WARN: Market Depth] " + e.getMessage());
         } finally {
