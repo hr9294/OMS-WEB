@@ -921,4 +921,25 @@ public class OMSweb_DashboardAudit {
     public static void main(WebDriver driver, Scanner sc) {
         runLiveReflectionAudit(driver, sc);
     }
+
+    public static void main(String[] args) {
+        WebDriver driver = OMSwebmain.createDriver();
+        Scanner sc = new Scanner(System.in);
+        try {
+            driver.get("https://devoms.quantbd.com");
+            Thread.sleep(800);
+            ((org.openqa.selenium.JavascriptExecutor) driver).executeScript(
+                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+            );
+            OMSweb_Login.main(driver, sc);
+            main(driver, sc);
+            System.out.println("\n=============================================================================");
+            System.out.println(" [SUCCESS] Dashboard Reflection Audit completed successfully.");
+            System.out.println("=============================================================================\n");
+        } catch (Exception e) {
+            System.err.println("[DASHBOARD AUDIT ERROR] " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
 }
