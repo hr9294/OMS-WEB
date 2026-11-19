@@ -562,9 +562,7 @@ public class Position {
      * Extracts Position holdings directly from the visible UI table DOM.
      */
     public static List<ClientPosition> getUiSnapshot(WebDriver driver, String clientCode, String symbol, String exchange) {
-        if (clientCode != null && !clientCode.trim().isEmpty()) {
-            filterByClientCode(driver, clientCode.trim());
-        }
+        // User preference: Position widget is not filtered by client code
         String cleanSym = cleanSymbol(symbol);
         return extractFromDomTable(driver, cleanSym);
     }

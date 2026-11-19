@@ -6472,7 +6472,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		if (symbol != null && !symbol.trim().isEmpty()) {
 			activeSymbol = cleanSym;
 		}
-		System.out.printf("%n>>> [CLIENT REFLECTION] Reflecting Client Code '%s' across all widgets (Order Window, Portfolio, Limits, Terminal, Summary, Position)...%n", cleanClient);
+		System.out.printf("%n>>> [CLIENT REFLECTION] Reflecting Client Code '%s' across widgets (Order Window, Portfolio, Limits, Terminal, Summary - Position excluded)...%n", cleanClient);
 
 		JavascriptExecutor js = (JavascriptExecutor) driver;
 
@@ -6540,16 +6540,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"        if (typeof get_client_code_data === 'function') { try { get_client_code_data(al); } catch(e){} }\n" +
 				"    }\n" +
 				"} catch(e){}\n" +
-				// 5. Position Widget
-				"try {\n" +
-				"    var cs = document.getElementById('client_search') || document.querySelector('input[name=\"client_search\"]');\n" +
-				"    if (cs) {\n" +
-				"        cs.value = code;\n" +
-				"        if (jq) jq(cs).val(code);\n" +
-				"        if (typeof get_symbol_client === 'function') get_symbol_client(1);\n" +
-				"        if (typeof get_client_code_data === 'function') { try { get_client_code_data(cs); } catch(e){} }\n" +
-				"    }\n" +
-				"} catch(e){}\n" +
+				// 5. Position Widget (Excluded per user request - do NOT reflect client code into position widget)
 				// 6. Realized Gain
 				"try {\n" +
 				"    var rg = document.getElementById('realizegain_code');\n" +
@@ -6605,10 +6596,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			Order_Summary.filterOrderSummary(driver, cleanClient, cleanSym);
 		} catch (Exception ignored) {}
 
-		// 6. Position Widget (filterByClientCode)
-		try {
-			Position.filterByClientCode(driver, cleanClient);
-		} catch (Exception ignored) {}
+		// 6. Position Widget: Excluded per user request - do not reflect client code into position widget
 
 		System.out.printf("  ✓ [CLIENT REFLECTED] Target Client '%s' successfully propagated across all widgets.%n", cleanClient);
 	}
@@ -7425,9 +7413,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			Thread.sleep(600);
 			saveScreenshot(driver, String.format("widget_maximized_%s_Position.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
 
-			if (clientCode != null && !clientCode.trim().isEmpty()) {
-				Position.filterByClientCode(driver, clientCode.trim());
-			}
+			// User preference: Position widget is not filtered by client code
 
 			List<Position.ClientPosition> allPositions = Position.getUiSnapshot(driver, clientCode, symbol, exchange);
 
