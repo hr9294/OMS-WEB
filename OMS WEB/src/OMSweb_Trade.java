@@ -3034,20 +3034,20 @@ public class OMSweb_Trade {
 
 			// 1.1 Wait for GoldenLayout UI widgets to mount in DOM
 			System.out.println("[IDLE RESTORATION] Waiting for GoldenLayout UI widgets to mount in DOM...");
-			long endWaitWidgets = System.currentTimeMillis() + 12000;
+			waitForGoldenLayoutMounted(driver, 10);
+			long endWaitWidgets = System.currentTimeMillis() + 8000;
 			while (System.currentTimeMillis() < endWaitWidgets) {
 				try {
 					JavascriptExecutor js = (JavascriptExecutor) driver;
-					Boolean ready = (Boolean) js.executeScript(
+					Long ccCount = (Long) js.executeScript(
 						"var cc = document.querySelectorAll('.chooseColor');\n" +
-						"var mw = document.getElementById('marketwatch_symbol');\n" +
-						"var oi = document.getElementById('order_instrument');\n" +
-						"var occ = document.getElementById('order_client_code');\n" +
-						"var pci = document.getElementById('portfolio_code_input');\n" +
-						"return (cc && cc.length >= 2) || (mw !== null) || (oi !== null) || (occ !== null) || (pci !== null);\n"
+						"var stacks = document.querySelectorAll('.lm_stack');\n" +
+						"if (cc && cc.length >= 2) return (long) cc.length;\n" +
+						"if (stacks && stacks.length >= 4) return (long) stacks.length;\n" +
+						"return 0L;\n"
 					);
-					if (Boolean.TRUE.equals(ready)) {
-						Thread.sleep(800); // Allow GoldenLayout rendering and event listeners to stabilize
+					if (ccCount != null && ccCount >= 2) {
+						Thread.sleep(600);
 						break;
 					}
 				} catch (Exception ignored) {}
@@ -4184,43 +4184,32 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 	}
 
 	public static boolean isAlreadyOnTradePage(WebDriver driver) {
-
+		if (driver == null) return false;
 		try {
-
 			JavascriptExecutor js = (JavascriptExecutor) driver;
-
 			Object res = js.executeScript(
-
-				"var href = (window.location.href || '').toLowerCase();" +
-
-				"if (href.indexOf('trade_portal') !== -1) return true;" +
-
-				"var activeTab = document.querySelector('li.lm_tab.lm_active[title*=\"Trade\"], div.lm_tab.lm_active[title*=\"Trade\"], .nav-item.active [data-link*=\"trade\"], a.active[data-link*=\"trade\"]');" +
-
-				"if (activeTab) return true;" +
-
-				"var mw = document.getElementById('marketwatch_symbol');" +
-
-				"var isMwVis = mw && (mw.offsetParent !== null || mw.offsetWidth > 0 || (mw.getClientRects && mw.getClientRects().length > 0));" +
-
-				"var buyBtn = document.querySelector('[title=\"Place BUY Order\"], .new_buy_order, button.btn-buy');" +
-
-				"var isBuyVis = buyBtn && (buyBtn.offsetParent !== null || buyBtn.offsetWidth > 0);" +
-
-				"if (isMwVis && isBuyVis) return true;" +
-
+				"var href = (window.location.href || '').toLowerCase();\n" +
+				"// 1. Direct URL check (/home, trade_portal, live_orders)\n" +
+				"if (href.indexOf('/home') !== -1 || href.indexOf('trade_portal') !== -1 || href.indexOf('live_orders') !== -1) return true;\n" +
+				"// 2. GoldenLayout root / trading container\n" +
+				"var tw = window.tradingwindow || window.myLayout;\n" +
+				"if (tw && tw.isInitialised) return true;\n" +
+				"if (document.querySelector('.lm_root, #tradingContainer, #trading_container, #page-content')) return true;\n" +
+				"// 3. GoldenLayout stacks\n" +
+				"var stacks = document.querySelectorAll('.lm_stack');\n" +
+				"if (stacks.length >= 2) return true;\n" +
+				"// 4. Active nav tab / button\n" +
+				"var activeTab = document.querySelector('li.lm_tab.lm_active[title*=\"Trade\"], div.lm_tab.lm_active[title*=\"Trade\"], .nav-item.active [data-link*=\"trade\"], a.active[data-link*=\"trade\"]');\n" +
+				"if (activeTab) return true;\n" +
+				"// 5. Buy button or market watch\n" +
+				"var buyBtn = document.querySelector('.btn_buy, .buy_btn, [title*=\"BUY\" i], button.btn-buy');\n" +
+				"if (buyBtn && buyBtn.offsetParent !== null) return true;\n" +
 				"return false;"
-
 			);
-
 			return Boolean.TRUE.equals(res);
-
 		} catch (Exception e) {
-
 			return false;
-
 		}
-
 	}
 
 	public static void navigateToPortfolioPage(WebDriver driver) {
