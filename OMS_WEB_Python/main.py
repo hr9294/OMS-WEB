@@ -22,6 +22,7 @@ import client_portfolio
 import market_depth
 import order_terminal
 import widget_color
+import oms_dashboard
 
 
 def print_banner() -> None:
@@ -77,7 +78,8 @@ def main() -> None:
             print("  7. Market Depth & Quotes")
             print("  8. Order Terminal Viewer")
             print("  9. Collect & View Live Public Board Symbols & LTPs from DB Table (dse_md_ltp)")
-            choice = input("Enter Choice (1-9, default 1): ").strip()
+            print("  10. Dashboard 12-Model Data Reflection & Live Audit")
+            choice = input("Enter Choice (1-10, default 1): ").strip()
 
             mode_map = {
                 "1": "trade",
@@ -88,7 +90,8 @@ def main() -> None:
                 "6": "portfolio",
                 "7": "depth",
                 "8": "terminal",
-                "9": "db-ltp"
+                "9": "db-ltp",
+                "10": "dashboard"
             }
             mode = mode_map.get(choice, "trade")
 
@@ -121,6 +124,8 @@ def main() -> None:
         elif mode == "terminal":
             snap = order_terminal.get_snapshot(driver)
             print(f"\nOrder Terminal Status: {snap}")
+        elif mode == "dashboard":
+            oms_dashboard.run_live_reflection_audit(driver)
         else:
             oms_trade.run_trade_workflow(driver)
 

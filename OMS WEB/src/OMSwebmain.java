@@ -184,6 +184,7 @@ public class OMSwebmain {
             System.out.println("  4. Upload File Engine (User Choice File Upload: Client, Stock, Cash, etc.)");
             System.out.println("  5. Export File Engine (Trade Files, EOD Price, Commission & Reports)");
             System.out.println("  6. Day Netting Engine (Scrip Netting, RMS Controls & UI Audit)");
+            System.out.println("  7. Dashboard Reflection Audit (12-Model Verification, Live Trade & Diff Comparison)");
             System.out.println("  0. Exit Application");
 
             String engChoice = "";
@@ -199,7 +200,7 @@ public class OMSwebmain {
             } else {
                 // MANUAL MODE: Wait for user choice with 5-minute idle auto-reload watchdog
                 while (engChoice.isEmpty()) {
-                    System.out.print("Enter Choice (1-6 to execute, 0=Exit): ");
+                    System.out.print("Enter Choice (1-7 to execute, 0=Exit): ");
                     engChoice = readLineWithIdleWatchdog(driver, sc, 300);
                     if (engChoice.isEmpty()) {
                         break;
@@ -235,12 +236,15 @@ public class OMSwebmain {
             } else if ("6".equals(engChoice) || "netting".equalsIgnoreCase(engChoice) || "daynetting".equalsIgnoreCase(engChoice)) {
                 System.out.println("\n[UFTFAST OMS] Executing Action 6: Day Netting Engine (Scrip Netting Suite)...");
                 Day_Netting.main(driver, sc);
+            } else if ("7".equals(engChoice) || "dashboard".equalsIgnoreCase(engChoice) || "audit".equalsIgnoreCase(engChoice)) {
+                System.out.println("\n[UFTFAST OMS] Executing Action 7: Dashboard Reflection Audit (12 Models)...");
+                OMSweb_DashboardAudit.main(driver, sc);
             } else if ("CSE".equalsIgnoreCase(engChoice)) {
                 System.out.println("\n[UFTFAST OMS] Executing Normal Trade for CSE...");
                 OMSweb_Trade.activeExchange = "CSE";
                 OMSweb_Trade.runNormalTradeCSE(driver, sc);
             } else {
-                System.out.printf("\n[INVALID SELECTION] '%s' is not recognized. Only your chosen action (1-6, or 0) will execute.%n", engChoice);
+                System.out.printf("\n[INVALID SELECTION] '%s' is not recognized. Only your chosen action (1-7, or 0) will execute.%n", engChoice);
                 continue;
             }
 
