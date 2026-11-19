@@ -2149,6 +2149,83 @@ public class Day_Netting {
     }
 
     /**
+     * Resolves a distinct seller client holding sufficient saleable shares of target symbol,
+     * collected primarily from the Position widget (API / DOM) or DB, strictly excluding excludeClient.
+     */
+    public static String resolveSellerClient(WebDriver driver, String symbol, int requiredQty, String excludeClient, String exchange) {
+        System.out.printf("%n>>> [RESOLVING SELLER CLIENT] Finding distinct client holding >= %d saleable shares of %s (excluding: %s)...%n",
+                requiredQty, symbol, excludeClient);
+
+        // 1. Primary: Position Widget (API + live DOM table)
+        try {
+            Position.ClientPosition cp = Position.findClientWithSaleableExcluding(driver, symbol, requiredQty, excludeClient, exchange);
+            if (cp != null && cp.getClientCode() != null && !cp.getClientCode().trim().isEmpty() && !cp.getClientCode().equalsIgnoreCase(excludeClient)) {
+                System.out.printf("  ✓ [POSITION WIDGET MATCH] Found holding client %s with %,.0f saleable shares of %s (Total: %,.0f shares)%n",
+                        cp.getClientCode(), cp.getSaleableQty(), symbol, cp.getTotalQty());
+                return cp.getClientCode().trim();
+            }
+        } catch (Exception e) {
+            System.out.println("  [WARN: Position Widget Resolution] " + e.getMessage());
+        }
+
+        // 2. Secondary: PostgreSQL DB query
+        try {
+            String dbClient = Position.findHolderWithSufficientSharesFromDb(symbol, requiredQty, excludeClient);
+            if (dbClient != null && !dbClient.trim().isEmpty() && !dbClient.equalsIgnoreCase(excludeClient)) {
+                System.out.printf("  ✓ [DB HOLDINGS MATCH] Found holding client %s for symbol %s in qtraderdb%n", dbClient, symbol);
+                return dbClient.trim();
+            }
+        } catch (Exception e) {
+            System.out.println("  [WARN: DB Seller Resolution] " + e.getMessage());
+        }
+
+        // 3. Fallback: select another known active holding client distinct from excludeClient
+        String[] fallbackPool = { "34601", "34649", "23986", "15740", "00224", "39187", "00516", "00916", "02417", "37854", "45971", "18051", "12001", "04474", "03246" };
+        for (String fb : fallbackPool) {
+            if (excludeClient == null || !fb.equalsIgnoreCase(excludeClient.trim())) {
+                System.out.printf("  -> [FALLBACK SELLER] Using fallback client %s (distinct from buyer %s)%n", fb, excludeClient);
+                return fb;
+            }
+        }
+        return "34601";
+    }
+
+    /**
+     * Resolves a distinct buyer client with Cash >= 500,000 BDT,
+     * collected primarily from PostgreSQL public.clients_cash or default client, strictly excluding excludeClient.
+     */
+    public static String resolveBuyerClient(String excludeClient, String fallbackDefault) {
+        System.out.printf("%n>>> [RESOLVING BUYER CLIENT] Finding distinct client with Cash >= 500,000 BDT from DB (excluding: %s)...%n",
+                excludeClient);
+
+        // 1. Primary: PostgreSQL DB query (Cash >= 500,000 BDT)
+        try {
+            String buyer = Account_Limits.findClientWithSufficientCashFromDb(500000.0, excludeClient, null);
+            if (buyer != null && !buyer.trim().isEmpty() && !buyer.equalsIgnoreCase(excludeClient)) {
+                System.out.printf("  ✓ [DB CASH MATCH] Found buyer %s with Cash >= 500,000 BDT from public.clients_cash%n", buyer);
+                return buyer.trim();
+            }
+        } catch (Exception e) {
+            System.out.println("  [WARN: DB Buyer Resolution] " + e.getMessage());
+        }
+
+        // 2. Secondary: Fallback default client
+        String def = (fallbackDefault != null && !fallbackDefault.trim().isEmpty() && !fallbackDefault.equalsIgnoreCase(excludeClient))
+                ? fallbackDefault.trim() : "23986";
+        if (def.equalsIgnoreCase(excludeClient)) {
+            String[] fallbackPool = { "23986", "34601", "34649", "15740", "00224", "39187", "00516", "00916", "08096" };
+            for (String fb : fallbackPool) {
+                if (!fb.equalsIgnoreCase(excludeClient.trim())) {
+                    def = fb;
+                    break;
+                }
+            }
+        }
+        System.out.printf("  -> [DEFAULT BUYER] Using default buyer client %s (distinct from seller %s)%n", def, excludeClient);
+        return def;
+    }
+
+    /**
      * Checks Real-Time UI Data across the 6 core widgets requested by user:
      * 1. Netting Watchlist (Dedicated Watchlist, Netting icons/badges, hover tooltip)
      * 2. Market Depth (Symbol depth quotes, LTP, High/Low, Netting badge)
@@ -2969,21 +3046,24 @@ public class Day_Netting {
                 System.out.println("Select Trade Action to execute:");
                 System.out.println("  1. BUY  (Single Buy Order)");
                 System.out.println("  2. SELL (Single Sell Order)");
-                System.out.println("  3. BOTH (BUY then SELL - Complete Day Netting Round-Trip) [Default]");
+                System.out.println("  3. BOTH: BUY then SELL (Client A Buys, Client B [from Position/DB] Sells) [Default]");
+                System.out.println("  4. BOTH: SELL then BUY (Client A Sells, Client B [from DB Cash > 500k/Default] Buys)");
                 System.out.println("  0. Skip Trade");
-                System.out.print("Select Trade Action to execute (1=BUY / 2=SELL / 3=BOTH [Default for Day Netting] / 0=Skip Trade, default=3 [BOTH]): ");
+                System.out.print("Select Trade Action to execute (1=BUY / 2=SELL / 3=BUY then SELL [Default] / 4=SELL then BUY / 0=Skip, default=3): ");
                 String tradeOpt = sc.nextLine().trim();
                 if (tradeOpt.isEmpty()) tradeOpt = "3";
 
-                String tradeAction = "BOTH";
+                String tradeAction = "BOTH_BUY_SELL";
                 if ("0".equals(tradeOpt) || "skip".equalsIgnoreCase(tradeOpt)) {
                     tradeAction = "SKIP";
                 } else if ("1".equals(tradeOpt) || "buy".equalsIgnoreCase(tradeOpt)) {
                     tradeAction = "BUY";
                 } else if ("2".equals(tradeOpt) || "sell".equalsIgnoreCase(tradeOpt)) {
                     tradeAction = "SELL";
+                } else if ("4".equals(tradeOpt) || "sell_buy".equalsIgnoreCase(tradeOpt) || "sell then buy".equalsIgnoreCase(tradeOpt)) {
+                    tradeAction = "BOTH_SELL_BUY";
                 } else {
-                    tradeAction = "BOTH"; // "3", "both", "dual", "b", or default
+                    tradeAction = "BOTH_BUY_SELL"; // "3", "both", "buy_sell", "b", or default
                 }
 
                 if (!"SKIP".equals(tradeAction)) {
@@ -3010,22 +3090,28 @@ public class Day_Netting {
                     String tradeInstrument = "PUBLIC".equalsIgnoreCase(board) ? sym : (sym + "." + board);
                     String orderEx = "BOTH".equalsIgnoreCase(targetExchange) ? "DSE" : targetExchange;
 
-                    if ("BOTH".equals(tradeAction)) {
+                    if ("BOTH_BUY_SELL".equals(tradeAction)) {
                         // =============================================================
-                        // DUAL TRADE EXECUTION: LEG 1/2 (BUY) THEN LEG 2/2 (SELL)
+                        // DUAL TRADE: LEG 1 (BUY for Client A) -> LEG 2 (SELL for Client B from Position/DB)
                         // =============================================================
-                        System.out.printf("%n>>> [DAY NETTING DUAL TRADE: LEG 1/2 - BUY] Submitting BUY Order: %d shares of %s (Board: %s) for Client %s on %s (Rate: %.2f)...%n",
-                                tradeQty, sym, board, cln, targetExchange, tradeRate);
-                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, tradeQty, tradeRate, orderEx);
+                        String buyerClient = cln;
+                        String sellerClient = resolveSellerClient(driver, sym, tradeQty, buyerClient, orderEx);
+                        System.out.printf("Confirm or enter Seller Client for Leg 2 (default=%s, press ENTER to accept): ", sellerClient);
+                        String customSeller = sc.nextLine().trim();
+                        if (!customSeller.isEmpty()) sellerClient = customSeller;
+
+                        System.out.printf("%n>>> [DAY NETTING DUAL TRADE: LEG 1/2 - BUY] Submitting BUY Order: %d shares of %s (Board: %s) for Client A %s on %s (Rate: %.2f)...%n",
+                                tradeQty, sym, board, buyerClient, targetExchange, tradeRate);
+                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", buyerClient, tradeInstrument, tradeQty, tradeRate, orderEx);
                         Thread.sleep(1500);
 
-                        String buyStatus = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, cln, sym, "BUY");
-                        System.out.printf("  -> Exchange Order Terminal BUY Status: [%s]%n", buyStatus);
+                        String buyStatus = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, buyerClient, sym, "BUY");
+                        System.out.printf("  -> Exchange Order Terminal BUY Status (Buyer %s): [%s]%n", buyerClient, buyStatus);
 
                         if ("REJECTED".equalsIgnoreCase(buyStatus)) {
                             System.out.printf("  ✗ [BUY ORDER REJECTED] Initial BUY order for %s @ %.2f was rejected by exchange!%n", tradeInstrument, tradeRate);
                             System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying BUY with smart Market Depth & DB prices (ltp, ycp, sh, sl, ch, cl, dh, dl) until an Accepted order is placed...");
-                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, tradeQty, 0.0, orderEx, 6);
+                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", buyerClient, tradeInstrument, tradeQty, 0.0, orderEx, 6);
                             if (success) {
                                 System.out.println("  ✓ [LEG 1/2 COMPLETE] Accepted BUY order successfully placed. Waiting 2s before SELL leg...");
                             } else {
@@ -3036,18 +3122,18 @@ public class Day_Netting {
                         }
                         Thread.sleep(2000);
 
-                        System.out.printf("%n>>> [DAY NETTING DUAL TRADE: LEG 2/2 - SELL] Submitting SELL Order: %d shares of %s (Board: %s) for Client %s on %s (Rate: %.2f)...%n",
-                                tradeQty, sym, board, cln, targetExchange, tradeRate);
-                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, tradeQty, tradeRate, orderEx);
+                        System.out.printf("%n>>> [DAY NETTING DUAL TRADE: LEG 2/2 - SELL] Submitting SELL Order: %d shares of %s (Board: %s) for Client B %s on %s (Rate: %.2f)...%n",
+                                tradeQty, sym, board, sellerClient, targetExchange, tradeRate);
+                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", sellerClient, tradeInstrument, tradeQty, tradeRate, orderEx);
                         Thread.sleep(1500);
 
-                        String sellStatus = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, cln, sym, "SELL");
-                        System.out.printf("  -> Exchange Order Terminal SELL Status: [%s]%n", sellStatus);
+                        String sellStatus = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, sellerClient, sym, "SELL");
+                        System.out.printf("  -> Exchange Order Terminal SELL Status (Seller %s): [%s]%n", sellerClient, sellStatus);
 
                         if ("REJECTED".equalsIgnoreCase(sellStatus)) {
                             System.out.printf("  ✗ [SELL ORDER REJECTED] Initial SELL order for %s @ %.2f was rejected by exchange!%n", tradeInstrument, tradeRate);
                             System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying SELL with smart Market Depth & DB prices (ltp, ycp, sh, sl, ch, cl, dh, dl) until an Accepted order is placed...");
-                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, tradeQty, 0.0, orderEx, 6);
+                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", sellerClient, tradeInstrument, tradeQty, 0.0, orderEx, 6);
                             if (success) {
                                 System.out.println("  ✓ [LEG 2/2 COMPLETE] Accepted SELL order successfully placed.");
                             } else {
@@ -3057,7 +3143,66 @@ public class Day_Netting {
                             System.out.println("  ✓ [LEG 2/2 COMPLETE] Accepted SELL order placed and confirmed.");
                         }
 
-                        System.out.printf("%n  ✓ [DAY NETTING DUAL TRADE COMPLETE] Both BUY and SELL legs successfully executed (%d shares %s).%n", tradeQty, sym);
+                        System.out.printf("%n  ✓ [DAY NETTING DUAL TRADE COMPLETE] Both BUY (Client %s) and SELL (Client %s) legs executed (%d shares %s).%n",
+                                buyerClient, sellerClient, tradeQty, sym);
+                        System.out.println("     Scrip Netting active in OMS Web & qRMS. Waiting 2s for real-time widget updates...");
+                        Thread.sleep(2000);
+
+                    } else if ("BOTH_SELL_BUY".equals(tradeAction)) {
+                        // =============================================================
+                        // DUAL TRADE: LEG 1 (SELL for Client A) -> LEG 2 (BUY for Client B with Cash >= 500k from DB/Default)
+                        // =============================================================
+                        String sellerClient = cln;
+                        String buyerClient = resolveBuyerClient(sellerClient, "23986");
+                        System.out.printf("Confirm or enter Buyer Client for Leg 2 (default=%s, press ENTER to accept): ", buyerClient);
+                        String customBuyer = sc.nextLine().trim();
+                        if (!customBuyer.isEmpty()) buyerClient = customBuyer;
+
+                        System.out.printf("%n>>> [DAY NETTING DUAL TRADE: LEG 1/2 - SELL] Submitting SELL Order: %d shares of %s (Board: %s) for Client A %s on %s (Rate: %.2f)...%n",
+                                tradeQty, sym, board, sellerClient, targetExchange, tradeRate);
+                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", sellerClient, tradeInstrument, tradeQty, tradeRate, orderEx);
+                        Thread.sleep(1500);
+
+                        String sellStatus = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, sellerClient, sym, "SELL");
+                        System.out.printf("  -> Exchange Order Terminal SELL Status (Seller %s): [%s]%n", sellerClient, sellStatus);
+
+                        if ("REJECTED".equalsIgnoreCase(sellStatus)) {
+                            System.out.printf("  ✗ [SELL ORDER REJECTED] Initial SELL order for %s @ %.2f was rejected by exchange!%n", tradeInstrument, tradeRate);
+                            System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying SELL with smart Market Depth & DB prices (ltp, ycp, sh, sl, ch, cl, dh, dl) until an Accepted order is placed...");
+                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", sellerClient, tradeInstrument, tradeQty, 0.0, orderEx, 6);
+                            if (success) {
+                                System.out.println("  ✓ [LEG 1/2 COMPLETE] Accepted SELL order successfully placed. Waiting 2s before BUY leg...");
+                            } else {
+                                System.out.println("  [TRADE WARNING] Could not get an Accepted SELL order after retrying with Market Depth & DB prices.");
+                            }
+                        } else {
+                            System.out.println("  ✓ [LEG 1/2 COMPLETE] Accepted SELL order placed and confirmed. Waiting 2s before BUY leg...");
+                        }
+                        Thread.sleep(2000);
+
+                        System.out.printf("%n>>> [DAY NETTING DUAL TRADE: LEG 2/2 - BUY] Submitting BUY Order: %d shares of %s (Board: %s) for Client B %s on %s (Rate: %.2f)...%n",
+                                tradeQty, sym, board, buyerClient, targetExchange, tradeRate);
+                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", buyerClient, tradeInstrument, tradeQty, tradeRate, orderEx);
+                        Thread.sleep(1500);
+
+                        String buyStatus = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, buyerClient, sym, "BUY");
+                        System.out.printf("  -> Exchange Order Terminal BUY Status (Buyer %s): [%s]%n", buyerClient, buyStatus);
+
+                        if ("REJECTED".equalsIgnoreCase(buyStatus)) {
+                            System.out.printf("  ✗ [BUY ORDER REJECTED] Initial BUY order for %s @ %.2f was rejected by exchange!%n", tradeInstrument, tradeRate);
+                            System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying BUY with smart Market Depth & DB prices (ltp, ycp, sh, sl, ch, cl, dh, dl) until an Accepted order is placed...");
+                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", buyerClient, tradeInstrument, tradeQty, 0.0, orderEx, 6);
+                            if (success) {
+                                System.out.println("  ✓ [LEG 2/2 COMPLETE] Accepted BUY order successfully placed.");
+                            } else {
+                                System.out.println("  [TRADE WARNING] Could not get an Accepted BUY order after retrying with Market Depth & DB prices.");
+                            }
+                        } else {
+                            System.out.println("  ✓ [LEG 2/2 COMPLETE] Accepted BUY order placed and confirmed.");
+                        }
+
+                        System.out.printf("%n  ✓ [DAY NETTING DUAL TRADE COMPLETE] Both SELL (Client %s) and BUY (Client %s) legs executed (%d shares %s).%n",
+                                sellerClient, buyerClient, tradeQty, sym);
                         System.out.println("     Scrip Netting active in OMS Web & qRMS. Waiting 2s for real-time widget updates...");
                         Thread.sleep(2000);
 

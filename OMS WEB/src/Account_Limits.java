@@ -214,21 +214,34 @@ public class Account_Limits {
      * Finds an active buyer client code with Cash >= requiredCash from PostgreSQL public.clients_cash.
      */
     public static String findClientWithSufficientCashFromDb(double requiredCash, String fallbackClient) {
+        return findClientWithSufficientCashFromDb(requiredCash, null, fallbackClient);
+    }
+
+    /**
+     * Finds an active buyer client code with Cash >= requiredCash from PostgreSQL public.clients_cash,
+     * strictly excluding a specific client code (e.g. to ensure Buyer != Seller in dual trades).
+     */
+    public static String findClientWithSufficientCashFromDb(double requiredCash, String excludeClient, String fallbackClient) {
         String sql = "SELECT c.\"ClientCode\", c.\"Cash\", c.mature_balance, a.\"Name\", a.\"BOID\" " +
                      "FROM public.clients_cash c " +
                      "JOIN public.clients_active a ON c.\"ClientCode\" = a.\"ClientCode\" " +
-                     "WHERE c.\"Cash\" >= ? AND a.\"BOID\" IS NOT NULL AND LENGTH(TRIM(CAST(a.\"BOID\" AS text))) >= 8 " +
+                     "WHERE c.\"Cash\" >= ? " +
+                     (excludeClient != null && !excludeClient.trim().isEmpty() ? "AND c.\"ClientCode\" != ? " : "") +
+                     "AND a.\"BOID\" IS NOT NULL AND LENGTH(TRIM(CAST(a.\"BOID\" AS text))) >= 8 " +
                      "ORDER BY c.\"Cash\" DESC LIMIT 1;";
         try (Connection conn = getQtraderDbConnection()) {
             if (conn != null) {
                 try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
                     pstmt.setDouble(1, requiredCash);
+                    if (excludeClient != null && !excludeClient.trim().isEmpty()) {
+                        pstmt.setString(2, excludeClient.trim());
+                    }
                     try (ResultSet rs = pstmt.executeQuery()) {
                         if (rs.next()) {
                             String found = rs.getString("ClientCode");
                             double cash = rs.getDouble("Cash");
-                            System.out.printf("[DB CLIENT CASH] Selected eligible buyer %s with %,.2f BDT cash (required: %,.2f BDT) from public.clients_cash%n",
-                                    found, cash, requiredCash);
+                            System.out.printf("[DB CLIENT CASH] Selected eligible buyer %s with %,.2f BDT cash (required: %,.2f BDT, excluded: %s) from public.clients_cash%n",
+                                    found, cash, requiredCash, excludeClient != null ? excludeClient : "none");
                             return found;
                         }
                     }
@@ -237,7 +250,16 @@ public class Account_Limits {
         } catch (Exception e) {
             System.out.printf("[DB CLIENT CASH WARN] Sufficient cash search failed: %s%n", e.getMessage());
         }
-        return fallbackClient != null ? fallbackClient : "23986";
+        if (fallbackClient != null && !fallbackClient.trim().isEmpty() && (excludeClient == null || !fallbackClient.equalsIgnoreCase(excludeClient.trim()))) {
+            return fallbackClient.trim();
+        }
+        String[] defaultPool = { "23986", "34601", "34649", "15740", "00224", "39187", "00516", "00916", "08096" };
+        for (String d : defaultPool) {
+            if (excludeClient == null || !d.equalsIgnoreCase(excludeClient.trim())) {
+                return d;
+            }
+        }
+        return "23986";
     }
 
     /**
