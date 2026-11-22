@@ -2196,21 +2196,25 @@ public class Day_Netting {
      * collected primarily from PostgreSQL public.clients_cash or default client, strictly excluding excludeClient.
      */
     public static String resolveBuyerClient(String excludeClient, String fallbackDefault) {
-        System.out.printf("%n>>> [RESOLVING BUYER CLIENT] Finding distinct client with Cash >= 500,000 BDT from DB (excluding: %s)...%n",
+        System.out.printf("%n>>> [RESOLVING BUYER CLIENT] Finding distinct client with Cash >= 500,000 BDT (excluding: %s)...%n",
                 excludeClient);
 
-        // 1. Primary: PostgreSQL DB query (Cash >= 500,000 BDT)
         try {
-            String buyer = Account_Limits.findClientWithSufficientCashFromDb(500000.0, excludeClient, null);
-            if (buyer != null && !buyer.trim().isEmpty() && !buyer.equalsIgnoreCase(excludeClient)) {
-                System.out.printf("  ✓ [DB CASH MATCH] Found buyer %s with Cash >= 500,000 BDT from public.clients_cash%n", buyer);
-                return buyer.trim();
+            Account_Limits.ResolvedCashLimit limit = Account_Limits.resolveCashLimit(
+                    null,
+                    fallbackDefault,
+                    (fallbackDefault != null && !fallbackDefault.equalsIgnoreCase(excludeClient)) ? 500_000.0 : null,
+                    500_000.0,
+                    excludeClient
+            );
+            if (limit != null && limit.getClientCode() != null) {
+                return limit.getClientCode();
             }
-        } catch (Exception e) {
-            System.out.println("  [WARN: DB Buyer Resolution] " + e.getMessage());
+        } catch (Account_Limits.InsufficientCashLimitException e) {
+            System.out.printf("  [CASH WARNING] %s Fallback to default pool.%n", e.getMessage());
         }
 
-        // 2. Secondary: Fallback default client
+        // Secondary fallback pool
         String def = (fallbackDefault != null && !fallbackDefault.trim().isEmpty() && !fallbackDefault.equalsIgnoreCase(excludeClient))
                 ? fallbackDefault.trim() : "23986";
         if (def.equalsIgnoreCase(excludeClient)) {

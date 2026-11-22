@@ -263,6 +263,101 @@ public class Account_Limits {
     }
 
     /**
+     * Exception raised when no eligible entity with sufficient cash limit exists.
+     */
+    public static class InsufficientCashLimitException extends RuntimeException {
+        public InsufficientCashLimitException(double requiredCash, String reason) {
+            super(String.format("Cash Limit Allocation Failed: Required %,.2f BDT could not be resolved. %s", requiredCash, reason));
+        }
+    }
+
+    public static class ResolvedCashLimit {
+        private final String clientCode;
+        private final double allocatedLimit;
+        private final String source;
+
+        public ResolvedCashLimit(String clientCode, double limit, String source) {
+            this.clientCode = clientCode;
+            this.allocatedLimit = limit;
+            this.source = source;
+        }
+
+        public String getClientCode() { return clientCode; }
+        public double getAllocatedLimit() { return allocatedLimit; }
+        public String getSource() { return source; }
+    }
+
+    /**
+     * Cash limit resolution hierarchy:
+     * 1. Use if specified (no DB lookup).
+     * 2. Else if default client assigned -> use its limit (no DB lookup).
+     * 3. Else -> query DB for entity with higher limit; if none, raise clear exception.
+     */
+    public static ResolvedCashLimit resolveCashLimit(
+            Double specifiedCashLimit,
+            String defaultClientCode,
+            Double defaultClientLimit,
+            double requiredAmount,
+            String excludeClient) {
+
+        // 1. Specified cash limit takes top priority (No DB Lookup)
+        if (specifiedCashLimit != null && specifiedCashLimit > 0.0) {
+            System.out.printf("[CASH LIMIT] Using explicitly specified limit: %,.2f BDT (No DB lookup)%n", specifiedCashLimit);
+            return new ResolvedCashLimit(
+                    defaultClientCode != null && !defaultClientCode.trim().isEmpty() ? defaultClientCode : "SPECIFIED",
+                    specifiedCashLimit,
+                    "EXPLICITLY_SPECIFIED"
+            );
+        }
+
+        // 2. Default client assigned -> use its limit (Strictly NO DB Lookup)
+        if (defaultClientCode != null && !defaultClientCode.trim().isEmpty() && defaultClientLimit != null && defaultClientLimit > 0.0) {
+            System.out.printf("[CASH LIMIT] Using pre-assigned default client [%s] limit: %,.2f BDT (Zero DB lookup)%n",
+                    defaultClientCode, defaultClientLimit);
+            return new ResolvedCashLimit(
+                    defaultClientCode.trim(),
+                    defaultClientLimit,
+                    "DEFAULT_CLIENT"
+            );
+        }
+
+        // 3. Fallback: Query DB for entity with higher limit (Cash >= requiredAmount)
+        System.out.printf("[CASH LIMIT] Querying PostgreSQL for active entity with Cash >= %,.2f BDT...%n", requiredAmount);
+        String sql = "SELECT c.\"ClientCode\", c.\"Cash\", a.\"Name\" " +
+                     "FROM public.clients_cash c " +
+                     "JOIN public.clients_active a ON c.\"ClientCode\" = a.\"ClientCode\" " +
+                     "WHERE c.\"Cash\" >= ? " +
+                     (excludeClient != null && !excludeClient.trim().isEmpty() ? "AND c.\"ClientCode\" != ? " : "") +
+                     "AND a.\"BOID\" IS NOT NULL " +
+                     "ORDER BY c.\"Cash\" DESC LIMIT 1;";
+
+        try (Connection conn = getQtraderDbConnection()) {
+            if (conn != null) {
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setDouble(1, requiredAmount);
+                    if (excludeClient != null && !excludeClient.trim().isEmpty()) {
+                        ps.setString(2, excludeClient.trim());
+                    }
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (rs.next()) {
+                            String foundClient = rs.getString("ClientCode");
+                            double dbCash = rs.getDouble("Cash");
+                            System.out.printf("  ✓ [DB CASH MATCH] Found entity [%s] with %,.2f BDT available from public.clients_cash%n", foundClient, dbCash);
+                            return new ResolvedCashLimit(foundClient, dbCash, "DATABASE_QUERY");
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            throw new InsufficientCashLimitException(requiredAmount, "Database query execution failed: " + e.getMessage());
+        }
+
+        // 4. If none found -> raise clear exception
+        throw new InsufficientCashLimitException(requiredAmount,
+                "No active client entity with Cash >= " + String.format("%,.2f", requiredAmount) + " BDT found in database.");
+    }
+
+    /**
      * Collects all active clients with Cash >= minCash directly from PostgreSQL public.clients_cash.
      */
     public static List<ClientCashInfo> getActiveClientsWithCashDirectFromDb(double minCash, int limit) {

@@ -9495,16 +9495,98 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		js.executeScript("try { var c = document.querySelectorAll('.wb-close, .winbox .wb-close'); for (var i=0; i<c.length; i++) c[i].click(); } catch(e){}");
 	}
 
+	public static class PriceLimitBreachException extends RuntimeException {
+		private final double attemptedPrice;
+		private final double lowerLimit;
+		private final double upperLimit;
+		private final int totalRetries;
+
+		public PriceLimitBreachException(String symbol, double price, double lower, double upper, int retries) {
+			super(String.format("Price Limit Breach for [%s]: Target price %.2f outside circuit limits [%.2f - %.2f] after %d retries. Order strictly aborted.",
+					symbol, price, lower, upper, retries));
+			this.attemptedPrice = price;
+			this.lowerLimit = lower;
+			this.upperLimit = upper;
+			this.totalRetries = retries;
+		}
+
+		public double getAttemptedPrice() { return attemptedPrice; }
+		public double getLowerLimit() { return lowerLimit; }
+		public double getUpperLimit() { return upperLimit; }
+		public int getTotalRetries() { return totalRetries; }
+	}
+
+	public static class BackoffConfig {
+		public final long initialDelayMs;
+		public final long maxDelayMs;
+		public final double multiplier;
+		public final boolean jitter;
+
+		public BackoffConfig(long initialDelayMs, long maxDelayMs, double multiplier, boolean jitter) {
+			this.initialDelayMs = Math.max(50, initialDelayMs);
+			this.maxDelayMs = Math.max(initialDelayMs, maxDelayMs);
+			this.multiplier = Math.max(1.0, multiplier);
+			this.jitter = jitter;
+		}
+
+		public static BackoffConfig defaultConfig() {
+			return new BackoffConfig(300, 3000, 1.5, true);
+		}
+
+		public long calculateDelay(int attempt) {
+			double delay = initialDelayMs * Math.pow(multiplier, Math.max(0, attempt - 1));
+			long bounded = (long) Math.min(delay, maxDelayMs);
+			if (jitter) {
+				double factor = 0.85 + (Math.random() * 0.30);
+				bounded = (long) (bounded * factor);
+			}
+			return bounded;
+		}
+	}
+
 	public static boolean executeTradeOrderWithResilientRetry(WebDriver driver, WebDriverWait wait, String side, String clientCode, String symbol, int qty, double initialRate, String exchange, int maxRetries) throws InterruptedException {
-		List<Double> candidateRates = collectSmartMarketPrices(driver, symbol, exchange, side, initialRate);
-		int attempts = Math.min(candidateRates.size(), Math.max(maxRetries, 3));
+		return executeTradeOrderWithResilientRetry(driver, wait, side, clientCode, symbol, qty, initialRate, exchange, maxRetries, BackoffConfig.defaultConfig());
+	}
+
+	public static boolean executeTradeOrderWithResilientRetry(WebDriver driver, WebDriverWait wait, String side, String clientCode, String symbol, int qty, double initialRate, String exchange, int maxRetries, BackoffConfig backoff) throws InterruptedException {
+		int attempts = Math.max(maxRetries, 3);
 		boolean orderAccepted = false;
+		double lastAttemptedRate = initialRate;
+		double lastLower = 0.0, lastUpper = 0.0;
 
 		for (int i = 0; i < attempts; i++) {
-			double currentRate = candidateRates.get(i);
+			int attemptNum = i + 1;
+			// Revalidate prices and circuit limits fresh on each attempt
+			List<Double> candidateRates = collectSmartMarketPrices(driver, symbol, exchange, side, initialRate);
+			if (candidateRates.isEmpty()) {
+				System.out.printf("[PRICE VALIDATION: ATTEMPT %d/%d] ✗ No candidate prices within circuit band for %s! Backing off...%n", attemptNum, attempts, symbol);
+				long delay = backoff.calculateDelay(attemptNum);
+				Thread.sleep(delay);
+				continue;
+			}
+
+			double currentRate = (i < candidateRates.size()) ? candidateRates.get(i) : candidateRates.get(0);
+			lastAttemptedRate = currentRate;
+
+			// Revalidate circuit limits on each attempt
+			try {
+				OMSweb_DBMarketData.PublicSymbolLtp quote = OMSweb_DBMarketData.getCachedSymbol(cleanSymbol(symbol), exchange);
+				if (quote != null) {
+					lastLower = quote.circuitDown;
+					lastUpper = quote.circuitUp;
+					if (lastLower > 0 && lastUpper > 0 && (currentRate < lastLower || currentRate > lastUpper)) {
+						long delay = backoff.calculateDelay(attemptNum);
+						System.out.printf("✗ [PRICE LIMIT BREACH: ATTEMPT %d/%d] Price %.2f outside circuit [%.2f - %.2f]. Logging retry with %d ms backoff...%n",
+								attemptNum, attempts, currentRate, lastLower, lastUpper, delay);
+						Thread.sleep(delay);
+						continue; // Revalidate on next attempt, NEVER proceed while in breach!
+					}
+				}
+			} catch (Exception ignored) {}
+
 			System.out.printf("%n-----------------------------------------------------------------------------%n");
 			System.out.printf(">>> [ORDER ATTEMPT %d/%d] Submitting %s: %d shares of %s @ %.2f (Client: %s | %s)...%n",
-					(i + 1), attempts, side.toUpperCase(), qty, symbol, currentRate, clientCode, exchange);
+					attemptNum, attempts, side.toUpperCase(), qty, symbol, currentRate, clientCode, exchange);
 			System.out.printf("-----------------------------------------------------------------------------%n");
 
 			submitSingleOrderAttempt(driver, wait, side, clientCode, symbol, qty, currentRate, exchange);
@@ -9515,21 +9597,23 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 			if ("ACCEPTED".equalsIgnoreCase(status)) {
 				System.out.printf("  ✓ [ORDER ACCEPTED] Successfully placed ACCEPTED %s order @ %.2f on attempt %d!%n",
-						side.toUpperCase(), currentRate, (i + 1));
+						side.toUpperCase(), currentRate, attemptNum);
 				lastAcceptedPrice = currentRate;
 				orderAccepted = true;
 				break;
 			} else {
-				System.out.printf("  ✗ [ORDER REJECTED] Order @ %.2f was REJECTED by exchange for %s!%n", currentRate, symbol);
-				if (i + 1 < attempts) {
-					System.out.printf("  -> Switching to next smart candidate rate (Attempt %d/%d)...%n", (i + 2), attempts);
-				}
-				Thread.sleep(800);
+				long delay = backoff.calculateDelay(attemptNum);
+				System.out.printf("  ✗ [ORDER REJECTED] Order @ %.2f was REJECTED by exchange for %s! Logged retry %d/%d. Backing off %d ms...%n",
+						currentRate, symbol, attemptNum, attempts, delay);
+				Thread.sleep(delay);
 			}
 		}
 
 		if (!orderAccepted) {
-			System.out.printf("%n[ORDER PLACEMENT WARNING] All %d rate attempts were rejected by the exchange.%n", attempts);
+			System.out.printf("%n[ORDER PLACEMENT WARNING] All %d rate attempts were rejected or in breach by the exchange.%n", attempts);
+			if (lastLower > 0 && lastUpper > 0 && (lastAttemptedRate < lastLower || lastAttemptedRate > lastUpper)) {
+				throw new PriceLimitBreachException(symbol, lastAttemptedRate, lastLower, lastUpper, attempts);
+			}
 		}
 		return orderAccepted;
 	}
