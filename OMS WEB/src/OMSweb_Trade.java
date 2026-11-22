@@ -816,6 +816,13 @@ public class OMSweb_Trade {
 
 			}
 
+			double upperLimit = (sh > 0) ? sh : ((ch > 0) ? ch : 0.0);
+			double lowerLimit = (sl > 0) ? sl : ((cl > 0) ? cl : 0.0);
+			if (upperLimit > 0.0 && rate > upperLimit) {
+				rate = upperLimit;
+			} else if (lowerLimit > 0.0 && rate < lowerLimit) {
+				rate = lowerLimit;
+			}
 			this.safeRate = Math.round(rate * 100.0) / 100.0;
 
 		}
@@ -9277,6 +9284,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"var toasts = document.querySelectorAll('.toast, .noty_body, .alert, .swal2-html-container');\n" +
 				"for (var t = 0; t < toasts.length; t++) {\n" +
 				"    var msg = (toasts[t].innerText || '').toLowerCase();\n" +
+				"    if (msg.includes('price limit') || msg.includes('circuit') || msg.includes('price band') || msg.includes('outside range') || msg.includes('breach')) return 'PRICE_BREACH';\n" +
 				"    if (msg.includes('rejected') || msg.includes('order reject')) return 'REJECTED';\n" +
 				"}\n" +
 				"// 2. Check Order Terminal Table top rows\n" +
@@ -9290,6 +9298,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"        if (sym.length > 0 && !rowText.includes(sym)) continue;\n" +
 				"        if (side.length > 0 && !rowText.includes(side)) continue;\n" +
 				"        if (rowText.includes('ACCEPTED') || rowText.includes('ACCEPT') || rowText.includes('FILLED') || rowText.includes('TRADE EXECUTED')) return 'ACCEPTED';\n" +
+				"        if (rowText.includes('BREACH') || rowText.includes('CIRCUIT')) return 'PRICE_BREACH';\n" +
 				"        if (rowText.includes('REJECTED') || rowText.includes('REJECT')) return 'REJECTED';\n" +
 				"    }\n" +
 				"}\n" +
@@ -9300,6 +9309,48 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		} catch (Exception e) {
 			return "UNKNOWN";
 		}
+	}
+
+	/**
+	 * Enforces Price Limit Breach Clamping Rules:
+	 * 1. If showing upper than suggested/circuit upper limit -> take upper price.
+	 * 2. If showing lowest than suggested/circuit lower limit -> take lowest price.
+	 * 3. If candidate is within bounds -> take candidate price.
+	 * 4. On price limit breach or missing candidate -> take suggested price (clamped to bounds).
+	 */
+	public static double resolvePriceLimitSafe(double candidatePrice, double lowerLimit, double upperLimit, double suggestedPrice) {
+		// 1. If showing upper than suggested price / upper circuit limit -> take upper price
+		if (upperLimit > 0.0 && candidatePrice > upperLimit) {
+			System.out.printf("  [PRICE LIMIT BREACH: UPPER] Candidate price %.2f exceeds upper limit %.2f -> Taking upper price: %.2f%n",
+					candidatePrice, upperLimit, upperLimit);
+			return upperLimit;
+		}
+
+		// 2. If showing lowest than suggested price / lower circuit limit -> take lowest price
+		if (lowerLimit > 0.0 && candidatePrice > 0.0 && candidatePrice < lowerLimit) {
+			System.out.printf("  [PRICE LIMIT BREACH: LOWEST] Candidate price %.2f is below lower limit %.2f -> Taking lowest price: %.2f%n",
+					candidatePrice, lowerLimit, lowerLimit);
+			return lowerLimit;
+		}
+
+		// 3. If candidate is valid and within bounds -> take candidate price
+		if (candidatePrice > 0.0) {
+			return candidatePrice;
+		}
+
+		// 4. Fallback on breach or invalid candidate -> take suggested price (clamped)
+		double baseSuggested = suggestedPrice > 0.0 ? suggestedPrice : 280.0;
+		if (upperLimit > 0.0 && baseSuggested > upperLimit) {
+			System.out.printf("  [PRICE LIMIT BREACH: SUGGESTED UPPER] Suggested price %.2f exceeds upper limit %.2f -> Taking upper price: %.2f%n",
+					baseSuggested, upperLimit, upperLimit);
+			return upperLimit;
+		}
+		if (lowerLimit > 0.0 && baseSuggested < lowerLimit) {
+			System.out.printf("  [PRICE LIMIT BREACH: SUGGESTED LOWEST] Suggested price %.2f below lower limit %.2f -> Taking lowest price: %.2f%n",
+					baseSuggested, lowerLimit, lowerLimit);
+			return lowerLimit;
+		}
+		return baseSuggested;
 	}
 
 	public static List<Double> collectSmartMarketPrices(WebDriver driver, String symbol, String exchange, String side, double initialRate) {
@@ -9353,13 +9404,29 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		double upperLimit = (sh > 0) ? sh : ((ch > 0) ? ch : 0.0);
 		double lowerLimit = (sl > 0) ? sl : ((cl > 0) ? cl : 0.0);
 
+		// Determine base suggested price based on side and best quotes
+		double suggestedPrice = isBuy
+				? (bestAsk > 0.0 ? bestAsk : (ltp > 0.0 ? ltp : (ycp > 0.0 ? ycp : 0.0)))
+				: (bestBid > 0.0 ? bestBid : (ltp > 0.0 ? ltp : (ycp > 0.0 ? ycp : 0.0)));
+
 		System.out.printf("%n[MARKET DEPTH & DB AUDIT: %s (%s)]%n", cleanSym, ex);
-		System.out.printf("  * LTP: %.2f | YCP: %.2f | Best Ask: %.2f | Best Bid: %.2f%n", ltp, ycp, bestAsk, bestBid);
+		System.out.printf("  * Suggested Price: %.2f | LTP: %.2f | YCP: %.2f | Best Ask: %.2f | Best Bid: %.2f%n",
+				suggestedPrice, ltp, ycp, bestAsk, bestBid);
 		System.out.printf("  * Circuit Limits: [%.2f (SL/CL) - %.2f (SH/CH)]%n", lowerLimit, upperLimit);
 		System.out.printf("  * Day Range: [%.2f (DL) - %.2f (DH)]%n", dl, dh);
 
-		// Include initial rate if provided
-		if (initialRate > 0.0) candidates.add(Math.round(initialRate * 100.0) / 100.0);
+		// 1. If initial rate is provided, clamp if breached:
+		// if upper -> upper price; if lowest -> lowest price; else initialRate
+		if (initialRate > 0.0) {
+			double resolvedInitial = resolvePriceLimitSafe(initialRate, lowerLimit, upperLimit, suggestedPrice);
+			candidates.add(Math.round(resolvedInitial * 100.0) / 100.0);
+		}
+
+		// 2. Add suggested price (resolved within circuit bounds)
+		if (suggestedPrice > 0.0) {
+			double resolvedSuggested = resolvePriceLimitSafe(suggestedPrice, lowerLimit, upperLimit, suggestedPrice);
+			candidates.add(Math.round(resolvedSuggested * 100.0) / 100.0);
+		}
 
 		if (isBuy) {
 			// Priority for BUY:
@@ -9370,7 +9437,8 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			// 5. YCP (Yesterday Close)
 			// 6. DL (Day Low)
 			// 7. DH (Day High)
-			// 8. Safe margin above SL (SL + 0.5)
+			// 8. Upper price (SH / CH)
+			// 9. Lowest price (SL / CL)
 			if (bestAsk > 0.0) candidates.add(Math.round(bestAsk * 100.0) / 100.0);
 			if (ltp > 0.0) candidates.add(Math.round(ltp * 100.0) / 100.0);
 			if (bestBid > 0.0) candidates.add(Math.round(bestBid * 100.0) / 100.0);
@@ -9381,8 +9449,10 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			if (ycp > 0.0) candidates.add(Math.round(ycp * 100.0) / 100.0);
 			if (dl > 0.0) candidates.add(Math.round(dl * 100.0) / 100.0);
 			if (dh > 0.0) candidates.add(Math.round(dh * 100.0) / 100.0);
-			if (lowerLimit > 0.0) candidates.add(Math.round((lowerLimit + 0.5) * 100.0) / 100.0);
 			if (upperLimit > 0.0) candidates.add(Math.round((upperLimit - 0.5) * 100.0) / 100.0);
+			if (lowerLimit > 0.0) candidates.add(Math.round((lowerLimit + 0.5) * 100.0) / 100.0);
+			if (upperLimit > 0.0) candidates.add(upperLimit); // Upper price
+			if (lowerLimit > 0.0) candidates.add(lowerLimit); // Lowest price
 		} else {
 			// Priority for SELL:
 			// 1. Best Bid (Immediate match / fill)
@@ -9391,6 +9461,8 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			// 4. Mid-point between circuit limits
 			// 5. YCP
 			// 6. DH or DL
+			// 7. Upper price (SH / CH)
+			// 8. Lowest price (SL / CL)
 			if (bestBid > 0.0) candidates.add(Math.round(bestBid * 100.0) / 100.0);
 			if (ltp > 0.0) candidates.add(Math.round(ltp * 100.0) / 100.0);
 			if (bestAsk > 0.0) candidates.add(Math.round(bestAsk * 100.0) / 100.0);
@@ -9403,29 +9475,26 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			if (dl > 0.0) candidates.add(Math.round(dl * 100.0) / 100.0);
 			if (upperLimit > 0.0) candidates.add(Math.round((upperLimit - 0.5) * 100.0) / 100.0);
 			if (lowerLimit > 0.0) candidates.add(Math.round((lowerLimit + 0.5) * 100.0) / 100.0);
+			if (upperLimit > 0.0) candidates.add(upperLimit); // Upper price
+			if (lowerLimit > 0.0) candidates.add(lowerLimit); // Lowest price
 		}
 
-		// Filter out invalid prices outside circuit breaker limits
+		// Filter & clamp:
+		// If showing upper the suggested price -> take upper price
+		// If showing lowest suggested price -> take lowest price
+		// If within bounds -> take candidate price
 		List<Double> validRates = new ArrayList<>();
 		for (Double rate : candidates) {
 			if (rate == null || rate <= 0.0) continue;
-			if (upperLimit > 0.0 && rate > upperLimit) {
-				System.out.printf("  [CIRCUIT EXCLUDED] Rate %.2f exceeds Upper Circuit Limit (SH=%.2f)%n", rate, upperLimit);
-				continue;
-			}
-			if (lowerLimit > 0.0 && rate < lowerLimit) {
-				System.out.printf("  [CIRCUIT EXCLUDED] Rate %.2f is below Lower Circuit Limit (SL=%.2f)%n", rate, lowerLimit);
-				continue;
-			}
-			if (!validRates.contains(rate)) {
-				validRates.add(rate);
+			double clamped = resolvePriceLimitSafe(rate, lowerLimit, upperLimit, suggestedPrice);
+			if (clamped > 0.0 && !validRates.contains(clamped)) {
+				validRates.add(clamped);
 			}
 		}
 
 		if (validRates.isEmpty()) {
-			if (ltp > 0.0) validRates.add(ltp);
-			else if (ycp > 0.0) validRates.add(ycp);
-			else validRates.add(initialRate > 0.0 ? initialRate : 280.0);
+			double fallback = resolvePriceLimitSafe(suggestedPrice, lowerLimit, upperLimit, 280.0);
+			validRates.add(fallback);
 		}
 
 		System.out.printf("  -> Candidates to try in sequence: %s%n", validRates);
@@ -9568,21 +9637,28 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			double currentRate = (i < candidateRates.size()) ? candidateRates.get(i) : candidateRates.get(0);
 			lastAttemptedRate = currentRate;
 
-			// Revalidate circuit limits on each attempt
+			// Revalidate circuit limits & quote on each attempt
+			double suggestedPrice = 0.0;
 			try {
 				OMSweb_DBMarketData.PublicSymbolLtp quote = OMSweb_DBMarketData.getCachedSymbol(cleanSymbol(symbol), exchange);
 				if (quote != null) {
 					lastLower = quote.circuitDown;
 					lastUpper = quote.circuitUp;
-					if (lastLower > 0 && lastUpper > 0 && (currentRate < lastLower || currentRate > lastUpper)) {
-						long delay = backoff.calculateDelay(attemptNum);
-						System.out.printf("✗ [PRICE LIMIT BREACH: ATTEMPT %d/%d] Price %.2f outside circuit [%.2f - %.2f]. Logging retry with %d ms backoff...%n",
-								attemptNum, attempts, currentRate, lastLower, lastUpper, delay);
-						Thread.sleep(delay);
-						continue; // Revalidate on next attempt, NEVER proceed while in breach!
-					}
+					suggestedPrice = quote.ltp > 0.0 ? quote.ltp : quote.ycp;
 				}
 			} catch (Exception ignored) {}
+
+			// Price limit breach enforcement:
+			// 1. If showing upper the suggested price -> take upper price
+			// 2. If showing lowest suggested price -> take lowest price
+			// 3. If price limit breach -> take suggested price
+			double clampedRate = resolvePriceLimitSafe(currentRate, lastLower, lastUpper, suggestedPrice);
+			if (clampedRate != currentRate) {
+				System.out.printf("  [PRICE ADJUSTED] Rate changed from %.2f to clamped acceptable rate %.2f [Limits: %.2f - %.2f]%n",
+						currentRate, clampedRate, lastLower, lastUpper);
+				currentRate = clampedRate;
+			}
+			lastAttemptedRate = currentRate;
 
 			System.out.printf("%n-----------------------------------------------------------------------------%n");
 			System.out.printf(">>> [ORDER ATTEMPT %d/%d] Submitting %s: %d shares of %s @ %.2f (Client: %s | %s)...%n",
@@ -9603,8 +9679,13 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				break;
 			} else {
 				long delay = backoff.calculateDelay(attemptNum);
-				System.out.printf("  ✗ [ORDER REJECTED] Order @ %.2f was REJECTED by exchange for %s! Logged retry %d/%d. Backing off %d ms...%n",
-						currentRate, symbol, attemptNum, attempts, delay);
+				if ("PRICE_BREACH".equalsIgnoreCase(status)) {
+					System.out.printf("  ✗ [PRICE LIMIT BREACH DETECTED] Terminal reported price limit breach @ %.2f. Clamping to suggested price on next attempt. Backing off %d ms...%n",
+							currentRate, delay);
+				} else {
+					System.out.printf("  ✗ [ORDER REJECTED] Order @ %.2f was REJECTED by exchange for %s! Logged retry %d/%d. Backing off %d ms...%n",
+							currentRate, symbol, attemptNum, attempts, delay);
+				}
 				Thread.sleep(delay);
 			}
 		}
@@ -9620,6 +9701,63 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 	public static void executeTradeOrderDirectSafe(WebDriver driver, WebDriverWait wait, String side, String clientCode, String symbol, int qty, double rate, String exchange) throws InterruptedException {
 		submitSingleOrderAttempt(driver, wait, side, clientCode, symbol, qty, rate, exchange);
+	}
+
+	/**
+	 * Unit test suite validating all Price Limit Breach clamping and suggested price scenarios:
+	 * 1. Price > upperLimit -> takes upper price (SH / CH).
+	 * 2. Price < lowerLimit -> takes lowest price (SL / CL).
+	 * 3. Price within limits -> takes candidate / suggested price.
+	 * 4. Price invalid/0 with suggested > upperLimit -> takes upper price.
+	 * 5. Price invalid/0 with suggested < lowerLimit -> takes lowest price.
+	 * 6. Price invalid/0 with suggested within band -> takes suggested price.
+	 */
+	public static boolean testPriceLimitBreachClamping() {
+		System.out.println("\n+=============================================================================+");
+		System.out.println("|         PRICE LIMIT BREACH & SUGGESTED PRICE RESOLUTION UNIT TESTS          |");
+		System.out.println("+=============================================================================+");
+		boolean allPassed = true;
+
+		// Case 1: Showing upper than suggested price / upper limit -> take upper price
+		double c1 = resolvePriceLimitSafe(350.0, 200.0, 300.0, 250.0);
+		boolean p1 = Math.abs(c1 - 300.0) < 0.001;
+		System.out.printf("Test 1 [Price > Upper]: Expected 300.0, Got %.2f -> %s%n", c1, p1 ? "PASS" : "FAIL");
+		allPassed &= p1;
+
+		// Case 2: Showing lowest suggested price / lower limit -> take lowest price
+		double c2 = resolvePriceLimitSafe(150.0, 200.0, 300.0, 250.0);
+		boolean p2 = Math.abs(c2 - 200.0) < 0.001;
+		System.out.printf("Test 2 [Price < Lower]: Expected 200.0, Got %.2f -> %s%n", c2, p2 ? "PASS" : "FAIL");
+		allPassed &= p2;
+
+		// Case 3: Within suggested price band -> take candidate price
+		double c3 = resolvePriceLimitSafe(245.50, 200.0, 300.0, 250.0);
+		boolean p3 = Math.abs(c3 - 245.50) < 0.001;
+		System.out.printf("Test 3 [Within Band]: Expected 245.50, Got %.2f -> %s%n", c3, p3 ? "PASS" : "FAIL");
+		allPassed &= p3;
+
+		// Case 4: Price breach / fallback where suggested > upper -> take upper price
+		double c4 = resolvePriceLimitSafe(0.0, 200.0, 300.0, 320.0);
+		boolean p4 = Math.abs(c4 - 300.0) < 0.001;
+		System.out.printf("Test 4 [Fallback Suggested > Upper]: Expected 300.0, Got %.2f -> %s%n", c4, p4 ? "PASS" : "FAIL");
+		allPassed &= p4;
+
+		// Case 5: Price breach / fallback where suggested < lower -> take lowest price
+		double c5 = resolvePriceLimitSafe(0.0, 200.0, 300.0, 180.0);
+		boolean p5 = Math.abs(c5 - 200.0) < 0.001;
+		System.out.printf("Test 5 [Fallback Suggested < Lower]: Expected 200.0, Got %.2f -> %s%n", c5, p5 ? "PASS" : "FAIL");
+		allPassed &= p5;
+
+		// Case 6: Price breach / fallback where suggested is within band -> take suggested price
+		double c6 = resolvePriceLimitSafe(0.0, 200.0, 300.0, 255.0);
+		boolean p6 = Math.abs(c6 - 255.0) < 0.001;
+		System.out.printf("Test 6 [Fallback Suggested Within Band]: Expected 255.0, Got %.2f -> %s%n", c6, p6 ? "PASS" : "FAIL");
+		allPassed &= p6;
+
+		System.out.printf("+-----------------------------------------------------------------------------+%n");
+		System.out.printf("| ALL PRICE LIMIT BREACH TESTS: %-45s |%n", allPassed ? "ALL PASSED (6/6)" : "SOME FAILED");
+		System.out.printf("+-----------------------------------------------------------------------------+%n%n");
+		return allPassed;
 	}
 
 	public static void runNormalTradeBothDSEAndCSEAndExport(WebDriver driver, Scanner sc) throws InterruptedException {
