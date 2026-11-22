@@ -347,7 +347,7 @@ public class OMSwebmain {
                         try { OMSweb_Trade.restoreAllPreviousSettings(driver); } catch (Exception ignored) {}
                         idleStart = System.currentTimeMillis();
                         System.out.println("\n[IDLE WATCHDOG] Page reloaded & UI state restored. You are at the Main Menu.");
-                        System.out.print("Enter Choice (1-6 to execute, 0=Exit): ");
+                        System.out.print("Enter Choice (1-8 to execute, 0=Exit): ");
                     }
                 }
             } catch (Exception ignored) {}
@@ -365,7 +365,7 @@ public class OMSwebmain {
                 }
                 idleStart = System.currentTimeMillis();
                 System.out.println("\n[IDLE WATCHDOG] Page reloaded & UI state restored. You are at the Main Menu.");
-                System.out.print("Enter Choice (1-6 to execute, 0=Exit): ");
+                System.out.print("Enter Choice (1-8 to execute, 0=Exit): ");
             }
 
             try { Thread.sleep(200); } catch (Exception ignored) {}

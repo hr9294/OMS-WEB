@@ -903,7 +903,12 @@ public class OMSweb_DashboardAudit {
                 Thread.sleep(1500);
                 System.out.printf("  -> Placing Order for Symbol [%s], Client [%s], Qty [10]...%n", targetSymbol, targetClient);
                 OMSweb_Trade.propagateClientCodeToAllWidgets(driver, targetClient, targetSymbol);
-                Thread.sleep(1000);
+                Thread.sleep(800);
+                WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+                double refPrice = OMSweb_Trade.fetchPriceLtpOrYcp(driver, wait, targetSymbol, "DSE");
+                if (refPrice <= 0) refPrice = 100.0;
+                OMSweb_Trade.placeTradeOrderDirect(driver, wait, "BUY", targetClient, targetSymbol, 10, refPrice);
+                Thread.sleep(2000);
             } catch (Exception e) {
                 System.out.println("  -> Trade encounter: " + e.getMessage());
             }

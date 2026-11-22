@@ -277,7 +277,7 @@ public class OMSweb_MultiOrderExecution {
         // Step 4: 6-Widget Verification Audit
         boolean hasAnyOrder = false;
         for (OrderItem oi : placedOrders) {
-            if (OMSweb_Trade.hasLatestOrderInTerminal(driver, oi.clientCode, oi.symbol != null ? oi.symbol : symbol)) {
+            if (OMSweb_Trade.hasLatestOrderInTerminal(driver, oi.getClientCode(), oi.getSymbol() != null ? oi.getSymbol() : symbol)) {
                 hasAnyOrder = true;
                 break;
             }
@@ -429,7 +429,7 @@ public class OMSweb_MultiOrderExecution {
         // =====================================================================
         boolean hasAnyOrder = false;
         for (OrderItem oi : placedOrders) {
-            if (OMSweb_Trade.hasLatestOrderInTerminal(driver, oi.clientCode, oi.symbol != null ? oi.symbol : symbol)) {
+            if (OMSweb_Trade.hasLatestOrderInTerminal(driver, oi.getClientCode(), oi.getSymbol() != null ? oi.getSymbol() : symbol)) {
                 hasAnyOrder = true;
                 break;
             }

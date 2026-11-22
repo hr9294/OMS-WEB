@@ -567,6 +567,11 @@ public class OMSweb_Trade {
 	}
 
 	public static void main(String[] args) throws InterruptedException, IOException {
+		if (args != null && args.length > 0 && "test".equalsIgnoreCase(args[0])) {
+			boolean ok = testPriceLimitBreachClamping();
+			System.exit(ok ? 0 : 1);
+			return;
+		}
 
 		System.setProperty("webdriver.chrome.silentOutput", "true");
 
@@ -3051,9 +3056,9 @@ public class OMSweb_Trade {
 					Long ccCount = (Long) js.executeScript(
 						"var cc = document.querySelectorAll('.chooseColor');\n" +
 						"var stacks = document.querySelectorAll('.lm_stack');\n" +
-						"if (cc && cc.length >= 2) return (long) cc.length;\n" +
-						"if (stacks && stacks.length >= 4) return (long) stacks.length;\n" +
-						"return 0L;\n"
+						"if (cc && cc.length >= 2) return cc.length;\n" +
+						"if (stacks && stacks.length >= 4) return stacks.length;\n" +
+						"return 0;\n"
 					);
 					if (ccCount != null && ccCount >= 2) {
 						Thread.sleep(600);
@@ -3100,6 +3105,9 @@ public class OMSweb_Trade {
 
 			// 7. Re-install anti-idle heartbeat
 			installAntiIdleHeartbeat(driver);
+			try {
+				((JavascriptExecutor) driver).executeScript("window._antiIdleInstalled = true; window._idleAutoReloadWatchdogInstalled = true;");
+			} catch (Exception ignored) {}
 
 			System.out.println("[IDLE RESTORATION] ✓ All previous settings successfully restored and visible.\n");
 		} catch (Exception e) {
@@ -3219,6 +3227,7 @@ public class OMSweb_Trade {
 				"try {\n" +
 				"    if (!window._idleAutoReloadWatchdogInstalled) {\n" +
 				"        window._idleAutoReloadWatchdogInstalled = true;\n" +
+				"        window._antiIdleInstalled = true;\n" +
 				"        window._lastActivityTimestamp = Date.now();\n" +
 				"        var markActive = function() { window._lastActivityTimestamp = Date.now(); };\n" +
 				"        ['mousemove', 'mousedown', 'keydown', 'keypress', 'click', 'scroll', 'touchstart', 'focus'].forEach(function(ev) {\n" +

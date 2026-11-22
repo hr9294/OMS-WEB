@@ -373,10 +373,16 @@ def run_live_reflection_audit(driver: webdriver.Chrome) -> None:
         target_symbol = getattr(oms_trade, "active_symbol", "GP")
         target_client = getattr(oms_trade, "active_client_code", "23986")
         try:
+            import oms_price
             oms_trade.navigate_to_trade_page(driver)
             time.sleep(1.5)
             print(f"  -> Placing Order for Symbol [{target_symbol}], Client [{target_client}], Qty [10]...")
-            time.sleep(1.0)
+            time.sleep(0.8)
+            ref_price = oms_price.fetch_price_ltp_or_ycp(driver, target_symbol, "DSE")
+            if ref_price <= 0:
+                ref_price = 100.0
+            oms_trade.place_order(driver, "BUY", target_client, target_symbol, 10, ref_price, "DSE")
+            time.sleep(2.0)
         except Exception as e:
             print(f"  -> Trade encounter: {e}")
 
