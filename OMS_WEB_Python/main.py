@@ -23,6 +23,7 @@ import market_depth
 import order_terminal
 import widget_color
 import oms_dashboard
+import rms
 
 
 def print_banner() -> None:
@@ -34,7 +35,7 @@ def print_banner() -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="OMS-WEB Python Automation Suite")
-    parser.add_argument("--mode", choices=["trade", "multi-order", "load-test", "account-limits", "position", "portfolio", "depth", "terminal"],
+    parser.add_argument("--mode", choices=["trade", "multi-order", "load-test", "account-limits", "position", "portfolio", "depth", "terminal", "db-ltp", "dashboard", "rms"],
                         help="Directly launch a specific engine without prompt")
     parser.add_argument("--headless", action="store_true", help="Run Chrome in headless mode")
     parser.add_argument("--username", help="OMS username override")
@@ -79,7 +80,8 @@ def main() -> None:
             print("  8. Order Terminal Viewer")
             print("  9. Collect & View Live Public Board Symbols & LTPs from DB Table (dse_md_ltp)")
             print("  10. Dashboard 12-Model Data Reflection & Live Audit")
-            choice = input("Enter Choice (1-10, default 1): ").strip()
+            print("  11. RMS Risk Management Engine (qRMS Settings, Clients RMS, Scrip Controls & Board Restrictions)")
+            choice = input("Enter Choice (1-11, default 1): ").strip()
 
             mode_map = {
                 "1": "trade",
@@ -91,7 +93,8 @@ def main() -> None:
                 "7": "depth",
                 "8": "terminal",
                 "9": "db-ltp",
-                "10": "dashboard"
+                "10": "dashboard",
+                "11": "rms"
             }
             mode = mode_map.get(choice, "trade")
 
@@ -126,6 +129,8 @@ def main() -> None:
             print(f"\nOrder Terminal Status: {snap}")
         elif mode == "dashboard":
             oms_dashboard.run_live_reflection_audit(driver)
+        elif mode == "rms":
+            rms.run_rms_console(driver)
         else:
             oms_trade.run_trade_workflow(driver)
 
