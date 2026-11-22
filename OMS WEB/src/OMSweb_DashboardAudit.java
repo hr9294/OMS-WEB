@@ -218,7 +218,6 @@ public class OMSweb_DashboardAudit {
         return false;
     }
 
-    @SuppressWarnings("unchecked")
     public static DashboardSnapshot captureSnapshot(WebDriver driver, String label) {
         DashboardSnapshot snap = new DashboardSnapshot();
         snap.label = label;

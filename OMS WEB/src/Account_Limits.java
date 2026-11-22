@@ -34,7 +34,6 @@ public class Account_Limits {
 
     // Filter Bar
     private static final By INPUT_CLIENT_FILTER = By.xpath("//input[@id='account_limit_code' or contains(@name,'account_limit_code') or contains(@id,'limit_client_code')] | //div[contains(@class,'account-limit')]//input[1]");
-    private static final By BTN_CLEAR           = By.xpath("//button[normalize-space()='Clear' or contains(@class,'btn-danger')]");
     private static final By REFRESH_BTN         = By.xpath("//div[contains(@class,'account-limit')]//i[contains(@class,'refresh')] | //button[contains(@id,'refresh')]");
 
     // Tables in Account Limits
@@ -266,6 +265,8 @@ public class Account_Limits {
      * Exception raised when no eligible entity with sufficient cash limit exists.
      */
     public static class InsufficientCashLimitException extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+
         public InsufficientCashLimitException(double requiredCash, String reason) {
             super(String.format("Cash Limit Allocation Failed: Required %,.2f BDT could not be resolved. %s", requiredCash, reason));
         }

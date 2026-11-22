@@ -9893,6 +9893,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 	}
 
 	public static class PriceLimitBreachException extends RuntimeException {
+		private static final long serialVersionUID = 1L;
 		private final double attemptedPrice;
 		private final double lowerLimit;
 		private final double upperLimit;
