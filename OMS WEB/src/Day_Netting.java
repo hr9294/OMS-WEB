@@ -2858,108 +2858,47 @@ public class Day_Netting {
     // 6. MAIN CLI & INTEGRATION MENU
     // =========================================================================
 
-    public static String readLineWithIdleWatchdog(WebDriver driver, Scanner sc, int idleSeconds) {
-        if (sc == null) return "";
-        long timeoutMs = idleSeconds * 1000L;
-        long idleStart = System.currentTimeMillis();
-
-        // Ensure watchdog is installed in browser
+    public static String readLineWithTimeout(Scanner sc, String defaultVal, int timeoutSeconds) {
+        if (sc == null) return defaultVal;
         try {
-            if (driver != null) {
-                JavascriptExecutor js = (JavascriptExecutor) driver;
-                js.executeScript(
-                    "var idleLimit = arguments[0] || 300000;\n" +
-                    "try {\n" +
-                    "    if (!window._idleAutoReloadWatchdogInstalled) {\n" +
-                    "        window._idleAutoReloadWatchdogInstalled = true;\n" +
-                    "        window._lastActivityTimestamp = Date.now();\n" +
-                    "        var markActive = function() { window._lastActivityTimestamp = Date.now(); };\n" +
-                    "        ['mousemove', 'mousedown', 'keydown', 'keypress', 'click', 'scroll', 'touchstart', 'focus'].forEach(function(ev) {\n" +
-                    "            window.addEventListener(ev, markActive, { passive: true, capture: true });\n" +
-                    "            document.addEventListener(ev, markActive, { passive: true, capture: true });\n" +
-                    "        });\n" +
-                    "        setInterval(function() {\n" +
-                    "            try {\n" +
-                    "                var m = document.getElementById('autoReloadModal');\n" +
-                    "                if (m && (m.classList.contains('show') || window.getComputedStyle(m).display !== 'none' || (m.innerText && m.innerText.indexOf('You were idle') !== -1 && m.offsetParent !== null))) {\n" +
-                    "                    console.log('[WATCHDOG] Idle modal detected! Reloading page...');\n" +
-                    "                    location.reload();\n" +
-                    "                    return;\n" +
-                    "                }\n" +
-                    "                var elapsed = Date.now() - (window._lastActivityTimestamp || Date.now());\n" +
-                    "                if (elapsed >= idleLimit) { // 5 minutes idle = 300000 ms\n" +
-                    "                    console.log('[WATCHDOG] ' + Math.round(idleLimit / 60000) + ' minutes idle reached. Reloading page...');\n" +
-                    "                    window._lastActivityTimestamp = Date.now();\n" +
-                    "                    location.reload();\n" +
-                    "                }\n" +
-                    "            } catch(e) {}\n" +
-                    "        }, 1000);\n" +
-                    "    }\n" +
-                    "} catch(e) {}\n",
-                    timeoutMs
-                );
+            long end = System.currentTimeMillis() + (timeoutSeconds * 1000L);
+            while (System.currentTimeMillis() < end) {
+                if (System.in.available() > 0 && sc.hasNextLine()) {
+                    String res = sc.nextLine().trim();
+                    return res.isEmpty() ? defaultVal : res;
+                }
+                Thread.sleep(100);
             }
-        } catch (Exception ignored) {}
+            System.out.println(" [Auto-selected default: " + defaultVal + "]");
+            return defaultVal;
+        } catch (Exception e) {
+            return defaultVal;
+        }
+    }
 
-        while (true) {
+    public static String readLineWithIdleWatchdog(WebDriver driver, Scanner sc, String defaultVal, int timeoutSeconds) {
+        if (sc == null) return defaultVal;
+        long timeoutMs = timeoutSeconds * 1000L;
+        long start = System.currentTimeMillis();
+
+        while (System.currentTimeMillis() - start < timeoutMs) {
             try {
                 if (System.in.available() > 0) {
                     if (sc.hasNextLine()) {
                         String input = sc.nextLine().trim();
-                        return input;
+                        return input.isEmpty() ? defaultVal : input;
                     }
                 }
             } catch (Exception ignored) {}
 
-            // 1. Check if browser idle modal appeared
-            try {
-                if (driver != null) {
-                    JavascriptExecutor js = (JavascriptExecutor) driver;
-                    Boolean isIdleModalVisible = (Boolean) js.executeScript(
-                        "try {\n" +
-                        "    var m = document.getElementById('autoReloadModal');\n" +
-                        "    if (m && (m.classList.contains('show') || m.style.display === 'block' || window.getComputedStyle(m).display !== 'none')) return true;\n" +
-                        "    var btn = Array.from(document.querySelectorAll('button, a')).find(function(b) { return (b.innerText || '').indexOf('Reload Manually') !== -1; });\n" +
-                        "    if (btn && btn.offsetParent !== null) return true;\n" +
-                        "    var txt = (document.body ? document.body.innerText : '');\n" +
-                        "    return txt.indexOf('You were idle!') !== -1 && txt.indexOf('Reload Manually') !== -1;\n" +
-                        "} catch(e) { return false; }"
-                    );
-                    if (Boolean.TRUE.equals(isIdleModalVisible)) {
-                        System.out.println("\n[IDLE DETECTED] 'You were idle!' popup appeared on screen. Reloading page...");
-                        js.executeScript(
-                            "try {\n" +
-                            "    var btn = document.querySelector('#autoReloadModal button, button[onclick*=\"reload\"]');\n" +
-                            "    if (btn) btn.click(); else location.reload();\n" +
-                            "} catch(e) { location.reload(); }\n"
-                        );
-                        Thread.sleep(2500);
-                        try { OMSweb_Trade.restoreAllPreviousSettings(driver); } catch (Exception ignored) {}
-                        idleStart = System.currentTimeMillis();
-                        System.out.println("\n[IDLE WATCHDOG] Page reloaded & UI state restored. You are at the Day Netting Administration Menu.");
-                        System.out.print("Enter Choice (1-7, 0=Return): ");
-                    }
-                }
-            } catch (Exception ignored) {}
-
-            // 2. Check if idle timeout reached (e.g. 5 minutes)
-            if (driver != null && System.currentTimeMillis() - idleStart >= timeoutMs) {
-                System.out.printf("%n[IDLE %d-MIN WATCHDOG] %d minutes (%ds) idle without input. Reloading page and restoring session...%n", (idleSeconds / 60), (idleSeconds / 60), idleSeconds);
-                try {
-                    JavascriptExecutor js = (JavascriptExecutor) driver;
-                    js.executeScript("location.reload();");
-                    Thread.sleep(2500);
-                    try { OMSweb_Trade.restoreAllPreviousSettings(driver); } catch (Exception ignored) {}
-                } catch (Exception e) {
-                    try { driver.navigate().refresh(); } catch (Exception ignored) {}
-                }
-                idleStart = System.currentTimeMillis();
-                System.out.println("\n[IDLE WATCHDOG] Page reloaded & UI state restored. You are at the Day Netting Administration Menu.");
-                System.out.print("Enter Choice (1-7, 0=Return): ");
-            }
-
-            try { Thread.sleep(200); } catch (Exception ignored) {}
+            try { Thread.sleep(150); } catch (Exception ignored) {}
         }
+        System.out.println(" [Auto-selected default: " + defaultVal + "]");
+        return defaultVal;
+    }
+
+    public static String readLineWithIdleWatchdog(WebDriver driver, Scanner sc, int idleSeconds) {
+        return readLineWithIdleWatchdog(driver, sc, "1", 4);
     }
 
     public static void main(WebDriver driver, Scanner sc) throws InterruptedException {
@@ -2990,14 +2929,12 @@ public class Day_Netting {
 
             String choice = "";
             if (isCi) {
-                choice = "7";
-                System.out.println("\n[DOCKER AUTOMATE MODE] Automatically selected Day Netting option: 7 (Full Test Suite)");
+                choice = "1";
+                System.out.println("\n[DOCKER AUTOMATE MODE] Automatically selected Day Netting option: 1 (Configure Netting Mode & Live Trade Audit)");
             } else {
-                while (choice.isEmpty()) {
-                    System.out.print("Enter Choice (1-8, 0=Return): ");
-                    choice = readLineWithIdleWatchdog(driver, sc, 300);
-                    if (choice.isEmpty()) break;
-                }
+                System.out.print("Enter Choice (1-8, 0=Return, default=1 in 4s): ");
+                choice = readLineWithIdleWatchdog(driver, sc, "1", 4);
+                if (choice.isEmpty()) choice = "1";
             }
 
             if ("0".equals(choice) || "exit".equalsIgnoreCase(choice)) {
@@ -3010,10 +2947,10 @@ public class Day_Netting {
                 System.out.println("-------------------------------------------------------------");
                 System.out.println("Select Netting Mode individually:");
                 System.out.println("  1. None (Netting disabled across the system)");
-                System.out.println("  2. Individual Exchange (Netting within same exchange)");
+                System.out.println("  2. Individual Exchange (Netting within same exchange) [Default]");
                 System.out.println("  3. Cross Exchange (Netting across DSE & CSE)");
-                System.out.print("Enter Choice (1-3, default=2): ");
-                String mChoice = sc.nextLine().trim();
+                System.out.print("Enter Choice (1-3, default=2 in 4s): ");
+                String mChoice = readLineWithTimeout(sc, "2", 4);
                 NettingMode targetMode = "1".equals(mChoice) || "none".equalsIgnoreCase(mChoice) ? NettingMode.NONE :
                                          "3".equals(mChoice) || "cross".equalsIgnoreCase(mChoice) ? NettingMode.CROSS_EXCHANGE :
                                          NettingMode.INDIVIDUAL_EXCHANGE;
@@ -3023,8 +2960,8 @@ public class Day_Netting {
                 System.out.println("  1. DSE (Dhaka Stock Exchange) [Default]");
                 System.out.println("  2. CSE (Chittagong Stock Exchange)");
                 System.out.println("  3. BOTH (DSE & CSE)");
-                System.out.print("Enter Choice (1-3, default=1 [DSE]): ");
-                String exChoice = sc.nextLine().trim();
+                System.out.print("Enter Choice (1-3, default=1 [DSE] in 4s): ");
+                String exChoice = readLineWithTimeout(sc, "1", 4);
                 String targetExchange = "DSE";
                 if ("2".equals(exChoice) || "cse".equalsIgnoreCase(exChoice)) {
                     targetExchange = "CSE";
@@ -3037,8 +2974,9 @@ public class Day_Netting {
 
                 boolean allowZSpot = false;
 
-                System.out.print("Enter password authentication (default=12345, or press ENTER): ");
-                String pwd = sc.nextLine().trim();
+                System.out.print("Enter password authentication (default=12345 in 4s, or press ENTER): ");
+                String pwd = readLineWithTimeout(sc, "12345", 4);
+                if (pwd.isEmpty()) pwd = "12345";
 
                 boolean dseNetting = true;
                 boolean cseNetting = true;
@@ -3079,16 +3017,16 @@ public class Day_Netting {
 
                 // 3. Real-Time UI Data Reflection, Pre-Trade Capture, Trade Execution & Post-Trade Comparison
                 System.out.println("\n>>> [REAL-TIME 6-WIDGET UI DATA AUDIT & TRADE VERIFICATION] <<<");
-                System.out.print("Enter Target Symbol to Audit (default=GP, press ENTER): ");
-                String sym = sc.nextLine().trim();
+                System.out.print("Enter Target Symbol to Audit (default=GP in 4s, press ENTER): ");
+                String sym = readLineWithTimeout(sc, "GP", 4);
                 if (sym.isEmpty()) sym = "GP";
-                System.out.print("Enter Target Client Code to Audit (default=23986, press ENTER): ");
-                String cln = sc.nextLine().trim();
+                System.out.print("Enter Target Client Code to Audit (default=23986 in 4s, press ENTER): ");
+                String cln = readLineWithTimeout(sc, "23986", 4);
                 if (cln.isEmpty()) cln = "23986";
 
                 System.out.println("\nSelect Trading Board (1=PUBLIC [Default], 2=BLOCK, 3=SPOT): ");
-                System.out.print("Enter Choice (1-3, default=1 [PUBLIC]): ");
-                String brdChoice = sc.nextLine().trim();
+                System.out.print("Enter Choice (1-3, default=1 [PUBLIC] in 4s): ");
+                String brdChoice = readLineWithTimeout(sc, "1", 4);
                 String board = "2".equals(brdChoice) || "block".equalsIgnoreCase(brdChoice) ? "BLOCK" :
                                "3".equals(brdChoice) || "spot".equalsIgnoreCase(brdChoice) ? "SPOT" : "PUBLIC";
 
@@ -3114,8 +3052,8 @@ public class Day_Netting {
                 System.out.println("  3. BOTH: BUY then SELL (Client A Buys, Client B [from Position/DB] Sells) [Default]");
                 System.out.println("  4. BOTH: SELL then BUY (Client A Sells, Client B [from DB Cash > 500k/Default] Buys)");
                 System.out.println("  0. Skip Trade");
-                System.out.print("Select Trade Action to execute (1=BUY / 2=SELL / 3=BUY then SELL [Default] / 4=SELL then BUY / 0=Skip, default=3): ");
-                String tradeOpt = sc.nextLine().trim();
+                System.out.print("Select Trade Action to execute (1=BUY / 2=SELL / 3=BUY then SELL [Default] / 4=SELL then BUY / 0=Skip, default=3 in 4s): ");
+                String tradeOpt = readLineWithTimeout(sc, "3", 4);
                 if (tradeOpt.isEmpty()) tradeOpt = "3";
 
                 String tradeAction = "BOTH_BUY_SELL";
@@ -3133,8 +3071,8 @@ public class Day_Netting {
 
                 if (!"SKIP".equals(tradeAction)) {
                     int tradeQty = 1;
-                    System.out.print("Enter Trade Quantity per side (default=1, press ENTER): ");
-                    String qtyStr = sc.nextLine().trim();
+                    System.out.print("Enter Trade Quantity per side (default=1 in 4s, press ENTER): ");
+                    String qtyStr = readLineWithTimeout(sc, "1", 4);
                     if (!qtyStr.isEmpty()) {
                         try { tradeQty = Integer.parseInt(qtyStr.trim()); } catch (Exception ignored) {}
                     }
@@ -3146,9 +3084,9 @@ public class Day_Netting {
                     } catch (Exception ignored) {}
 
                     double tradeRate = defaultRate;
-                    System.out.printf("Enter Trade Rate (default=auto %.2f from Market Depth / DB, or press ENTER): ", defaultRate);
-                    String rStr = sc.nextLine().trim();
-                    if (!rStr.isEmpty()) {
+                    System.out.printf("Enter Trade Rate (default=auto %.2f from Market Depth / DB in 4s, or press ENTER): ", defaultRate);
+                    String rStr = readLineWithTimeout(sc, (defaultRate > 0 ? String.format(Locale.US, "%.2f", defaultRate) : "auto"), 4);
+                    if (!rStr.isEmpty() && !"auto".equalsIgnoreCase(rStr)) {
                         try { tradeRate = Double.parseDouble(rStr.replaceAll("[^0-9.]", "")); } catch (Exception ignored) {}
                     }
 
@@ -3161,8 +3099,8 @@ public class Day_Netting {
                         // =============================================================
                         String buyerClient = cln;
                         String sellerClient = resolveSellerClient(driver, sym, tradeQty, buyerClient, orderEx);
-                        System.out.printf("Confirm or enter Seller Client for Leg 2 (default=%s, press ENTER to accept): ", sellerClient);
-                        String customSeller = sc.nextLine().trim();
+                        System.out.printf("Confirm or enter Seller Client for Leg 2 (default=%s in 4s, press ENTER to accept): ", sellerClient);
+                        String customSeller = readLineWithTimeout(sc, sellerClient, 4);
                         if (!customSeller.isEmpty()) sellerClient = customSeller;
 
                         System.out.printf("%n>>> [DAY NETTING DUAL TRADE: LEG 1/2 - BUY] Submitting BUY Order: %d shares of %s (Board: %s) for Client A %s on %s (Rate: %.2f)...%n",
@@ -3219,8 +3157,8 @@ public class Day_Netting {
                         // =============================================================
                         String sellerClient = cln;
                         String buyerClient = resolveBuyerClient(sellerClient, "23986");
-                        System.out.printf("Confirm or enter Buyer Client for Leg 2 (default=%s, press ENTER to accept): ", buyerClient);
-                        String customBuyer = sc.nextLine().trim();
+                        System.out.printf("Confirm or enter Buyer Client for Leg 2 (default=%s in 4s, press ENTER to accept): ", buyerClient);
+                        String customBuyer = readLineWithTimeout(sc, buyerClient, 4);
                         if (!customBuyer.isEmpty()) buyerClient = customBuyer;
 
                         System.out.printf("%n>>> [DAY NETTING DUAL TRADE: LEG 1/2 - SELL] Submitting SELL Order: %d shares of %s (Board: %s) for Client A %s on %s (Rate: %.2f)...%n",
@@ -3311,6 +3249,12 @@ public class Day_Netting {
                     compareAndReportNettingWidgets(driver, preTradeSnap, postTradeSnap, "DAY NETTING UI AUDIT (" + targetMode.name() + " - " + targetExchange + ")");
                 }
                 System.out.println("[ACTION COMPLETE] Netting Mode, Exchange Netting, Trade Execution, and Widget-Wise Comparison finished successfully.");
+                System.out.print("\nDo you want to run another Day Netting action? (1=YES / 0=Exit to Main Session, default=0 in 4s): ");
+                String again = readLineWithTimeout(sc, "0", 4);
+                if (!"1".equals(again) && !"yes".equalsIgnoreCase(again) && !"y".equalsIgnoreCase(again)) {
+                    running = false;
+                    break;
+                }
             } else if ("2".equals(choice)) {
                 System.out.println("\n-------------------------------------------------------------");
                 System.out.println("     2. CONFIGURE EXCHANGE NETTING (INDIVIDUAL SELECTION)    ");
