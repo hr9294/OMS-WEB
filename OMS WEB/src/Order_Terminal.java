@@ -207,7 +207,7 @@ public class Order_Terminal {
             try {
                 if (!cleanClient.isEmpty()) {
                     WebElement codeInput = driver.findElement(INPUT_CODE);
-                    if (codeInput.isDisplayed() && !cleanClient.equals(codeInput.getAttribute("value"))) {
+                    if (codeInput.isDisplayed() && !cleanClient.equals(codeInput.getDomProperty("value"))) {
                         codeInput.clear();
                         codeInput.sendKeys(cleanClient);
                         codeInput.sendKeys(Keys.ENTER);
@@ -216,7 +216,7 @@ public class Order_Terminal {
                 }
                 if (!cleanSym.isEmpty()) {
                     WebElement symInput = driver.findElement(INPUT_SYMBOL);
-                    if (symInput.isDisplayed() && !cleanSym.equals(symInput.getAttribute("value"))) {
+                    if (symInput.isDisplayed() && !cleanSym.equals(symInput.getDomProperty("value"))) {
                         symInput.clear();
                         symInput.sendKeys(cleanSym);
                         symInput.sendKeys(Keys.ENTER);

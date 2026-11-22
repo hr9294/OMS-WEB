@@ -31,6 +31,7 @@ import org.openqa.selenium.support.ui.WebDriverWait;
  * - Active vs Inactive User State Audit
  * - Individual Model-Wise Table Presentation
  */
+@SuppressWarnings("unchecked")
 public class OMSweb_DashboardAudit {
 
     public static class TurnoverModel {

@@ -488,7 +488,7 @@ public class Position {
                 WebElement codeInp = driver.findElement(By.xpath(
                         "//input[@id='client_search' or contains(@name,'client_search')] | " +
                         "//div[contains(@class,'position') or .//table[@id='symbol_position_table']]//input[contains(@placeholder,'Code')]"));
-                if (codeInp.isDisplayed() && !cleanClient.equals(codeInp.getAttribute("value"))) {
+                if (codeInp.isDisplayed() && !cleanClient.equals(codeInp.getDomProperty("value"))) {
                     codeInp.clear();
                     codeInp.sendKeys(cleanClient);
                     codeInp.sendKeys(Keys.ENTER);

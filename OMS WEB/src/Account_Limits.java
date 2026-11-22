@@ -738,7 +738,7 @@ public class Account_Limits {
             // Additional UI interaction fallback
             try {
                 WebElement input = driver.findElement(INPUT_CLIENT_FILTER);
-                if (input.isDisplayed() && !cleanClient.equals(input.getAttribute("value"))) {
+                if (input.isDisplayed() && !cleanClient.equals(input.getDomProperty("value"))) {
                     input.clear();
                     input.sendKeys(cleanClient);
                     input.sendKeys(Keys.ENTER);

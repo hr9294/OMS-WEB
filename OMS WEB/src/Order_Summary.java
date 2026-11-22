@@ -163,7 +163,7 @@ public class Order_Summary {
             try {
                 if (!cleanClient.isEmpty()) {
                     WebElement clientBox = driver.findElement(INPUT_CLIENT_FILTER);
-                    if (clientBox.isDisplayed() && !cleanClient.equals(clientBox.getAttribute("value"))) {
+                    if (clientBox.isDisplayed() && !cleanClient.equals(clientBox.getDomProperty("value"))) {
                         clientBox.clear();
                         clientBox.sendKeys(cleanClient);
                         clientBox.sendKeys(Keys.ENTER);
@@ -171,7 +171,7 @@ public class Order_Summary {
                 }
                 if (!cleanSym.isEmpty()) {
                     WebElement searchBox = driver.findElement(INPUT_SEARCH_SYMBOL);
-                    if (searchBox.isDisplayed() && !cleanSym.equals(searchBox.getAttribute("value"))) {
+                    if (searchBox.isDisplayed() && !cleanSym.equals(searchBox.getDomProperty("value"))) {
                         searchBox.clear();
                         searchBox.sendKeys(cleanSym);
                         searchBox.sendKeys(Keys.ENTER);
