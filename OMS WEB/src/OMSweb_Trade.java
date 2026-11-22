@@ -8376,50 +8376,157 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 	}
 
-	public static void dismissRejectionAlert(WebDriver driver) {
+	public static String lastRejectionAlertText = "";
 
+	public static class RejectionOrderPriceInfo {
+		public final double suggestedPrice;
+		public final double upperLimit;
+		public final double lowerLimit;
+		public final String rawMessage;
+
+		public RejectionOrderPriceInfo(double suggestedPrice, double upperLimit, double lowerLimit, String rawMessage) {
+			this.suggestedPrice = suggestedPrice;
+			this.upperLimit = upperLimit;
+			this.lowerLimit = lowerLimit;
+			this.rawMessage = rawMessage;
+		}
+
+		public boolean hasSuggestedPrice() { return suggestedPrice > 0.0; }
+		public boolean hasUpperLimit() { return upperLimit > 0.0; }
+		public boolean hasLowerLimit() { return lowerLimit > 0.0; }
+	}
+
+	public static RejectionOrderPriceInfo parseRejectionText(String rawMsg) {
+		if (rawMsg == null || rawMsg.trim().isEmpty()) {
+			return new RejectionOrderPriceInfo(0.0, 0.0, 0.0, "");
+		}
+
+		double extractedSuggested = 0.0;
+		double extractedUpper = 0.0;
+		double extractedLower = 0.0;
+
+		java.util.regex.Pattern pSuggested = java.util.regex.Pattern.compile("(?i)(?:suggested|suggest|recommended|acceptable)[^0-9]{1,30}?([0-9]+(?:\\.[0-9]+)?)");
+		java.util.regex.Matcher mSuggested = pSuggested.matcher(rawMsg);
+		if (mSuggested.find()) {
+			extractedSuggested = parseNumSafe(mSuggested.group(1));
+		}
+
+		java.util.regex.Pattern pRange = java.util.regex.Pattern.compile("(?i)(?:\\[|between\\s+)([0-9]+(?:\\.[0-9]+)?)\\s*(?:-|to|and)\\s*([0-9]+(?:\\.[0-9]+)?)\\]?");
+		java.util.regex.Matcher mRange = pRange.matcher(rawMsg);
+		if (mRange.find()) {
+			extractedLower = parseNumSafe(mRange.group(1));
+			extractedUpper = parseNumSafe(mRange.group(2));
+		}
+
+		if (extractedUpper <= 0.0) {
+			java.util.regex.Pattern pUpper = java.util.regex.Pattern.compile("(?i)(?:upper|high|max(?:imum)?|ceiling)[^0-9]{1,30}?([0-9]+(?:\\.[0-9]+)?)");
+			java.util.regex.Matcher mUpper = pUpper.matcher(rawMsg);
+			if (mUpper.find()) {
+				extractedUpper = parseNumSafe(mUpper.group(1));
+			}
+		}
+
+		if (extractedLower <= 0.0) {
+			java.util.regex.Pattern pLower = java.util.regex.Pattern.compile("(?i)(?:lower|lowest|low|min(?:imum)?|floor)[^0-9]{1,30}?([0-9]+(?:\\.[0-9]+)?)");
+			java.util.regex.Matcher mLower = pLower.matcher(rawMsg);
+			if (mLower.find()) {
+				extractedLower = parseNumSafe(mLower.group(1));
+			}
+		}
+
+		return new RejectionOrderPriceInfo(extractedSuggested, extractedUpper, extractedLower, rawMsg);
+	}
+
+	public static RejectionOrderPriceInfo extractRejectionOrderPriceInfo(WebDriver driver, String clientCode, String symbol) {
+		if (driver == null) return parseRejectionText(lastRejectionAlertText);
 		try {
-
-			((JavascriptExecutor) driver).executeScript(
-
-				"try {" +
-
-				"    if (window.jconfirm && window.jconfirm.instances) {" +
-
-				"        for (var i = 0; i < window.jconfirm.instances.length; i++) {" +
-
-				"            var inst = window.jconfirm.instances[i];" +
-
-				"            if (inst && typeof inst.close === 'function') inst.close();" +
-
-				"        }" +
-
-				"    }" +
-
-				"    var btns = document.querySelectorAll('.jconfirm-buttons button, .modal button.btn-danger, .modal button.btn-secondary, button.btn-primary');" +
-
-				"    for (var b = 0; b < btns.length; b++) {" +
-
-				"        var bt = (btns[b].innerText || '').toLowerCase();" +
-
-				"        if (bt.includes('ok') || bt.includes('close') || bt.includes('dismiss')) btns[b].click();" +
-
-				"    }" +
-
-				"} catch(e){}"
-
+			JavascriptExecutor js = (JavascriptExecutor) driver;
+			String rawMsg = (String) js.executeScript(
+				"var msgs = [];\n" +
+				"// 1. Check toasts, noty, sweetalerts, modals, jconfirm\n" +
+				"var alerts = document.querySelectorAll('.toast, .noty_body, .alert, .swal2-html-container, .swal2-title, .jconfirm-content, .modal-body, .ui-pnotify-text');\n" +
+				"for (var i = 0; i < alerts.length; i++) {\n" +
+				"    var t = (alerts[i].innerText || alerts[i].textContent || '').trim();\n" +
+				"    if (t.length > 0) msgs.push(t);\n" +
+				"}\n" +
+				"// 2. Check Order Terminal rejected rows tooltip / reason\n" +
+				"var cln = (arguments[0] || '').toLowerCase();\n" +
+				"var sym = (arguments[1] || '').toUpperCase();\n" +
+				"var rows = document.querySelectorAll('#order_terminal_table tbody tr, table.order_terminal_table tbody tr');\n" +
+				"for (var j = 0; j < Math.min(rows.length, 5); j++) {\n" +
+				"    var r = rows[j];\n" +
+				"    var rt = (r.innerText || '').toUpperCase();\n" +
+				"    if (rt.includes('REJECT')) {\n" +
+				"        var tooltips = r.querySelectorAll('[title], [data-original-title], [data-content], td.reject_reason, td[class*=\"reason\"], td[class*=\"status\"]');\n" +
+				"        for (var k = 0; k < tooltips.length; k++) {\n" +
+				"            var tip = tooltips[k].getAttribute('data-original-title') || tooltips[k].getAttribute('title') || tooltips[k].innerText;\n" +
+				"            if (tip && tip.trim().length > 0) msgs.push(tip.trim());\n" +
+				"        }\n" +
+				"        msgs.push(r.innerText.trim());\n" +
+				"    }\n" +
+				"}\n" +
+				"return msgs.join(' | ');",
+				clientCode != null ? clientCode : "",
+				symbol != null ? symbol : ""
 			);
 
+			if (lastRejectionAlertText != null && !lastRejectionAlertText.trim().isEmpty()) {
+				rawMsg = (rawMsg != null && !rawMsg.isEmpty()) ? (rawMsg + " | " + lastRejectionAlertText) : lastRejectionAlertText;
+			}
+
+			RejectionOrderPriceInfo info = parseRejectionText(rawMsg);
+			if (info.hasSuggestedPrice() || info.hasUpperLimit() || info.hasLowerLimit()) {
+				System.out.printf("  ✓ [REJECTION ORDER EXTRACTED] Suggested Price: %.2f | Upper Price: %.2f | Lowest Price: %.2f%n",
+						info.suggestedPrice, info.upperLimit, info.lowerLimit);
+			}
+			return info;
+		} catch (Exception e) {
+			return parseRejectionText(lastRejectionAlertText);
+		}
+	}
+
+	public static void dismissRejectionAlert(WebDriver driver) {
+		try {
 			try {
-
-				Alert alert = driver.switchTo().alert();
-
-				alert.accept();
-
+				Object txt = ((JavascriptExecutor) driver).executeScript(
+					"var msgs = [];\n" +
+					"var alerts = document.querySelectorAll('.jconfirm-content, .swal2-html-container, .toast, .noty_body, .alert, .modal-body');\n" +
+					"for (var i = 0; i < alerts.length; i++) {\n" +
+					"    var t = (alerts[i].innerText || alerts[i].textContent || '').trim();\n" +
+					"    if (t.length > 0) msgs.push(t);\n" +
+					"}\n" +
+					"return msgs.join(' | ');"
+				);
+				if (txt != null && !txt.toString().isEmpty()) {
+					lastRejectionAlertText = txt.toString();
+				}
 			} catch (Exception ignored) {}
 
-		} catch (Exception ignored) {}
+			try {
+				Alert alert = driver.switchTo().alert();
+				String aTxt = alert.getText();
+				if (aTxt != null && !aTxt.trim().isEmpty()) {
+					lastRejectionAlertText = (lastRejectionAlertText.isEmpty() ? aTxt : lastRejectionAlertText + " | " + aTxt);
+				}
+				alert.accept();
+			} catch (Exception ignored) {}
 
+			((JavascriptExecutor) driver).executeScript(
+				"try {" +
+				"    if (window.jconfirm && window.jconfirm.instances) {" +
+				"        for (var i = 0; i < window.jconfirm.instances.length; i++) {" +
+				"            var inst = window.jconfirm.instances[i];" +
+				"            if (inst && typeof inst.close === 'function') inst.close();" +
+				"        }" +
+				"    }" +
+				"    var btns = document.querySelectorAll('.jconfirm-buttons button, .modal button.btn-danger, .modal button.btn-secondary, button.btn-primary');" +
+				"    for (var b = 0; b < btns.length; b++) {" +
+				"        var bt = (btns[b].innerText || '').toLowerCase();" +
+				"        if (bt.includes('ok') || bt.includes('close') || bt.includes('dismiss')) btns[b].click();" +
+				"    }" +
+				"} catch(e){}"
+			);
+		} catch (Exception ignored) {}
 	}
 
 	public static void runSequentialBuyLifecycleAudit(WebDriver driver, WebDriverWait wait, Scanner sc, String instrument, String exchange, String buyClient, String sellClient) throws InterruptedException {
@@ -9678,10 +9785,35 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				orderAccepted = true;
 				break;
 			} else {
+				// 1. Extract suggested price and circuit limits shown in rejection order feedback
+				RejectionOrderPriceInfo rejInfo = extractRejectionOrderPriceInfo(driver, clientCode, symbol);
+				if (rejInfo.hasUpperLimit()) lastUpper = rejInfo.upperLimit;
+				if (rejInfo.hasLowerLimit()) lastLower = rejInfo.lowerLimit;
+
+				double rejSuggested = rejInfo.hasSuggestedPrice() ? rejInfo.suggestedPrice : suggestedPrice;
+
+				// Next rate selection:
+				// If the rejection order showed a suggested price:
+				// If showing upper the suggested price -> take upper price
+				// If showing lowest suggested price -> take lowest price
+				// Else take the suggested price shown in rejection order!
+				if (rejInfo.hasSuggestedPrice() || rejInfo.hasUpperLimit() || rejInfo.hasLowerLimit()) {
+					double nextRate = resolvePriceLimitSafe(rejSuggested, lastLower, lastUpper, rejSuggested);
+					System.out.printf("  -> [REJECTION ORDER FEEDBACK] Using suggested price shown in rejection order: %.2f (Limits: [%.2f - %.2f])%n",
+							nextRate, lastLower, lastUpper);
+					if (i + 1 < attempts) {
+						if (candidateRates.size() > i + 1) {
+							candidateRates.set(i + 1, nextRate);
+						} else {
+							candidateRates.add(nextRate);
+						}
+					}
+				}
+
 				long delay = backoff.calculateDelay(attemptNum);
-				if ("PRICE_BREACH".equalsIgnoreCase(status)) {
-					System.out.printf("  ✗ [PRICE LIMIT BREACH DETECTED] Terminal reported price limit breach @ %.2f. Clamping to suggested price on next attempt. Backing off %d ms...%n",
-							currentRate, delay);
+				if ("PRICE_BREACH".equalsIgnoreCase(status) || rejInfo.hasSuggestedPrice()) {
+					System.out.printf("  ✗ [PRICE LIMIT BREACH DETECTED] Order @ %.2f breached limits. Next retry will use suggested price [%.2f] shown in rejection order. Backing off %d ms...%n",
+							currentRate, rejSuggested, delay);
 				} else {
 					System.out.printf("  ✗ [ORDER REJECTED] Order @ %.2f was REJECTED by exchange for %s! Logged retry %d/%d. Backing off %d ms...%n",
 							currentRate, symbol, attemptNum, attempts, delay);
@@ -9754,8 +9886,28 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		System.out.printf("Test 6 [Fallback Suggested Within Band]: Expected 255.0, Got %.2f -> %s%n", c6, p6 ? "PASS" : "FAIL");
 		allPassed &= p6;
 
+		// Case 7: Parse rejection order feedback with suggested price and range
+		RejectionOrderPriceInfo rej1 = parseRejectionText("Order rejected: Price 350.00 is out of bounds. Suggested price: 280.00 [240.00 - 300.00]");
+		boolean p7 = Math.abs(rej1.suggestedPrice - 280.0) < 0.001 && Math.abs(rej1.lowerLimit - 240.0) < 0.001 && Math.abs(rej1.upperLimit - 300.0) < 0.001;
+		System.out.printf("Test 7 [Parse Rejection Order Suggested Price & Range]: Expected 280.00, Got %.2f -> %s%n", rej1.suggestedPrice, p7 ? "PASS" : "FAIL");
+		allPassed &= p7;
+
+		// Case 8: Rejection order with upper breach -> takes upper price
+		RejectionOrderPriceInfo rej2 = parseRejectionText("Order rejected: Price 350.00 exceeds upper circuit limit 300.00. Suggested: 280.00");
+		double c8 = resolvePriceLimitSafe(350.0, rej2.lowerLimit, rej2.upperLimit, rej2.suggestedPrice);
+		boolean p8 = Math.abs(c8 - 300.0) < 0.001;
+		System.out.printf("Test 8 [Rejection Order Upper Breach]: Expected 300.00, Got %.2f -> %s%n", c8, p8 ? "PASS" : "FAIL");
+		allPassed &= p8;
+
+		// Case 9: Rejection order with lower breach -> takes lowest price
+		RejectionOrderPriceInfo rej3 = parseRejectionText("Order rejected: Price 150.00 is below lower circuit limit 200.00. Suggested price: 250.00");
+		double c9 = resolvePriceLimitSafe(150.0, rej3.lowerLimit, rej3.upperLimit, rej3.suggestedPrice);
+		boolean p9 = Math.abs(c9 - 200.0) < 0.001;
+		System.out.printf("Test 9 [Rejection Order Lower Breach]: Expected 200.00, Got %.2f -> %s%n", c9, p9 ? "PASS" : "FAIL");
+		allPassed &= p9;
+
 		System.out.printf("+-----------------------------------------------------------------------------+%n");
-		System.out.printf("| ALL PRICE LIMIT BREACH TESTS: %-45s |%n", allPassed ? "ALL PASSED (6/6)" : "SOME FAILED");
+		System.out.printf("| ALL PRICE LIMIT BREACH TESTS: %-45s |%n", allPassed ? "ALL PASSED (9/9)" : "SOME FAILED");
 		System.out.printf("+-----------------------------------------------------------------------------+%n%n");
 		return allPassed;
 	}
