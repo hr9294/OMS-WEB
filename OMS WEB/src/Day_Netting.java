@@ -3083,6 +3083,28 @@ public class Day_Netting {
                         defaultRate = OMSweb_Trade.parseNumSafe(ltpStr);
                     } catch (Exception ignored) {}
 
+                    // If Market Depth was empty (e.g. "-" values), check on-screen error tooltip/toast or DB cache
+                    if (defaultRate <= 0.0) {
+                        try {
+                            OMSweb_Trade.RejectionOrderPriceInfo onScreen = OMSweb_Trade.extractRejectionOrderPriceInfo(driver, cln, sym);
+                            if (onScreen.hasSuggestedPrice()) {
+                                defaultRate = onScreen.suggestedPrice;
+                                System.out.printf("  -> [INITIAL RATE RESOLUTION] Found suggested price from error message/tooltip: %.2f%n", defaultRate);
+                            }
+                        } catch (Exception ignored) {}
+                    }
+                    if (defaultRate <= 0.0) {
+                        try {
+                            OMSweb_DBMarketData.PublicSymbolLtp quote = OMSweb_DBMarketData.getCachedSymbol(OMSweb_Trade.cleanSymbol(sym), "BOTH".equalsIgnoreCase(targetExchange) ? "DSE" : targetExchange);
+                            if (quote != null) {
+                                defaultRate = quote.ltp > 0.0 ? quote.ltp : (quote.ycp > 0.0 ? quote.ycp : (quote.circuitUp > 0.0 ? quote.circuitUp : 0.0));
+                                if (defaultRate > 0.0) {
+                                    System.out.printf("  -> [INITIAL RATE RESOLUTION] Fetched DB Market Quote rate: %.2f%n", defaultRate);
+                                }
+                            }
+                        } catch (Exception ignored) {}
+                    }
+
                     double tradeRate = defaultRate;
                     System.out.printf("Enter Trade Rate (default=auto %.2f from Market Depth / DB in 4s, or press ENTER): ", defaultRate);
                     String rStr = readLineWithTimeout(sc, (defaultRate > 0 ? String.format(Locale.US, "%.2f", defaultRate) : "auto"), 4);
@@ -3111,17 +3133,29 @@ public class Day_Netting {
                         String buyStatus = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, buyerClient, sym, "BUY");
                         System.out.printf("  -> Exchange Order Terminal BUY Status (Buyer %s): [%s]%n", buyerClient, buyStatus);
 
-                        if ("REJECTED".equalsIgnoreCase(buyStatus)) {
-                            System.out.printf("  ✗ [BUY ORDER REJECTED] Initial BUY order for %s @ %.2f was rejected by exchange!%n", tradeInstrument, tradeRate);
-                            System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying BUY with smart Market Depth & DB prices (ltp, ycp, sh, sl, ch, cl, dh, dl) until an Accepted order is placed...");
-                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", buyerClient, tradeInstrument, tradeQty, 0.0, orderEx, 6);
+                        boolean buyAccepted = "ACCEPTED".equalsIgnoreCase(buyStatus) || "FILLED".equalsIgnoreCase(buyStatus) || "TRADE EXECUTED".equalsIgnoreCase(buyStatus);
+                        if (!buyAccepted) {
+                            System.out.printf("  ✗ [BUY ORDER NOT ACCEPTED: %s] Initial BUY order for %s @ %.2f was not accepted!%n", buyStatus, tradeInstrument, tradeRate);
+                            OMSweb_Trade.RejectionOrderPriceInfo rej = OMSweb_Trade.extractRejectionOrderPriceInfo(driver, buyerClient, sym);
+                            double retryRate = tradeRate;
+                            if (rej.hasSuggestedPrice() || rej.hasUpperLimit() || rej.hasLowerLimit()) {
+                                retryRate = OMSweb_Trade.resolvePriceLimitSafe(tradeRate, rej.lowerLimit, rej.upperLimit, rej.suggestedPrice);
+                                System.out.printf("  -> [REJECTION ERROR MESSAGE FEEDBACK] Extracted suggested price from error message: %.2f (Limits: [%.2f - %.2f])%n",
+                                        retryRate, rej.lowerLimit, rej.upperLimit);
+                                tradeRate = retryRate;
+                            }
+                            OMSweb_Trade.dismissRejectionAlert(driver);
+                            System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying BUY with suggested price / smart Market Depth & DB prices...");
+                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", buyerClient, tradeInstrument, tradeQty, retryRate, orderEx, 6);
                             if (success) {
-                                System.out.println("  ✓ [LEG 1/2 COMPLETE] Accepted BUY order successfully placed. Waiting 2s before SELL leg...");
+                                double acceptedPrice = OMSweb_Trade.getLastAcceptedPrice();
+                                if (acceptedPrice > 0.0) tradeRate = acceptedPrice;
+                                System.out.printf("  ✓ [LEG 1/2 COMPLETE] Accepted BUY order successfully placed @ %.2f. Waiting 2s before SELL leg...%n", tradeRate);
                             } else {
                                 System.out.println("  [TRADE WARNING] Could not get an Accepted BUY order after retrying with Market Depth & DB prices.");
                             }
                         } else {
-                            System.out.println("  ✓ [LEG 1/2 COMPLETE] Accepted BUY order placed and confirmed. Waiting 2s before SELL leg...");
+                            System.out.printf("  ✓ [LEG 1/2 COMPLETE] Accepted BUY order placed and confirmed @ %.2f. Waiting 2s before SELL leg...%n", tradeRate);
                         }
                         Thread.sleep(2000);
 
@@ -3133,17 +3167,29 @@ public class Day_Netting {
                         String sellStatus = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, sellerClient, sym, "SELL");
                         System.out.printf("  -> Exchange Order Terminal SELL Status (Seller %s): [%s]%n", sellerClient, sellStatus);
 
-                        if ("REJECTED".equalsIgnoreCase(sellStatus)) {
-                            System.out.printf("  ✗ [SELL ORDER REJECTED] Initial SELL order for %s @ %.2f was rejected by exchange!%n", tradeInstrument, tradeRate);
-                            System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying SELL with smart Market Depth & DB prices (ltp, ycp, sh, sl, ch, cl, dh, dl) until an Accepted order is placed...");
-                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", sellerClient, tradeInstrument, tradeQty, 0.0, orderEx, 6);
+                        boolean sellAccepted = "ACCEPTED".equalsIgnoreCase(sellStatus) || "FILLED".equalsIgnoreCase(sellStatus) || "TRADE EXECUTED".equalsIgnoreCase(sellStatus);
+                        if (!sellAccepted) {
+                            System.out.printf("  ✗ [SELL ORDER NOT ACCEPTED: %s] Initial SELL order for %s @ %.2f was not accepted!%n", sellStatus, tradeInstrument, tradeRate);
+                            OMSweb_Trade.RejectionOrderPriceInfo rej = OMSweb_Trade.extractRejectionOrderPriceInfo(driver, sellerClient, sym);
+                            double retryRate = tradeRate;
+                            if (rej.hasSuggestedPrice() || rej.hasUpperLimit() || rej.hasLowerLimit()) {
+                                retryRate = OMSweb_Trade.resolvePriceLimitSafe(tradeRate, rej.lowerLimit, rej.upperLimit, rej.suggestedPrice);
+                                System.out.printf("  -> [REJECTION ERROR MESSAGE FEEDBACK] Extracted suggested price from error message: %.2f (Limits: [%.2f - %.2f])%n",
+                                        retryRate, rej.lowerLimit, rej.upperLimit);
+                                tradeRate = retryRate;
+                            }
+                            OMSweb_Trade.dismissRejectionAlert(driver);
+                            System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying SELL with suggested price / smart Market Depth & DB prices...");
+                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", sellerClient, tradeInstrument, tradeQty, retryRate, orderEx, 6);
                             if (success) {
-                                System.out.println("  ✓ [LEG 2/2 COMPLETE] Accepted SELL order successfully placed.");
+                                double acceptedPrice = OMSweb_Trade.getLastAcceptedPrice();
+                                if (acceptedPrice > 0.0) tradeRate = acceptedPrice;
+                                System.out.printf("  ✓ [LEG 2/2 COMPLETE] Accepted SELL order successfully placed @ %.2f.%n", tradeRate);
                             } else {
                                 System.out.println("  [TRADE WARNING] Could not get an Accepted SELL order after retrying with Market Depth & DB prices.");
                             }
                         } else {
-                            System.out.println("  ✓ [LEG 2/2 COMPLETE] Accepted SELL order placed and confirmed.");
+                            System.out.printf("  ✓ [LEG 2/2 COMPLETE] Accepted SELL order placed and confirmed @ %.2f.%n", tradeRate);
                         }
 
                         System.out.printf("%n  ✓ [DAY NETTING DUAL TRADE COMPLETE] Both BUY (Client %s) and SELL (Client %s) legs executed (%d shares %s).%n",
@@ -3169,17 +3215,29 @@ public class Day_Netting {
                         String sellStatus = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, sellerClient, sym, "SELL");
                         System.out.printf("  -> Exchange Order Terminal SELL Status (Seller %s): [%s]%n", sellerClient, sellStatus);
 
-                        if ("REJECTED".equalsIgnoreCase(sellStatus)) {
-                            System.out.printf("  ✗ [SELL ORDER REJECTED] Initial SELL order for %s @ %.2f was rejected by exchange!%n", tradeInstrument, tradeRate);
-                            System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying SELL with smart Market Depth & DB prices (ltp, ycp, sh, sl, ch, cl, dh, dl) until an Accepted order is placed...");
-                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", sellerClient, tradeInstrument, tradeQty, 0.0, orderEx, 6);
+                        boolean sellAccepted = "ACCEPTED".equalsIgnoreCase(sellStatus) || "FILLED".equalsIgnoreCase(sellStatus) || "TRADE EXECUTED".equalsIgnoreCase(sellStatus);
+                        if (!sellAccepted) {
+                            System.out.printf("  ✗ [SELL ORDER NOT ACCEPTED: %s] Initial SELL order for %s @ %.2f was not accepted!%n", sellStatus, tradeInstrument, tradeRate);
+                            OMSweb_Trade.RejectionOrderPriceInfo rej = OMSweb_Trade.extractRejectionOrderPriceInfo(driver, sellerClient, sym);
+                            double retryRate = tradeRate;
+                            if (rej.hasSuggestedPrice() || rej.hasUpperLimit() || rej.hasLowerLimit()) {
+                                retryRate = OMSweb_Trade.resolvePriceLimitSafe(tradeRate, rej.lowerLimit, rej.upperLimit, rej.suggestedPrice);
+                                System.out.printf("  -> [REJECTION ERROR MESSAGE FEEDBACK] Extracted suggested price from error message: %.2f (Limits: [%.2f - %.2f])%n",
+                                        retryRate, rej.lowerLimit, rej.upperLimit);
+                                tradeRate = retryRate;
+                            }
+                            OMSweb_Trade.dismissRejectionAlert(driver);
+                            System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying SELL with suggested price / smart Market Depth & DB prices...");
+                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", sellerClient, tradeInstrument, tradeQty, retryRate, orderEx, 6);
                             if (success) {
-                                System.out.println("  ✓ [LEG 1/2 COMPLETE] Accepted SELL order successfully placed. Waiting 2s before BUY leg...");
+                                double acceptedPrice = OMSweb_Trade.getLastAcceptedPrice();
+                                if (acceptedPrice > 0.0) tradeRate = acceptedPrice;
+                                System.out.printf("  ✓ [LEG 1/2 COMPLETE] Accepted SELL order successfully placed @ %.2f. Waiting 2s before BUY leg...%n", tradeRate);
                             } else {
                                 System.out.println("  [TRADE WARNING] Could not get an Accepted SELL order after retrying with Market Depth & DB prices.");
                             }
                         } else {
-                            System.out.println("  ✓ [LEG 1/2 COMPLETE] Accepted SELL order placed and confirmed. Waiting 2s before BUY leg...");
+                            System.out.printf("  ✓ [LEG 1/2 COMPLETE] Accepted SELL order placed and confirmed @ %.2f. Waiting 2s before BUY leg...%n", tradeRate);
                         }
                         Thread.sleep(2000);
 
@@ -3191,17 +3249,29 @@ public class Day_Netting {
                         String buyStatus = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, buyerClient, sym, "BUY");
                         System.out.printf("  -> Exchange Order Terminal BUY Status (Buyer %s): [%s]%n", buyerClient, buyStatus);
 
-                        if ("REJECTED".equalsIgnoreCase(buyStatus)) {
-                            System.out.printf("  ✗ [BUY ORDER REJECTED] Initial BUY order for %s @ %.2f was rejected by exchange!%n", tradeInstrument, tradeRate);
-                            System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying BUY with smart Market Depth & DB prices (ltp, ycp, sh, sl, ch, cl, dh, dl) until an Accepted order is placed...");
-                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", buyerClient, tradeInstrument, tradeQty, 0.0, orderEx, 6);
+                        boolean buyAccepted = "ACCEPTED".equalsIgnoreCase(buyStatus) || "FILLED".equalsIgnoreCase(buyStatus) || "TRADE EXECUTED".equalsIgnoreCase(buyStatus);
+                        if (!buyAccepted) {
+                            System.out.printf("  ✗ [BUY ORDER NOT ACCEPTED: %s] Initial BUY order for %s @ %.2f was not accepted!%n", buyStatus, tradeInstrument, tradeRate);
+                            OMSweb_Trade.RejectionOrderPriceInfo rej = OMSweb_Trade.extractRejectionOrderPriceInfo(driver, buyerClient, sym);
+                            double retryRate = tradeRate;
+                            if (rej.hasSuggestedPrice() || rej.hasUpperLimit() || rej.hasLowerLimit()) {
+                                retryRate = OMSweb_Trade.resolvePriceLimitSafe(tradeRate, rej.lowerLimit, rej.upperLimit, rej.suggestedPrice);
+                                System.out.printf("  -> [REJECTION ERROR MESSAGE FEEDBACK] Extracted suggested price from error message: %.2f (Limits: [%.2f - %.2f])%n",
+                                        retryRate, rej.lowerLimit, rej.upperLimit);
+                                tradeRate = retryRate;
+                            }
+                            OMSweb_Trade.dismissRejectionAlert(driver);
+                            System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying BUY with suggested price / smart Market Depth & DB prices...");
+                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", buyerClient, tradeInstrument, tradeQty, retryRate, orderEx, 6);
                             if (success) {
-                                System.out.println("  ✓ [LEG 2/2 COMPLETE] Accepted BUY order successfully placed.");
+                                double acceptedPrice = OMSweb_Trade.getLastAcceptedPrice();
+                                if (acceptedPrice > 0.0) tradeRate = acceptedPrice;
+                                System.out.printf("  ✓ [LEG 2/2 COMPLETE] Accepted BUY order successfully placed @ %.2f.%n", tradeRate);
                             } else {
                                 System.out.println("  [TRADE WARNING] Could not get an Accepted BUY order after retrying with Market Depth & DB prices.");
                             }
                         } else {
-                            System.out.println("  ✓ [LEG 2/2 COMPLETE] Accepted BUY order placed and confirmed.");
+                            System.out.printf("  ✓ [LEG 2/2 COMPLETE] Accepted BUY order placed and confirmed @ %.2f.%n", tradeRate);
                         }
 
                         System.out.printf("%n  ✓ [DAY NETTING DUAL TRADE COMPLETE] Both SELL (Client %s) and BUY (Client %s) legs executed (%d shares %s).%n",
@@ -3220,17 +3290,29 @@ public class Day_Netting {
                         String status = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, cln, sym, side);
                         System.out.printf("  -> Exchange Order Terminal Status: [%s]%n", status);
 
-                        if ("REJECTED".equalsIgnoreCase(status)) {
-                            System.out.printf("  ✗ [ORDER REJECTED] Initial order for %s @ %.2f was rejected by exchange!%n", tradeInstrument, tradeRate);
-                            System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying with smart Market Depth & DB prices (ltp, ycp, sh, sl, ch, cl, dh, dl) until an Accepted order is placed...");
-                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), side, cln, tradeInstrument, tradeQty, 0.0, orderEx, 6);
+                        boolean orderAccepted = "ACCEPTED".equalsIgnoreCase(status) || "FILLED".equalsIgnoreCase(status) || "TRADE EXECUTED".equalsIgnoreCase(status);
+                        if (!orderAccepted) {
+                            System.out.printf("  ✗ [ORDER NOT ACCEPTED: %s] Initial order for %s @ %.2f was not accepted!%n", status, tradeInstrument, tradeRate);
+                            OMSweb_Trade.RejectionOrderPriceInfo rej = OMSweb_Trade.extractRejectionOrderPriceInfo(driver, cln, sym);
+                            double retryRate = tradeRate;
+                            if (rej.hasSuggestedPrice() || rej.hasUpperLimit() || rej.hasLowerLimit()) {
+                                retryRate = OMSweb_Trade.resolvePriceLimitSafe(tradeRate, rej.lowerLimit, rej.upperLimit, rej.suggestedPrice);
+                                System.out.printf("  -> [REJECTION ERROR MESSAGE FEEDBACK] Extracted suggested price from error message: %.2f (Limits: [%.2f - %.2f])%n",
+                                        retryRate, rej.lowerLimit, rej.upperLimit);
+                                tradeRate = retryRate;
+                            }
+                            OMSweb_Trade.dismissRejectionAlert(driver);
+                            System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying with suggested price / smart Market Depth & DB prices...");
+                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), side, cln, tradeInstrument, tradeQty, retryRate, orderEx, 6);
                             if (success) {
-                                System.out.println("  ✓ [TRADE EXECUTED] Accepted order successfully placed and confirmed. Waiting 2s for DOM updates...");
+                                double acceptedPrice = OMSweb_Trade.getLastAcceptedPrice();
+                                if (acceptedPrice > 0.0) tradeRate = acceptedPrice;
+                                System.out.printf("  ✓ [TRADE EXECUTED] Accepted order successfully placed @ %.2f. Waiting 2s for DOM updates...%n", tradeRate);
                             } else {
                                 System.out.println("  [TRADE WARNING] Could not get an Accepted order after retrying with Market Depth & DB prices.");
                             }
                         } else {
-                            System.out.println("  ✓ [TRADE EXECUTED] Accepted order placed and confirmed. Waiting 2s for DOM updates...");
+                            System.out.printf("  ✓ [TRADE EXECUTED] Accepted order placed and confirmed @ %.2f. Waiting 2s for DOM updates...%n", tradeRate);
                         }
                         Thread.sleep(2000);
                     }

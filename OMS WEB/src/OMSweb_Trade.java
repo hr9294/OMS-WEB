@@ -6179,6 +6179,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 	public static volatile String activeWidgetColorHex = null;
 
 	public static volatile double lastAcceptedPrice = 0.0;
+	public static double getLastAcceptedPrice() { return lastAcceptedPrice; }
 
 	public static final String DEFAULT_CLIENT_CODE = "23986";
 
@@ -8522,9 +8523,10 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		double extractedUpper = 0.0;
 		double extractedLower = 0.0;
 
-		// 1. Direct check for Trade Rule error messages (e.g. from user toast):
+		// 1. Direct check for Trade Rule error messages (e.g. from user toast & table tooltip):
 		// e.g. "Error: Trade Rule - Price limit exceeded. Price cannot be more than 266.90"
-		java.util.regex.Pattern pCannotMore = java.util.regex.Pattern.compile("(?i)price cannot be more than\\s*([0-9]+(?:\\.[0-9]+)?)");
+		// e.g. "Reason: (299): Trade Rule - Price limit exceeded. Price cannot be more than 266.90"
+		java.util.regex.Pattern pCannotMore = java.util.regex.Pattern.compile("(?i)price cannot be (?:more|greater|higher|above)\\s+than\\s*([0-9]+(?:\\.[0-9]+)?)");
 		java.util.regex.Matcher mCannotMore = pCannotMore.matcher(rawMsg);
 		if (mCannotMore.find()) {
 			extractedUpper = parseNumSafe(mCannotMore.group(1));
@@ -8532,7 +8534,8 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		}
 
 		// e.g. "Error: Trade Rule - Price limit exceeded. Price cannot be less than 218.40"
-		java.util.regex.Pattern pCannotLess = java.util.regex.Pattern.compile("(?i)price cannot be (?:less|lower)\\s+than\\s*([0-9]+(?:\\.[0-9]+)?)");
+		// e.g. "Reason: (299): Trade Rule - Price limit exceeded. Price cannot be less than 218.40"
+		java.util.regex.Pattern pCannotLess = java.util.regex.Pattern.compile("(?i)price cannot be (?:less|lower|below)\\s+than\\s*([0-9]+(?:\\.[0-9]+)?)");
 		java.util.regex.Matcher mCannotLess = pCannotLess.matcher(rawMsg);
 		if (mCannotLess.find()) {
 			extractedLower = parseNumSafe(mCannotLess.group(1));
@@ -8592,34 +8595,43 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			JavascriptExecutor js = (JavascriptExecutor) driver;
 			String rawMsg = (String) js.executeScript(
 				"var msgs = [];\n" +
-				"// 1. Check toasts, noty, sweetalerts, modals, jconfirm, error banners\n" +
-				"var alerts = document.querySelectorAll('.toast, .toast-message, .noty_body, .alert, .alert-danger, .alert-warning, .swal2-html-container, .swal2-title, .jconfirm-content, .modal-body, .ui-pnotify-text, div[role=\"alert\"], div[class*=\"banner\"], div[class*=\"error\"], div[class*=\"alert\"], div[class*=\"toast\"], div[class*=\"notify\"], div[class*=\"notification\"], .growl-message');\n" +
+				"// 1. Check all active toasts, noty, sweetalerts, modals, jconfirm, error banners, tooltips\n" +
+				"var alerts = document.querySelectorAll('.toast, .toast-message, .noty_body, .alert, .alert-danger, .alert-warning, .swal2-html-container, .swal2-title, .jconfirm-content, .modal-body, .ui-pnotify-text, div[role=\"alert\"], div[class*=\"banner\"], div[class*=\"error\"], div[class*=\"alert\"], div[class*=\"toast\"], div[class*=\"notify\"], div[class*=\"notification\"], .growl-message, .tooltip, .tooltip-inner, .popover, .popover-body, .popover-content');\n" +
 				"for (var i = 0; i < alerts.length; i++) {\n" +
 				"    var t = (alerts[i].innerText || alerts[i].textContent || '').trim();\n" +
 				"    if (t.length > 0) msgs.push(t);\n" +
 				"}\n" +
-				"// 2. Scan visible elements containing price limit text\n" +
-				"var allDivs = document.querySelectorAll('div, span, p');\n" +
-				"for (var d = 0; d < allDivs.length; d++) {\n" +
-				"    var dt = (allDivs[d].innerText || '').trim();\n" +
+				"// 2. Scan visible elements containing price limit / trade rule / reason text or tooltip attributes\n" +
+				"var allEls = document.querySelectorAll('div, span, p, a, td, th, i');\n" +
+				"for (var d = 0; d < allEls.length; d++) {\n" +
+				"    var el = allEls[d];\n" +
+				"    var tip = el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || el.getAttribute('title') || el.getAttribute('data-content') || el.getAttribute('data-reason') || '';\n" +
+				"    if (tip && (tip.indexOf('Trade Rule') !== -1 || tip.indexOf('Price limit') !== -1 || tip.indexOf('cannot be') !== -1 || tip.indexOf('Reason:') !== -1)) {\n" +
+				"        msgs.push(tip.trim());\n" +
+				"    }\n" +
+				"    var dt = (el.innerText || el.textContent || '').trim();\n" +
 				"    if (dt.indexOf('Price limit exceeded') !== -1 || dt.indexOf('cannot be more than') !== -1 || dt.indexOf('cannot be less than') !== -1 || dt.indexOf('Trade Rule') !== -1) {\n" +
 				"        msgs.push(dt);\n" +
 				"    }\n" +
 				"}\n" +
-				"// 3. Check Order Terminal rejected rows tooltip / reason\n" +
-				"var cln = (arguments[0] || '').toLowerCase();\n" +
-				"var sym = (arguments[1] || '').toUpperCase();\n" +
-				"var rows = document.querySelectorAll('#order_terminal_table tbody tr, table.order_terminal_table tbody tr');\n" +
-				"for (var j = 0; j < Math.min(rows.length, 5); j++) {\n" +
-				"    var r = rows[j];\n" +
-				"    var rt = (r.innerText || '').toUpperCase();\n" +
-				"    if (rt.includes('REJECT')) {\n" +
-				"        var tooltips = r.querySelectorAll('[title], [data-original-title], [data-content], td.reject_reason, td[class*=\"reason\"], td[class*=\"status\"]');\n" +
-				"        for (var k = 0; k < tooltips.length; k++) {\n" +
-				"            var tip = tooltips[k].getAttribute('data-original-title') || tooltips[k].getAttribute('title') || tooltips[k].innerText;\n" +
-				"            if (tip && tip.trim().length > 0) msgs.push(tip.trim());\n" +
+				"// 3. Scan all tables and rows in Order Terminal for rejected orders and tooltip reasons\n" +
+				"var tables = document.querySelectorAll('table');\n" +
+				"for (var tb = 0; tb < tables.length; tb++) {\n" +
+				"    var rows = tables[tb].querySelectorAll('tbody tr');\n" +
+				"    for (var j = 0; j < Math.min(rows.length, 10); j++) {\n" +
+				"        var r = rows[j];\n" +
+				"        var rowText = (r.innerText || r.textContent || '').toUpperCase();\n" +
+				"        if (rowText.indexOf('REJECT') !== -1 || rowText.indexOf('BREACH') !== -1 || rowText.indexOf('PRICE') !== -1) {\n" +
+				"            var cells = r.querySelectorAll('td, span, div, a, i');\n" +
+				"            for (var c = 0; c < cells.length; c++) {\n" +
+				"                var cell = cells[c];\n" +
+				"                var ctip = cell.getAttribute('data-original-title') || cell.getAttribute('data-bs-original-title') || cell.getAttribute('title') || cell.getAttribute('data-content') || cell.getAttribute('data-reason') || '';\n" +
+				"                if (ctip && ctip.trim().length > 0) msgs.push(ctip.trim());\n" +
+				"                var ctext = (cell.innerText || cell.textContent || '').trim();\n" +
+				"                if (ctext.indexOf('Trade Rule') !== -1 || ctext.indexOf('cannot be') !== -1 || ctext.indexOf('Reason:') !== -1) msgs.push(ctext);\n" +
+				"            }\n" +
+				"            msgs.push(r.innerText.trim());\n" +
 				"        }\n" +
-				"        msgs.push(r.innerText.trim());\n" +
 				"    }\n" +
 				"}\n" +
 				"return msgs.join(' | ');",
@@ -9408,7 +9420,11 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		double ltp = (band != null && band.safeRate > 0) ? band.safeRate : fetchLTP(driver, wait, symbol);
 
-		if (ltp <= 0) ltp = (band != null && band.ycp > 0) ? band.ycp : 11519.70;
+		if (ltp <= 0) ltp = (band != null && band.ycp > 0) ? band.ycp : 0.0;
+		if (ltp <= 0) {
+			RejectionOrderPriceInfo onScreenRej = extractRejectionOrderPriceInfo(driver, null, symbol);
+			if (onScreenRej.hasSuggestedPrice()) ltp = onScreenRej.suggestedPrice;
+		}
 
 		System.out.print("Enter BUY Client Code (default 23986 in 4s): ");
 
@@ -9600,18 +9616,19 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"var tbl = document.getElementById('order_terminal_table') || document.querySelector('table.order_terminal_table') || document.querySelector('table[id*=market_table]');\n" +
 				"if (!tbl) return false;\n" +
 				"var rows = tbl.querySelectorAll('tbody tr');\n" +
-				"for (var i = 0; i < Math.min(rows.length, 10); i++) {\n" +
+				"for (var i = 0; i < Math.min(rows.length, 15); i++) {\n" +
 				"    var r = rows[i];\n" +
 				"    var rowText = (r.innerText || '').toUpperCase();\n" +
 				"    if (rowText.includes('NO RECORD') || rowText.includes('NO DATA') || rowText.trim().length === 0) continue;\n" +
 				"    if (cln.length > 0 && !rowText.toLowerCase().includes(cln)) continue;\n" +
 				"    if (sym.length > 0 && !rowText.includes(sym)) continue;\n" +
+				"    if (rowText.includes('REJECTED') || rowText.includes('REJECT') || rowText.includes('PRICE LIMIT')) continue;\n" +
+				"    if (rowText.includes('ACCEPTED') || rowText.includes('ACCEPT') || rowText.includes('FILLED') || rowText.includes('TRADE EXECUTED') || rowText.includes('NEW') || rowText.includes('SUBMITTED')) return true;\n" +
 				"    var cells = r.querySelectorAll('td');\n" +
 				"    if (cells.length > 1) {\n" +
 				"        var oid = (cells[1].innerText || '').trim();\n" +
 				"        if (oid.length > 0 && oid !== '-') return true;\n" +
 				"    }\n" +
-				"    return true;\n" +
 				"}\n" +
 				"return false;\n",
 				cleanSym, cleanClient
@@ -9934,28 +9951,50 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		double lastAttemptedRate = initialRate;
 		double lastLower = 0.0, lastUpper = 0.0;
 
+		// 1. Check upfront if rejection error message with suggested price is ALREADY present on screen
+		RejectionOrderPriceInfo onScreenRej = extractRejectionOrderPriceInfo(driver, clientCode, symbol);
+		double upfrontSuggestedPrice = 0.0;
+		if (onScreenRej.hasSuggestedPrice() || onScreenRej.hasUpperLimit() || onScreenRej.hasLowerLimit()) {
+			upfrontSuggestedPrice = resolvePriceLimitSafe(onScreenRej.suggestedPrice, onScreenRej.lowerLimit, onScreenRej.upperLimit, onScreenRej.suggestedPrice);
+			if (onScreenRej.hasUpperLimit()) lastUpper = onScreenRej.upperLimit;
+			if (onScreenRej.hasLowerLimit()) lastLower = onScreenRej.lowerLimit;
+			System.out.printf("  ✓ [REJECTION ERROR DETECTED UPFRONT] Using suggested price from error message: %.2f (Limits: [%.2f - %.2f])%n",
+					upfrontSuggestedPrice, lastLower, lastUpper);
+			dismissRejectionAlert(driver);
+		}
+
 		for (int i = 0; i < attempts; i++) {
 			int attemptNum = i + 1;
 			// Revalidate prices and circuit limits fresh on each attempt
 			List<Double> candidateRates = collectSmartMarketPrices(driver, symbol, exchange, side, initialRate);
+
+			// Prioritize upfront suggested price if extracted from error message
+			if (upfrontSuggestedPrice > 0.0 && !candidateRates.contains(upfrontSuggestedPrice)) {
+				candidateRates.add(0, upfrontSuggestedPrice);
+			}
+
 			if (candidateRates.isEmpty()) {
-				System.out.printf("[PRICE VALIDATION: ATTEMPT %d/%d] ✗ No candidate prices within circuit band for %s! Backing off...%n", attemptNum, attempts, symbol);
-				long delay = backoff.calculateDelay(attemptNum);
-				Thread.sleep(delay);
-				continue;
+				if (upfrontSuggestedPrice > 0.0) {
+					candidateRates.add(upfrontSuggestedPrice);
+				} else {
+					System.out.printf("[PRICE VALIDATION: ATTEMPT %d/%d] ✗ No candidate prices within circuit band for %s! Backing off...%n", attemptNum, attempts, symbol);
+					long delay = backoff.calculateDelay(attemptNum);
+					Thread.sleep(delay);
+					continue;
+				}
 			}
 
 			double currentRate = (i < candidateRates.size()) ? candidateRates.get(i) : candidateRates.get(0);
 			lastAttemptedRate = currentRate;
 
 			// Revalidate circuit limits & quote on each attempt
-			double suggestedPrice = 0.0;
+			double suggestedPrice = (upfrontSuggestedPrice > 0.0) ? upfrontSuggestedPrice : 0.0;
 			try {
 				OMSweb_DBMarketData.PublicSymbolLtp quote = OMSweb_DBMarketData.getCachedSymbol(cleanSymbol(symbol), exchange);
 				if (quote != null) {
-					lastLower = quote.circuitDown;
-					lastUpper = quote.circuitUp;
-					suggestedPrice = quote.ltp > 0.0 ? quote.ltp : quote.ycp;
+					if (lastLower <= 0.0) lastLower = quote.circuitDown;
+					if (lastUpper <= 0.0) lastUpper = quote.circuitUp;
+					if (suggestedPrice <= 0.0) suggestedPrice = quote.ltp > 0.0 ? quote.ltp : quote.ycp;
 				}
 			} catch (Exception ignored) {}
 
@@ -9982,7 +10021,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			String status = checkLatestTerminalOrderStatus(driver, clientCode, symbol, side);
 			System.out.printf("  -> Exchange Order Terminal Status: [%s]%n", status);
 
-			if ("ACCEPTED".equalsIgnoreCase(status)) {
+			if ("ACCEPTED".equalsIgnoreCase(status) || "FILLED".equalsIgnoreCase(status) || "TRADE EXECUTED".equalsIgnoreCase(status)) {
 				System.out.printf("  ✓ [ORDER ACCEPTED] Successfully placed ACCEPTED %s order @ %.2f on attempt %d!%n",
 						side.toUpperCase(), currentRate, attemptNum);
 				lastAcceptedPrice = currentRate;
@@ -10003,8 +10042,10 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				// Else take the suggested price shown in rejection order!
 				if (rejInfo.hasSuggestedPrice() || rejInfo.hasUpperLimit() || rejInfo.hasLowerLimit()) {
 					double nextRate = resolvePriceLimitSafe(rejSuggested, lastLower, lastUpper, rejSuggested);
-					System.out.printf("  -> [REJECTION ORDER FEEDBACK] Using suggested price shown in rejection order: %.2f (Limits: [%.2f - %.2f])%n",
+					System.out.printf("  -> [REJECTION ERROR MESSAGE FEEDBACK] Extracted suggested price from error message: %.2f (Limits: [%.2f - %.2f])%n",
 							nextRate, lastLower, lastUpper);
+					upfrontSuggestedPrice = nextRate;
+					dismissRejectionAlert(driver);
 					if (i + 1 < attempts) {
 						if (candidateRates.size() > i + 1) {
 							candidateRates.set(i + 1, nextRate);
@@ -10016,7 +10057,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 				long delay = backoff.calculateDelay(attemptNum);
 				if ("PRICE_BREACH".equalsIgnoreCase(status) || rejInfo.hasSuggestedPrice()) {
-					System.out.printf("  ✗ [PRICE LIMIT BREACH DETECTED] Order @ %.2f breached limits. Next retry will use suggested price [%.2f] shown in rejection order. Backing off %d ms...%n",
+					System.out.printf("  ✗ [PRICE LIMIT BREACH DETECTED] Order @ %.2f breached limits. Next retry will use suggested price [%.2f] shown in error message. Backing off %d ms...%n",
 							currentRate, rejSuggested, delay);
 				} else {
 					System.out.printf("  ✗ [ORDER REJECTED] Order @ %.2f was REJECTED by exchange for %s! Logged retry %d/%d. Backing off %d ms...%n",
@@ -10124,8 +10165,15 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		System.out.printf("Test 11 [Trade Rule Error 'cannot be less than']: Expected 218.40, Got %.2f -> %s%n", c11, p11 ? "PASS" : "FAIL");
 		allPassed &= p11;
 
+		// Case 12: Order Terminal Table Tooltip (User Screenshot): "Reason: (299): Trade Rule - Price limit exceeded. Price cannot be more than 266.90"
+		RejectionOrderPriceInfo rej6 = parseRejectionText("Reason: (299): Trade Rule - Price limit exceeded. Price cannot be more than 266.90");
+		double c12 = resolvePriceLimitSafe(12113.5, rej6.lowerLimit, rej6.upperLimit, rej6.suggestedPrice);
+		boolean p12 = Math.abs(c12 - 266.90) < 0.001 && Math.abs(rej6.suggestedPrice - 266.90) < 0.001 && Math.abs(rej6.upperLimit - 266.90) < 0.001;
+		System.out.printf("Test 12 [Order Terminal Tooltip 'Price cannot be more than 266.90']: Expected 266.90, Got %.2f -> %s%n", c12, p12 ? "PASS" : "FAIL");
+		allPassed &= p12;
+
 		System.out.printf("+-----------------------------------------------------------------------------+%n");
-		System.out.printf("| ALL PRICE LIMIT BREACH TESTS: %-45s |%n", allPassed ? "ALL PASSED (11/11)" : "SOME FAILED");
+		System.out.printf("| ALL PRICE LIMIT BREACH TESTS: %-45s |%n", allPassed ? "ALL PASSED (12/12)" : "SOME FAILED");
 		System.out.printf("+-----------------------------------------------------------------------------+%n%n");
 		return allPassed;
 	}
@@ -10182,7 +10230,11 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		double dseRate = (dseBand != null && dseBand.safeRate > 0) ? dseBand.safeRate : fetchLTP(driver, wait, dseSymbol);
 
-		if (dseRate <= 0) dseRate = (dseBand != null && dseBand.ycp > 0) ? dseBand.ycp : 11519.70;
+		if (dseRate <= 0) dseRate = (dseBand != null && dseBand.ycp > 0) ? dseBand.ycp : 0.0;
+		if (dseRate <= 0) {
+			RejectionOrderPriceInfo onScreenRej = extractRejectionOrderPriceInfo(driver, null, dseSymbol);
+			if (onScreenRej.hasSuggestedPrice()) dseRate = onScreenRej.suggestedPrice;
+		}
 
 		String dseBuyer = "23986";
 
