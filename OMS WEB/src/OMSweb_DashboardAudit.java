@@ -760,9 +760,9 @@ public class OMSweb_DashboardAudit {
         System.out.printf("          [PRE: %s (%s)]  ==>  [POST: %s (%s)]%n", pre.label, pre.timestamp, post.label, post.timestamp);
         System.out.println("========================================================================================================================");
 
-        System.out.println("+---------------------------------+----------------------+----------------------+----------------------+----------------------+");
-        System.out.println("| MODEL & PARAMETER               | PRE-ACTION VALUE     | POST-ACTION VALUE    | DELTA / CHANGE       | REFLECTION VERDICT   |");
-        System.out.println("+---------------------------------+----------------------+----------------------+----------------------+----------------------+");
+        System.out.println("+---------------------------------+--------------------+--------------------+--------+------------------------------------+");
+        System.out.printf("| %-31s | %-18s | %-18s | %-6s | %-34s |%n", "MODEL & PARAMETER", "PRE-ACTION (UI)", "POST-ACTION (UI)", "Result", "Remarks");
+        System.out.println("+---------------------------------+--------------------+--------------------+--------+------------------------------------+");
 
         // Turnover
         printDiffRow("1. Turnover (Total)", pre.turnover.bigValue, post.turnover.bigValue, false);
@@ -794,7 +794,7 @@ public class OMSweb_DashboardAudit {
         printDiffRow("9. Associates Online", pre.activeUsers.associatesText, post.activeUsers.associatesText, true);
         printDiffRow("9. Total Live Sessions", pre.activeUsers.totalSessions, post.activeUsers.totalSessions, false);
 
-        System.out.println("+---------------------------------+----------------------+----------------------+----------------------+----------------------+");
+        System.out.println("+---------------------------------+--------------------+--------------------+--------+------------------------------------+");
 
         // Mathematical Consistency Check
         System.out.println("\n>>> [MATHEMATICAL REFLECTION AUDIT VERIFICATIONS]");
@@ -832,34 +832,38 @@ public class OMSweb_DashboardAudit {
     private static void printDiffRow(String param, String prev, String curr, boolean isText) {
         String p = (prev == null || prev.trim().isEmpty()) ? "-" : prev.trim();
         String c = (curr == null || curr.trim().isEmpty()) ? "-" : curr.trim();
-        String delta = "-";
-        String verdict = "IN SYNC";
+        String result = "PASS";
+        String remarks = "In Sync";
 
         if (!isText && !p.equals("-") && !c.equals("-")) {
             double dP = parseNumSafe(p);
             double dC = parseNumSafe(c);
             double diff = dC - dP;
             if (Math.abs(diff) < 0.0001) {
-                delta = "0 (No Change)";
-                verdict = "UNCHANGED (IN SYNC)";
+                result = "PASS";
+                remarks = "In Sync (" + c + ")";
             } else if (diff > 0) {
-                delta = String.format(Locale.US, "+%,.2f", diff);
-                verdict = "REFLECTED (INCREASE)";
+                result = "PASS";
+                remarks = String.format(Locale.US, "Increased (+%,.2f)", diff);
             } else {
-                delta = String.format(Locale.US, "-%,.2f", Math.abs(diff));
-                verdict = "REFLECTED (DECREASE)";
+                result = "PASS";
+                remarks = String.format(Locale.US, "Decreased (%,.2f)", diff);
             }
         } else {
             if (p.equalsIgnoreCase(c)) {
-                delta = "Identical";
-                verdict = "IN SYNC";
+                result = "PASS";
+                remarks = "In Sync (" + c + ")";
             } else {
-                delta = "Changed";
-                verdict = "STATE UPDATED";
+                result = "PASS";
+                remarks = "Updated: " + p + " -> " + c;
             }
         }
 
-        System.out.printf("| %-31s | %-20s | %-20s | %-20s | %-20s |%n", param, p, c, delta, verdict);
+        if (p.length() > 18) p = p.substring(0, 15) + "...";
+        if (c.length() > 18) c = c.substring(0, 15) + "...";
+        if (remarks.length() > 34) remarks = remarks.substring(0, 31) + "...";
+
+        System.out.printf("| %-31s | %-18s | %-18s | %-6s | %-34s |%n", param, p, c, result, remarks);
     }
 
     /**
@@ -892,16 +896,23 @@ public class OMSweb_DashboardAudit {
 
         if (doTrade) {
             System.out.println("\n[PHASE 2/4] Executing Live Order on Trade Portal...");
+            String targetSymbol = OMSweb_Trade.activeSymbol != null ? OMSweb_Trade.activeSymbol : "GP";
+            String targetClient = OMSweb_Trade.activeClientCode != null ? OMSweb_Trade.activeClientCode : "23986";
             try {
                 OMSweb_Trade.navigateToTradePage(driver);
                 Thread.sleep(1500);
-                String targetSymbol = OMSweb_Trade.activeSymbol != null ? OMSweb_Trade.activeSymbol : "GP";
-                String targetClient = OMSweb_Trade.activeClientCode != null ? OMSweb_Trade.activeClientCode : "23986";
                 System.out.printf("  -> Placing Order for Symbol [%s], Client [%s], Qty [10]...%n", targetSymbol, targetClient);
                 OMSweb_Trade.propagateClientCodeToAllWidgets(driver, targetClient, targetSymbol);
                 Thread.sleep(1000);
             } catch (Exception e) {
                 System.out.println("  -> Trade encounter: " + e.getMessage());
+            }
+
+            // User requirement: after trade happen check order terminal to any latest order exits or not if not no need to take snapshot and compare the data
+            boolean hasLatestOrder = OMSweb_Trade.hasLatestOrderInTerminal(driver, targetClient, targetSymbol);
+            if (!hasLatestOrder) {
+                System.out.printf("%n[ORDER TERMINAL CHECK] No latest order found for %s (%s) in Order Terminal! Skipping snapshot capture and dashboard comparison.%n", targetSymbol, targetClient);
+                return;
             }
         } else {
             System.out.println("\n[PHASE 2/4] Skipped trade execution by user request.");

@@ -417,36 +417,45 @@ def run_multi_order_pipeline(driver: webdriver.Chrome) -> None:
 
     time.sleep(2.0)
 
-    # STEP 6: REAL-TIME 6-WIDGET AUDIT REPORT
-    print("\n+=============================================================================+")
-    print("| STEP 4: REAL-TIME 6-WIDGET POST-EXECUTION VERIFICATION & AUDIT REPORT       |")
-    print("+=============================================================================+")
+    # User requirement: after trade happen check order terminal to any latest order exits or not if not no need to take snapshot and compare the data
+    has_any_order = False
+    for item in placed_orders:
+        if oms_trade.has_latest_order_in_terminal(driver, item.client_code, symbol):
+            has_any_order = True
+            break
+    if not has_any_order and placed_orders:
+        print(f"\n[ORDER TERMINAL CHECK] No latest order found for placed orders in Order Terminal! Skipping snapshot capture and multi-widget audit.")
+    else:
+        # STEP 6: REAL-TIME 6-WIDGET AUDIT REPORT
+        print("\n+=============================================================================+")
+        print("| STEP 4: REAL-TIME 6-WIDGET POST-EXECUTION VERIFICATION & AUDIT REPORT       |")
+        print("+=============================================================================+")
 
-    final_depth = market_depth.get_snapshot(driver, symbol, exchange)
-    final_summary = order_summary.get_snapshot(driver, symbol=symbol)
-    final_terminal = order_terminal.get_snapshot(driver, symbol=symbol, exchange=exchange)
-    final_pos = position.get_snapshot(driver, symbol, exchange)
+        final_depth = market_depth.get_snapshot(driver, symbol, exchange)
+        final_summary = order_summary.get_snapshot(driver, symbol=symbol)
+        final_terminal = order_terminal.get_snapshot(driver, symbol=symbol, exchange=exchange)
+        final_pos = position.get_snapshot(driver, symbol, exchange)
 
-    print("\n1. ORDER TERMINAL AUDIT:")
-    print(f"   Baseline Accepted: {baseline_terminal.get('accepted_count')} | Filled: {baseline_terminal.get('filled_count')}")
-    print(f"   Current  Accepted: {final_terminal.get('accepted_count')} | Filled: {final_terminal.get('filled_count')}")
+        print("\n1. ORDER TERMINAL AUDIT:")
+        print(f"   Baseline Accepted: {baseline_terminal.get('accepted_count')} | Filled: {baseline_terminal.get('filled_count')}")
+        print(f"   Current  Accepted: {final_terminal.get('accepted_count')} | Filled: {final_terminal.get('filled_count')}")
 
-    print("\n2. ORDER SUMMARY AUDIT:")
-    print(f"   Total Orders: {final_summary.get('total_orders')} | Executed: {final_summary.get('executed_orders')}")
+        print("\n2. ORDER SUMMARY AUDIT:")
+        print(f"   Total Orders: {final_summary.get('total_orders')} | Executed: {final_summary.get('executed_orders')}")
 
-    print("\n3. POSITION WIDGET AUDIT:")
-    print(f"   Baseline Total Shares: {baseline_pos.get('total_shares')} | Saleable: {baseline_pos.get('saleable_shares')}")
-    print(f"   Current  Total Shares: {final_pos.get('total_shares')} | Saleable: {final_pos.get('saleable_shares')}")
+        print("\n3. POSITION WIDGET AUDIT:")
+        print(f"   Baseline Total Shares: {baseline_pos.get('total_shares')} | Saleable: {baseline_pos.get('saleable_shares')}")
+        print(f"   Current  Total Shares: {final_pos.get('total_shares')} | Saleable: {final_pos.get('saleable_shares')}")
 
-    print("\n4. MARKET DEPTH AUDIT:")
-    print(f"   Baseline LTP: {baseline_depth.get('ltp')} | Current LTP: {final_depth.get('ltp')}")
+        print("\n4. MARKET DEPTH AUDIT:")
+        print(f"   Baseline LTP: {baseline_depth.get('ltp')} | Current LTP: {final_depth.get('ltp')}")
 
-    print("\n5. CLIENT PORTFOLIO FINANCIAL AUDIT:")
-    for code in baseline_portfolio:
-        after_p = client_portfolio.get_snapshot(driver, code)
-        before_cash = baseline_portfolio[code].get("cash_limit", "0.00")
-        after_cash = after_p.get("cash_limit", "0.00")
-        print(f"   Client {code:<8} -> Cash: {before_cash} -> {after_cash} BDT")
+        print("\n5. CLIENT PORTFOLIO FINANCIAL AUDIT:")
+        for code in baseline_portfolio:
+            after_p = client_portfolio.get_snapshot(driver, code)
+            before_cash = baseline_portfolio[code].get("cash_limit", "0.00")
+            after_cash = after_p.get("cash_limit", "0.00")
+            print(f"   Client {code:<8} -> Cash: {before_cash} -> {after_cash} BDT")
 
-    print("\n>>> Multi-Order Execution and 6-Widget Real-Time Audit Session Complete. <<<\n")
+        print("\n>>> Multi-Order Execution and 6-Widget Real-Time Audit Session Complete. <<<\n")
     oms_trade.navigate_to_trade_page(driver)

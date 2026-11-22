@@ -275,10 +275,21 @@ public class OMSweb_MultiOrderExecution {
         Thread.sleep(3000);
 
         // Step 4: 6-Widget Verification Audit
-        System.out.println("\n===============================================================================");
-        System.out.println(" STEP 4: REAL-TIME AUDIT & VERIFICATION ACROSS ALL 6 WIDGETS (CSE)");
-        System.out.println("===============================================================================");
-        runComprehensiveMultiWidgetAudit(driver, wait, baseline, placedOrders, symbol, exchange);
+        boolean hasAnyOrder = false;
+        for (OrderItem oi : placedOrders) {
+            if (OMSweb_Trade.hasLatestOrderInTerminal(driver, oi.clientCode, oi.symbol != null ? oi.symbol : symbol)) {
+                hasAnyOrder = true;
+                break;
+            }
+        }
+        if (!hasAnyOrder && !placedOrders.isEmpty()) {
+            System.out.printf("%n[ORDER TERMINAL CHECK] No latest order found for placed orders in Order Terminal! Skipping snapshot capture and multi-widget audit.%n");
+        } else {
+            System.out.println("\n===============================================================================");
+            System.out.println(" STEP 4: REAL-TIME AUDIT & VERIFICATION ACROSS ALL 6 WIDGETS (CSE)");
+            System.out.println("===============================================================================");
+            runComprehensiveMultiWidgetAudit(driver, wait, baseline, placedOrders, symbol, exchange);
+        }
 
         try {
             OMSweb_Trade.navigateToTradePage(driver, wait, false);
@@ -416,10 +427,21 @@ public class OMSweb_MultiOrderExecution {
         // =====================================================================
         // STEP 4: REAL-TIME UI UPDATE VERIFICATION ACROSS ALL 6 WIDGETS
         // =====================================================================
-        System.out.println("\n===============================================================================");
-        System.out.println(" STEP 4: REAL-TIME AUDIT & VERIFICATION ACROSS ALL 6 WIDGETS");
-        System.out.println("===============================================================================");
-        runComprehensiveMultiWidgetAudit(driver, wait, baseline, placedOrders, symbol, exchange);
+        boolean hasAnyOrder = false;
+        for (OrderItem oi : placedOrders) {
+            if (OMSweb_Trade.hasLatestOrderInTerminal(driver, oi.clientCode, oi.symbol != null ? oi.symbol : symbol)) {
+                hasAnyOrder = true;
+                break;
+            }
+        }
+        if (!hasAnyOrder && !placedOrders.isEmpty()) {
+            System.out.printf("%n[ORDER TERMINAL CHECK] No latest order found for placed orders in Order Terminal! Skipping snapshot capture and multi-widget audit.%n");
+        } else {
+            System.out.println("\n===============================================================================");
+            System.out.println(" STEP 4: REAL-TIME AUDIT & VERIFICATION ACROSS ALL 6 WIDGETS");
+            System.out.println("===============================================================================");
+            runComprehensiveMultiWidgetAudit(driver, wait, baseline, placedOrders, symbol, exchange);
+        }
 
         // Return to Trade page cleanly
         try {

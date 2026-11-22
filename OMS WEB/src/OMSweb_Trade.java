@@ -8848,11 +8848,14 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		refreshAndSyncAllWidgets(driver, cleanSym, buyer, ex);
 
-		SixWidgetUiSnapshot stage1Accepted = capture6WidgetsUiSnapshot(driver, "1. ACCEPTED BUY ORDER", buyer, cleanSym, ex);
-
-		displayExactWidgetRowData(stage1Accepted, "STAGE 1 [ACCEPTED ORDER] - SELECTED SYMBOL ALL COLUMNS");
-
-		compareAndReport6Widgets(baseline, stage1Accepted, "STAGE 1 [ACCEPTED ORDER] vs BASELINE (PRE-TRADE UI)");
+		SixWidgetUiSnapshot stage1Accepted = baseline;
+		if (!hasLatestOrderInTerminal(driver, buyer, cleanSym)) {
+			System.out.printf("%n[ORDER TERMINAL CHECK] No latest order found for %s (%s) in Order Terminal! Skipping Stage 1 snapshot capture and comparison.%n", cleanSym, buyer);
+		} else {
+			stage1Accepted = capture6WidgetsUiSnapshot(driver, "1. ACCEPTED BUY ORDER", buyer, cleanSym, ex);
+			displayExactWidgetRowData(stage1Accepted, "STAGE 1 [ACCEPTED ORDER] - SELECTED SYMBOL ALL COLUMNS");
+			compareAndReport6Widgets(baseline, stage1Accepted, "STAGE 1 [ACCEPTED ORDER] vs BASELINE (PRE-TRADE UI)");
+		}
 
 		// ---------------------------------------------------------------------
 
@@ -8904,11 +8907,14 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		refreshAndSyncAllWidgets(driver, cleanSym, buyer, ex);
 
-		SixWidgetUiSnapshot stage2PartiallyFilled = capture6WidgetsUiSnapshot(driver, "2. PARTIALLY FILLED BUY ORDER", buyer, cleanSym, ex);
-
-		displayExactWidgetRowData(stage2PartiallyFilled, "STAGE 2 [PARTIALLY FILLED ORDER] - SELECTED SYMBOL ALL COLUMNS");
-
-		compareAndReport6Widgets(stage1Accepted, stage2PartiallyFilled, "STAGE 2 [PARTIALLY FILLED] vs STAGE 1 [ACCEPTED] (UI DATA)");
+		SixWidgetUiSnapshot stage2PartiallyFilled = stage1Accepted;
+		if (!hasLatestOrderInTerminal(driver, buyer, cleanSym)) {
+			System.out.printf("%n[ORDER TERMINAL CHECK] No latest order found for %s (%s) in Order Terminal! Skipping Stage 2 snapshot capture and comparison.%n", cleanSym, buyer);
+		} else {
+			stage2PartiallyFilled = capture6WidgetsUiSnapshot(driver, "2. PARTIALLY FILLED BUY ORDER", buyer, cleanSym, ex);
+			displayExactWidgetRowData(stage2PartiallyFilled, "STAGE 2 [PARTIALLY FILLED ORDER] - SELECTED SYMBOL ALL COLUMNS");
+			compareAndReport6Widgets(stage1Accepted, stage2PartiallyFilled, "STAGE 2 [PARTIALLY FILLED] vs STAGE 1 [ACCEPTED] (UI DATA)");
+		}
 
 		// ---------------------------------------------------------------------
 
@@ -8946,11 +8952,14 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		refreshAndSyncAllWidgets(driver, cleanSym, buyer, ex);
 
-		SixWidgetUiSnapshot stage3Filled = capture6WidgetsUiSnapshot(driver, "3. 100% FILLED BUY ORDER", buyer, cleanSym, ex);
-
-		displayExactWidgetRowData(stage3Filled, "STAGE 3 [FILLED ORDER] - SELECTED SYMBOL ALL COLUMNS");
-
-		compareAndReport6Widgets(stage2PartiallyFilled, stage3Filled, "STAGE 3 [FILLED] vs STAGE 2 [PARTIALLY FILLED] (UI DATA)");
+		SixWidgetUiSnapshot stage3Filled = stage2PartiallyFilled;
+		if (!hasLatestOrderInTerminal(driver, buyer, cleanSym)) {
+			System.out.printf("%n[ORDER TERMINAL CHECK] No latest order found for %s (%s) in Order Terminal! Skipping Stage 3 snapshot capture and comparison.%n", cleanSym, buyer);
+		} else {
+			stage3Filled = capture6WidgetsUiSnapshot(driver, "3. 100% FILLED BUY ORDER", buyer, cleanSym, ex);
+			displayExactWidgetRowData(stage3Filled, "STAGE 3 [FILLED ORDER] - SELECTED SYMBOL ALL COLUMNS");
+			compareAndReport6Widgets(stage2PartiallyFilled, stage3Filled, "STAGE 3 [FILLED] vs STAGE 2 [PARTIALLY FILLED] (UI DATA)");
+		}
 
 		// ---------------------------------------------------------------------
 
@@ -8988,11 +8997,14 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		refreshAndSyncAllWidgets(driver, cleanSym, buyer, ex);
 
-		SixWidgetUiSnapshot stage4Cancelled = capture6WidgetsUiSnapshot(driver, "4. CANCELLED BUY ORDER", buyer, cleanSym, ex);
-
-		displayExactWidgetRowData(stage4Cancelled, "STAGE 4 [CANCELLED ORDER] - SELECTED SYMBOL ALL COLUMNS");
-
-		compareAndReport6Widgets(stage3Filled, stage4Cancelled, "STAGE 4 [CANCELLED] vs STAGE 3 [FILLED] (UI DOM CHANGES)");
+		SixWidgetUiSnapshot stage4Cancelled = stage3Filled;
+		if (!hasLatestOrderInTerminal(driver, buyer, cleanSym)) {
+			System.out.printf("%n[ORDER TERMINAL CHECK] No latest order found for %s (%s) in Order Terminal! Skipping Stage 4 snapshot capture and comparison.%n", cleanSym, buyer);
+		} else {
+			stage4Cancelled = capture6WidgetsUiSnapshot(driver, "4. CANCELLED BUY ORDER", buyer, cleanSym, ex);
+			displayExactWidgetRowData(stage4Cancelled, "STAGE 4 [CANCELLED ORDER] - SELECTED SYMBOL ALL COLUMNS");
+			compareAndReport6Widgets(stage3Filled, stage4Cancelled, "STAGE 4 [CANCELLED] vs STAGE 3 [FILLED] (UI DOM CHANGES)");
+		}
 
 		// ---------------------------------------------------------------------
 
@@ -9028,21 +9040,14 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		refreshAndSyncAllWidgets(driver, cleanSym, buyer, ex);
 
-		SixWidgetUiSnapshot stage5Rejected = capture6WidgetsUiSnapshot(driver, "5. REJECTED BUY ORDER", buyer, cleanSym, ex);
-
-		displayExactWidgetRowData(stage5Rejected, "STAGE 5 [REJECTED ORDER] - SELECTED SYMBOL ALL COLUMNS");
-
-		// Compare REJECTED with FIRST DATA (Baseline pre-trade UI data):
-
-		System.out.println("\n========================================================================================");
-
-		System.out.println(">>> AUDIT RECONCILIATION: STAGE 5 (REJECTED ORDER) vs FIRST DATA (BASELINE PRE-TRADE UI)");
-
-		System.out.println("    Verifying Rejected order caused ZERO unauthorized leakage, cash debit, or position!");
-
-		System.out.println("========================================================================================");
-
-		compareAndReport6Widgets(firstData, stage5Rejected, "STAGE 5 [REJECTED] vs FIRST DATA [BASELINE] (ZERO-IMPACT AUDIT)");
+		SixWidgetUiSnapshot stage5Rejected = firstData;
+		if (!hasLatestOrderInTerminal(driver, buyer, cleanSym)) {
+			System.out.printf("%n[ORDER TERMINAL CHECK] No latest order found for %s (%s) in Order Terminal! Skipping Stage 5 snapshot capture and comparison.%n", cleanSym, buyer);
+		} else {
+			stage5Rejected = capture6WidgetsUiSnapshot(driver, "5. REJECTED BUY ORDER", buyer, cleanSym, ex);
+			displayExactWidgetRowData(stage5Rejected, "STAGE 5 [REJECTED ORDER] - SELECTED SYMBOL ALL COLUMNS");
+			compareAndReport6Widgets(firstData, stage5Rejected, "STAGE 5 [REJECTED] vs FIRST DATA [BASELINE] (ZERO-IMPACT AUDIT)");
+		}
 
 		// Final Scorecard
 

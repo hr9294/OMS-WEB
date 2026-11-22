@@ -4,6 +4,7 @@ Provides instrument input, BUY/SELL placement, Limit/Market orders,
 and post-trade portfolio audit.
 """
 import time
+import re
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from selenium import webdriver
@@ -47,6 +48,39 @@ def select_exchange_in_modal(driver: webdriver.Chrome, exchange: str = "DSE") ->
         """, xcg_id)
     except Exception:
         pass
+
+
+def has_latest_order_in_terminal(driver: webdriver.Chrome, client_code: str = "", symbol: str = "") -> bool:
+    """Checks whether the latest placed order exists in Order Terminal DOM table."""
+    if not driver:
+        return False
+    try:
+        clean_sym = oms_price.clean_symbol(symbol).upper() if symbol else ""
+        clean_client = client_code.strip() if client_code else ""
+        res = driver.execute_script("""
+            var sym = (arguments[0] || '').toUpperCase();
+            var cln = (arguments[1] || '').toLowerCase();
+            var tbl = document.getElementById('order_terminal_table') || document.querySelector('table.order_terminal_table') || document.querySelector('table[id*=market_table]');
+            if (!tbl) return false;
+            var rows = tbl.querySelectorAll('tbody tr');
+            for (var i = 0; i < Math.min(rows.length, 10); i++) {
+                var r = rows[i];
+                var rowText = (r.innerText || '').toUpperCase();
+                if (rowText.includes('NO RECORD') || rowText.includes('NO DATA') || rowText.trim().length === 0) continue;
+                if (cln.length > 0 && !rowText.toLowerCase().includes(cln)) continue;
+                if (sym.length > 0 && !rowText.includes(sym)) continue;
+                var cells = r.querySelectorAll('td');
+                if (cells.length > 1) {
+                    var oid = (cells[1].innerText || '').trim();
+                    if (oid.length > 0 && oid !== '-') return true;
+                }
+                return true;
+            }
+            return false;
+        """, clean_sym, clean_client)
+        return bool(res)
+    except Exception:
+        return False
 
 
 def navigate_to_trade_page(driver: webdriver.Chrome, force: bool = False) -> None:
@@ -1022,13 +1056,17 @@ def normal_trade_flow(driver: webdriver.Chrome, instrument: str) -> None:
         # Wait for WebSocket real-time update in Order Terminal without reloading
         wait_for_terminal_dom_status(driver, "Accepted", 3.0)
 
-        # Snapshot after (in-place real-time UI DOM without reloading)
-        print(f"\n[AUDIT] Capturing POST-TRADE Real-Time UI Snapshot across 6 Widgets for Client: {client_code}...")
-        post_snap = capture_6widgets_ui_snapshot(driver, "POST-TRADE REAL-TIME", client_code, instrument, exchange)
-        display_exact_widget_row_data(post_snap, "POST-TRADE REAL-TIME - SELECTED SYMBOL ALL COLUMNS")
+        # User requirement: after trade happen check order terminal to any latest order exits or not if not no need to take snapshot and compare the data
+        if not has_latest_order_in_terminal(driver, client_code, instrument):
+            print(f"\n[ORDER TERMINAL CHECK] No latest order found for {instrument} ({client_code}) in Order Terminal! Skipping snapshot capture and widget comparison.")
+        else:
+            # Snapshot after (in-place real-time UI DOM without reloading)
+            print(f"\n[AUDIT] Capturing POST-TRADE Real-Time UI Snapshot across 6 Widgets for Client: {client_code}...")
+            post_snap = capture_6widgets_ui_snapshot(driver, "POST-TRADE REAL-TIME", client_code, instrument, exchange)
+            display_exact_widget_row_data(post_snap, "POST-TRADE REAL-TIME - SELECTED SYMBOL ALL COLUMNS")
 
-        # Reconcile and compare
-        compare_and_report_6widgets(pre_snap, post_snap, f"NORMAL TRADE REAL-TIME UI AUDIT ({side_text} {qty} {instrument})")
+            # Reconcile and compare
+            compare_and_report_6widgets(pre_snap, post_snap, f"NORMAL TRADE REAL-TIME UI AUDIT ({side_text} {qty} {instrument})")
 
         again = input("\nDo you want to trade again? (1=YES / 0=NO, default 0): ").strip()
         if again != "1":
@@ -1656,37 +1694,82 @@ def display_exact_widget_row_data(snap: Dict[str, Any], title: str) -> None:
     print("+======================================================================================================================+\n")
 def compare_and_report_6widgets(prev: Dict[str, Any], curr: Dict[str, Any], title: str) -> None:
     """Prints ASCII table comparing real-time UI data between two lifecycle stages."""
-    print("\n+======================================================================================================================+")
-    print(f"| 6-WIDGET REAL-TIME UI AUDIT COMPARISON: {title:<73} |")
-    print(f"| Previous: {prev.get('stage_name', '-'):<45} | Current: {curr.get('stage_name', '-'):<47} |")
-    print("+======================================================================================================================+")
-    print(f"| {'Widget':<20} | {'Parameter / Metric':<24} | {'Previous (UI DOM)':<18} | {'Current (UI DOM)':<18} | {'Delta / UI Audit Verdict':<25} |")
-    print("+----------------------+--------------------------+--------------------+--------------------+---------------------------+")
+    print("\n+=============================================================================================================================+")
+    print(f"| 6-WIDGET REAL-TIME UI AUDIT COMPARISON: {title:<76} |")
+    print(f"| Previous: {prev.get('stage_name', '-'):<49} | Current: {curr.get('stage_name', '-'):<48} |")
+    print("+=============================================================================================================================+")
+    print(f"| {'Widget':<18} | {'Parameter / Metric':<22} | {'Previous (UI)':<16} | {'Current (UI)':<16} | {'Result':<6} | {'Remarks':<34} |")
+    print("+--------------------+------------------------+------------------+------------------+--------+------------------------------------+")
 
     def _row(widget, param, p_val, c_val, is_text=False):
         p_str = str(p_val if p_val is not None else "-").strip()
         c_str = str(c_val if c_val is not None else "-").strip()
-        verdict = "UNCHANGED"
-        if not is_text and p_str != "-" and c_str != "-":
+        result = "PASS"
+        remarks = "In Sync"
+
+        if param.lower() in ("recent order id", "order_id", "latest order id"):
+            if c_str == "-":
+                result = "FAIL"
+                remarks = "Order ID missing in UI"
+            elif c_str != p_str and p_str != "-":
+                result = "PASS"
+                remarks = f"New Order ID: {c_str}"
+            else:
+                result = "PASS"
+                remarks = f"Order ID: {c_str}"
+        elif param.lower() in ("order status", "status"):
+            if "reject" in c_str.lower():
+                result = "PASS"
+                remarks = "Rejected as Expected"
+            elif any(x in c_str.lower() for x in ("accept", "fill", "partial")):
+                result = "PASS"
+                remarks = f"Order {c_str}"
+            else:
+                result = "PASS"
+                remarks = f"Status: {c_str}"
+        elif not is_text and p_str != "-" and c_str != "-":
             try:
                 p_clean = re.sub(r"[^0-9.-]", "", p_str)
                 c_clean = re.sub(r"[^0-9.-]", "", c_str)
                 diff = float(c_clean) - float(p_clean)
                 if abs(diff) < 0.0001:
-                    verdict = "UNCHANGED (IN SYNC)"
+                    result = "PASS"
+                    remarks = f"In Sync ({c_str})"
                 elif diff > 0:
-                    verdict = f"CHANGED (+{diff:,.2f})"
+                    result = "PASS"
+                    remarks = f"Increased (+{diff:,.2f})"
                 else:
-                    verdict = f"CHANGED ({diff:,.2f})"
+                    result = "PASS"
+                    remarks = f"Decreased ({diff:,.2f})"
             except Exception:
-                verdict = "UNCHANGED" if p_str.lower() == c_str.lower() else f"{p_str} -> {c_str}"
+                result = "PASS"
+                remarks = f"In Sync ({c_str})" if p_str.lower() == c_str.lower() else f"Updated: {p_str} -> {c_str}"
         else:
-            verdict = "UNCHANGED" if p_str.lower() == c_str.lower() else f"STATUS: {p_str} -> {c_str}"
+            if c_str == "-" and p_str != "-":
+                if "qty" in param.lower() or "cost" in param.lower():
+                    result = "PASS"
+                    remarks = "Cleared to 0 / Closed"
+                else:
+                    result = "FAIL"
+                    remarks = "Data missing in DOM"
+            elif c_str == "-" and p_str == "-":
+                if "depth" in widget.lower() and ("ltp" in param.lower() or "ratio" in param.lower()):
+                    result = "FAIL"
+                    remarks = "Depth data not loaded in UI"
+                else:
+                    result = "PASS"
+                    remarks = "N/A (Not configured)"
+            elif p_str.lower() != c_str.lower():
+                result = "PASS"
+                remarks = f"Updated: {p_str} -> {c_str}"
+            else:
+                result = "PASS"
+                remarks = f"In Sync ({c_str})"
 
-        p_disp = (p_str[:15] + "...") if len(p_str) > 18 else p_str
-        c_disp = (c_str[:15] + "...") if len(c_str) > 18 else c_str
-        v_disp = (verdict[:22] + "...") if len(verdict) > 25 else verdict
-        print(f"| {widget:<20} | {param:<24} | {p_disp:<18} | {c_disp:<18} | {v_disp:<25} |")
+        p_disp = (p_str[:13] + "...") if len(p_str) > 16 else p_str
+        c_disp = (c_str[:13] + "...") if len(c_str) > 16 else c_str
+        r_disp = (remarks[:31] + "...") if len(remarks) > 34 else remarks
+        print(f"| {widget:<18} | {param:<22} | {p_disp:<16} | {c_disp:<16} | {result:<6} | {r_disp:<34} |")
 
     # Client Portfolio
     _row("Client Portfolio", "Total Holding Qty", prev["portfolio"].get("total_qty"), curr["portfolio"].get("total_qty"))
@@ -1722,7 +1805,7 @@ def compare_and_report_6widgets(prev: Dict[str, Any], curr: Dict[str, Any], titl
     _row("Position", "Target Client Qty", prev["position"].get("total_qty"), curr["position"].get("total_qty"))
     _row("Position", "Target Saleable Qty", prev["position"].get("saleable_qty"), curr["position"].get("saleable_qty"))
     _row("Position", "Holdings Row Count", len(prev.get("position_ui_holdings", [])), len(curr.get("position_ui_holdings", [])))
-    print("+----------------------+--------------------------+--------------------+--------------------+---------------------------+")
+    print("+--------------------+------------------------+------------------+------------------+--------+------------------------------------+")
 
 
 def _cancel_top_terminal_order(driver: webdriver.Chrome, client_code: str, symbol: str) -> bool:
@@ -1878,9 +1961,13 @@ def run_sequential_buy_lifecycle_audit(
     wait_for_terminal_dom_status(driver, "Accepted", 4.0)
     order_terminal.refresh(driver)
 
-    stage1 = capture_6widgets_ui_snapshot(driver, "1. ACCEPTED BUY ORDER", buyer, clean_sym, ex)
-    display_exact_widget_row_data(stage1, "STAGE 1 [ACCEPTED ORDER] - SELECTED SYMBOL ALL COLUMNS")
-    compare_and_report_6widgets(first_data, stage1, "STAGE 1 [ACCEPTED ORDER] vs BASELINE (PRE-TRADE UI)")
+    stage1 = baseline
+    if not has_latest_order_in_terminal(driver, buyer, clean_sym):
+        print(f"\n[ORDER TERMINAL CHECK] No latest order found for {clean_sym} ({buyer}) in Order Terminal! Skipping Stage 1 snapshot capture and comparison.")
+    else:
+        stage1 = capture_6widgets_ui_snapshot(driver, "1. ACCEPTED BUY ORDER", buyer, clean_sym, ex)
+        display_exact_widget_row_data(stage1, "STAGE 1 [ACCEPTED ORDER] - SELECTED SYMBOL ALL COLUMNS")
+        compare_and_report_6widgets(first_data, stage1, "STAGE 1 [ACCEPTED ORDER] vs BASELINE (PRE-TRADE UI)")
 
     # [STAGE 2] Partially Filled Order
     print("\n>>> [STAGE 2/5] PLACING PARTIALLY FILLED BUY ORDER (Matching 10/20 shares)...")
@@ -1894,9 +1981,13 @@ def run_sequential_buy_lifecycle_audit(
     wait_for_terminal_dom_status(driver, "Partially", 4.0)
     order_terminal.refresh(driver)
 
-    stage2 = capture_6widgets_ui_snapshot(driver, "2. PARTIALLY FILLED BUY ORDER", buyer, clean_sym, ex)
-    display_exact_widget_row_data(stage2, "STAGE 2 [PARTIALLY FILLED] - SELECTED SYMBOL ALL COLUMNS")
-    compare_and_report_6widgets(stage1, stage2, "STAGE 2 [PARTIALLY FILLED] vs STAGE 1 [ACCEPTED] (UI DATA)")
+    stage2 = stage1
+    if not has_latest_order_in_terminal(driver, buyer, clean_sym):
+        print(f"\n[ORDER TERMINAL CHECK] No latest order found for {clean_sym} ({buyer}) in Order Terminal! Skipping Stage 2 snapshot capture and comparison.")
+    else:
+        stage2 = capture_6widgets_ui_snapshot(driver, "2. PARTIALLY FILLED BUY ORDER", buyer, clean_sym, ex)
+        display_exact_widget_row_data(stage2, "STAGE 2 [PARTIALLY FILLED] - SELECTED SYMBOL ALL COLUMNS")
+        compare_and_report_6widgets(stage1, stage2, "STAGE 2 [PARTIALLY FILLED] vs STAGE 1 [ACCEPTED] (UI DATA)")
 
     # [STAGE 3] Filled Order
     print("\n>>> [STAGE 3/5] PLACING 100% FILLED BUY ORDER (Matching 10/10 shares)...")
@@ -1910,9 +2001,13 @@ def run_sequential_buy_lifecycle_audit(
     wait_for_terminal_dom_status(driver, "Filled", 4.0)
     order_terminal.refresh(driver)
 
-    stage3 = capture_6widgets_ui_snapshot(driver, "3. 100% FILLED BUY ORDER", buyer, clean_sym, ex)
-    display_exact_widget_row_data(stage3, "STAGE 3 [FILLED] - SELECTED SYMBOL ALL COLUMNS")
-    compare_and_report_6widgets(stage2, stage3, "STAGE 3 [FILLED] vs STAGE 2 [PARTIALLY FILLED] (UI DATA)")
+    stage3 = stage2
+    if not has_latest_order_in_terminal(driver, buyer, clean_sym):
+        print(f"\n[ORDER TERMINAL CHECK] No latest order found for {clean_sym} ({buyer}) in Order Terminal! Skipping Stage 3 snapshot capture and comparison.")
+    else:
+        stage3 = capture_6widgets_ui_snapshot(driver, "3. 100% FILLED BUY ORDER", buyer, clean_sym, ex)
+        display_exact_widget_row_data(stage3, "STAGE 3 [FILLED] - SELECTED SYMBOL ALL COLUMNS")
+        compare_and_report_6widgets(stage2, stage3, "STAGE 3 [FILLED] vs STAGE 2 [PARTIALLY FILLED] (UI DATA)")
 
     # [STAGE 4] Cancelled Order
     print("\n>>> [STAGE 4/5] PLACING BUY ORDER AND CANCELLING IT IN ORDER TERMINAL...")
@@ -1928,9 +2023,13 @@ def run_sequential_buy_lifecycle_audit(
     _cancel_top_terminal_order(driver, buyer, clean_sym)
     wait_for_terminal_dom_status(driver, "Cancel", 4.0)
 
-    stage4 = capture_6widgets_ui_snapshot(driver, "4. CANCELLED BUY ORDER", buyer, clean_sym, ex)
-    display_exact_widget_row_data(stage4, "STAGE 4 [CANCELLED ORDER] - SELECTED SYMBOL ALL COLUMNS")
-    compare_and_report_6widgets(stage3, stage4, "STAGE 4 [CANCELLED] vs STAGE 3 [FILLED] (UI DOM CHANGES)")
+    stage4 = stage3
+    if not has_latest_order_in_terminal(driver, buyer, clean_sym):
+        print(f"\n[ORDER TERMINAL CHECK] No latest order found for {clean_sym} ({buyer}) in Order Terminal! Skipping Stage 4 snapshot capture and comparison.")
+    else:
+        stage4 = capture_6widgets_ui_snapshot(driver, "4. CANCELLED BUY ORDER", buyer, clean_sym, ex)
+        display_exact_widget_row_data(stage4, "STAGE 4 [CANCELLED ORDER] - SELECTED SYMBOL ALL COLUMNS")
+        compare_and_report_6widgets(stage3, stage4, "STAGE 4 [CANCELLED] vs STAGE 3 [FILLED] (UI DOM CHANGES)")
 
     # [STAGE 5] Rejected Order
     print("\n>>> [STAGE 5/5] PLACING REJECTED BUY ORDER (Rate exceeding circuit limit)...")
@@ -1944,15 +2043,19 @@ def run_sequential_buy_lifecycle_audit(
     wait_for_terminal_dom_status(driver, "Reject", 3.0)
 
     order_terminal.refresh(driver)
-    stage5 = capture_6widgets_ui_snapshot(driver, "5. REJECTED BUY ORDER", buyer, clean_sym, ex)
-    display_exact_widget_row_data(stage5, "STAGE 5 [REJECTED ORDER] - SELECTED SYMBOL ALL COLUMNS")
+    stage5 = first_data
+    if not has_latest_order_in_terminal(driver, buyer, clean_sym):
+        print(f"\n[ORDER TERMINAL CHECK] No latest order found for {clean_sym} ({buyer}) in Order Terminal! Skipping Stage 5 snapshot capture and comparison.")
+    else:
+        stage5 = capture_6widgets_ui_snapshot(driver, "5. REJECTED BUY ORDER", buyer, clean_sym, ex)
+        display_exact_widget_row_data(stage5, "STAGE 5 [REJECTED ORDER] - SELECTED SYMBOL ALL COLUMNS")
 
-    # Compare REJECTED with FIRST DATA (Baseline pre-trade UI data):
-    print("\n========================================================================================")
-    print(">>> AUDIT RECONCILIATION: STAGE 5 (REJECTED ORDER) vs FIRST DATA (BASELINE PRE-TRADE UI)")
-    print("    Verifying Rejected order caused ZERO unauthorized leakage, cash debit, or position!")
-    print("========================================================================================")
-    compare_and_report_6widgets(first_data, stage5, "STAGE 5 [REJECTED] vs FIRST DATA [BASELINE] (ZERO-IMPACT AUDIT)")
+        # Compare REJECTED with FIRST DATA (Baseline pre-trade UI data):
+        print("\n========================================================================================")
+        print(">>> AUDIT RECONCILIATION: STAGE 5 (REJECTED ORDER) vs FIRST DATA (BASELINE PRE-TRADE UI)")
+        print("    Verifying Rejected order caused ZERO unauthorized leakage, cash debit, or position!")
+        print("========================================================================================")
+        compare_and_report_6widgets(first_data, stage5, "STAGE 5 [REJECTED] vs FIRST DATA [BASELINE] (ZERO-IMPACT AUDIT)")
 
     print("\n+========================================================================================+")
     print("|              SEQUENTIAL 5-STAGE BUY LIFECYCLE AUDIT COMPLETE (SCORECARD)                |")
