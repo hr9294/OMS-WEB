@@ -2032,17 +2032,19 @@ public class OMSweb_Trade {
 
 				printActionOrderTerminalTable("NORMAL TRADE [ACCEPTED ORDER] - REAL-TIME ORDER RECORD", actionOrder);
 
-				// [STEP 2] CAPTURE POST-TRADE REAL-TIME UI DOM SNAPSHOT (ALL 6 WIDGETS)
+				// User requirement: after trade happen check order terminal to any latest order exits or not if not no need to take snapshot and compare the data
+				boolean hasLatestOrder = hasLatestOrderInTerminal(driver, clientCode, instrument);
+				if (!hasLatestOrder) {
+					System.out.printf("%n[ORDER TERMINAL CHECK] No latest order found for %s (%s) in Order Terminal! Skipping snapshot capture and widget comparison.%n", instrument, clientCode);
+				} else {
+					// [STEP 2] CAPTURE POST-TRADE REAL-TIME UI DOM SNAPSHOT (ALL 6 WIDGETS)
+					System.out.printf("%n[AUDIT] Capturing POST-TRADE Real-Time UI Snapshot across 6 Widgets for Client: %s...%n", clientCode);
+					SixWidgetUiSnapshot postTradeSnap = capture6WidgetsUiSnapshot(driver, "POST-TRADE REAL-TIME", clientCode, instrument, snapshotExchange);
+					displayExactWidgetRowData(postTradeSnap, "POST-TRADE REAL-TIME - SELECTED SYMBOL ALL COLUMNS");
 
-				System.out.printf("%n[AUDIT] Capturing POST-TRADE Real-Time UI Snapshot across 6 Widgets for Client: %s...%n", clientCode);
-
-				SixWidgetUiSnapshot postTradeSnap = capture6WidgetsUiSnapshot(driver, "POST-TRADE REAL-TIME", clientCode, instrument, snapshotExchange);
-
-				displayExactWidgetRowData(postTradeSnap, "POST-TRADE REAL-TIME - SELECTED SYMBOL ALL COLUMNS");
-
-				// Compare Pre vs Post in-place
-
-				compareAndReport6Widgets(preTradeSnap, postTradeSnap, "NORMAL TRADE REAL-TIME UI AUDIT (" + sideText + " " + tradeQty + " " + instrument + ")");
+					// Compare Pre vs Post in-place
+					compareAndReport6Widgets(preTradeSnap, postTradeSnap, "NORMAL TRADE REAL-TIME UI AUDIT (" + sideText + " " + tradeQty + " " + instrument + ")");
+				}
 
 			}
 
@@ -7850,17 +7852,17 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 	public static void compareAndReport6Widgets(SixWidgetUiSnapshot prev, SixWidgetUiSnapshot curr, String comparisonTitle) {
 
-		System.out.println("\n+======================================================================================================================+");
+		System.out.println("\n+=============================================================================================================================+");
 
-		System.out.printf("| 7-WIDGET REAL-TIME UI AUDIT COMPARISON (INC. MARKET WATCH): %-73s |%n", comparisonTitle);
+		System.out.printf("| 7-WIDGET REAL-TIME UI AUDIT COMPARISON (INC. MARKET WATCH): %-64s |%n", comparisonTitle);
 
-		System.out.printf("| Previous: %-45s | Current: %-47s |%n", prev.stageName, curr.stageName);
+		System.out.printf("| Previous: %-52s | Current: %-51s |%n", prev.stageName, curr.stageName);
 
-		System.out.println("+======================================================================================================================+");
+		System.out.println("+=============================================================================================================================+");
 
-		System.out.printf("| %-20s | %-24s | %-18s | %-18s | %-25s |%n", "Widget", "Parameter / Metric", "Previous (UI DOM)", "Current (UI DOM)", "Delta / UI Audit Verdict");
+		System.out.printf("| %-18s | %-22s | %-16s | %-16s | %-6s | %-32s |%n", "Widget", "Parameter / Metric", "Previous (UI)", "Current (UI)", "Result", "Remarks");
 
-		System.out.println("+----------------------+--------------------------+--------------------+--------------------+---------------------------+");
+		System.out.println("+--------------------+------------------------+------------------+------------------+--------+------------------------------------+");
 
 		printComparisonRow("Client Portfolio", "Total Holding Qty",
 
@@ -7994,7 +7996,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 				curr.marketWatchUi.getOrDefault("Turnover", "-"), false);
 
-		System.out.println("+----------------------+--------------------------+--------------------+--------------------+---------------------------+");
+		System.out.println("+--------------------+------------------------+------------------+------------------+--------+------------------------------------+");
 
 		// Display PRE vs POST All Rows Comparison
 
@@ -8038,9 +8040,61 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		String c = (curr == null || curr.trim().isEmpty()) ? "-" : curr.trim();
 
-		String verdict = "UNCHANGED";
+		String result = "PASS";
 
-		if (!isText && !p.equals("-") && !c.equals("-")) {
+		String remarks = "In Sync";
+
+		if (param.equalsIgnoreCase("Latest Order ID") || param.equalsIgnoreCase("Recent Order ID")) {
+
+			if (c.equals("-")) {
+
+				result = "FAIL";
+
+				remarks = "Order ID missing in UI";
+
+			} else if (!c.equals(p) && !p.equals("-")) {
+
+				result = "PASS";
+
+				remarks = "New Order ID: " + c;
+
+			} else {
+
+				result = "PASS";
+
+				remarks = "Order ID: " + c;
+
+			}
+
+		} else if (param.equalsIgnoreCase("Order Status")) {
+
+			if (c.equalsIgnoreCase("Accepted") || c.equalsIgnoreCase("Filled") || c.equalsIgnoreCase("Trade Executed")) {
+
+				result = "PASS";
+
+				remarks = "Status: " + c;
+
+			} else if (c.equalsIgnoreCase("Rejected")) {
+
+				result = "FAIL";
+
+				remarks = "Order Rejected by Exchange";
+
+			} else if (c.equals("-")) {
+
+				result = "FAIL";
+
+				remarks = "Order Status missing in UI";
+
+			} else {
+
+				result = "PASS";
+
+				remarks = "Status: " + c;
+
+			}
+
+		} else if (!isText && !p.equals("-") && !c.equals("-")) {
 
 			try {
 
@@ -8052,45 +8106,99 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 				if (Math.abs(diff) < 0.0001) {
 
-					verdict = "UNCHANGED (IN SYNC)";
+					result = "PASS";
+
+					remarks = "In Sync (" + c + ")";
 
 				} else if (diff > 0) {
 
-					verdict = String.format(Locale.US, "CHANGED (+%,.2f)", diff);
+					result = "PASS";
+
+					remarks = String.format(Locale.US, "Increased (+%,.2f)", diff);
 
 				} else {
 
-					verdict = String.format(Locale.US, "CHANGED (%,.2f)", diff);
+					result = "PASS";
+
+					remarks = String.format(Locale.US, "Decreased (%,.2f)", diff);
 
 				}
 
 			} catch (Exception e) {
 
-				verdict = p.equalsIgnoreCase(c) ? "UNCHANGED" : (p + " -> " + c);
+				if (p.equalsIgnoreCase(c)) {
+
+					result = "PASS";
+
+					remarks = "In Sync (" + c + ")";
+
+				} else {
+
+					result = "PASS";
+
+					remarks = "Updated: " + p + " -> " + c;
+
+				}
 
 			}
 
 		} else {
 
-			if (p.equalsIgnoreCase(c)) {
+			if (c.equals("-") && !p.equals("-")) {
 
-				verdict = "UNCHANGED";
+				if (param.contains("Qty") || param.contains("Cost")) {
+
+					result = "PASS";
+
+					remarks = "Cleared to 0 / Closed";
+
+				} else {
+
+					result = "FAIL";
+
+					remarks = "Data missing in DOM";
+
+				}
+
+			} else if (c.equals("-") && p.equals("-")) {
+
+				if (widget.contains("Market Depth") && (param.contains("LTP") || param.contains("Buy / Sell"))) {
+
+					result = "FAIL";
+
+					remarks = "Depth data not loaded in UI";
+
+				} else {
+
+					result = "PASS";
+
+					remarks = "N/A (Not configured)";
+
+				}
+
+			} else if (!p.equalsIgnoreCase(c)) {
+
+				result = "PASS";
+
+				remarks = "Updated: " + p + " -> " + c;
 
 			} else {
 
-				verdict = "STATUS: " + p + " -> " + c;
+				result = "PASS";
+
+				remarks = "In Sync (" + c + ")";
 
 			}
 
 		}
 
-		if (p.length() > 18) p = p.substring(0, 15) + "...";
+		if (p.length() > 16) p = p.substring(0, 13) + "...";
 
-		if (c.length() > 18) c = c.substring(0, 15) + "...";
+		if (c.length() > 16) c = c.substring(0, 13) + "...";
 
-		if (verdict.length() > 25) verdict = verdict.substring(0, 22) + "...";
+		if (remarks.length() > 32) remarks = remarks.substring(0, 29) + "...";
 
-		System.out.printf("| %-20s | %-24s | %-18s | %-18s | %-25s |%n", widget, param, p, c, verdict);
+		System.out.printf("| %-18s | %-22s | %-16s | %-16s | %-6s | %-32s |%n", widget, param, p, c, result, remarks);
 
 	}
 
@@ -8405,19 +8513,41 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		double extractedUpper = 0.0;
 		double extractedLower = 0.0;
 
-		java.util.regex.Pattern pSuggested = java.util.regex.Pattern.compile("(?i)(?:suggested|suggest|recommended|acceptable)[^0-9]{1,30}?([0-9]+(?:\\.[0-9]+)?)");
-		java.util.regex.Matcher mSuggested = pSuggested.matcher(rawMsg);
-		if (mSuggested.find()) {
-			extractedSuggested = parseNumSafe(mSuggested.group(1));
+		// 1. Direct check for Trade Rule error messages (e.g. from user toast):
+		// e.g. "Error: Trade Rule - Price limit exceeded. Price cannot be more than 266.90"
+		java.util.regex.Pattern pCannotMore = java.util.regex.Pattern.compile("(?i)price cannot be more than\\s*([0-9]+(?:\\.[0-9]+)?)");
+		java.util.regex.Matcher mCannotMore = pCannotMore.matcher(rawMsg);
+		if (mCannotMore.find()) {
+			extractedUpper = parseNumSafe(mCannotMore.group(1));
+			extractedSuggested = extractedUpper;
 		}
 
+		// e.g. "Error: Trade Rule - Price limit exceeded. Price cannot be less than 218.40"
+		java.util.regex.Pattern pCannotLess = java.util.regex.Pattern.compile("(?i)price cannot be (?:less|lower)\\s+than\\s*([0-9]+(?:\\.[0-9]+)?)");
+		java.util.regex.Matcher mCannotLess = pCannotLess.matcher(rawMsg);
+		if (mCannotLess.find()) {
+			extractedLower = parseNumSafe(mCannotLess.group(1));
+			if (extractedSuggested <= 0.0) extractedSuggested = extractedLower;
+		}
+
+		// 2. Explicit suggested price: "suggested price: 280.00", "suggested: 280.00", "recommended: 280.00"
+		if (extractedSuggested <= 0.0) {
+			java.util.regex.Pattern pSuggested = java.util.regex.Pattern.compile("(?i)(?:suggested|suggest|recommended|acceptable)[^0-9]{1,30}?([0-9]+(?:\\.[0-9]+)?)");
+			java.util.regex.Matcher mSuggested = pSuggested.matcher(rawMsg);
+			if (mSuggested.find()) {
+				extractedSuggested = parseNumSafe(mSuggested.group(1));
+			}
+		}
+
+		// 3. Range pattern: "[240.00 - 300.00]" or "between 240 and 300"
 		java.util.regex.Pattern pRange = java.util.regex.Pattern.compile("(?i)(?:\\[|between\\s+)([0-9]+(?:\\.[0-9]+)?)\\s*(?:-|to|and)\\s*([0-9]+(?:\\.[0-9]+)?)\\]?");
 		java.util.regex.Matcher mRange = pRange.matcher(rawMsg);
 		if (mRange.find()) {
-			extractedLower = parseNumSafe(mRange.group(1));
-			extractedUpper = parseNumSafe(mRange.group(2));
+			if (extractedLower <= 0.0) extractedLower = parseNumSafe(mRange.group(1));
+			if (extractedUpper <= 0.0) extractedUpper = parseNumSafe(mRange.group(2));
 		}
 
+		// 4. Upper limit: "upper limit: 300.00", "circuit high: 300", "ceiling: 300"
 		if (extractedUpper <= 0.0) {
 			java.util.regex.Pattern pUpper = java.util.regex.Pattern.compile("(?i)(?:upper|high|max(?:imum)?|ceiling)[^0-9]{1,30}?([0-9]+(?:\\.[0-9]+)?)");
 			java.util.regex.Matcher mUpper = pUpper.matcher(rawMsg);
@@ -8426,11 +8556,21 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			}
 		}
 
+		// 5. Lower limit: "lower limit: 200.00", "circuit low: 200", "floor: 200"
 		if (extractedLower <= 0.0) {
 			java.util.regex.Pattern pLower = java.util.regex.Pattern.compile("(?i)(?:lower|lowest|low|min(?:imum)?|floor)[^0-9]{1,30}?([0-9]+(?:\\.[0-9]+)?)");
 			java.util.regex.Matcher mLower = pLower.matcher(rawMsg);
 			if (mLower.find()) {
 				extractedLower = parseNumSafe(mLower.group(1));
+			}
+		}
+
+		// 6. If suggested price is still 0, but upper or lower was extracted:
+		if (extractedSuggested <= 0.0) {
+			if (extractedUpper > 0.0 && (rawMsg.toLowerCase().contains("more than") || rawMsg.toLowerCase().contains("exceed"))) {
+				extractedSuggested = extractedUpper;
+			} else if (extractedLower > 0.0 && (rawMsg.toLowerCase().contains("less than") || rawMsg.toLowerCase().contains("below") || rawMsg.toLowerCase().contains("lower than"))) {
+				extractedSuggested = extractedLower;
 			}
 		}
 
@@ -8443,13 +8583,21 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			JavascriptExecutor js = (JavascriptExecutor) driver;
 			String rawMsg = (String) js.executeScript(
 				"var msgs = [];\n" +
-				"// 1. Check toasts, noty, sweetalerts, modals, jconfirm\n" +
-				"var alerts = document.querySelectorAll('.toast, .noty_body, .alert, .swal2-html-container, .swal2-title, .jconfirm-content, .modal-body, .ui-pnotify-text');\n" +
+				"// 1. Check toasts, noty, sweetalerts, modals, jconfirm, error banners\n" +
+				"var alerts = document.querySelectorAll('.toast, .toast-message, .noty_body, .alert, .alert-danger, .alert-warning, .swal2-html-container, .swal2-title, .jconfirm-content, .modal-body, .ui-pnotify-text, div[role=\"alert\"], div[class*=\"banner\"], div[class*=\"error\"], div[class*=\"alert\"], div[class*=\"toast\"], div[class*=\"notify\"], div[class*=\"notification\"], .growl-message');\n" +
 				"for (var i = 0; i < alerts.length; i++) {\n" +
 				"    var t = (alerts[i].innerText || alerts[i].textContent || '').trim();\n" +
 				"    if (t.length > 0) msgs.push(t);\n" +
 				"}\n" +
-				"// 2. Check Order Terminal rejected rows tooltip / reason\n" +
+				"// 2. Scan visible elements containing price limit text\n" +
+				"var allDivs = document.querySelectorAll('div, span, p');\n" +
+				"for (var d = 0; d < allDivs.length; d++) {\n" +
+				"    var dt = (allDivs[d].innerText || '').trim();\n" +
+				"    if (dt.indexOf('Price limit exceeded') !== -1 || dt.indexOf('cannot be more than') !== -1 || dt.indexOf('cannot be less than') !== -1 || dt.indexOf('Trade Rule') !== -1) {\n" +
+				"        msgs.push(dt);\n" +
+				"    }\n" +
+				"}\n" +
+				"// 3. Check Order Terminal rejected rows tooltip / reason\n" +
 				"var cln = (arguments[0] || '').toLowerCase();\n" +
 				"var sym = (arguments[1] || '').toUpperCase();\n" +
 				"var rows = document.querySelectorAll('#order_terminal_table tbody tr, table.order_terminal_table tbody tr');\n" +
@@ -8490,10 +8638,17 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			try {
 				Object txt = ((JavascriptExecutor) driver).executeScript(
 					"var msgs = [];\n" +
-					"var alerts = document.querySelectorAll('.jconfirm-content, .swal2-html-container, .toast, .noty_body, .alert, .modal-body');\n" +
+					"var alerts = document.querySelectorAll('.jconfirm-content, .swal2-html-container, .toast, .noty_body, .alert, .alert-danger, .modal-body, div[role=\"alert\"], div[class*=\"banner\"], div[class*=\"error\"]');\n" +
 					"for (var i = 0; i < alerts.length; i++) {\n" +
 					"    var t = (alerts[i].innerText || alerts[i].textContent || '').trim();\n" +
 					"    if (t.length > 0) msgs.push(t);\n" +
+					"}\n" +
+					"var allDivs = document.querySelectorAll('div, span, p');\n" +
+					"for (var d = 0; d < allDivs.length; d++) {\n" +
+					"    var dt = (allDivs[d].innerText || '').trim();\n" +
+					"    if (dt.indexOf('Price limit exceeded') !== -1 || dt.indexOf('cannot be more than') !== -1 || dt.indexOf('cannot be less than') !== -1 || dt.indexOf('Trade Rule') !== -1) {\n" +
+					"        msgs.push(dt);\n" +
+					"    }\n" +
 					"}\n" +
 					"return msgs.join(' | ');"
 				);
@@ -8519,10 +8674,10 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"            if (inst && typeof inst.close === 'function') inst.close();" +
 				"        }" +
 				"    }" +
-				"    var btns = document.querySelectorAll('.jconfirm-buttons button, .modal button.btn-danger, .modal button.btn-secondary, button.btn-primary');" +
+				"    var btns = document.querySelectorAll('.jconfirm-buttons button, .modal button.btn-danger, .modal button.btn-secondary, button.btn-primary, .alert .close, .toast-close-button, div[class*=\"alert\"] button, button[aria-label=\"Close\"]');" +
 				"    for (var b = 0; b < btns.length; b++) {" +
 				"        var bt = (btns[b].innerText || '').toLowerCase();" +
-				"        if (bt.includes('ok') || bt.includes('close') || bt.includes('dismiss')) btns[b].click();" +
+				"        if (bt.includes('ok') || bt.includes('close') || bt.includes('dismiss') || bt.includes('x') || bt === '×') btns[b].click();" +
 				"    }" +
 				"} catch(e){}"
 			);
@@ -9387,11 +9542,11 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"var cln = (arguments[0] || '').trim().toLowerCase();\n" +
 				"var sym = (arguments[1] || '').trim().toUpperCase();\n" +
 				"var side = (arguments[2] || '').trim().toUpperCase();\n" +
-				"// 1. Check active toast/alert notifications\n" +
-				"var toasts = document.querySelectorAll('.toast, .noty_body, .alert, .swal2-html-container');\n" +
+				"// 1. Check active toast/alert notifications & error banners\n" +
+				"var toasts = document.querySelectorAll('.toast, .toast-message, .noty_body, .alert, .alert-danger, .swal2-html-container, div[role=\"alert\"], div[class*=\"banner\"], div[class*=\"error\"]');\n" +
 				"for (var t = 0; t < toasts.length; t++) {\n" +
 				"    var msg = (toasts[t].innerText || '').toLowerCase();\n" +
-				"    if (msg.includes('price limit') || msg.includes('circuit') || msg.includes('price band') || msg.includes('outside range') || msg.includes('breach')) return 'PRICE_BREACH';\n" +
+				"    if (msg.includes('price limit') || msg.includes('circuit') || msg.includes('price band') || msg.includes('outside range') || msg.includes('breach') || msg.includes('cannot be more than') || msg.includes('cannot be less than')) return 'PRICE_BREACH';\n" +
 				"    if (msg.includes('rejected') || msg.includes('order reject')) return 'REJECTED';\n" +
 				"}\n" +
 				"// 2. Check Order Terminal Table top rows\n" +
@@ -9405,7 +9560,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"        if (sym.length > 0 && !rowText.includes(sym)) continue;\n" +
 				"        if (side.length > 0 && !rowText.includes(side)) continue;\n" +
 				"        if (rowText.includes('ACCEPTED') || rowText.includes('ACCEPT') || rowText.includes('FILLED') || rowText.includes('TRADE EXECUTED')) return 'ACCEPTED';\n" +
-				"        if (rowText.includes('BREACH') || rowText.includes('CIRCUIT')) return 'PRICE_BREACH';\n" +
+				"        if (rowText.includes('BREACH') || rowText.includes('CIRCUIT') || rowText.includes('PRICE LIMIT')) return 'PRICE_BREACH';\n" +
 				"        if (rowText.includes('REJECTED') || rowText.includes('REJECT')) return 'REJECTED';\n" +
 				"    }\n" +
 				"}\n" +
@@ -9415,6 +9570,41 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			return res != null ? res.toString() : "UNKNOWN";
 		} catch (Exception e) {
 			return "UNKNOWN";
+		}
+	}
+
+	public static boolean hasLatestOrderInTerminal(WebDriver driver, String clientCode, String symbol) {
+		if (driver == null) return false;
+		try {
+			JavascriptExecutor js = (JavascriptExecutor) driver;
+			String cleanSym = (symbol != null) ? cleanSymbol(symbol).toUpperCase() : "";
+			String cleanClient = (clientCode != null) ? clientCode.trim() : "";
+
+			Object res = js.executeScript(
+				"var sym = (arguments[0] || '').toUpperCase();\n" +
+				"var cln = (arguments[1] || '').toLowerCase();\n" +
+				"var tbl = document.getElementById('order_terminal_table') || document.querySelector('table.order_terminal_table') || document.querySelector('table[id*=market_table]');\n" +
+				"if (!tbl) return false;\n" +
+				"var rows = tbl.querySelectorAll('tbody tr');\n" +
+				"for (var i = 0; i < Math.min(rows.length, 10); i++) {\n" +
+				"    var r = rows[i];\n" +
+				"    var rowText = (r.innerText || '').toUpperCase();\n" +
+				"    if (rowText.includes('NO RECORD') || rowText.includes('NO DATA') || rowText.trim().length === 0) continue;\n" +
+				"    if (cln.length > 0 && !rowText.toLowerCase().includes(cln)) continue;\n" +
+				"    if (sym.length > 0 && !rowText.includes(sym)) continue;\n" +
+				"    var cells = r.querySelectorAll('td');\n" +
+				"    if (cells.length > 1) {\n" +
+				"        var oid = (cells[1].innerText || '').trim();\n" +
+				"        if (oid.length > 0 && oid !== '-') return true;\n" +
+				"    }\n" +
+				"    return true;\n" +
+				"}\n" +
+				"return false;\n",
+				cleanSym, cleanClient
+			);
+			return Boolean.TRUE.equals(res);
+		} catch (Exception e) {
+			return false;
 		}
 	}
 
@@ -9906,8 +10096,22 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		System.out.printf("Test 9 [Rejection Order Lower Breach]: Expected 200.00, Got %.2f -> %s%n", c9, p9 ? "PASS" : "FAIL");
 		allPassed &= p9;
 
+		// Case 10: Trade Rule Error Toast (User Screenshot): "Error: Trade Rule - Price limit exceeded. Price cannot be more than 266.90"
+		RejectionOrderPriceInfo rej4 = parseRejectionText("Error: Trade Rule - Price limit exceeded. Price cannot be more than 266.90");
+		double c10 = resolvePriceLimitSafe(275.0, rej4.lowerLimit, rej4.upperLimit, rej4.suggestedPrice);
+		boolean p10 = Math.abs(c10 - 266.90) < 0.001 && Math.abs(rej4.suggestedPrice - 266.90) < 0.001 && Math.abs(rej4.upperLimit - 266.90) < 0.001;
+		System.out.printf("Test 10 [Trade Rule Error 'cannot be more than']: Expected 266.90, Got %.2f -> %s%n", c10, p10 ? "PASS" : "FAIL");
+		allPassed &= p10;
+
+		// Case 11: Trade Rule Error Toast: "Error: Trade Rule - Price limit exceeded. Price cannot be less than 218.40"
+		RejectionOrderPriceInfo rej5 = parseRejectionText("Error: Trade Rule - Price limit exceeded. Price cannot be less than 218.40");
+		double c11 = resolvePriceLimitSafe(210.0, rej5.lowerLimit, rej5.upperLimit, rej5.suggestedPrice);
+		boolean p11 = Math.abs(c11 - 218.40) < 0.001 && Math.abs(rej5.suggestedPrice - 218.40) < 0.001 && Math.abs(rej5.lowerLimit - 218.40) < 0.001;
+		System.out.printf("Test 11 [Trade Rule Error 'cannot be less than']: Expected 218.40, Got %.2f -> %s%n", c11, p11 ? "PASS" : "FAIL");
+		allPassed &= p11;
+
 		System.out.printf("+-----------------------------------------------------------------------------+%n");
-		System.out.printf("| ALL PRICE LIMIT BREACH TESTS: %-45s |%n", allPassed ? "ALL PASSED (9/9)" : "SOME FAILED");
+		System.out.printf("| ALL PRICE LIMIT BREACH TESTS: %-45s |%n", allPassed ? "ALL PASSED (11/11)" : "SOME FAILED");
 		System.out.printf("+-----------------------------------------------------------------------------+%n%n");
 		return allPassed;
 	}

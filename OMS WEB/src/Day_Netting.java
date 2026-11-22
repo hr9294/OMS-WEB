@@ -2488,13 +2488,13 @@ public class Day_Netting {
     }
 
     public static void compareAndReportNettingWidgets(WebDriver driver, Netting6WidgetsUiSnapshot prev, Netting6WidgetsUiSnapshot curr, String title) {
-        System.out.println("\n+======================================================================================================================+");
-        System.out.printf("| 6-WIDGET REAL-TIME UI AUDIT COMPARISON REPORT: %-69s |%n", title);
-        System.out.printf("| Pre-Trade: %-42s | Post-Trade: %-45s |%n", prev.stageName, curr.stageName);
-        System.out.printf("| Target Client: %-38s | Target Symbol: %-42s |%n", curr.targetClient, curr.targetSymbol);
-        System.out.println("+======================================================================================================================+");
-        System.out.printf("| %-18s | %-24s | %-18s | %-18s | %-27s |%n", "Widget", "Parameter / Metric", "Pre-Trade (UI DOM)", "Post-Trade (UI DOM)", "Delta / UI Audit Verdict");
-        System.out.println("+--------------------+--------------------------+--------------------+--------------------+-----------------------------+");
+        System.out.println("\n+=============================================================================================================================+");
+        System.out.printf("| 6-WIDGET REAL-TIME UI AUDIT COMPARISON REPORT: %-76s |%n", title);
+        System.out.printf("| Pre-Trade: %-49s | Post-Trade: %-48s |%n", prev.stageName, curr.stageName);
+        System.out.printf("| Target Client: %-45s | Target Symbol: %-46s |%n", curr.targetClient, curr.targetSymbol);
+        System.out.println("+=============================================================================================================================+");
+        System.out.printf("| %-18s | %-22s | %-16s | %-16s | %-6s | %-32s |%n", "Widget", "Parameter / Metric", "Pre-Trade (UI)", "Post-Trade (UI)", "Result", "Remarks");
+        System.out.println("+--------------------+------------------------+------------------+------------------+--------+------------------------------------+");
 
         // 0. qRMS Application Settings
         printNettingDiffRow("App Settings", "DAY_NETTING_SETTINGS", prev.dayNettingMode, curr.dayNettingMode, true);
@@ -2535,7 +2535,7 @@ public class Day_Netting {
         printNettingDiffRow("Netting Watchlist", "Netting Icon", String.valueOf(prev.watchlistNettingIcon), String.valueOf(curr.watchlistNettingIcon), true);
         printNettingDiffRow("Netting Watchlist", "Symbol Rows", String.valueOf(prev.watchlistSymbolCount), String.valueOf(curr.watchlistSymbolCount), false);
 
-        System.out.println("+--------------------+--------------------------+--------------------+--------------------+-----------------------------+");
+        System.out.println("+--------------------+------------------------+------------------+------------------+--------+------------------------------------+");
         System.out.println(">>> WIDGET-WISE AUDIT VERDICT:");
         System.out.printf("  * Portfolio       : %s%n", getWidgetDiffVerdict(prev.portfolioData, curr.portfolioData));
         System.out.printf("  * Order Terminal  : %s%n", getTerminalDiffVerdict(prev.orderTerminalData, curr.orderTerminalData));
@@ -2576,29 +2576,89 @@ public class Day_Netting {
     private static void printNettingDiffRow(String widget, String param, String prev, String curr, boolean isText) {
         String p = (prev == null || prev.trim().isEmpty()) ? "-" : prev.trim();
         String c = (curr == null || curr.trim().isEmpty()) ? "-" : curr.trim();
-        String verdict = "UNCHANGED";
+        String result = "PASS";
+        String remarks = "In Sync";
 
-        if (!isText && !p.equals("-") && !c.equals("-")) {
+        if (param.equalsIgnoreCase("Recent Order ID") || param.equalsIgnoreCase("Order_ID")) {
+            if (c.equals("-")) {
+                result = "FAIL";
+                remarks = "Order ID missing in UI";
+            } else if (!c.equals(p) && !p.equals("-")) {
+                result = "PASS";
+                remarks = "New Order ID: " + c;
+            } else {
+                result = "PASS";
+                remarks = "Order ID: " + c;
+            }
+        } else if (param.equalsIgnoreCase("Order Status") || param.equalsIgnoreCase("Status")) {
+            if (c.equalsIgnoreCase("Accepted") || c.equalsIgnoreCase("Filled") || c.equalsIgnoreCase("Trade Executed")) {
+                result = "PASS";
+                remarks = "Status: " + c;
+            } else if (c.equalsIgnoreCase("Rejected")) {
+                result = "FAIL";
+                remarks = "Order Rejected by Exchange";
+            } else if (c.equals("-")) {
+                result = "FAIL";
+                remarks = "Status missing in UI";
+            } else {
+                result = "PASS";
+                remarks = "Status: " + c;
+            }
+        } else if (!isText && !p.equals("-") && !c.equals("-")) {
             try {
                 double dP = OMSweb_Trade.parseNumSafe(p);
                 double dC = OMSweb_Trade.parseNumSafe(c);
                 double diff = dC - dP;
                 if (Math.abs(diff) < 0.0001) {
-                    verdict = "UNCHANGED (IN SYNC)";
+                    result = "PASS";
+                    remarks = "In Sync (" + c + ")";
                 } else if (diff > 0) {
-                    verdict = String.format(Locale.US, "CHANGED (+%,.2f)", diff);
+                    result = "PASS";
+                    remarks = String.format(Locale.US, "Increased (+%,.2f)", diff);
                 } else {
-                    verdict = String.format(Locale.US, "CHANGED (-%,.2f)", Math.abs(diff));
+                    result = "PASS";
+                    remarks = String.format(Locale.US, "Decreased (%,.2f)", diff);
                 }
             } catch (Exception ignored) {
-                verdict = p.equalsIgnoreCase(c) ? "UNCHANGED (IN SYNC)" : "UPDATED";
+                if (p.equalsIgnoreCase(c)) {
+                    result = "PASS";
+                    remarks = "In Sync (" + c + ")";
+                } else {
+                    result = "PASS";
+                    remarks = "Updated: " + p + " -> " + c;
+                }
             }
         } else {
-            if (p.equals("-") && !c.equals("-")) verdict = "NEW VALUE (" + c + ")";
-            else if (!p.equalsIgnoreCase(c)) verdict = "UPDATED (" + c + ")";
-            else verdict = "UNCHANGED";
+            if (c.equals("-") && !p.equals("-")) {
+                if (param.contains("Qty") || param.contains("Cost")) {
+                    result = "PASS";
+                    remarks = "Cleared to 0 / Closed";
+                } else {
+                    result = "FAIL";
+                    remarks = "Data missing in DOM";
+                }
+            } else if (c.equals("-") && p.equals("-")) {
+                if (widget.contains("Market Depth") && (param.contains("LTP") || param.contains("Ratio"))) {
+                    result = "FAIL";
+                    remarks = "Depth data not loaded in UI";
+                } else {
+                    result = "PASS";
+                    remarks = "N/A (Not configured)";
+                }
+            } else if (!p.equalsIgnoreCase(c)) {
+                result = "PASS";
+                remarks = "Updated: " + p + " -> " + c;
+            } else {
+                result = "PASS";
+                remarks = "In Sync (" + c + ")";
+            }
         }
-        System.out.printf("| %-18s | %-24s | %-18s | %-18s | %-27s |%n", widget, param, p, c, verdict);
+
+        if (p.length() > 16) p = p.substring(0, 13) + "...";
+        if (c.length() > 16) c = c.substring(0, 13) + "...";
+        if (remarks.length() > 32) remarks = remarks.substring(0, 29) + "...";
+
+        System.out.printf("| %-18s | %-22s | %-16s | %-16s | %-6s | %-32s |%n", widget, param, p, c, result, remarks);
     }
 
     private static String getWidgetDiffVerdict(Map<String, String> prev, Map<String, String> curr) {
@@ -3238,12 +3298,18 @@ public class Day_Netting {
                     }
                 }
 
-                // Step 4: Capture Post-Trade Snapshot across all 6 widgets
-                System.out.printf("%n>>> [STEP 3/3] CAPTURING POST-TRADE REAL-TIME DATA ACROSS 6 WIDGETS FOR CLIENT: %s...%n", cln);
-                Netting6WidgetsUiSnapshot postTradeSnap = check6NettingWidgetsRealTimeUiData(driver, "POST-TRADE_REALTIME_" + targetMode.name() + "_" + targetExchange, cln, sym, targetExchange);
+                // User requirement: after trade happen check order terminal to any latest order exits or not if not no need to take snapshot and compare the data
+                boolean hasLatestOrder = OMSweb_Trade.hasLatestOrderInTerminal(driver, cln, sym);
+                if (!hasLatestOrder) {
+                    System.out.printf("%n[ORDER TERMINAL CHECK] No latest order found for %s (%s) in Order Terminal! Skipping snapshot capture and widget comparison.%n", sym, cln);
+                } else {
+                    // Step 4: Capture Post-Trade Snapshot across all 6 widgets
+                    System.out.printf("%n>>> [STEP 3/3] CAPTURING POST-TRADE REAL-TIME DATA ACROSS 6 WIDGETS FOR CLIENT: %s...%n", cln);
+                    Netting6WidgetsUiSnapshot postTradeSnap = check6NettingWidgetsRealTimeUiData(driver, "POST-TRADE_REALTIME_" + targetMode.name() + "_" + targetExchange, cln, sym, targetExchange);
 
-                // Step 5: Compare Pre-Trade vs Post-Trade & Render Widget-Wise Results
-                compareAndReportNettingWidgets(driver, preTradeSnap, postTradeSnap, "DAY NETTING UI AUDIT (" + targetMode.name() + " - " + targetExchange + ")");
+                    // Step 5: Compare Pre-Trade vs Post-Trade & Render Widget-Wise Results
+                    compareAndReportNettingWidgets(driver, preTradeSnap, postTradeSnap, "DAY NETTING UI AUDIT (" + targetMode.name() + " - " + targetExchange + ")");
+                }
                 System.out.println("[ACTION COMPLETE] Netting Mode, Exchange Netting, Trade Execution, and Widget-Wise Comparison finished successfully.");
             } else if ("2".equals(choice)) {
                 System.out.println("\n-------------------------------------------------------------");
