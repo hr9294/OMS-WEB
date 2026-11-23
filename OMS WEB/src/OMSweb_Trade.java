@@ -9698,6 +9698,13 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 					"var cln = (arguments[0] || '').trim().toLowerCase();\n" +
 					"var sym = (arguments[1] || '').trim().toUpperCase();\n" +
 					"var side = (arguments[2] || '').trim().toUpperCase();\n" +
+					"// If filtered by a different client code, clear the code filter so all latest orders appear\n" +
+					"var cInp = document.getElementById('order_terminal_code') || document.querySelector('input.order_terminal_code, input[id*=\"order_terminal_code\"]');\n" +
+					"if (cInp && cInp.value && cln.length > 0 && cInp.value.trim().toLowerCase() !== cln) {\n" +
+					"    cInp.value = '';\n" +
+					"    if (window.jQuery) { $(cInp).val('').trigger('input').trigger('change').trigger('keyup'); }\n" +
+					"    if (typeof get_order_history === 'function') { try { get_order_history(); } catch(e){} }\n" +
+					"}\n" +
 					"// 1. Check Order Terminal Table top rows first (ground truth in UI)\n" +
 					"var tbl = document.getElementById('order_terminal_table') || document.querySelector('table.order_terminal_table') || document.querySelector('table[id*=market_table]');\n" +
 					"if (tbl) {\n" +
@@ -10008,6 +10015,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		}
 
 		js.executeScript("try { var c = document.querySelectorAll('.wb-close, .winbox .wb-close, .modal .close'); for (var i=0; i<c.length; i++) c[i].click(); } catch(e){}");
+		dismissRejectionAlert(driver);
 		Thread.sleep(300);
 
 		String xpath = "//div[@title='Place " + side.toUpperCase() + " Order'] | //button[normalize-space()='" + side.toUpperCase() + "'] | //div[contains(@class,'new_" + side.toLowerCase() + "_order')]";
