@@ -9687,52 +9687,59 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 	public static String checkLatestTerminalOrderStatus(WebDriver driver, String clientCode, String symbol, String side) {
 		if (driver == null) return "UNKNOWN";
-		try {
-			JavascriptExecutor js = (JavascriptExecutor) driver;
-			String cleanSym = (symbol != null) ? cleanSymbol(symbol).toUpperCase() : "";
-			String cleanClient = (clientCode != null) ? clientCode.trim() : "";
-			String cleanSide = (side != null) ? side.trim().toUpperCase() : "";
+		for (int retry = 0; retry < 5; retry++) {
+			try {
+				JavascriptExecutor js = (JavascriptExecutor) driver;
+				String cleanSym = (symbol != null) ? cleanSymbol(symbol).toUpperCase() : "";
+				String cleanClient = (clientCode != null) ? clientCode.trim() : "";
+				String cleanSide = (side != null) ? side.trim().toUpperCase() : "";
 
-			Object res = js.executeScript(
-				"var cln = (arguments[0] || '').trim().toLowerCase();\n" +
-				"var sym = (arguments[1] || '').trim().toUpperCase();\n" +
-				"var side = (arguments[2] || '').trim().toUpperCase();\n" +
-				"// 1. Check Order Terminal Table top rows first (ground truth in UI)\n" +
-				"var tbl = document.getElementById('order_terminal_table') || document.querySelector('table.order_terminal_table') || document.querySelector('table[id*=market_table]');\n" +
-				"if (tbl) {\n" +
-				"    var rows = tbl.querySelectorAll('tbody tr');\n" +
-				"    for (var i = 0; i < Math.min(rows.length, 10); i++) {\n" +
-				"        var r = rows[i];\n" +
-				"        var rowText = (r.innerText || '').toUpperCase();\n" +
-				"        if (cln.length > 0 && !rowText.toLowerCase().includes(cln)) continue;\n" +
-				"        if (sym.length > 0 && !rowText.includes(sym)) continue;\n" +
-				"        if (side.length > 0 && !rowText.includes(side)) continue;\n" +
-				"        if (rowText.includes('ACCEPTED') || rowText.includes('ACCEPT') || rowText.includes('FILLED') || rowText.includes('TRADE EXECUTED')) return 'ACCEPTED';\n" +
-				"        if (rowText.includes('BREACH') || rowText.includes('CIRCUIT') || rowText.includes('PRICE LIMIT')) return 'PRICE_BREACH';\n" +
-				"        if (rowText.includes('REJECTED') || rowText.includes('REJECT')) {\n" +
-				"            var cells = r.querySelectorAll('td, span, div, a');\n" +
-				"            for (var c = 0; c < cells.length; c++) {\n" +
-				"                var tip = (cells[c].getAttribute('data-original-title') || cells[c].getAttribute('title') || cells[c].innerText || '').toLowerCase();\n" +
-				"                if (tip.includes('price limit') || tip.includes('cannot be more than') || tip.includes('cannot be less than')) return 'PRICE_BREACH';\n" +
-				"            }\n" +
-				"            return 'REJECTED';\n" +
-				"        }\n" +
-				"    }\n" +
-				"}\n" +
-				"// 2. Check active toast/alert notifications & error banners\n" +
-				"var toasts = document.querySelectorAll('.toast, .toast-message, .noty_body, .alert-danger, .swal2-html-container, div[role=\"alert\"], div[class*=\"banner\"], div[class*=\"error\"]');\n" +
-				"for (var t = 0; t < toasts.length; t++) {\n" +
-				"    var msg = (toasts[t].innerText || '').toLowerCase();\n" +
-				"    if (msg.includes('price limit') || msg.includes('circuit') || msg.includes('price band') || msg.includes('outside range') || msg.includes('breach') || msg.includes('cannot be more than') || msg.includes('cannot be less than')) return 'PRICE_BREACH';\n" +
-				"    if (msg.includes('rejected') || msg.includes('order reject')) return 'REJECTED';\n" +
-				"}\n" +
-				"return 'UNKNOWN';",
-				cleanClient, cleanSym, cleanSide
-			);
-			return res != null ? res.toString() : "UNKNOWN";
-		} catch (Exception e) {
-			return "UNKNOWN";
+				Object res = js.executeScript(
+					"var cln = (arguments[0] || '').trim().toLowerCase();\n" +
+					"var sym = (arguments[1] || '').trim().toUpperCase();\n" +
+					"var side = (arguments[2] || '').trim().toUpperCase();\n" +
+					"// 1. Check Order Terminal Table top rows first (ground truth in UI)\n" +
+					"var tbl = document.getElementById('order_terminal_table') || document.querySelector('table.order_terminal_table') || document.querySelector('table[id*=market_table]');\n" +
+					"if (tbl) {\n" +
+					"    var rows = tbl.querySelectorAll('tbody tr');\n" +
+					"    for (var i = 0; i < Math.min(rows.length, 15); i++) {\n" +
+					"        var r = rows[i];\n" +
+					"        var rowText = (r.innerText || '').toUpperCase();\n" +
+					"        if (rowText.includes('NO RECORD') || rowText.includes('NO DATA')) continue;\n" +
+					"        if (cln.length > 0 && !rowText.toLowerCase().includes(cln)) continue;\n" +
+					"        if (sym.length > 0 && !rowText.includes(sym)) continue;\n" +
+					"        if (side.length > 0 && !rowText.includes(side)) continue;\n" +
+					"        if (rowText.includes('ACCEPTED') || rowText.includes('ACCEPT') || rowText.includes('FILLED') || rowText.includes('TRADE EXECUTED') || rowText.includes('NEW')) return 'ACCEPTED';\n" +
+					"        if (rowText.includes('BREACH') || rowText.includes('CIRCUIT') || rowText.includes('PRICE LIMIT')) return 'PRICE_BREACH';\n" +
+					"        if (rowText.includes('REJECTED') || rowText.includes('REJECT')) {\n" +
+					"            var cells = r.querySelectorAll('td, span, div, a');\n" +
+					"            for (var c = 0; c < cells.length; c++) {\n" +
+					"                var tip = (cells[c].getAttribute('data-original-title') || cells[c].getAttribute('title') || cells[c].innerText || '').toLowerCase();\n" +
+					"                if (tip.includes('price limit') || tip.includes('cannot be more than') || tip.includes('cannot be less than')) return 'PRICE_BREACH';\n" +
+					"            }\n" +
+					"            return 'REJECTED';\n" +
+					"        }\n" +
+					"    }\n" +
+					"}\n" +
+					"// 2. Check active toast/alert notifications & error banners\n" +
+					"var toasts = document.querySelectorAll('.toast, .toast-message, .noty_body, .alert-danger, .swal2-html-container, div[role=\"alert\"], div[class*=\"banner\"], div[class*=\"error\"]');\n" +
+					"for (var t = 0; t < toasts.length; t++) {\n" +
+					"    var msg = (toasts[t].innerText || '').toLowerCase();\n" +
+					"    if (msg.includes('price limit') || msg.includes('circuit') || msg.includes('price band') || msg.includes('outside range') || msg.includes('breach') || msg.includes('cannot be more than') || msg.includes('cannot be less than')) return 'PRICE_BREACH';\n" +
+					"    if (msg.includes('rejected') || msg.includes('order reject')) return 'REJECTED';\n" +
+					"}\n" +
+					"if (typeof get_order_history === 'function') { try { get_order_history(); } catch(e){} }\n" +
+					"return 'UNKNOWN';",
+					cleanClient, cleanSym, cleanSide
+				);
+				String s = res != null ? res.toString() : "UNKNOWN";
+				if (!"UNKNOWN".equalsIgnoreCase(s)) return s;
+				Thread.sleep(600);
+			} catch (Exception e) {
+				try { Thread.sleep(500); } catch (Exception ignored) {}
+			}
 		}
+		return "UNKNOWN";
 	}
 
 	public static boolean hasLatestOrderInTerminal(WebDriver driver, String clientCode, String symbol) {
@@ -10151,13 +10158,20 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			// Revalidate circuit limits & quote on each attempt
 			double suggestedPrice = (upfrontSuggestedPrice > 0.0) ? upfrontSuggestedPrice : 0.0;
 			try {
-				OMSweb_DBMarketData.PublicSymbolLtp quote = OMSweb_DBMarketData.getCachedSymbol(cleanSymbol(symbol), exchange);
-				if (quote != null) {
-					if (lastLower <= 0.0) lastLower = quote.circuitDown;
-					if (lastUpper <= 0.0) lastUpper = quote.circuitUp;
-					if (suggestedPrice <= 0.0) suggestedPrice = quote.ltp > 0.0 ? quote.ltp : quote.ycp;
+				if (upfrontSuggestedPrice <= 0.0) {
+					OMSweb_DBMarketData.PublicSymbolLtp quote = OMSweb_DBMarketData.getCachedSymbol(cleanSymbol(symbol), exchange);
+					if (quote != null) {
+						if (lastLower <= 0.0 && quote.circuitDown < 1000.0) lastLower = quote.circuitDown;
+						if (lastUpper <= 0.0 && quote.circuitUp < 1000.0) lastUpper = quote.circuitUp;
+						if (suggestedPrice <= 0.0) suggestedPrice = quote.ltp > 0.0 ? quote.ltp : quote.ycp;
+					}
 				}
 			} catch (Exception ignored) {}
+
+			// Circuit bounds sanity: lower bound must never exceed upper bound
+			if (lastLower > 0.0 && lastUpper > 0.0 && lastLower > lastUpper) {
+				lastLower = 0.0;
+			}
 
 			// Price limit breach enforcement:
 			// 1. If showing upper the suggested price -> take upper price
@@ -10193,10 +10207,23 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			} else {
 				// 1. Extract suggested price and circuit limits shown in rejection order feedback
 				RejectionOrderPriceInfo rejInfo = extractRejectionOrderPriceInfo(driver, clientCode, symbol);
-				if (rejInfo.hasUpperLimit()) lastUpper = rejInfo.upperLimit;
-				if (rejInfo.hasLowerLimit()) lastLower = rejInfo.lowerLimit;
+				if (rejInfo.hasUpperLimit()) {
+					if (lastUpper <= 0.0 || rejInfo.upperLimit <= lastUpper) {
+						lastUpper = rejInfo.upperLimit;
+					}
+				}
+				if (rejInfo.hasLowerLimit()) {
+					if (lastLower <= 0.0 || rejInfo.lowerLimit >= lastLower) {
+						if (lastUpper <= 0.0 || rejInfo.lowerLimit <= lastUpper) {
+							lastLower = rejInfo.lowerLimit;
+						}
+					}
+				}
 
 				double rejSuggested = rejInfo.hasSuggestedPrice() ? rejInfo.suggestedPrice : suggestedPrice;
+				if (lastUpper > 0.0 && rejSuggested > lastUpper) {
+					rejSuggested = lastUpper;
+				}
 
 				// Next rate selection:
 				// If the rejection order showed a suggested price:
@@ -10225,7 +10252,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		if (!orderAccepted) {
 			System.out.printf("%n[ORDER PLACEMENT WARNING] All %d rate attempts were rejected or in breach by the exchange.%n", attempts);
-			if (lastLower > 0 && lastUpper > 0 && (lastAttemptedRate < lastLower || lastAttemptedRate > lastUpper)) {
+			if (lastLower > 0 && lastUpper > 0 && lastLower <= lastUpper && (lastAttemptedRate < lastLower || lastAttemptedRate > lastUpper)) {
 				throw new PriceLimitBreachException(symbol, lastAttemptedRate, lastLower, lastUpper, attempts);
 			}
 		}

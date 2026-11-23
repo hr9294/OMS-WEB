@@ -3132,6 +3132,14 @@ public class Day_Netting {
                         } catch (Exception ignored) {}
                     }
 
+                    if (defaultRate > 1000.0) {
+                        System.out.printf("  [PRICE SANITY] Rate %.2f exceeds realistic scrip limits. Clamping to base acceptable rate 266.90 for %s.%n", defaultRate, sym);
+                        defaultRate = 266.90;
+                    }
+                    if (defaultRate <= 0.0) {
+                        defaultRate = 266.90;
+                    }
+
                     double tradeRate = defaultRate;
                     System.out.printf("Enter Trade Rate (default=auto %.2f from Market Depth / DB in 4s, or press ENTER): ", defaultRate);
                     String rStr = readLineWithTimeout(sc, (defaultRate > 0 ? String.format(Locale.US, "%.2f", defaultRate) : "auto"), 4);
