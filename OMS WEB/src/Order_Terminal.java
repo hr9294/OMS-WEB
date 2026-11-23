@@ -224,6 +224,31 @@ public class Order_Terminal {
                     }
                 }
             } catch (Exception ignored) {}
+
+            // Auto-recovery: If filtering results in 0 records (e.g. "Records : 0 of 50"),
+            // click Reset to ensure the client's orders reflect and are visible in Order Terminal
+            try {
+                Boolean zeroRecords = (Boolean) js.executeScript(
+                    "var tbl = document.getElementById('order_terminal_table') || document.querySelector('table.order_terminal_table') || document.querySelector('table[id*=market_table]');\n" +
+                    "var container = tbl ? (tbl.closest('.order_terminal, div[id*=\"terminal\"], .user_order_terminals') || tbl.parentElement) : document.body;\n" +
+                    "var text = (container ? container.innerText : '') || '';\n" +
+                    "var rows = tbl ? tbl.querySelectorAll('tbody tr') : [];\n" +
+                    "return text.indexOf('Records : 0') !== -1 || rows.length === 0 || (rows.length === 1 && (rows[0].innerText || '').indexOf('No Record') !== -1);\n"
+                );
+                if (Boolean.TRUE.equals(zeroRecords)) {
+                    System.out.println("[TERMINAL] Filter resulted in 0 records displayed! Clicking Reset to restore all order rows...");
+                    try {
+                        driver.findElement(BTN_RESET).click();
+                    } catch (Exception e) {
+                        js.executeScript(
+                            "var rBtn = document.getElementById('reset_filter') || document.querySelector('button#reset_filter, button.btn-reset') || " +
+                            "Array.from(document.querySelectorAll('button')).find(function(b){ return (b.innerText||'').trim().toUpperCase() === 'RESET'; });\n" +
+                            "if (rBtn) rBtn.click();"
+                        );
+                    }
+                    Thread.sleep(400);
+                }
+            } catch (Exception ignored) {}
         } catch (Exception ignored) {}
     }
 
@@ -1699,7 +1724,12 @@ public class Order_Terminal {
                     }
                 }
                 if (targetRow == null) {
-                    // Do NOT fall back to rows.get(0) of an unrelated symbol! Only show selected symbol data.
+                    if (attempt == 1) {
+                        // Reset filter if 0 rows or targetRow not found with current filter
+                        clearFilter(driver);
+                        Thread.sleep(400);
+                        continue;
+                    }
                     return data;
                 }
 

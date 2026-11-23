@@ -133,12 +133,28 @@ public class ClientPortfolio {
         return Collections.emptyMap();
     }
 
-    public static Map<String, String> getUiSnapshot(WebDriver driver, String clientCode, String symbol) {
+    public static Map<String, String> getUiSnapshot(WebDriver driver, String clientCode, String symbol, String exchange) {
         String cleanSymbol = cleanSymbol(symbol);
+        String ex = (exchange != null && !exchange.isEmpty()) ? exchange.toUpperCase() : "DSE";
         ensureClientLoadedInUi(driver, clientCode);
+
+        // Try API first for specific exchange
+        try {
+            Map<String, String> adminData = fetchFromAdminSharedApi(driver, clientCode, cleanSymbol, ex);
+            if (!adminData.isEmpty()) {
+                adminData.put("DATA_SOURCE", "API (" + ex + ")");
+                return adminData;
+            }
+        } catch (Exception ignored) {}
+
+        // Fallback to UI Table DOM
         Map<String, String> uiData = fetchFromUiTable(driver, cleanSymbol);
-        uiData.put("DATA_SOURCE", "UI Table DOM");
+        uiData.put("DATA_SOURCE", "UI Table DOM (" + ex + ")");
         return uiData;
+    }
+
+    public static Map<String, String> getUiSnapshot(WebDriver driver, String clientCode, String symbol) {
+        return getUiSnapshot(driver, clientCode, symbol, "DSE");
     }
 
     public static void navigateToPortfolio(WebDriver driver) {

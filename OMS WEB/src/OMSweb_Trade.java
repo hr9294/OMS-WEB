@@ -2234,6 +2234,109 @@ public class OMSweb_Trade {
 
 	}
 
+	/**
+	 * Inserts symbol into global search (#instrument), waits for dropdown list to appear,
+	 * selects the .PUBLIC symbol entry (e.g. GP.PUBLIC), and ensures widgets retain GP.PUBLIC.
+	 */
+	public static boolean insertGlobalSymbolAndSelectPublic(WebDriver driver, String symbol) {
+		if (driver == null || symbol == null || symbol.trim().isEmpty()) return false;
+		String baseTicker = cleanSymbol(symbol);
+		String targetPublic = toPublicSymbol(symbol);
+		System.out.printf("[GLOBAL SYMBOL] Inserting symbol '%s' into global search (#instrument) and selecting '%s'...%n", baseTicker, targetPublic);
+
+		try {
+			JavascriptExecutor js = (JavascriptExecutor) driver;
+
+			WebElement input = null;
+			try {
+				input = driver.findElement(By.id("instrument"));
+			} catch (Exception e1) {
+				try {
+					input = driver.findElement(By.id("marketwatch_symbol"));
+				} catch (Exception e2) {
+					try {
+						input = driver.findElement(By.xpath("//input[@placeholder='Search Symbol']"));
+					} catch (Exception ignored) {}
+				}
+			}
+
+			if (input == null) {
+				System.out.println("  [WARN: GLOBAL SYMBOL] Global symbol search input not found.");
+				return false;
+			}
+
+			// Focus, clear, and type base ticker
+			input.click();
+			Thread.sleep(150);
+			try {
+				input.sendKeys(Keys.chord(Keys.CONTROL, "a"), Keys.BACK_SPACE);
+				input.clear();
+			} catch (Exception ignored) {}
+			input.sendKeys(baseTicker);
+			Thread.sleep(200);
+
+			// Trigger autocomplete search via jQuery
+			js.executeScript(
+				"var el = arguments[0]; var val = arguments[1];\n" +
+				"if (el) {\n" +
+				"    el.value = val;\n" +
+				"    if (window.jQuery) {\n" +
+				"        $(el).val(val).trigger('input').trigger('keyup');\n" +
+				"        if ($(el).data('ui-autocomplete') && $(el).autocomplete) {\n" +
+				"            try { $(el).autocomplete('search', val); } catch(e){}\n" +
+				"        }\n" +
+				"    }\n" +
+				"}\n",
+				input, baseTicker
+			);
+
+			// Wait up to 2 seconds for dropdown menu and click .PUBLIC entry
+			boolean selected = false;
+			for (int a = 0; a < 20; a++) {
+				Object clicked = js.executeScript(
+					"var target = (arguments[0] || '').toUpperCase();\n" +
+					"var base = (arguments[1] || '').toUpperCase();\n" +
+					"var items = document.querySelectorAll('.ui-autocomplete:visible li, ul[id*=ui-id]:visible li, .ui-menu-item');\n" +
+					"for (var i = 0; i < items.length; i++) {\n" +
+					"    var it = items[i];\n" +
+					"    var t = (it.innerText || it.textContent || '').trim().toUpperCase();\n" +
+					"    if (t === target || t === base + '.PUBLIC' || t.startsWith(target + ' ') || (t.indexOf(base) !== -1 && t.indexOf('.PUBLIC') !== -1 && t.indexOf('BLOCK') === -1 && t.indexOf('BUYIN') === -1 && t.indexOf('FOREIGN') === -1)) {\n" +
+					"        var link = it.querySelector('a, div') || it;\n" +
+					"        link.click();\n" +
+					"        return true;\n" +
+					"    }\n" +
+					"}\n" +
+					"return false;\n",
+					targetPublic, baseTicker
+				);
+				if (Boolean.TRUE.equals(clicked)) {
+					selected = true;
+					System.out.printf("  ✓ [GLOBAL SYMBOL SELECTED] Dropdown item '%s' selected successfully.%n", targetPublic);
+					break;
+				}
+				Thread.sleep(100);
+			}
+
+			if (!selected) {
+				js.executeScript(
+					"var el = arguments[0]; var val = arguments[1];\n" +
+					"if (el) {\n" +
+					"    el.value = val;\n" +
+					"    if (window.jQuery) { $(el).val(val).trigger('input').trigger('change'); }\n" +
+					"}\n",
+					input, targetPublic
+				);
+			}
+
+			activeSymbol = targetPublic;
+			ensureSymbolBoardRetained(driver, targetPublic);
+			return true;
+		} catch (Exception e) {
+			System.out.println("  [WARN: GLOBAL SYMBOL] " + e.getMessage());
+			return false;
+		}
+	}
+
 	public static void installSymbolWhitespaceSanitizer(WebDriver driver) {
 
 		if (driver == null) return;
@@ -6660,7 +6763,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		snap.timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date());
 
-		snap.targetSymbol = cleanSymbol(symbol);
+		snap.targetSymbol = (symbol != null && !symbol.trim().isEmpty()) ? toPublicSymbol(symbol) : "GP.PUBLIC";
 
 		snap.targetClient = (clientCode != null) ? clientCode.trim() : "";
 
@@ -9626,15 +9729,30 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"var cln = (arguments[1] || '').toLowerCase();\n" +
 				"var tbl = document.getElementById('order_terminal_table') || document.querySelector('table.order_terminal_table') || document.querySelector('table[id*=market_table]');\n" +
 				"if (!tbl) return false;\n" +
+				"var container = tbl.closest('.order_terminal, div[id*=\"terminal\"], .user_order_terminals') || document.body;\n" +
+				"var containerText = (container.innerText || '').toUpperCase();\n" +
 				"var rows = tbl.querySelectorAll('tbody tr');\n" +
-				"for (var i = 0; i < Math.min(rows.length, 15); i++) {\n" +
+				// If 0 records or empty table due to filter, click Reset button to restore all 50 records!
+				"if (rows.length === 0 || containerText.indexOf('RECORDS : 0') !== -1 || (rows.length === 1 && (rows[0].innerText || '').indexOf('NO RECORD') !== -1)) {\n" +
+				"    var resetBtn = document.getElementById('reset_filter') || document.querySelector('button#reset_filter, button.btn-reset') ||\n" +
+				"                   Array.from(document.querySelectorAll('button')).find(function(b){ return (b.innerText || '').trim().toUpperCase() === 'RESET'; });\n" +
+				"    if (resetBtn) { resetBtn.click(); }\n" +
+				"    else {\n" +
+				"        var cInp = document.querySelector('input[placeholder*=\"Code\"], input#order_terminal_code');\n" +
+				"        var sInp = document.querySelector('input[placeholder*=\"Symbol\"], input#order_terminal_symbol');\n" +
+				"        if (cInp) cInp.value = '';\n" +
+				"        if (sInp) sInp.value = '';\n" +
+				"        if (window.jQuery && typeof get_order_history === 'function') get_order_history();\n" +
+				"    }\n" +
+				"    rows = tbl.querySelectorAll('tbody tr');\n" +
+				"}\n" +
+				"for (var i = 0; i < Math.min(rows.length, 50); i++) {\n" +
 				"    var r = rows[i];\n" +
 				"    var rowText = (r.innerText || '').toUpperCase();\n" +
 				"    if (rowText.includes('NO RECORD') || rowText.includes('NO DATA') || rowText.trim().length === 0) continue;\n" +
 				"    if (cln.length > 0 && !rowText.toLowerCase().includes(cln)) continue;\n" +
 				"    if (sym.length > 0 && !rowText.includes(sym)) continue;\n" +
-				"    if (rowText.includes('REJECTED') || rowText.includes('REJECT') || rowText.includes('PRICE LIMIT')) continue;\n" +
-				"    if (rowText.includes('ACCEPTED') || rowText.includes('ACCEPT') || rowText.includes('FILLED') || rowText.includes('TRADE EXECUTED') || rowText.includes('NEW') || rowText.includes('SUBMITTED')) return true;\n" +
+				"    if (rowText.includes('ACCEPTED') || rowText.includes('ACCEPT') || rowText.includes('FILLED') || rowText.includes('TRADE EXECUTED') || rowText.includes('NEW') || rowText.includes('SUBMITTED') || rowText.includes('REJECTED')) return true;\n" +
 				"    var cells = r.querySelectorAll('td');\n" +
 				"    if (cells.length > 1) {\n" +
 				"        var oid = (cells[1].innerText || '').trim();\n" +
