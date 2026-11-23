@@ -168,25 +168,33 @@ public class OMSwebmain {
         OMSweb_Trade.runWidgetColorSelection(driver, sc);
 
         // 3. CONTINUOUS ACTIVE SESSION LOOP (NEVER TERMINATE, AUTO-CLOSE ALL POPUPS & MODALS)
+        runSessionLoop(driver, sc);
+    }
+
+    public static void displayMainMenu() {
+        System.out.println("\n=============================================================================");
+        System.out.println("                     [UFTFAST OMS ACTIVE SESSION]                           ");
+        System.out.println("  Browser & trading session are LIVE and persistent. Never terminating.     ");
+        System.out.println("=============================================================================");
+        System.out.println("Select Action:");
+        System.out.println("  1. Normal Trade (DSE default / CSE)");
+        System.out.println("  2. Multi-Order Execution (Single/Multi-Client, DSE/CSE, Market Execution)");
+        System.out.println("  3. High-Speed Multiple Trade Engine (2-Min Simultaneous Trading, DSE/CSE)");
+        System.out.println("  4. Upload File Engine (User Choice File Upload: Client, Stock, Cash, etc.)");
+        System.out.println("  5. Export File Engine (Trade Files, EOD Price, Commission & Reports)");
+        System.out.println("  6. Day Netting Engine (Scrip Netting, RMS Controls & UI Audit)");
+        System.out.println("  7. Dashboard Reflection Audit (12-Model Verification, Live Trade & Diff Comparison)");
+        System.out.println("  8. RMS Risk Management Engine (qRMS Settings, Clients RMS, Scrip Controls & Board Restrictions)");
+        System.out.println("  0. Exit Application");
+    }
+
+    public static void runSessionLoop(WebDriver driver, Scanner sc) throws InterruptedException, IOException {
         boolean keepSessionAlive = true;
 
         while (keepSessionAlive) {
             closeAllBrowserPopupsAndModals(driver);
 
-            System.out.println("\n=============================================================================");
-            System.out.println("                     [UFTFAST OMS ACTIVE SESSION]                           ");
-            System.out.println("  Browser & trading session are LIVE and persistent. Never terminating.     ");
-            System.out.println("=============================================================================");
-            System.out.println("Select Action:");
-            System.out.println("  1. Normal Trade (DSE default / CSE)");
-            System.out.println("  2. Multi-Order Execution (Single/Multi-Client, DSE/CSE, Market Execution)");
-            System.out.println("  3. High-Speed Multiple Trade Engine (2-Min Simultaneous Trading, DSE/CSE)");
-            System.out.println("  4. Upload File Engine (User Choice File Upload: Client, Stock, Cash, etc.)");
-            System.out.println("  5. Export File Engine (Trade Files, EOD Price, Commission & Reports)");
-            System.out.println("  6. Day Netting Engine (Scrip Netting, RMS Controls & UI Audit)");
-            System.out.println("  7. Dashboard Reflection Audit (12-Model Verification, Live Trade & Diff Comparison)");
-            System.out.println("  8. RMS Risk Management Engine (qRMS Settings, Clients RMS, Scrip Controls & Board Restrictions)");
-            System.out.println("  0. Exit Application");
+            displayMainMenu();
 
             String engChoice = "";
 

@@ -731,6 +731,9 @@ public class OMSweb_Trade {
 
 			}
 
+			// Automatically transition to persistent Main Menu session loop
+			OMSwebmain.runSessionLoop(driver, sc);
+
 		} catch (Exception e) {
 
 			System.err.println("[ERROR in OMSweb_Trade] " + e.getMessage());
@@ -1478,11 +1481,19 @@ public class OMSweb_Trade {
 
 		System.out.println("  3. CSE Normal Trade Only");
 
-		System.out.print("Enter choice (1=BOTH / 2=DSE / 3=CSE, default=1 in 4s): ");
+		System.out.println("  0. Return to Main Menu");
+
+		System.out.print("Enter choice (1=BOTH / 2=DSE / 3=CSE / 0=Main Menu, default=1 in 4s): ");
 
 		String modeChoice = readLineWithTimeout(sc, "1", 4);
 
-		if ("2".equals(modeChoice) || "DSE".equalsIgnoreCase(modeChoice)) {
+		if ("0".equals(modeChoice) || "exit".equalsIgnoreCase(modeChoice)) {
+
+			System.out.println("[NORMAL TRADE] Returning to Main Menu...");
+
+			return;
+
+		} else if ("2".equals(modeChoice) || "DSE".equalsIgnoreCase(modeChoice)) {
 
 			activeExchange = "DSE";
 
@@ -10456,6 +10467,10 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		System.out.println(" [SUCCESS] Normal Trade completed for BOTH DSE & CSE and Trade File exported! ");
 
 		System.out.println("=============================================================================\n");
+
+		try {
+			OMSwebmain.closeAllBrowserPopupsAndModals(driver);
+		} catch (Exception ignored) {}
 
 	}
 
