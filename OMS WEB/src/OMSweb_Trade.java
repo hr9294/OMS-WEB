@@ -731,6 +731,9 @@ public class OMSweb_Trade {
 
 			}
 
+			// Automatically transition to persistent Main Menu session loop
+			OMSwebmain.runSessionLoop(driver, sc);
+
 		} catch (Exception e) {
 
 			System.err.println("[ERROR in OMSweb_Trade] " + e.getMessage());
@@ -1478,11 +1481,19 @@ public class OMSweb_Trade {
 
 		System.out.println("  3. CSE Normal Trade Only");
 
-		System.out.print("Enter choice (1=BOTH / 2=DSE / 3=CSE, default=1 in 4s): ");
+		System.out.println("  0. Return to Main Menu");
+
+		System.out.print("Enter choice (1=BOTH / 2=DSE / 3=CSE / 0=Main Menu, default=1 in 4s): ");
 
 		String modeChoice = readLineWithTimeout(sc, "1", 4);
 
-		if ("2".equals(modeChoice) || "DSE".equalsIgnoreCase(modeChoice)) {
+		if ("0".equals(modeChoice) || "exit".equalsIgnoreCase(modeChoice)) {
+
+			System.out.println("[NORMAL TRADE] Returning to Main Menu...");
+
+			return;
+
+		} else if ("2".equals(modeChoice) || "DSE".equalsIgnoreCase(modeChoice)) {
 
 			activeExchange = "DSE";
 
@@ -2188,31 +2199,26 @@ public class OMSweb_Trade {
 			js.executeScript(
 
 				"var val = arguments[0].trim();" +
-
+				"// 1. Order Entry active instrument inputs\n" +
 				"var activeInputs = document.querySelectorAll('.winbox input#order_instrument, .wb-body input#order_instrument, input#order_instrument');" +
-
 				"for (var i = 0; i < activeInputs.length; i++) {" +
-
 				"    var inp = activeInputs[i];" +
-
-				"    if (!inp.value || inp.value.indexOf('.PUBLIC') === -1) {" +
-
-				"        inp.value = val;" +
-
-				"        if (window.jQuery) {" +
-
-				"            $(inp).val(val).trigger('input').trigger('change');" +
-
-				"            var ac = $(inp).data('ui-autocomplete') || $(inp).data('autocomplete') || ($(inp).autocomplete ? $(inp).autocomplete('instance') : null);" +
-
-				"            if (ac) { ac.selectedItem = { value: val, label: val }; }" +
-
-				"        }" +
-
+				"    inp.value = val;" +
+				"    if (window.jQuery) {" +
+				"        $(inp).val(val).trigger('input').trigger('change');" +
+				"        var ac = $(inp).data('ui-autocomplete') || $(inp).data('autocomplete') || ($(inp).autocomplete ? $(inp).autocomplete('instance') : null);" +
+				"        if (ac) { ac.selectedItem = { value: val, label: val }; }" +
 				"    }" +
-
 				"}" +
-
+				"// 2. Global search bar (#instrument)\n" +
+				"var gi = document.getElementById('instrument');" +
+				"if (gi) { gi.value = val; if (window.jQuery) $(gi).val(val); }" +
+				"// 3. Market Depth & Portfolio symbol inputs\n" +
+				"var otherInputs = document.querySelectorAll('input#market_depth_symbol, input[id*=\"market_depth_symbol\"], input#portfolio_symbol, input[id*=\"portfolio_symbol\"]');" +
+				"for (var o = 0; o < otherInputs.length; o++) {" +
+				"    otherInputs[o].value = val;" +
+				"    if (window.jQuery) $(otherInputs[o]).val(val).trigger('change');" +
+				"}" +
 				"try { if (typeof verify_fields === 'function') verify_fields(); } catch(e){}",
 
 				publicSym
@@ -2221,6 +2227,118 @@ public class OMSweb_Trade {
 
 		} catch (Exception ignored) {}
 
+	}
+
+	/**
+	 * Inserts symbol into global search (#instrument), waits for dropdown list to appear,
+	 * selects the .PUBLIC symbol entry (e.g. GP.PUBLIC), and ensures widgets retain GP.PUBLIC.
+	 */
+	public static boolean insertGlobalSymbolAndSelectPublic(WebDriver driver, String symbol) {
+		if (driver == null || symbol == null || symbol.trim().isEmpty()) return false;
+		String baseTicker = cleanSymbol(symbol);
+		String targetPublic = toPublicSymbol(symbol);
+		System.out.printf("[GLOBAL SYMBOL] Inserting symbol '%s' into global search (#instrument) and selecting '%s'...%n", baseTicker, targetPublic);
+
+		try {
+			JavascriptExecutor js = (JavascriptExecutor) driver;
+
+			WebElement input = null;
+			try {
+				input = driver.findElement(By.id("instrument"));
+			} catch (Exception e1) {
+				try {
+					input = driver.findElement(By.id("marketwatch_symbol"));
+				} catch (Exception e2) {
+					try {
+						input = driver.findElement(By.xpath("//input[@placeholder='Search Symbol']"));
+					} catch (Exception ignored) {}
+				}
+			}
+
+			if (input == null) {
+				System.out.println("  [WARN: GLOBAL SYMBOL] Global symbol search input not found.");
+				return false;
+			}
+
+			// Focus, clear, and type base ticker
+			input.click();
+			Thread.sleep(150);
+			try {
+				input.sendKeys(Keys.chord(Keys.CONTROL, "a"), Keys.BACK_SPACE);
+				input.clear();
+			} catch (Exception ignored) {}
+			input.sendKeys(baseTicker);
+			Thread.sleep(200);
+
+			// Trigger autocomplete search via jQuery
+			js.executeScript(
+				"var el = arguments[0]; var val = arguments[1];\n" +
+				"if (el) {\n" +
+				"    el.value = val;\n" +
+				"    if (window.jQuery) {\n" +
+				"        $(el).val(val).trigger('input').trigger('keyup');\n" +
+				"        if ($(el).data('ui-autocomplete') && $(el).autocomplete) {\n" +
+				"            try { $(el).autocomplete('search', val); } catch(e){}\n" +
+				"        }\n" +
+				"    }\n" +
+				"}\n",
+				input, baseTicker
+			);
+
+			// Wait up to 2 seconds for dropdown menu and click .PUBLIC entry
+			boolean selected = false;
+			for (int a = 0; a < 20; a++) {
+				Object clicked = js.executeScript(
+					"var target = (arguments[0] || '').toUpperCase();\n" +
+					"var base = (arguments[1] || '').toUpperCase();\n" +
+					"var items = [];\n" +
+					"if (window.jQuery) {\n" +
+					"    try { items = jQuery('.ui-autocomplete:visible li, ul[id*=\"ui-id\"]:visible li, .ui-menu-item:visible, li.ui-menu-item:visible').toArray(); } catch(e){}\n" +
+					"}\n" +
+					"if (!items || items.length === 0) {\n" +
+					"    var raw = document.querySelectorAll('.ui-autocomplete li, ul[id*=\"ui-id\"] li, .ui-menu-item, li.ui-menu-item, div.autocomplete-suggestion');\n" +
+					"    for (var k = 0; k < raw.length; k++) {\n" +
+					"        if (raw[k].offsetParent !== null) items.push(raw[k]);\n" +
+					"    }\n" +
+					"}\n" +
+					"for (var i = 0; i < items.length; i++) {\n" +
+					"    var it = items[i];\n" +
+					"    var t = (it.innerText || it.textContent || '').trim().toUpperCase();\n" +
+					"    if (t === target || t === base + '.PUBLIC' || t.startsWith(target + ' ') || (t.indexOf(base) !== -1 && t.indexOf('.PUBLIC') !== -1 && t.indexOf('BLOCK') === -1 && t.indexOf('BUYIN') === -1 && t.indexOf('FOREIGN') === -1)) {\n" +
+					"        var link = it.querySelector('a, div, span') || it;\n" +
+					"        link.click();\n" +
+					"        return true;\n" +
+					"    }\n" +
+					"}\n" +
+					"return false;\n",
+					targetPublic, baseTicker
+				);
+				if (Boolean.TRUE.equals(clicked)) {
+					selected = true;
+					System.out.printf("  ✓ [GLOBAL SYMBOL SELECTED] Dropdown item '%s' selected successfully.%n", targetPublic);
+					break;
+				}
+				Thread.sleep(100);
+			}
+
+			if (!selected) {
+				js.executeScript(
+					"var el = arguments[0]; var val = arguments[1];\n" +
+					"if (el) {\n" +
+					"    el.value = val;\n" +
+					"    if (window.jQuery) { $(el).val(val).trigger('input').trigger('change'); }\n" +
+					"}\n",
+					input, targetPublic
+				);
+			}
+
+			activeSymbol = targetPublic;
+			ensureSymbolBoardRetained(driver, targetPublic);
+			return true;
+		} catch (Exception e) {
+			System.out.println("  [WARN: GLOBAL SYMBOL] " + e.getMessage());
+			return false;
+		}
 	}
 
 	public static void installSymbolWhitespaceSanitizer(WebDriver driver) {
@@ -2698,7 +2816,7 @@ public class OMSweb_Trade {
 
 				try {
 
-					List<WebElement> menuItems = driver.findElements(By.cssSelector(".ui-autocomplete:visible li.ui-menu-item"));
+					List<WebElement> menuItems = driver.findElements(By.cssSelector(".ui-autocomplete li.ui-menu-item, ul[id*='ui-id'] li"));
 
 					WebElement targetItem = null;
 
@@ -6649,7 +6767,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		snap.timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date());
 
-		snap.targetSymbol = cleanSymbol(symbol);
+		snap.targetSymbol = (symbol != null && !symbol.trim().isEmpty()) ? toPublicSymbol(symbol) : "GP.PUBLIC";
 
 		snap.targetClient = (clientCode != null) ? clientCode.trim() : "";
 
@@ -8655,53 +8773,35 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 	}
 
 	public static void dismissRejectionAlert(WebDriver driver) {
+		if (driver == null) return;
 		try {
 			try {
-				Object txt = ((JavascriptExecutor) driver).executeScript(
-					"var msgs = [];\n" +
-					"var alerts = document.querySelectorAll('.jconfirm-content, .swal2-html-container, .toast, .noty_body, .alert, .alert-danger, .modal-body, div[role=\"alert\"], div[class*=\"banner\"], div[class*=\"error\"]');\n" +
-					"for (var i = 0; i < alerts.length; i++) {\n" +
-					"    var t = (alerts[i].innerText || alerts[i].textContent || '').trim();\n" +
-					"    if (t.length > 0) msgs.push(t);\n" +
-					"}\n" +
-					"var allDivs = document.querySelectorAll('div, span, p');\n" +
-					"for (var d = 0; d < allDivs.length; d++) {\n" +
-					"    var dt = (allDivs[d].innerText || '').trim();\n" +
-					"    if (dt.indexOf('Price limit exceeded') !== -1 || dt.indexOf('cannot be more than') !== -1 || dt.indexOf('cannot be less than') !== -1 || dt.indexOf('Trade Rule') !== -1) {\n" +
-					"        msgs.push(dt);\n" +
-					"    }\n" +
-					"}\n" +
-					"return msgs.join(' | ');"
-				);
-				if (txt != null && !txt.toString().isEmpty()) {
-					lastRejectionAlertText = txt.toString();
-				}
-			} catch (Exception ignored) {}
-
-			try {
 				Alert alert = driver.switchTo().alert();
-				String aTxt = alert.getText();
-				if (aTxt != null && !aTxt.trim().isEmpty()) {
-					lastRejectionAlertText = (lastRejectionAlertText.isEmpty() ? aTxt : lastRejectionAlertText + " | " + aTxt);
-				}
 				alert.accept();
 			} catch (Exception ignored) {}
 
 			((JavascriptExecutor) driver).executeScript(
-				"try {" +
-				"    if (window.jconfirm && window.jconfirm.instances) {" +
-				"        for (var i = 0; i < window.jconfirm.instances.length; i++) {" +
-				"            var inst = window.jconfirm.instances[i];" +
-				"            if (inst && typeof inst.close === 'function') inst.close();" +
-				"        }" +
-				"    }" +
-				"    var btns = document.querySelectorAll('.jconfirm-buttons button, .modal button.btn-danger, .modal button.btn-secondary, button.btn-primary, .alert .close, .toast-close-button, div[class*=\"alert\"] button, button[aria-label=\"Close\"]');" +
-				"    for (var b = 0; b < btns.length; b++) {" +
-				"        var bt = (btns[b].innerText || '').toLowerCase();" +
-				"        if (bt.includes('ok') || bt.includes('close') || bt.includes('dismiss') || bt.includes('x') || bt === '×') btns[b].click();" +
-				"    }" +
+				"try {\n" +
+				"    if (window.jconfirm && window.jconfirm.instances) {\n" +
+				"        for (var i = 0; i < window.jconfirm.instances.length; i++) {\n" +
+				"            var inst = window.jconfirm.instances[i];\n" +
+				"            if (inst && typeof inst.close === 'function') inst.close();\n" +
+				"        }\n" +
+				"    }\n" +
+				"    if (window.toastr && typeof window.toastr.clear === 'function') { try { window.toastr.clear(); } catch(e){} }\n" +
+				"    if (window.toastr && typeof window.toastr.remove === 'function') { try { window.toastr.remove(); } catch(e){} }\n" +
+				"    var btns = document.querySelectorAll('.jconfirm-buttons button, .modal button.btn-danger, .modal button.btn-secondary, button.btn-primary, .alert .close, .toast-close-button, div[class*=\"alert\"] button, button[aria-label=\"Close\"]');\n" +
+				"    for (var b = 0; b < btns.length; b++) {\n" +
+				"        var bt = (btns[b].innerText || '').toLowerCase();\n" +
+				"        if (bt.includes('ok') || bt.includes('close') || bt.includes('dismiss') || bt.includes('x') || bt === '×') btns[b].click();\n" +
+				"    }\n" +
+				"    var alerts = document.querySelectorAll('#toast-container, .toast, .toast-message, .noty_body, .noty_layout, .alert, .alert-danger, .alert-warning, .swal2-container, .jconfirm, div[role=\"alert\"], div[class*=\"toast\"], div[class*=\"notification\"], .growl-message');\n" +
+				"    for (var a = 0; a < alerts.length; a++) {\n" +
+				"        try { alerts[a].remove(); } catch(e) { try { alerts[a].parentNode.removeChild(alerts[a]); } catch(e2){} }\n" +
+				"    }\n" +
 				"} catch(e){}"
 			);
+			lastRejectionAlertText = "";
 		} catch (Exception ignored) {}
 	}
 
@@ -9572,14 +9672,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"var cln = (arguments[0] || '').trim().toLowerCase();\n" +
 				"var sym = (arguments[1] || '').trim().toUpperCase();\n" +
 				"var side = (arguments[2] || '').trim().toUpperCase();\n" +
-				"// 1. Check active toast/alert notifications & error banners\n" +
-				"var toasts = document.querySelectorAll('.toast, .toast-message, .noty_body, .alert, .alert-danger, .swal2-html-container, div[role=\"alert\"], div[class*=\"banner\"], div[class*=\"error\"]');\n" +
-				"for (var t = 0; t < toasts.length; t++) {\n" +
-				"    var msg = (toasts[t].innerText || '').toLowerCase();\n" +
-				"    if (msg.includes('price limit') || msg.includes('circuit') || msg.includes('price band') || msg.includes('outside range') || msg.includes('breach') || msg.includes('cannot be more than') || msg.includes('cannot be less than')) return 'PRICE_BREACH';\n" +
-				"    if (msg.includes('rejected') || msg.includes('order reject')) return 'REJECTED';\n" +
-				"}\n" +
-				"// 2. Check Order Terminal Table top rows\n" +
+				"// 1. Check Order Terminal Table top rows first (ground truth in UI)\n" +
 				"var tbl = document.getElementById('order_terminal_table') || document.querySelector('table.order_terminal_table') || document.querySelector('table[id*=market_table]');\n" +
 				"if (tbl) {\n" +
 				"    var rows = tbl.querySelectorAll('tbody tr');\n" +
@@ -9591,8 +9684,22 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"        if (side.length > 0 && !rowText.includes(side)) continue;\n" +
 				"        if (rowText.includes('ACCEPTED') || rowText.includes('ACCEPT') || rowText.includes('FILLED') || rowText.includes('TRADE EXECUTED')) return 'ACCEPTED';\n" +
 				"        if (rowText.includes('BREACH') || rowText.includes('CIRCUIT') || rowText.includes('PRICE LIMIT')) return 'PRICE_BREACH';\n" +
-				"        if (rowText.includes('REJECTED') || rowText.includes('REJECT')) return 'REJECTED';\n" +
+				"        if (rowText.includes('REJECTED') || rowText.includes('REJECT')) {\n" +
+				"            var cells = r.querySelectorAll('td, span, div, a');\n" +
+				"            for (var c = 0; c < cells.length; c++) {\n" +
+				"                var tip = (cells[c].getAttribute('data-original-title') || cells[c].getAttribute('title') || cells[c].innerText || '').toLowerCase();\n" +
+				"                if (tip.includes('price limit') || tip.includes('cannot be more than') || tip.includes('cannot be less than')) return 'PRICE_BREACH';\n" +
+				"            }\n" +
+				"            return 'REJECTED';\n" +
+				"        }\n" +
 				"    }\n" +
+				"}\n" +
+				"// 2. Check active toast/alert notifications & error banners\n" +
+				"var toasts = document.querySelectorAll('.toast, .toast-message, .noty_body, .alert-danger, .swal2-html-container, div[role=\"alert\"], div[class*=\"banner\"], div[class*=\"error\"]');\n" +
+				"for (var t = 0; t < toasts.length; t++) {\n" +
+				"    var msg = (toasts[t].innerText || '').toLowerCase();\n" +
+				"    if (msg.includes('price limit') || msg.includes('circuit') || msg.includes('price band') || msg.includes('outside range') || msg.includes('breach') || msg.includes('cannot be more than') || msg.includes('cannot be less than')) return 'PRICE_BREACH';\n" +
+				"    if (msg.includes('rejected') || msg.includes('order reject')) return 'REJECTED';\n" +
 				"}\n" +
 				"return 'UNKNOWN';",
 				cleanClient, cleanSym, cleanSide
@@ -9615,15 +9722,30 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"var cln = (arguments[1] || '').toLowerCase();\n" +
 				"var tbl = document.getElementById('order_terminal_table') || document.querySelector('table.order_terminal_table') || document.querySelector('table[id*=market_table]');\n" +
 				"if (!tbl) return false;\n" +
+				"var container = tbl.closest('.order_terminal, div[id*=\"terminal\"], .user_order_terminals') || document.body;\n" +
+				"var containerText = (container.innerText || '').toUpperCase();\n" +
 				"var rows = tbl.querySelectorAll('tbody tr');\n" +
-				"for (var i = 0; i < Math.min(rows.length, 15); i++) {\n" +
+				// If 0 records or empty table due to filter, click Reset button to restore all 50 records!
+				"if (rows.length === 0 || containerText.indexOf('RECORDS : 0') !== -1 || (rows.length === 1 && (rows[0].innerText || '').indexOf('NO RECORD') !== -1)) {\n" +
+				"    var resetBtn = document.getElementById('reset_filter') || document.querySelector('button#reset_filter, button.btn-reset') ||\n" +
+				"                   Array.from(document.querySelectorAll('button')).find(function(b){ return (b.innerText || '').trim().toUpperCase() === 'RESET'; });\n" +
+				"    if (resetBtn) { resetBtn.click(); }\n" +
+				"    else {\n" +
+				"        var cInp = document.querySelector('input[placeholder*=\"Code\"], input#order_terminal_code');\n" +
+				"        var sInp = document.querySelector('input[placeholder*=\"Symbol\"], input#order_terminal_symbol');\n" +
+				"        if (cInp) cInp.value = '';\n" +
+				"        if (sInp) sInp.value = '';\n" +
+				"        if (window.jQuery && typeof get_order_history === 'function') get_order_history();\n" +
+				"    }\n" +
+				"    rows = tbl.querySelectorAll('tbody tr');\n" +
+				"}\n" +
+				"for (var i = 0; i < Math.min(rows.length, 50); i++) {\n" +
 				"    var r = rows[i];\n" +
 				"    var rowText = (r.innerText || '').toUpperCase();\n" +
 				"    if (rowText.includes('NO RECORD') || rowText.includes('NO DATA') || rowText.trim().length === 0) continue;\n" +
 				"    if (cln.length > 0 && !rowText.toLowerCase().includes(cln)) continue;\n" +
 				"    if (sym.length > 0 && !rowText.includes(sym)) continue;\n" +
-				"    if (rowText.includes('REJECTED') || rowText.includes('REJECT') || rowText.includes('PRICE LIMIT')) continue;\n" +
-				"    if (rowText.includes('ACCEPTED') || rowText.includes('ACCEPT') || rowText.includes('FILLED') || rowText.includes('TRADE EXECUTED') || rowText.includes('NEW') || rowText.includes('SUBMITTED')) return true;\n" +
+				"    if (rowText.includes('ACCEPTED') || rowText.includes('ACCEPT') || rowText.includes('FILLED') || rowText.includes('TRADE EXECUTED') || rowText.includes('NEW') || rowText.includes('SUBMITTED') || rowText.includes('REJECTED')) return true;\n" +
 				"    var cells = r.querySelectorAll('td');\n" +
 				"    if (cells.length > 1) {\n" +
 				"        var oid = (cells[1].innerText || '').trim();\n" +
@@ -9847,6 +9969,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			} catch (Exception ignored) {}
 		}
 
+		dismissRejectionAlert(driver);
 		js.executeScript("try { var c = document.querySelectorAll('.wb-close, .winbox .wb-close, .modal .close'); for (var i=0; i<c.length; i++) c[i].click(); } catch(e){}");
 		Thread.sleep(300);
 
@@ -9985,7 +10108,14 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				}
 			}
 
-			double currentRate = (i < candidateRates.size()) ? candidateRates.get(i) : candidateRates.get(0);
+			double currentRate;
+			if (upfrontSuggestedPrice > 0.0) {
+				currentRate = upfrontSuggestedPrice;
+			} else if (initialRate > 0.0 && i == 0) {
+				currentRate = initialRate;
+			} else {
+				currentRate = (i < candidateRates.size()) ? candidateRates.get(i) : candidateRates.get(0);
+			}
 			lastAttemptedRate = currentRate;
 
 			// Revalidate circuit limits & quote on each attempt
@@ -10026,6 +10156,8 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				System.out.printf("  ✓ [ORDER ACCEPTED] Successfully placed ACCEPTED %s order @ %.2f on attempt %d!%n",
 						side.toUpperCase(), currentRate, attemptNum);
 				lastAcceptedPrice = currentRate;
+				lastRejectionAlertText = "";
+				dismissRejectionAlert(driver);
 				orderAccepted = true;
 				break;
 			} else {
@@ -10047,13 +10179,6 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 							nextRate, lastLower, lastUpper);
 					upfrontSuggestedPrice = nextRate;
 					dismissRejectionAlert(driver);
-					if (i + 1 < attempts) {
-						if (candidateRates.size() > i + 1) {
-							candidateRates.set(i + 1, nextRate);
-						} else {
-							candidateRates.add(nextRate);
-						}
-					}
 				}
 
 				long delay = backoff.calculateDelay(attemptNum);
@@ -10456,6 +10581,10 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		System.out.println(" [SUCCESS] Normal Trade completed for BOTH DSE & CSE and Trade File exported! ");
 
 		System.out.println("=============================================================================\n");
+
+		try {
+			OMSwebmain.closeAllBrowserPopupsAndModals(driver);
+		} catch (Exception ignored) {}
 
 	}
 

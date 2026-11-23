@@ -2136,8 +2136,10 @@ public class Day_Netting {
         public boolean marketDepthNettingBadge = false;
         public Map<String, String> marketDepthData = new LinkedHashMap<>();
 
-        // 3. Portfolio
+        // 3. Portfolio (Individual DSE & CSE data)
         public Map<String, String> portfolioData = new LinkedHashMap<>();
+        public Map<String, String> portfolioDataDSE = new LinkedHashMap<>();
+        public Map<String, String> portfolioDataCSE = new LinkedHashMap<>();
 
         // 4. Order Terminal
         public Map<String, String> orderTerminalData = new LinkedHashMap<>();
@@ -2246,7 +2248,7 @@ public class Day_Netting {
         Netting6WidgetsUiSnapshot snap = new Netting6WidgetsUiSnapshot();
         snap.stageName = stageName;
         snap.exchange = (exchange != null && !exchange.isEmpty()) ? exchange : "DSE";
-        snap.targetSymbol = (symbol != null && !symbol.isEmpty()) ? symbol.trim().toUpperCase() : "GP";
+        snap.targetSymbol = (symbol != null && !symbol.isEmpty()) ? OMSweb_Trade.toPublicSymbol(symbol) : "GP.PUBLIC";
         snap.targetClient = (clientCode != null && !clientCode.isEmpty()) ? clientCode.trim() : "23986";
 
         System.out.println("\n+==================================================================================================+");
@@ -2349,13 +2351,23 @@ public class Day_Netting {
                 Thread.sleep(400);
             }
             OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Portfolio.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
-            try { snap.portfolioData = ClientPortfolio.getUiSnapshot(driver, snap.targetClient, snap.targetSymbol); } catch (Exception ignored) {}
-            System.out.printf("  ✓ [Portfolio Data] Client: %s | Symbol: %s | Total Qty: %s | Saleable Qty: %s | Avg Cost: %s | Value: %s%n",
+            try {
+                snap.portfolioDataDSE = ClientPortfolio.getUiSnapshot(driver, snap.targetClient, snap.targetSymbol, "DSE");
+                snap.portfolioDataCSE = ClientPortfolio.getUiSnapshot(driver, snap.targetClient, snap.targetSymbol, "CSE");
+                snap.portfolioData = snap.portfolioDataDSE;
+            } catch (Exception ignored) {}
+            System.out.printf("  ✓ [Portfolio Data (DSE)] Client: %s | Symbol: %s | Total Qty: %s | Saleable Qty: %s | Avg Cost: %s | Value: %s%n",
                     snap.targetClient, snap.targetSymbol,
-                    snap.portfolioData.getOrDefault("total_qty", snap.portfolioData.getOrDefault("Total Qty", "-")),
-                    snap.portfolioData.getOrDefault("saleable_qty", snap.portfolioData.getOrDefault("Saleable Qty", "-")),
-                    snap.portfolioData.getOrDefault("avg_cost", snap.portfolioData.getOrDefault("Avg Cost", "-")),
-                    snap.portfolioData.getOrDefault("market_value", snap.portfolioData.getOrDefault("Market Value", "-")));
+                    snap.portfolioDataDSE.getOrDefault("total_qty", snap.portfolioDataDSE.getOrDefault("Total Qty", "-")),
+                    snap.portfolioDataDSE.getOrDefault("saleable_qty", snap.portfolioDataDSE.getOrDefault("Saleable Qty", "-")),
+                    snap.portfolioDataDSE.getOrDefault("avg_cost", snap.portfolioDataDSE.getOrDefault("Avg Cost", "-")),
+                    snap.portfolioDataDSE.getOrDefault("value", snap.portfolioDataDSE.getOrDefault("Market Value", "-")));
+            System.out.printf("  ✓ [Portfolio Data (CSE)] Client: %s | Symbol: %s | Total Qty: %s | Saleable Qty: %s | Avg Cost: %s | Value: %s%n",
+                    snap.targetClient, snap.targetSymbol,
+                    snap.portfolioDataCSE.getOrDefault("total_qty", snap.portfolioDataCSE.getOrDefault("Total Qty", "-")),
+                    snap.portfolioDataCSE.getOrDefault("saleable_qty", snap.portfolioDataCSE.getOrDefault("Saleable Qty", "-")),
+                    snap.portfolioDataCSE.getOrDefault("avg_cost", snap.portfolioDataCSE.getOrDefault("Avg Cost", "-")),
+                    snap.portfolioDataCSE.getOrDefault("value", snap.portfolioDataCSE.getOrDefault("Market Value", "-")));
         } catch (Exception e) {
             System.out.println("  [WARN: Portfolio] " + e.getMessage());
         } finally {
@@ -2502,11 +2514,17 @@ public class Day_Netting {
         printNettingDiffRow("App Settings", "IS_DSE_DAY_NETTING_ENABLED", String.valueOf(prev.isDseDayNettingEnabled), String.valueOf(curr.isDseDayNettingEnabled), true);
         printNettingDiffRow("App Settings", "IS_CSE_DAY_NETTING_ENABLED", String.valueOf(prev.isCseDayNettingEnabled), String.valueOf(curr.isCseDayNettingEnabled), true);
 
-        // 1. Client Portfolio
-        printNettingDiffRow("Portfolio", "Total Holding Qty", prev.portfolioData.getOrDefault("Total_Qty", prev.portfolioData.getOrDefault("total_qty", "0")), curr.portfolioData.getOrDefault("Total_Qty", curr.portfolioData.getOrDefault("total_qty", "0")), false);
-        printNettingDiffRow("Portfolio", "Saleable Qty", prev.portfolioData.getOrDefault("Saleable_Qty", prev.portfolioData.getOrDefault("saleable_qty", "0")), curr.portfolioData.getOrDefault("Saleable_Qty", curr.portfolioData.getOrDefault("saleable_qty", "0")), false);
-        printNettingDiffRow("Portfolio", "Avg Cost", prev.portfolioData.getOrDefault("Avg_Cost", prev.portfolioData.getOrDefault("avg_cost", "0")), curr.portfolioData.getOrDefault("Avg_Cost", curr.portfolioData.getOrDefault("avg_cost", "0")), false);
-        printNettingDiffRow("Portfolio", "Market Value", prev.portfolioData.getOrDefault("Market_Value", prev.portfolioData.getOrDefault("market_value", "0")), curr.portfolioData.getOrDefault("Market_Value", curr.portfolioData.getOrDefault("market_value", "0")), false);
+        // 1A. Client Portfolio (DSE)
+        printNettingDiffRow("Portfolio (DSE)", "Total Holding Qty", prev.portfolioDataDSE.getOrDefault("total_qty", "0"), curr.portfolioDataDSE.getOrDefault("total_qty", "0"), false);
+        printNettingDiffRow("Portfolio (DSE)", "Saleable Qty", prev.portfolioDataDSE.getOrDefault("saleable_qty", "0"), curr.portfolioDataDSE.getOrDefault("saleable_qty", "0"), false);
+        printNettingDiffRow("Portfolio (DSE)", "Avg Cost", prev.portfolioDataDSE.getOrDefault("avg_cost", "0"), curr.portfolioDataDSE.getOrDefault("avg_cost", "0"), false);
+        printNettingDiffRow("Portfolio (DSE)", "Market Value", prev.portfolioDataDSE.getOrDefault("value", "0"), curr.portfolioDataDSE.getOrDefault("value", "0"), false);
+
+        // 1B. Client Portfolio (CSE)
+        printNettingDiffRow("Portfolio (CSE)", "Total Holding Qty", prev.portfolioDataCSE.getOrDefault("total_qty", "0"), curr.portfolioDataCSE.getOrDefault("total_qty", "0"), false);
+        printNettingDiffRow("Portfolio (CSE)", "Saleable Qty", prev.portfolioDataCSE.getOrDefault("saleable_qty", "0"), curr.portfolioDataCSE.getOrDefault("saleable_qty", "0"), false);
+        printNettingDiffRow("Portfolio (CSE)", "Avg Cost", prev.portfolioDataCSE.getOrDefault("avg_cost", "0"), curr.portfolioDataCSE.getOrDefault("avg_cost", "0"), false);
+        printNettingDiffRow("Portfolio (CSE)", "Market Value", prev.portfolioDataCSE.getOrDefault("value", "0"), curr.portfolioDataCSE.getOrDefault("value", "0"), false);
 
         // 2. Order Terminal
         printNettingDiffRow("Order Terminal", "Recent Order ID", prev.orderTerminalData.getOrDefault("Order_ID", prev.orderTerminalData.getOrDefault("order_id", "-")), curr.orderTerminalData.getOrDefault("Order_ID", curr.orderTerminalData.getOrDefault("order_id", "-")), true);
@@ -2537,7 +2555,8 @@ public class Day_Netting {
 
         System.out.println("+--------------------+------------------------+------------------+------------------+--------+------------------------------------+");
         System.out.println(">>> WIDGET-WISE AUDIT VERDICT:");
-        System.out.printf("  * Portfolio       : %s%n", getWidgetDiffVerdict(prev.portfolioData, curr.portfolioData));
+        System.out.printf("  * Portfolio (DSE) : %s%n", getWidgetDiffVerdict(prev.portfolioDataDSE, curr.portfolioDataDSE));
+        System.out.printf("  * Portfolio (CSE) : %s%n", getWidgetDiffVerdict(prev.portfolioDataCSE, curr.portfolioDataCSE));
         System.out.printf("  * Order Terminal  : %s%n", getTerminalDiffVerdict(prev.orderTerminalData, curr.orderTerminalData));
         System.out.printf("  * Order Summary   : %s%n", getSummaryDiffVerdict(prev.orderSummaryData, curr.orderSummaryData));
         System.out.printf("  * Account Limits  : %s%n", getLimitsDiffVerdict(prev.accountLimitsData, curr.accountLimitsData));
@@ -3034,6 +3053,10 @@ public class Day_Netting {
                 NettingApplicabilityReport appRep = checkSelectedApplicability(driver, targetExchange, sym, cln, board);
                 printApplicabilityVerificationReport(appRep);
 
+                // Step 0: Insert global symbol and select Public symbol from dropdown list (e.g. GP.PUBLIC)
+                OMSweb_Trade.insertGlobalSymbolAndSelectPublic(driver, sym);
+                sym = OMSweb_Trade.toPublicSymbol(sym);
+
                 // Step 1: Reflect client code across all widgets
                 OMSweb_Trade.propagateClientCodeToAllWidgets(driver, cln, sym);
 
@@ -3112,7 +3135,7 @@ public class Day_Netting {
                         try { tradeRate = Double.parseDouble(rStr.replaceAll("[^0-9.]", "")); } catch (Exception ignored) {}
                     }
 
-                    String tradeInstrument = "PUBLIC".equalsIgnoreCase(board) ? sym : (sym + "." + board);
+                    String tradeInstrument = sym.contains(".") ? sym : ("PUBLIC".equalsIgnoreCase(board) ? (sym + ".PUBLIC") : (sym + "." + board));
                     String orderEx = "BOTH".equalsIgnoreCase(targetExchange) ? "DSE" : targetExchange;
 
                     if ("BOTH_BUY_SELL".equals(tradeAction)) {
@@ -3318,11 +3341,12 @@ public class Day_Netting {
                     }
                 }
 
-                // User requirement: after trade happen check order terminal to any latest order exits or not if not no need to take snapshot and compare the data
+                // User requirement: after trade happen check order terminal to any latest order exits or not if not no need to take snapshot and compare the data . for comparing data show result (pass ,fail, remarks)
                 boolean hasLatestOrder = OMSweb_Trade.hasLatestOrderInTerminal(driver, cln, sym);
                 if (!hasLatestOrder) {
-                    System.out.printf("%n[ORDER TERMINAL CHECK] No latest order found for %s (%s) in Order Terminal! Skipping snapshot capture and widget comparison.%n", sym, cln);
+                    System.out.printf("%n[ORDER TERMINAL CHECK] No latest order found for %s (%s) in Order Terminal! Skipping post-trade snapshot and widget comparison.%n", sym, cln);
                 } else {
+                    System.out.printf("%n[ORDER TERMINAL CHECK] Latest order confirmed in Order Terminal for %s (%s)! Capturing post-trade snapshots and performing 6-widget comparison...%n", sym, cln);
                     // Step 4: Capture Post-Trade Snapshot across all 6 widgets
                     System.out.printf("%n>>> [STEP 3/3] CAPTURING POST-TRADE REAL-TIME DATA ACROSS 6 WIDGETS FOR CLIENT: %s...%n", cln);
                     Netting6WidgetsUiSnapshot postTradeSnap = check6NettingWidgetsRealTimeUiData(driver, "POST-TRADE_REALTIME_" + targetMode.name() + "_" + targetExchange, cln, sym, targetExchange);
@@ -3604,6 +3628,9 @@ public class Day_Netting {
             System.out.println("\n=============================================================================");
             System.out.println(" [SUCCESS] Day Netting session finished. Chrome remains active on desktop.");
             System.out.println("=============================================================================\n");
+
+            // Automatically transition to persistent Main Menu session loop
+            OMSwebmain.runSessionLoop(driver, sc);
         } catch (Exception e) {
             System.err.println("[DAY NETTING ERROR] " + e.getMessage());
             e.printStackTrace();
