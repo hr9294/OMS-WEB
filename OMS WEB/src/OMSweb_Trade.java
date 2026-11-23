@@ -8662,7 +8662,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		// 2. Explicit suggested price: "suggested price: 280.00", "suggested: 280.00", "recommended: 280.00"
 		if (extractedSuggested <= 0.0) {
-			java.util.regex.Pattern pSuggested = java.util.regex.Pattern.compile("(?i)(?:suggested|suggest|recommended|acceptable)[^0-9]{1,30}?([0-9]+(?:\\.[0-9]+)?)");
+			java.util.regex.Pattern pSuggested = java.util.regex.Pattern.compile("(?i)\\b(?:suggested|suggest|recommended|acceptable)\\b[^0-9]{1,20}?([0-9]+(?:\\.[0-9]+)?)");
 			java.util.regex.Matcher mSuggested = pSuggested.matcher(rawMsg);
 			if (mSuggested.find()) {
 				extractedSuggested = parseNumSafe(mSuggested.group(1));
@@ -8677,18 +8677,18 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			if (extractedUpper <= 0.0) extractedUpper = parseNumSafe(mRange.group(2));
 		}
 
-		// 4. Upper limit: "upper limit: 300.00", "circuit high: 300", "ceiling: 300"
+		// 4. Upper limit: "upper limit: 300.00", "upper circuit limit 300", "circuit high: 300", "ceiling: 300"
 		if (extractedUpper <= 0.0) {
-			java.util.regex.Pattern pUpper = java.util.regex.Pattern.compile("(?i)(?:upper|high|max(?:imum)?|ceiling)[^0-9]{1,30}?([0-9]+(?:\\.[0-9]+)?)");
+			java.util.regex.Pattern pUpper = java.util.regex.Pattern.compile("(?i)\\b(?:upper(?:\\s+circuit)?(?:\\s+limit)?|highest|circuit\\s+high|circuit_up|ceiling|max(?:imum)?)\\b[^0-9]{1,20}?([0-9]+(?:\\.[0-9]+)?)");
 			java.util.regex.Matcher mUpper = pUpper.matcher(rawMsg);
 			if (mUpper.find()) {
 				extractedUpper = parseNumSafe(mUpper.group(1));
 			}
 		}
 
-		// 5. Lower limit: "lower limit: 200.00", "circuit low: 200", "floor: 200"
+		// 5. Lower limit: "lower limit: 200.00", "lower circuit limit 200", "circuit low: 200", "floor: 200"
 		if (extractedLower <= 0.0) {
-			java.util.regex.Pattern pLower = java.util.regex.Pattern.compile("(?i)(?:lower|lowest|low|min(?:imum)?|floor)[^0-9]{1,30}?([0-9]+(?:\\.[0-9]+)?)");
+			java.util.regex.Pattern pLower = java.util.regex.Pattern.compile("(?i)\\b(?:lower(?:\\s+circuit)?(?:\\s+limit)?|lowest|circuit\\s+low|circuit_down|floor|min(?:imum)?)\\b[^0-9]{1,20}?([0-9]+(?:\\.[0-9]+)?)");
 			java.util.regex.Matcher mLower = pLower.matcher(rawMsg);
 			if (mLower.find()) {
 				extractedLower = parseNumSafe(mLower.group(1));
@@ -8702,6 +8702,11 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			} else if (extractedLower > 0.0 && (rawMsg.toLowerCase().contains("less than") || rawMsg.toLowerCase().contains("below") || rawMsg.toLowerCase().contains("lower than"))) {
 				extractedSuggested = extractedLower;
 			}
+		}
+
+		// Sanity Guard: Lower circuit limit cannot exceed upper limit
+		if (extractedLower > 0.0 && extractedUpper > 0.0 && extractedLower > extractedUpper) {
+			extractedLower = 0.0;
 		}
 
 		return new RejectionOrderPriceInfo(extractedSuggested, extractedUpper, extractedLower, rawMsg);
@@ -8744,11 +8749,10 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"            for (var c = 0; c < cells.length; c++) {\n" +
 				"                var cell = cells[c];\n" +
 				"                var ctip = cell.getAttribute('data-original-title') || cell.getAttribute('data-bs-original-title') || cell.getAttribute('title') || cell.getAttribute('data-content') || cell.getAttribute('data-reason') || '';\n" +
-				"                if (ctip && ctip.trim().length > 0) msgs.push(ctip.trim());\n" +
+				"                if (ctip && (ctip.indexOf('Trade Rule') !== -1 || ctip.indexOf('Price limit') !== -1 || ctip.indexOf('cannot be') !== -1 || ctip.indexOf('Reason:') !== -1)) msgs.push(ctip.trim());\n" +
 				"                var ctext = (cell.innerText || cell.textContent || '').trim();\n" +
 				"                if (ctext.indexOf('Trade Rule') !== -1 || ctext.indexOf('cannot be') !== -1 || ctext.indexOf('Reason:') !== -1) msgs.push(ctext);\n" +
 				"            }\n" +
-				"            msgs.push(r.innerText.trim());\n" +
 				"        }\n" +
 				"    }\n" +
 				"}\n" +
@@ -9790,6 +9794,12 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 	 * 4. On price limit breach or missing candidate -> take suggested price (clamped to bounds).
 	 */
 	public static double resolvePriceLimitSafe(double candidatePrice, double lowerLimit, double upperLimit, double suggestedPrice) {
+		// Sanity Guard: Lower limit cannot exceed upper limit
+		if (lowerLimit > 0.0 && upperLimit > 0.0 && lowerLimit > upperLimit) {
+			System.out.printf("  [WARN: INVALID CIRCUIT BAND] Lower bound (%.2f) > Upper bound (%.2f)! Discarding corrupted lower bound.%n", lowerLimit, upperLimit);
+			lowerLimit = 0.0;
+		}
+
 		// 1. If showing upper than suggested price / upper circuit limit -> take upper price
 		if (upperLimit > 0.0 && candidatePrice > upperLimit) {
 			System.out.printf("  [PRICE LIMIT BREACH: UPPER] Candidate price %.2f exceeds upper limit %.2f -> Taking upper price: %.2f%n",

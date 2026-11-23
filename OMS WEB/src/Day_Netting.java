@@ -3101,18 +3101,22 @@ public class Day_Netting {
                     }
 
                     double defaultRate = 0.0;
+                    // First check on-screen error tooltip/toast: HIGHEST PRIORITY per user request!
                     try {
-                        String ltpStr = preTradeSnap.marketDepthData.getOrDefault("Last", preTradeSnap.marketDepthData.getOrDefault("LTP", "0"));
-                        defaultRate = OMSweb_Trade.parseNumSafe(ltpStr);
+                        OMSweb_Trade.RejectionOrderPriceInfo onScreen = OMSweb_Trade.extractRejectionOrderPriceInfo(driver, cln, sym);
+                        if (onScreen.hasSuggestedPrice() || onScreen.hasUpperLimit()) {
+                            defaultRate = onScreen.hasSuggestedPrice() ? onScreen.suggestedPrice : onScreen.upperLimit;
+                            System.out.printf("  -> [INITIAL RATE RESOLUTION] Using suggested price from rejection error message: %.2f%n", defaultRate);
+                        }
                     } catch (Exception ignored) {}
 
-                    // If Market Depth was empty (e.g. "-" values), check on-screen error tooltip/toast or DB cache
+                    // Fallback to Market Depth LTP only if no on-screen error message
                     if (defaultRate <= 0.0) {
                         try {
-                            OMSweb_Trade.RejectionOrderPriceInfo onScreen = OMSweb_Trade.extractRejectionOrderPriceInfo(driver, cln, sym);
-                            if (onScreen.hasSuggestedPrice()) {
-                                defaultRate = onScreen.suggestedPrice;
-                                System.out.printf("  -> [INITIAL RATE RESOLUTION] Found suggested price from error message/tooltip: %.2f%n", defaultRate);
+                            String ltpStr = preTradeSnap.marketDepthData.getOrDefault("Last", preTradeSnap.marketDepthData.getOrDefault("LTP", "0"));
+                            double mktLtp = OMSweb_Trade.parseNumSafe(ltpStr);
+                            if (mktLtp > 0.0 && mktLtp < 1000.0) { // realistic equity share price check
+                                defaultRate = mktLtp;
                             }
                         } catch (Exception ignored) {}
                     }
