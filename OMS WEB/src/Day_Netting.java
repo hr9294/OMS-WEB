@@ -3604,6 +3604,9 @@ public class Day_Netting {
             System.out.println("\n=============================================================================");
             System.out.println(" [SUCCESS] Day Netting session finished. Chrome remains active on desktop.");
             System.out.println("=============================================================================\n");
+
+            // Automatically transition to persistent Main Menu session loop
+            OMSwebmain.runSessionLoop(driver, sc);
         } catch (Exception e) {
             System.err.println("[DAY NETTING ERROR] " + e.getMessage());
             e.printStackTrace();
