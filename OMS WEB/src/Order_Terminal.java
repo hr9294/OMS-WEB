@@ -186,7 +186,7 @@ public class Order_Terminal {
                 "    if (code) inp.value = code;\n" +
                 "    if (jq) {\n" +
                 "        if (code) jq(inp).val(code);\n" +
-                "        jq(inp).trigger('orderTerminalCodeChanged');\n" +
+                "        jq(inp).trigger('input').trigger('change').trigger('keyup').trigger('orderTerminalCodeChanged');\n" +
                 "        if (typeof get_client_code_data === 'function') { try { get_client_code_data(inp); } catch(e){} }\n" +
                 "    }\n" +
                 "}\n" +
@@ -194,7 +194,7 @@ public class Order_Terminal {
                 "    var otSyms = document.querySelectorAll('input[id*=\"order_terminal_symbol\"], input.order_terminal_symbol');\n" +
                 "    for (var j = 0; j < otSyms.length; j++) {\n" +
                 "        otSyms[j].value = sym;\n" +
-                "        if (jq) jq(otSyms[j]).val(sym).trigger('change');\n" +
+                "        if (jq) jq(otSyms[j]).val(sym).trigger('input').trigger('change').trigger('keyup');\n" +
                 "    }\n" +
                 "}\n" +
                 "if (typeof get_order_history === 'function') { try { get_order_history(); } catch(e){} }\n",
@@ -226,7 +226,8 @@ public class Order_Terminal {
             } catch (Exception ignored) {}
 
             // Auto-recovery: If filtering results in 0 records (e.g. "Records : 0 of 50"),
-            // click Reset to ensure the client's orders reflect and are visible in Order Terminal
+            // first clear conflicting symbol filter so client code orders reflect.
+            // If still 0 records, click Reset to ensure order rows are visible.
             try {
                 Boolean zeroRecords = (Boolean) js.executeScript(
                     "var tbl = document.getElementById('order_terminal_table') || document.querySelector('table.order_terminal_table') || document.querySelector('table[id*=market_table]');\n" +
@@ -236,17 +237,36 @@ public class Order_Terminal {
                     "return text.indexOf('Records : 0') !== -1 || rows.length === 0 || (rows.length === 1 && (rows[0].innerText || '').indexOf('No Record') !== -1);\n"
                 );
                 if (Boolean.TRUE.equals(zeroRecords)) {
-                    System.out.println("[TERMINAL] Filter resulted in 0 records displayed! Clicking Reset to restore all order rows...");
-                    try {
-                        driver.findElement(BTN_RESET).click();
-                    } catch (Exception e) {
-                        js.executeScript(
-                            "var rBtn = document.getElementById('reset_filter') || document.querySelector('button#reset_filter, button.btn-reset') || " +
-                            "Array.from(document.querySelectorAll('button')).find(function(b){ return (b.innerText||'').trim().toUpperCase() === 'RESET'; });\n" +
-                            "if (rBtn) rBtn.click();"
-                        );
-                    }
+                    System.out.println("[TERMINAL] Filter resulted in 0 records displayed! Clearing symbol filter so client code orders reflect...");
+                    Boolean recoveredWithClient = (Boolean) js.executeScript(
+                        "var sInp = document.querySelector('input[id*=\"order_terminal_symbol\"], input.order_terminal_symbol');\n" +
+                        "if (sInp) {\n" +
+                        "    sInp.value = '';\n" +
+                        "    if (window.jQuery) { $(sInp).val('').trigger('input').trigger('change').trigger('keyup'); }\n" +
+                        "}\n" +
+                        "if (typeof get_order_history === 'function') { try { get_order_history(); } catch(e){} }\n" +
+                        "var tbl = document.getElementById('order_terminal_table') || document.querySelector('table.order_terminal_table') || document.querySelector('table[id*=market_table]');\n" +
+                        "var container = tbl ? (tbl.closest('.order_terminal, div[id*=\"terminal\"], .user_order_terminals') || tbl.parentElement) : document.body;\n" +
+                        "var text = (container ? container.innerText : '') || '';\n" +
+                        "var rows = tbl ? tbl.querySelectorAll('tbody tr') : [];\n" +
+                        "return text.indexOf('Records : 0') === -1 && rows.length > 0 && !(rows.length === 1 && (rows[0].innerText || '').indexOf('No Record') !== -1);\n"
+                    );
                     Thread.sleep(400);
+                    if (!Boolean.TRUE.equals(recoveredWithClient)) {
+                        System.out.println("[TERMINAL] Clicking Reset button to restore all rows...");
+                        try {
+                            driver.findElement(BTN_RESET).click();
+                        } catch (Exception e) {
+                            js.executeScript(
+                                "var rBtn = document.getElementById('reset_filter') || document.querySelector('button#reset_filter, button.btn-reset') || " +
+                                "Array.from(document.querySelectorAll('button')).find(function(b){ return (b.innerText||'').trim().toUpperCase() === 'RESET'; });\n" +
+                                "if (rBtn) rBtn.click();"
+                            );
+                        }
+                        Thread.sleep(400);
+                    } else {
+                        System.out.printf("  ✓ [TERMINAL RECOVERED] Client code '%s' orders successfully reflected in Order Terminal.%n", cleanClient);
+                    }
                 }
             } catch (Exception ignored) {}
         } catch (Exception ignored) {}

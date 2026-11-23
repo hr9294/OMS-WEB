@@ -2199,31 +2199,26 @@ public class OMSweb_Trade {
 			js.executeScript(
 
 				"var val = arguments[0].trim();" +
-
+				"// 1. Order Entry active instrument inputs\n" +
 				"var activeInputs = document.querySelectorAll('.winbox input#order_instrument, .wb-body input#order_instrument, input#order_instrument');" +
-
 				"for (var i = 0; i < activeInputs.length; i++) {" +
-
 				"    var inp = activeInputs[i];" +
-
-				"    if (!inp.value || inp.value.indexOf('.PUBLIC') === -1) {" +
-
-				"        inp.value = val;" +
-
-				"        if (window.jQuery) {" +
-
-				"            $(inp).val(val).trigger('input').trigger('change');" +
-
-				"            var ac = $(inp).data('ui-autocomplete') || $(inp).data('autocomplete') || ($(inp).autocomplete ? $(inp).autocomplete('instance') : null);" +
-
-				"            if (ac) { ac.selectedItem = { value: val, label: val }; }" +
-
-				"        }" +
-
+				"    inp.value = val;" +
+				"    if (window.jQuery) {" +
+				"        $(inp).val(val).trigger('input').trigger('change');" +
+				"        var ac = $(inp).data('ui-autocomplete') || $(inp).data('autocomplete') || ($(inp).autocomplete ? $(inp).autocomplete('instance') : null);" +
+				"        if (ac) { ac.selectedItem = { value: val, label: val }; }" +
 				"    }" +
-
 				"}" +
-
+				"// 2. Global search bar (#instrument)\n" +
+				"var gi = document.getElementById('instrument');" +
+				"if (gi) { gi.value = val; if (window.jQuery) $(gi).val(val); }" +
+				"// 3. Market Depth & Portfolio symbol inputs\n" +
+				"var otherInputs = document.querySelectorAll('input#market_depth_symbol, input[id*=\"market_depth_symbol\"], input#portfolio_symbol, input[id*=\"portfolio_symbol\"]');" +
+				"for (var o = 0; o < otherInputs.length; o++) {" +
+				"    otherInputs[o].value = val;" +
+				"    if (window.jQuery) $(otherInputs[o]).val(val).trigger('change');" +
+				"}" +
 				"try { if (typeof verify_fields === 'function') verify_fields(); } catch(e){}",
 
 				publicSym
@@ -2296,12 +2291,21 @@ public class OMSweb_Trade {
 				Object clicked = js.executeScript(
 					"var target = (arguments[0] || '').toUpperCase();\n" +
 					"var base = (arguments[1] || '').toUpperCase();\n" +
-					"var items = document.querySelectorAll('.ui-autocomplete:visible li, ul[id*=ui-id]:visible li, .ui-menu-item');\n" +
+					"var items = [];\n" +
+					"if (window.jQuery) {\n" +
+					"    try { items = jQuery('.ui-autocomplete:visible li, ul[id*=\"ui-id\"]:visible li, .ui-menu-item:visible, li.ui-menu-item:visible').toArray(); } catch(e){}\n" +
+					"}\n" +
+					"if (!items || items.length === 0) {\n" +
+					"    var raw = document.querySelectorAll('.ui-autocomplete li, ul[id*=\"ui-id\"] li, .ui-menu-item, li.ui-menu-item, div.autocomplete-suggestion');\n" +
+					"    for (var k = 0; k < raw.length; k++) {\n" +
+					"        if (raw[k].offsetParent !== null) items.push(raw[k]);\n" +
+					"    }\n" +
+					"}\n" +
 					"for (var i = 0; i < items.length; i++) {\n" +
 					"    var it = items[i];\n" +
 					"    var t = (it.innerText || it.textContent || '').trim().toUpperCase();\n" +
 					"    if (t === target || t === base + '.PUBLIC' || t.startsWith(target + ' ') || (t.indexOf(base) !== -1 && t.indexOf('.PUBLIC') !== -1 && t.indexOf('BLOCK') === -1 && t.indexOf('BUYIN') === -1 && t.indexOf('FOREIGN') === -1)) {\n" +
-					"        var link = it.querySelector('a, div') || it;\n" +
+					"        var link = it.querySelector('a, div, span') || it;\n" +
 					"        link.click();\n" +
 					"        return true;\n" +
 					"    }\n" +
@@ -2812,7 +2816,7 @@ public class OMSweb_Trade {
 
 				try {
 
-					List<WebElement> menuItems = driver.findElements(By.cssSelector(".ui-autocomplete:visible li.ui-menu-item"));
+					List<WebElement> menuItems = driver.findElements(By.cssSelector(".ui-autocomplete li.ui-menu-item, ul[id*='ui-id'] li"));
 
 					WebElement targetItem = null;
 
@@ -8809,11 +8813,14 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"            if (inst && typeof inst.close === 'function') inst.close();" +
 				"        }" +
 				"    }" +
+				"    if (window.toastr && typeof window.toastr.clear === 'function') { try { window.toastr.clear(); } catch(e){} }" +
 				"    var btns = document.querySelectorAll('.jconfirm-buttons button, .modal button.btn-danger, .modal button.btn-secondary, button.btn-primary, .alert .close, .toast-close-button, div[class*=\"alert\"] button, button[aria-label=\"Close\"]');" +
 				"    for (var b = 0; b < btns.length; b++) {" +
 				"        var bt = (btns[b].innerText || '').toLowerCase();" +
 				"        if (bt.includes('ok') || bt.includes('close') || bt.includes('dismiss') || bt.includes('x') || bt === '×') btns[b].click();" +
 				"    }" +
+				"    var alerts = document.querySelectorAll('#toast-container, .toast, .toast-message, .noty_body, .noty_layout, .alert-danger, .swal2-container, div[role=\"alert\"], div[class*=\"toast\"], .growl-message');" +
+				"    for (var a = 0; a < alerts.length; a++) { try { alerts[a].remove(); } catch(e){} }" +
 				"} catch(e){}"
 			);
 		} catch (Exception ignored) {}
@@ -9686,14 +9693,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"var cln = (arguments[0] || '').trim().toLowerCase();\n" +
 				"var sym = (arguments[1] || '').trim().toUpperCase();\n" +
 				"var side = (arguments[2] || '').trim().toUpperCase();\n" +
-				"// 1. Check active toast/alert notifications & error banners\n" +
-				"var toasts = document.querySelectorAll('.toast, .toast-message, .noty_body, .alert, .alert-danger, .swal2-html-container, div[role=\"alert\"], div[class*=\"banner\"], div[class*=\"error\"]');\n" +
-				"for (var t = 0; t < toasts.length; t++) {\n" +
-				"    var msg = (toasts[t].innerText || '').toLowerCase();\n" +
-				"    if (msg.includes('price limit') || msg.includes('circuit') || msg.includes('price band') || msg.includes('outside range') || msg.includes('breach') || msg.includes('cannot be more than') || msg.includes('cannot be less than')) return 'PRICE_BREACH';\n" +
-				"    if (msg.includes('rejected') || msg.includes('order reject')) return 'REJECTED';\n" +
-				"}\n" +
-				"// 2. Check Order Terminal Table top rows\n" +
+				"// 1. Check Order Terminal Table top rows first (ground truth in UI)\n" +
 				"var tbl = document.getElementById('order_terminal_table') || document.querySelector('table.order_terminal_table') || document.querySelector('table[id*=market_table]');\n" +
 				"if (tbl) {\n" +
 				"    var rows = tbl.querySelectorAll('tbody tr');\n" +
@@ -9705,8 +9705,22 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"        if (side.length > 0 && !rowText.includes(side)) continue;\n" +
 				"        if (rowText.includes('ACCEPTED') || rowText.includes('ACCEPT') || rowText.includes('FILLED') || rowText.includes('TRADE EXECUTED')) return 'ACCEPTED';\n" +
 				"        if (rowText.includes('BREACH') || rowText.includes('CIRCUIT') || rowText.includes('PRICE LIMIT')) return 'PRICE_BREACH';\n" +
-				"        if (rowText.includes('REJECTED') || rowText.includes('REJECT')) return 'REJECTED';\n" +
+				"        if (rowText.includes('REJECTED') || rowText.includes('REJECT')) {\n" +
+				"            var cells = r.querySelectorAll('td, span, div, a');\n" +
+				"            for (var c = 0; c < cells.length; c++) {\n" +
+				"                var tip = (cells[c].getAttribute('data-original-title') || cells[c].getAttribute('title') || cells[c].innerText || '').toLowerCase();\n" +
+				"                if (tip.includes('price limit') || tip.includes('cannot be more than') || tip.includes('cannot be less than')) return 'PRICE_BREACH';\n" +
+				"            }\n" +
+				"            return 'REJECTED';\n" +
+				"        }\n" +
 				"    }\n" +
+				"}\n" +
+				"// 2. Check active toast/alert notifications & error banners\n" +
+				"var toasts = document.querySelectorAll('.toast, .toast-message, .noty_body, .alert-danger, .swal2-html-container, div[role=\"alert\"], div[class*=\"banner\"], div[class*=\"error\"]');\n" +
+				"for (var t = 0; t < toasts.length; t++) {\n" +
+				"    var msg = (toasts[t].innerText || '').toLowerCase();\n" +
+				"    if (msg.includes('price limit') || msg.includes('circuit') || msg.includes('price band') || msg.includes('outside range') || msg.includes('breach') || msg.includes('cannot be more than') || msg.includes('cannot be less than')) return 'PRICE_BREACH';\n" +
+				"    if (msg.includes('rejected') || msg.includes('order reject')) return 'REJECTED';\n" +
 				"}\n" +
 				"return 'UNKNOWN';",
 				cleanClient, cleanSym, cleanSide
@@ -10114,7 +10128,14 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				}
 			}
 
-			double currentRate = (i < candidateRates.size()) ? candidateRates.get(i) : candidateRates.get(0);
+			double currentRate;
+			if (upfrontSuggestedPrice > 0.0) {
+				currentRate = upfrontSuggestedPrice;
+			} else if (initialRate > 0.0 && i == 0) {
+				currentRate = initialRate;
+			} else {
+				currentRate = (i < candidateRates.size()) ? candidateRates.get(i) : candidateRates.get(0);
+			}
 			lastAttemptedRate = currentRate;
 
 			// Revalidate circuit limits & quote on each attempt
@@ -10155,6 +10176,8 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				System.out.printf("  ✓ [ORDER ACCEPTED] Successfully placed ACCEPTED %s order @ %.2f on attempt %d!%n",
 						side.toUpperCase(), currentRate, attemptNum);
 				lastAcceptedPrice = currentRate;
+				lastRejectionAlertText = "";
+				dismissRejectionAlert(driver);
 				orderAccepted = true;
 				break;
 			} else {
@@ -10176,13 +10199,6 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 							nextRate, lastLower, lastUpper);
 					upfrontSuggestedPrice = nextRate;
 					dismissRejectionAlert(driver);
-					if (i + 1 < attempts) {
-						if (candidateRates.size() > i + 1) {
-							candidateRates.set(i + 1, nextRate);
-						} else {
-							candidateRates.add(nextRate);
-						}
-					}
 				}
 
 				long delay = backoff.calculateDelay(attemptNum);

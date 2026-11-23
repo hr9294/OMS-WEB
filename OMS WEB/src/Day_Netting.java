@@ -3341,16 +3341,12 @@ public class Day_Netting {
                     }
                 }
 
-                // User requirement: after trade happen check order terminal to any latest order exits or not if not no need to take snapshot and compare the data
+                // User requirement: after trade happen check order terminal to any latest order exits or not if not no need to take snapshot and compare the data . for comparing data show result (pass ,fail, remarks)
                 boolean hasLatestOrder = OMSweb_Trade.hasLatestOrderInTerminal(driver, cln, sym);
-                if (!hasLatestOrder && "0".equals(tradeOpt)) {
-                    System.out.printf("%n[ORDER TERMINAL CHECK] No order placed (Trade skipped). Skipping post-trade snapshot and widget comparison.%n");
+                if (!hasLatestOrder) {
+                    System.out.printf("%n[ORDER TERMINAL CHECK] No latest order found for %s (%s) in Order Terminal! Skipping post-trade snapshot and widget comparison.%n", sym, cln);
                 } else {
-                    if (!hasLatestOrder) {
-                        System.out.printf("%n[ORDER TERMINAL CHECK] Trade was executed. Capturing post-trade UI snapshot to verify full audit state...%n");
-                    } else {
-                        System.out.printf("%n[ORDER TERMINAL CHECK] Latest order confirmed in Order Terminal for %s (%s)!%n", sym, cln);
-                    }
+                    System.out.printf("%n[ORDER TERMINAL CHECK] Latest order confirmed in Order Terminal for %s (%s)! Capturing post-trade snapshots and performing 6-widget comparison...%n", sym, cln);
                     // Step 4: Capture Post-Trade Snapshot across all 6 widgets
                     System.out.printf("%n>>> [STEP 3/3] CAPTURING POST-TRADE REAL-TIME DATA ACROSS 6 WIDGETS FOR CLIENT: %s...%n", cln);
                     Netting6WidgetsUiSnapshot postTradeSnap = check6NettingWidgetsRealTimeUiData(driver, "POST-TRADE_REALTIME_" + targetMode.name() + "_" + targetExchange, cln, sym, targetExchange);
