@@ -8644,7 +8644,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		// 1. Direct check for Trade Rule error messages (e.g. from user toast & table tooltip):
 		// e.g. "Error: Trade Rule - Price limit exceeded. Price cannot be more than 266.90"
 		// e.g. "Reason: (299): Trade Rule - Price limit exceeded. Price cannot be more than 266.90"
-		java.util.regex.Pattern pCannotMore = java.util.regex.Pattern.compile("(?i)price cannot be (?:more|greater|higher|above)\\s+than\\s*([0-9]+(?:\\.[0-9]+)?)");
+		java.util.regex.Pattern pCannotMore = java.util.regex.Pattern.compile("(?i)(?:price\\s+)?cannot\\s+be\\s+(?:more|greater|higher|above)\\s+than\\s*([0-9]+(?:\\.[0-9]+)?)");
 		java.util.regex.Matcher mCannotMore = pCannotMore.matcher(rawMsg);
 		if (mCannotMore.find()) {
 			extractedUpper = parseNumSafe(mCannotMore.group(1));
@@ -8653,7 +8653,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		// e.g. "Error: Trade Rule - Price limit exceeded. Price cannot be less than 218.40"
 		// e.g. "Reason: (299): Trade Rule - Price limit exceeded. Price cannot be less than 218.40"
-		java.util.regex.Pattern pCannotLess = java.util.regex.Pattern.compile("(?i)price cannot be (?:less|lower|below)\\s+than\\s*([0-9]+(?:\\.[0-9]+)?)");
+		java.util.regex.Pattern pCannotLess = java.util.regex.Pattern.compile("(?i)(?:price\\s+)?cannot\\s+be\\s+(?:less|lower|below)\\s+than\\s*([0-9]+(?:\\.[0-9]+)?)");
 		java.util.regex.Matcher mCannotLess = pCannotLess.matcher(rawMsg);
 		if (mCannotLess.find()) {
 			extractedLower = parseNumSafe(mCannotLess.group(1));
@@ -8662,7 +8662,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		// 2. Explicit suggested price: "suggested price: 280.00", "suggested: 280.00", "recommended: 280.00"
 		if (extractedSuggested <= 0.0) {
-			java.util.regex.Pattern pSuggested = java.util.regex.Pattern.compile("(?i)(?:suggested|suggest|recommended|acceptable)[^0-9]{1,30}?([0-9]+(?:\\.[0-9]+)?)");
+			java.util.regex.Pattern pSuggested = java.util.regex.Pattern.compile("(?i)\\b(?:suggested|suggest|recommended|acceptable)(?:\\s+price)?[:\\s]+([0-9]+(?:\\.[0-9]+)?)");
 			java.util.regex.Matcher mSuggested = pSuggested.matcher(rawMsg);
 			if (mSuggested.find()) {
 				extractedSuggested = parseNumSafe(mSuggested.group(1));
@@ -8670,7 +8670,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		}
 
 		// 3. Range pattern: "[240.00 - 300.00]" or "between 240 and 300"
-		java.util.regex.Pattern pRange = java.util.regex.Pattern.compile("(?i)(?:\\[|between\\s+)([0-9]+(?:\\.[0-9]+)?)\\s*(?:-|to|and)\\s*([0-9]+(?:\\.[0-9]+)?)\\]?");
+		java.util.regex.Pattern pRange = java.util.regex.Pattern.compile("(?i)(?:\\[|\\bbetween\\s+)([0-9]+(?:\\.[0-9]+)?)\\s*(?:-|to|and)\\s*([0-9]+(?:\\.[0-9]+)?)\\]?");
 		java.util.regex.Matcher mRange = pRange.matcher(rawMsg);
 		if (mRange.find()) {
 			if (extractedLower <= 0.0) extractedLower = parseNumSafe(mRange.group(1));
@@ -8679,7 +8679,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		// 4. Upper limit: "upper limit: 300.00", "circuit high: 300", "ceiling: 300"
 		if (extractedUpper <= 0.0) {
-			java.util.regex.Pattern pUpper = java.util.regex.Pattern.compile("(?i)(?:upper|high|max(?:imum)?|ceiling)[^0-9]{1,30}?([0-9]+(?:\\.[0-9]+)?)");
+			java.util.regex.Pattern pUpper = java.util.regex.Pattern.compile("(?i)\\b(?:upper\\s+limit|circuit\\s+high|circuit\\s+up|ceiling|high\\s+limit|upper)\\b[^0-9]{0,20}?([0-9]+(?:\\.[0-9]+)?)");
 			java.util.regex.Matcher mUpper = pUpper.matcher(rawMsg);
 			if (mUpper.find()) {
 				extractedUpper = parseNumSafe(mUpper.group(1));
@@ -8687,8 +8687,9 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		}
 
 		// 5. Lower limit: "lower limit: 200.00", "circuit low: 200", "floor: 200"
+		// Note: word boundaries & strict phrases prevent matching "low" in "allowed", "flow", or timestamps
 		if (extractedLower <= 0.0) {
-			java.util.regex.Pattern pLower = java.util.regex.Pattern.compile("(?i)(?:lower|lowest|low|min(?:imum)?|floor)[^0-9]{1,30}?([0-9]+(?:\\.[0-9]+)?)");
+			java.util.regex.Pattern pLower = java.util.regex.Pattern.compile("(?i)\\b(?:lower\\s+limit|circuit\\s+low|circuit\\s+down|floor|lowest\\s+price|lower|lowest)\\b[^0-9]{0,20}?([0-9]+(?:\\.[0-9]+)?)");
 			java.util.regex.Matcher mLower = pLower.matcher(rawMsg);
 			if (mLower.find()) {
 				extractedLower = parseNumSafe(mLower.group(1));
@@ -8704,6 +8705,20 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			}
 		}
 
+		// 7. Circuit band validation: In exchange trading, lowerLimit must NEVER exceed upperLimit!
+		if (extractedUpper > 0.0 && extractedLower > extractedUpper) {
+			System.out.printf("  [WARN: INVALID LIMITS] Extracted lower (%.2f) > upper (%.2f). Discarding invalid lower limit.%n",
+					extractedLower, extractedUpper);
+			extractedLower = 0.0;
+		}
+
+		if (extractedUpper > 0.0 && extractedSuggested > extractedUpper) {
+			extractedSuggested = extractedUpper;
+		}
+		if (extractedLower > 0.0 && extractedSuggested > 0.0 && extractedSuggested < extractedLower) {
+			extractedSuggested = extractedLower;
+		}
+
 		return new RejectionOrderPriceInfo(extractedSuggested, extractedUpper, extractedLower, rawMsg);
 	}
 
@@ -8717,7 +8732,9 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"var alerts = document.querySelectorAll('.toast, .toast-message, .noty_body, .alert, .alert-danger, .alert-warning, .swal2-html-container, .swal2-title, .jconfirm-content, .modal-body, .ui-pnotify-text, div[role=\"alert\"], div[class*=\"banner\"], div[class*=\"error\"], div[class*=\"alert\"], div[class*=\"toast\"], div[class*=\"notify\"], div[class*=\"notification\"], .growl-message, .tooltip, .tooltip-inner, .popover, .popover-body, .popover-content');\n" +
 				"for (var i = 0; i < alerts.length; i++) {\n" +
 				"    var t = (alerts[i].innerText || alerts[i].textContent || '').trim();\n" +
-				"    if (t.length > 0) msgs.push(t);\n" +
+				"    if (t.length > 0 && (t.indexOf('Trade Rule') !== -1 || t.indexOf('Price limit') !== -1 || t.indexOf('cannot be') !== -1 || t.indexOf('Reason:') !== -1 || t.indexOf('Suggested') !== -1 || t.indexOf('reject') !== -1 || t.indexOf('Reject') !== -1)) {\n" +
+				"        msgs.push(t);\n" +
+				"    }\n" +
 				"}\n" +
 				"// 2. Scan visible elements containing price limit / trade rule / reason text or tooltip attributes\n" +
 				"var allEls = document.querySelectorAll('div, span, p, a, td, th, i');\n" +
@@ -8728,27 +8745,27 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				"        msgs.push(tip.trim());\n" +
 				"    }\n" +
 				"    var dt = (el.innerText || el.textContent || '').trim();\n" +
-				"    if (dt.indexOf('Price limit exceeded') !== -1 || dt.indexOf('cannot be more than') !== -1 || dt.indexOf('cannot be less than') !== -1 || dt.indexOf('Trade Rule') !== -1) {\n" +
+				"    if (dt.indexOf('Price limit exceeded') !== -1 || dt.indexOf('cannot be more than') !== -1 || dt.indexOf('cannot be less than') !== -1) {\n" +
 				"        msgs.push(dt);\n" +
 				"    }\n" +
 				"}\n" +
-				"// 3. Scan all tables and rows in Order Terminal for rejected orders and tooltip reasons\n" +
+				"// 3. Scan Order Terminal for specific rejection reason cells and tooltips (NO row text dumping)\n" +
 				"var tables = document.querySelectorAll('table');\n" +
 				"for (var tb = 0; tb < tables.length; tb++) {\n" +
 				"    var rows = tables[tb].querySelectorAll('tbody tr');\n" +
 				"    for (var j = 0; j < Math.min(rows.length, 10); j++) {\n" +
 				"        var r = rows[j];\n" +
-				"        var rowText = (r.innerText || r.textContent || '').toUpperCase();\n" +
-				"        if (rowText.indexOf('REJECT') !== -1 || rowText.indexOf('BREACH') !== -1 || rowText.indexOf('PRICE') !== -1) {\n" +
-				"            var cells = r.querySelectorAll('td, span, div, a, i');\n" +
-				"            for (var c = 0; c < cells.length; c++) {\n" +
-				"                var cell = cells[c];\n" +
-				"                var ctip = cell.getAttribute('data-original-title') || cell.getAttribute('data-bs-original-title') || cell.getAttribute('title') || cell.getAttribute('data-content') || cell.getAttribute('data-reason') || '';\n" +
-				"                if (ctip && ctip.trim().length > 0) msgs.push(ctip.trim());\n" +
-				"                var ctext = (cell.innerText || cell.textContent || '').trim();\n" +
-				"                if (ctext.indexOf('Trade Rule') !== -1 || ctext.indexOf('cannot be') !== -1 || ctext.indexOf('Reason:') !== -1) msgs.push(ctext);\n" +
+				"        var cells = r.querySelectorAll('td, span, div, a, i');\n" +
+				"        for (var c = 0; c < cells.length; c++) {\n" +
+				"            var cell = cells[c];\n" +
+				"            var ctip = cell.getAttribute('data-original-title') || cell.getAttribute('data-bs-original-title') || cell.getAttribute('title') || cell.getAttribute('data-content') || cell.getAttribute('data-reason') || '';\n" +
+				"            if (ctip && (ctip.indexOf('Trade Rule') !== -1 || ctip.indexOf('Price limit') !== -1 || ctip.indexOf('cannot be') !== -1 || ctip.indexOf('Reason:') !== -1)) {\n" +
+				"                msgs.push(ctip.trim());\n" +
 				"            }\n" +
-				"            msgs.push(r.innerText.trim());\n" +
+				"            var ctext = (cell.innerText || cell.textContent || '').trim();\n" +
+				"            if (ctext.indexOf('Trade Rule') !== -1 || ctext.indexOf('cannot be') !== -1 || ctext.indexOf('Reason:') !== -1) {\n" +
+				"                msgs.push(ctext);\n" +
+				"            }\n" +
 				"        }\n" +
 				"    }\n" +
 				"}\n" +
@@ -10298,8 +10315,16 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		System.out.printf("Test 12 [Order Terminal Tooltip 'Price cannot be more than 266.90']: Expected 266.90, Got %.2f -> %s%n", c12, p12 ? "PASS" : "FAIL");
 		allPassed &= p12;
 
+		// Case 13: Order row text with timestamp and 'allowed' keyword - must not corrupt lower limit or invert band
+		RejectionOrderPriceInfo rej7 = parseRejectionText("14:08:35 | ORD-9812 | BUY | GP | 100 | Allowed | Trade Rule - Price limit exceeded. Price cannot be more than 266.90");
+		double c13 = resolvePriceLimitSafe(270.0, rej7.lowerLimit, rej7.upperLimit, rej7.suggestedPrice);
+		boolean p13 = Math.abs(c13 - 266.90) < 0.001 && Math.abs(rej7.suggestedPrice - 266.90) < 0.001 && rej7.lowerLimit == 0.0;
+		System.out.printf("Test 13 [Timestamp '14:08' and 'Allowed' Noise Immunity]: Expected 266.90 (Lower=0), Got %.2f (Lower=%.2f) -> %s%n",
+				c13, rej7.lowerLimit, p13 ? "PASS" : "FAIL");
+		allPassed &= p13;
+
 		System.out.printf("+-----------------------------------------------------------------------------+%n");
-		System.out.printf("| ALL PRICE LIMIT BREACH TESTS: %-45s |%n", allPassed ? "ALL PASSED (12/12)" : "SOME FAILED");
+		System.out.printf("| ALL PRICE LIMIT BREACH TESTS: %-45s |%n", allPassed ? "ALL PASSED (13/13)" : "SOME FAILED");
 		System.out.printf("+-----------------------------------------------------------------------------+%n%n");
 		return allPassed;
 	}
