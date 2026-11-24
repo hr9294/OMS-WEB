@@ -3612,6 +3612,7 @@ public class Day_Netting {
             System.out.println("  6. Run UI Netting Indicators Audit (Depth, Watchlists, Order Window)");
             System.out.println("  7. Run Full Automated Scrip Netting Test Suite (All 5 Scopes)");
             System.out.println("  8. Check / Verify Symbol, Client & Board Netting Applicability");
+            System.out.println("  9. Run QA Day Netting Suite (DSE 25 / CSE 12, Excess Sell Mature Deduct, NONE Mode) [Direct QA]");
             System.out.println("  0. Return to Main Menu");
 
             String choice = "";
@@ -3619,7 +3620,7 @@ public class Day_Netting {
                 choice = "1";
                 System.out.println("\n[DOCKER AUTOMATE MODE] Automatically selected Day Netting option: 1 (Configure Netting Mode & Live Trade Audit)");
             } else {
-                System.out.print("Enter Choice (1-8, 0=Return, default=1 in 4s): ");
+                System.out.print("Enter Choice (1-9, 0=Return, default=1 in 4s): ");
                 choice = readLineWithIdleWatchdog(driver, sc, "1", 4);
                 if (choice.isEmpty()) choice = "1";
             }
@@ -4279,8 +4280,13 @@ public class Day_Netting {
 
                 NettingApplicabilityReport rep = checkSelectedApplicability(driver, ex, sym, cln, brd);
                 printApplicabilityVerificationReport(rep);
+            } else if ("9".equals(choice) || "qa".equalsIgnoreCase(choice) || "test".equalsIgnoreCase(choice)) {
+                System.out.println("\n-----------------------------------------------------------------------------");
+                System.out.println("   9. QA DAY NETTING SUITE (DSE 25 / CSE 12, EXCESS SELL, NONE MODE)         ");
+                System.out.println("-----------------------------------------------------------------------------");
+                testQaDayNettingScenarios();
             } else {
-                System.out.printf("[INVALID SELECTION] '%s' is not recognized. Please choose 0-8.%n", choice);
+                System.out.printf("[INVALID SELECTION] '%s' is not recognized. Please choose 0-9.%n", choice);
                 continue;
             }
 
@@ -4297,8 +4303,18 @@ public class Day_Netting {
 
     /**
      * Standalone launcher for Eclipse & direct CLI execution.
+     * Pass 'qa' or 'test' as an argument for instant direct QA validation without launching browser.
      */
     public static void main(String[] args) {
+        if (args != null && args.length > 0 && ("qa".equalsIgnoreCase(args[0]) || "test".equalsIgnoreCase(args[0]) || "fast".equalsIgnoreCase(args[0]))) {
+            System.out.println("===============================================================================");
+            System.out.println("       ECLIPSE DIRECT RUNNER: QA DAY NETTING MULTI-EXCHANGE TEST SUITE        ");
+            System.out.println("===============================================================================");
+            boolean passed = testQaDayNettingScenarios();
+            System.out.printf("[ECLIPSE QA RESULT] %s%n", passed ? "SUCCESS (ALL SCENARIOS PASSED)" : "FAILED");
+            return;
+        }
+
         WebDriver driver = OMSwebmain.createDriver();
         Scanner sc = new Scanner(System.in);
         try {
