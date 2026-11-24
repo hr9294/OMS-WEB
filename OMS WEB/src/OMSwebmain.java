@@ -67,7 +67,8 @@ public class OMSwebmain {
         options.setExperimentalOption("detach", true);
         options.setAcceptInsecureCerts(true);
 
-        if (isCi) {
+        boolean isHeadless = "true".equalsIgnoreCase(System.getenv("CI")) || "true".equalsIgnoreCase(System.getenv("HEADLESS"));
+        if (isHeadless) {
             options.addArguments("--headless=new");
             options.addArguments("--disable-gpu");
             options.addArguments("--no-sandbox");

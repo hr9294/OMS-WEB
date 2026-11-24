@@ -59,6 +59,16 @@ public class TestLimitsRunner {
             results.add(new TestResult("Portfolio Extraction & Delta Audit", false, "Exception: " + e.getMessage()));
         }
 
+        // Test Suite 6: QA Day Netting Test Suite (Scenarios 1, 2, 3)
+        try {
+            boolean pass = Day_Netting.testQaDayNettingScenarios();
+            results.add(new TestResult("QA Day Netting Scenarios (1, 2, 3)", pass,
+                pass ? "Scenario 1 (Both Exchanges), Scenario 2 (Sell > Buy), Scenario 3 (NONE Mode) 100% verified"
+                     : "QA Day Netting scenario verification mismatch"));
+        } catch (Exception e) {
+            results.add(new TestResult("QA Day Netting Scenarios (1, 2, 3)", false, "Exception: " + e.getMessage()));
+        }
+
         // Print Structured Scorecard
         System.out.println("\n+====================================================================================================================+");
         System.out.println("|                                               FINAL TEST SCORECARD                                                 |");

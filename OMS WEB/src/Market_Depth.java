@@ -122,13 +122,15 @@ public class Market_Depth {
 
     public static void searchSymbolInDepth(WebDriver driver, String symbol, String exchange) {
         if (driver == null || symbol == null || symbol.trim().isEmpty()) return;
-        symbol = cleanSymbol(symbol);
+        String publicSym = OMSweb_Trade.toPublicSymbol(symbol);
+        String cleanSym = cleanSymbol(symbol);
         String ex = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "DSE";
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
             js.executeScript(
-                "var sym = (arguments[0] || '').trim().toUpperCase();\n" +
-                "var ex = (arguments[1] || 'DSE').trim().toUpperCase();\n" +
+                "var pubSym = (arguments[0] || '').trim().toUpperCase();\n" +
+                "var baseSym = (arguments[1] || '').trim().toUpperCase();\n" +
+                "var ex = (arguments[2] || 'DSE').trim().toUpperCase();\n" +
                 "// 1. Select Exchange in Market Depth\n" +
                 "var exSelects = document.querySelectorAll('select[id*=\"exchange_market_depth\"], select[id*=\"exchange_mktdpt\"], select[id*=\"exchange_mkt\"], select.custom-select-drop, select.md_exch');\n" +
                 "exSelects.forEach(function(s) {\n" +
@@ -145,18 +147,21 @@ public class Market_Depth {
                 "        try { change_mkt_exchange(ex, s.id); } catch(e) {}\n" +
                 "    }\n" +
                 "});\n" +
-                "// 2. Set Symbol input and trigger getmktdepth with sym.PUBLIC\n" +
+                "// 2. Set Symbol input to retain full Public symbol format (e.g. GP.PUBLIC) and trigger getmktdepth\n" +
                 "var inputs = document.querySelectorAll('input[id*=\"symbol_market_depth\"], input[id*=\"symbol_mktdpt\"], input.mktdpt_symbol_name, input[id*=\"depth_symbol\"]');\n" +
-                "var symDotBoard = sym.indexOf('.') !== -1 ? sym : (sym + '.PUBLIC');\n" +
                 "inputs.forEach(function(i) {\n" +
-                "    i.value = sym;\n" +
-                "    i.dispatchEvent(new Event('input', { bubbles: true }));\n" +
-                "    i.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                "    i.value = pubSym;\n" +
+                "    if (window.jQuery) {\n" +
+                "        $(i).val(pubSym).trigger('input').trigger('change');\n" +
+                "    } else {\n" +
+                "        i.dispatchEvent(new Event('input', { bubbles: true }));\n" +
+                "        i.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                "    }\n" +
                 "    if (typeof getmktdepth === 'function') {\n" +
-                "        try { getmktdepth(symDotBoard, i.id); } catch(e) { getmktdepth(sym, i.id); }\n" +
+                "        try { getmktdepth(pubSym, i.id); } catch(e) { getmktdepth(baseSym, i.id); }\n" +
                 "    }\n" +
                 "});\n",
-                symbol, ex
+                publicSym, cleanSym, ex
             );
 
             // 3. Poll until DOM table has real values (not '-'), max 3.5 seconds
