@@ -3800,344 +3800,102 @@ public class Day_Netting {
                 // Step 3: Execute Live Trade to verify real-time widget updates
                 System.out.printf("%n=============================================================================%n");
                 System.out.printf(">>> [STEP 2/3] EXECUTE TRADE TO VERIFY LIVE REAL-TIME WIDGET UPDATES%n");
-                System.out.printf("    Client: %s | Symbol: %s | Board: %s | Exchange: %s%n", cln, sym, board, targetExchange);
+                System.out.printf("    Client: %s | Symbol: %s | Board: %s | Mode: %s%n", cln, sym, board, targetMode.name());
                 System.out.printf("=============================================================================%n");
-                System.out.println("Select Trade Action to execute:");
-                String defaultTradeOpt = "3";
+
+                String defaultTradeOpt = "5";
                 if (targetMode == NettingMode.NONE) {
-                    defaultTradeOpt = "1";
-                    System.out.println("  1. BUY  (Verify Total Qty increases while Saleable DOES NOT ADD) [Default]");
-                    System.out.println("  2. SELL (Single Sell Order)");
-                    System.out.println("  3. BOTH: BUY then SELL");
-                    System.out.println("  5. QA NONE Mode Test (Place BUY 25, Verify Saleable Unchanged/Unsettled)");
-                    System.out.println("  0. Skip Trade (Instant Audit & Rules Evaluation)");
+                    System.out.println("Mode: NONE -> Trade: DSE BUY 25 (Verify Total increases, Saleable DOES NOT ADD)");
                 } else if (targetMode == NettingMode.CROSS_EXCHANGE) {
-                    defaultTradeOpt = "1";
-                    System.out.println("  1. BUY  (Verify Saleable reflects on BOTH DSE & CSE) [Default]");
-                    System.out.println("  2. SELL (Verify Saleable debits from BOTH DSE & CSE)");
-                    System.out.println("  3. BOTH: BUY then SELL (Cross Netting)");
-                    System.out.println("  5. QA Cross-Exchange Test (DSE BUY 25, CSE SELL 15, Verify Unified Balance)");
-                    System.out.println("  0. Skip Trade (Instant Audit & Rules Evaluation)");
+                    System.out.println("Mode: CROSS EXCHANGE -> Trade: DSE BUY 25 (Reflects BOTH), CSE SELL 15 (Debits BOTH)");
                 } else {
-                    defaultTradeOpt = "BOTH".equalsIgnoreCase(targetExchange) ? "5" : "3";
-                    System.out.println("  1. BUY  (Single Buy Order on selected exchange)");
-                    System.out.println("  2. SELL (Single Sell Order on selected exchange)");
-                    System.out.println("  3. BOTH: BUY then SELL (Client A Buys, Client B [from Position/DB] Sells)");
-                    System.out.println("  4. BOTH: SELL then BUY (Client A Sells, Client B [from DB Cash > 500k/Default] Buys)");
-                    System.out.println("  5. QA Dual-Exchange Test (DSE BUY 25, CSE BUY 12, Sells & Excess Sell 35) [Default]");
-                    System.out.println("  0. Skip Trade (Instant Audit & Rules Evaluation)");
+                    System.out.println("Mode: INDIVIDUAL EXCHANGE -> Trade: DSE BUY 25, CSE BUY 12, Sells, Excess SELL 35 (Debits BOTH)");
                 }
-                System.out.printf("Select Trade Action to execute (default=%s in 4s): ", defaultTradeOpt);
+                System.out.println("Options: [ENTER / 5 = Execute Mode Flow (Default), 0 = Skip Trade]");
+                System.out.print("Enter Choice (default=5 in 4s): ");
                 String tradeOpt = readLineWithTimeout(sc, defaultTradeOpt, 4);
                 if (tradeOpt.isEmpty()) tradeOpt = defaultTradeOpt;
 
-                String tradeAction = "BOTH_BUY_SELL";
-                if ("0".equals(tradeOpt) || "skip".equalsIgnoreCase(tradeOpt)) {
-                    tradeAction = "SKIP";
-                } else if ("1".equals(tradeOpt) || "buy".equalsIgnoreCase(tradeOpt)) {
-                    tradeAction = "BUY";
-                } else if ("2".equals(tradeOpt) || "sell".equalsIgnoreCase(tradeOpt)) {
-                    tradeAction = "SELL";
-                } else if ("4".equals(tradeOpt) || "sell_buy".equalsIgnoreCase(tradeOpt) || "sell then buy".equalsIgnoreCase(tradeOpt)) {
-                    tradeAction = "BOTH_SELL_BUY";
-                } else if ("5".equals(tradeOpt) || "qa".equalsIgnoreCase(tradeOpt) || "test".equalsIgnoreCase(tradeOpt)) {
-                    tradeAction = "QA_FLOW";
-                } else {
-                    tradeAction = "BOTH_BUY_SELL"; // "3", "both", "buy_sell", "b", or default
-                }
-
+                String tradeAction = "0".equals(tradeOpt) || "skip".equalsIgnoreCase(tradeOpt) ? "SKIP" : "QA_FLOW";
                 int tradeQty = (targetMode == NettingMode.NONE) ? 25 :
-                               (targetMode == NettingMode.INDIVIDUAL_EXCHANGE && "BOTH".equalsIgnoreCase(targetExchange)) ? 37 : 1;
-                if (!"SKIP".equals(tradeAction) && !"QA_FLOW".equals(tradeAction)) {
-                    System.out.printf("Enter Trade Quantity per side (default=%d in 4s, press ENTER): ", tradeQty);
-                    String qtyStr = readLineWithTimeout(sc, String.valueOf(tradeQty), 4);
-                    if (!qtyStr.isEmpty()) {
-                        try { tradeQty = Integer.parseInt(qtyStr.trim()); } catch (Exception ignored) {}
-                    }
+                               (targetMode == NettingMode.INDIVIDUAL_EXCHANGE && "BOTH".equalsIgnoreCase(targetExchange)) ? 37 : 25;
 
-                    double defaultRate = 0.0;
-                    // First check on-screen error tooltip/toast: HIGHEST PRIORITY per user request!
+                double defaultRate = 0.0;
+                // First check on-screen error tooltip/toast: HIGHEST PRIORITY per user request!
+                try {
+                    OMSweb_Trade.RejectionOrderPriceInfo onScreen = OMSweb_Trade.extractRejectionOrderPriceInfo(driver, cln, sym);
+                    if (onScreen.hasSuggestedPrice() || onScreen.hasUpperLimit()) {
+                        defaultRate = onScreen.hasSuggestedPrice() ? onScreen.suggestedPrice : onScreen.upperLimit;
+                        System.out.printf("  -> [INITIAL RATE RESOLUTION] Using suggested price from rejection error message: %.2f%n", defaultRate);
+                    }
+                } catch (Exception ignored) {}
+
+                // Fallback to Market Depth LTP only if no on-screen error message
+                if (defaultRate <= 0.0) {
                     try {
-                        OMSweb_Trade.RejectionOrderPriceInfo onScreen = OMSweb_Trade.extractRejectionOrderPriceInfo(driver, cln, sym);
-                        if (onScreen.hasSuggestedPrice() || onScreen.hasUpperLimit()) {
-                            defaultRate = onScreen.hasSuggestedPrice() ? onScreen.suggestedPrice : onScreen.upperLimit;
-                            System.out.printf("  -> [INITIAL RATE RESOLUTION] Using suggested price from rejection error message: %.2f%n", defaultRate);
+                        String ltpStr = preTradeSnap.marketDepthData.getOrDefault("Last", preTradeSnap.marketDepthData.getOrDefault("LTP", "0"));
+                        double mktLtp = OMSweb_Trade.parseNumSafe(ltpStr);
+                        if (mktLtp > 0.0 && mktLtp < 1000.0) {
+                            defaultRate = mktLtp;
                         }
                     } catch (Exception ignored) {}
-
-                    // Fallback to Market Depth LTP only if no on-screen error message
-                    if (defaultRate <= 0.0) {
-                        try {
-                            String ltpStr = preTradeSnap.marketDepthData.getOrDefault("Last", preTradeSnap.marketDepthData.getOrDefault("LTP", "0"));
-                            double mktLtp = OMSweb_Trade.parseNumSafe(ltpStr);
-                            if (mktLtp > 0.0 && mktLtp < 1000.0) { // realistic equity share price check
-                                defaultRate = mktLtp;
+                }
+                if (defaultRate <= 0.0) {
+                    try {
+                        OMSweb_DBMarketData.PublicSymbolLtp quote = OMSweb_DBMarketData.getCachedSymbol(OMSweb_Trade.cleanSymbol(sym), "BOTH".equalsIgnoreCase(targetExchange) ? "DSE" : targetExchange);
+                        if (quote != null) {
+                            defaultRate = quote.ltp > 0.0 ? quote.ltp : (quote.ycp > 0.0 ? quote.ycp : (quote.circuitUp > 0.0 ? quote.circuitUp : 0.0));
+                            if (defaultRate > 0.0) {
+                                System.out.printf("  -> [INITIAL RATE RESOLUTION] Fetched DB Market Quote rate: %.2f%n", defaultRate);
                             }
-                        } catch (Exception ignored) {}
-                    }
-                    if (defaultRate <= 0.0) {
-                        try {
-                            OMSweb_DBMarketData.PublicSymbolLtp quote = OMSweb_DBMarketData.getCachedSymbol(OMSweb_Trade.cleanSymbol(sym), "BOTH".equalsIgnoreCase(targetExchange) ? "DSE" : targetExchange);
-                            if (quote != null) {
-                                defaultRate = quote.ltp > 0.0 ? quote.ltp : (quote.ycp > 0.0 ? quote.ycp : (quote.circuitUp > 0.0 ? quote.circuitUp : 0.0));
-                                if (defaultRate > 0.0) {
-                                    System.out.printf("  -> [INITIAL RATE RESOLUTION] Fetched DB Market Quote rate: %.2f%n", defaultRate);
-                                }
-                            }
-                        } catch (Exception ignored) {}
-                    }
-
-                    if (defaultRate > 1000.0) {
-                        System.out.printf("  [PRICE SANITY] Rate %.2f exceeds realistic scrip limits. Clamping to base acceptable rate 266.90 for %s.%n", defaultRate, sym);
-                        defaultRate = 266.90;
-                    }
-                    if (defaultRate <= 0.0) {
-                        defaultRate = 266.90;
-                    }
-
-                    double tradeRate = defaultRate;
-                    System.out.printf("Enter Trade Rate (default=auto %.2f from Market Depth / DB in 4s, or press ENTER): ", defaultRate);
-                    String rStr = readLineWithTimeout(sc, (defaultRate > 0 ? String.format(Locale.US, "%.2f", defaultRate) : "auto"), 4);
-                    if (!rStr.isEmpty() && !"auto".equalsIgnoreCase(rStr)) {
-                        try { tradeRate = Double.parseDouble(rStr.replaceAll("[^0-9.]", "")); } catch (Exception ignored) {}
-                    }
-
-                    String tradeInstrument = sym.contains(".") ? sym : ("PUBLIC".equalsIgnoreCase(board) ? (sym + ".PUBLIC") : (sym + "." + board));
-                    String orderEx = "BOTH".equalsIgnoreCase(targetExchange) ? "DSE" : targetExchange;
-
-                    if ("QA_FLOW".equals(tradeAction)) {
-                        if (targetMode == NettingMode.NONE) {
-                            System.out.println("\n>>> [EXECUTING QA NONE MODE TEST FLOW] <<<");
-                            System.out.printf("  -> Placing BUY Order: %d shares of %s on DSE @ %.2f...%n", tradeQty, tradeInstrument, tradeRate);
-                            OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, tradeQty, tradeRate, "DSE");
-                            Thread.sleep(1500);
-                        } else if (targetMode == NettingMode.CROSS_EXCHANGE) {
-                            System.out.println("\n>>> [EXECUTING QA CROSS EXCHANGE TEST FLOW] <<<");
-                            System.out.printf("  -> Leg 1: Placing BUY Order: 25 shares of %s on DSE @ %.2f (Reflects on BOTH DSE & CSE)...%n", tradeInstrument, tradeRate);
-                            OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, 25, tradeRate, "DSE");
-                            Thread.sleep(2000);
-                            System.out.printf("  -> Leg 2: Placing SELL Order: 15 shares of %s on CSE @ %.2f (Debits BOTH DSE & CSE)...%n", tradeInstrument, tradeRate);
-                            OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, 15, tradeRate, "CSE");
-                            Thread.sleep(1500);
-                        } else {
-                            // INDIVIDUAL EXCHANGE
-                            System.out.println("\n>>> [EXECUTING QA INDIVIDUAL EXCHANGE DUAL-EXCHANGE TEST FLOW] <<<");
-                            System.out.printf("  -> Step 1: Placing DSE BUY Order: 25 shares of %s @ %.2f...%n", tradeInstrument, tradeRate);
-                            OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, 25, tradeRate, "DSE");
-                            Thread.sleep(2000);
-                            System.out.printf("  -> Step 2: Placing CSE BUY Order: 12 shares of %s @ %.2f...%n", tradeInstrument, tradeRate);
-                            OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, 12, tradeRate, "CSE");
-                            Thread.sleep(2000);
-                            System.out.printf("  -> Step 3: Placing DSE SELL Order: 25 shares of %s (Liquidation from DSE saleable)...%n", tradeInstrument);
-                            OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, 25, tradeRate, "DSE");
-                            Thread.sleep(2000);
-                            System.out.printf("  -> Step 4: Placing CSE SELL Order: 12 shares of %s (Liquidation from CSE saleable)...%n", tradeInstrument);
-                            OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, 12, tradeRate, "CSE");
-                            Thread.sleep(2000);
-                            System.out.printf("  -> Step 5: Excess SELL Check: Placing DSE SELL Order for 35 shares (25 day-bought + 10 mature deducted on BOTH)...%n");
-                            OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, 35, tradeRate, "DSE");
-                            Thread.sleep(1500);
                         }
-                    } else if ("BOTH_BUY_SELL".equals(tradeAction)) {
-                        // =============================================================
-                        // DUAL TRADE: LEG 1 (BUY for Client A) -> LEG 2 (SELL for Client B from Position/DB)
-                        // =============================================================
-                        String buyerClient = cln;
-                        String sellerClient = resolveSellerClient(driver, sym, tradeQty, buyerClient, orderEx);
-                        System.out.printf("Confirm or enter Seller Client for Leg 2 (default=%s in 4s, press ENTER to accept): ", sellerClient);
-                        String customSeller = readLineWithTimeout(sc, sellerClient, 4);
-                        if (!customSeller.isEmpty()) sellerClient = customSeller;
+                    } catch (Exception ignored) {}
+                }
 
-                        System.out.printf("%n>>> [DAY NETTING DUAL TRADE: LEG 1/2 - BUY] Submitting BUY Order: %d shares of %s (Board: %s) for Client A %s on %s (Rate: %.2f)...%n",
-                                tradeQty, sym, board, buyerClient, targetExchange, tradeRate);
-                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", buyerClient, tradeInstrument, tradeQty, tradeRate, orderEx);
+                if (defaultRate > 1000.0) {
+                    System.out.printf("  [PRICE SANITY] Rate %.2f exceeds realistic scrip limits. Clamping to base acceptable rate 266.90 for %s.%n", defaultRate, sym);
+                    defaultRate = 266.90;
+                }
+                if (defaultRate <= 0.0) {
+                    defaultRate = 266.90;
+                }
+
+                double tradeRate = defaultRate;
+                String tradeInstrument = sym.contains(".") ? sym : ("PUBLIC".equalsIgnoreCase(board) ? (sym + ".PUBLIC") : (sym + "." + board));
+                String orderEx = "BOTH".equalsIgnoreCase(targetExchange) ? "DSE" : targetExchange;
+
+                if (!"SKIP".equals(tradeAction)) {
+                    if (targetMode == NettingMode.NONE) {
+                        System.out.println("\n>>> [EXECUTING NONE MODE NETTING TEST: BUY 25] <<<");
+                        System.out.printf("  -> Placing BUY Order: 25 shares of %s on DSE @ %.2f...%n", tradeInstrument, tradeRate);
+                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, 25, tradeRate, "DSE");
                         Thread.sleep(1500);
-
-                        String buyStatus = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, buyerClient, sym, "BUY");
-                        System.out.printf("  -> Exchange Order Terminal BUY Status (Buyer %s): [%s]%n", buyerClient, buyStatus);
-
-                        boolean buyAccepted = "ACCEPTED".equalsIgnoreCase(buyStatus) || "FILLED".equalsIgnoreCase(buyStatus) || "TRADE EXECUTED".equalsIgnoreCase(buyStatus);
-                        if (!buyAccepted) {
-                            System.out.printf("  ✗ [BUY ORDER NOT ACCEPTED: %s] Initial BUY order for %s @ %.2f was not accepted!%n", buyStatus, tradeInstrument, tradeRate);
-                            OMSweb_Trade.RejectionOrderPriceInfo rej = OMSweb_Trade.extractRejectionOrderPriceInfo(driver, buyerClient, sym);
-                            double retryRate = tradeRate;
-                            if (rej.hasSuggestedPrice() || rej.hasUpperLimit() || rej.hasLowerLimit()) {
-                                retryRate = OMSweb_Trade.resolvePriceLimitSafe(tradeRate, rej.lowerLimit, rej.upperLimit, rej.suggestedPrice);
-                                System.out.printf("  -> [REJECTION ERROR MESSAGE FEEDBACK] Extracted suggested price from error message: %.2f (Limits: [%.2f - %.2f])%n",
-                                        retryRate, rej.lowerLimit, rej.upperLimit);
-                                tradeRate = retryRate;
-                            }
-                            OMSweb_Trade.dismissRejectionAlert(driver);
-                            System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying BUY with suggested price / smart Market Depth & DB prices...");
-                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", buyerClient, tradeInstrument, tradeQty, retryRate, orderEx, 6);
-                            if (success) {
-                                double acceptedPrice = OMSweb_Trade.getLastAcceptedPrice();
-                                if (acceptedPrice > 0.0) tradeRate = acceptedPrice;
-                                System.out.printf("  ✓ [LEG 1/2 COMPLETE] Accepted BUY order successfully placed @ %.2f. Waiting 2s before SELL leg...%n", tradeRate);
-                            } else {
-                                System.out.println("  [TRADE WARNING] Could not get an Accepted BUY order after retrying with Market Depth & DB prices.");
-                            }
-                        } else {
-                            System.out.printf("  ✓ [LEG 1/2 COMPLETE] Accepted BUY order placed and confirmed @ %.2f. Waiting 2s before SELL leg...%n", tradeRate);
-                        }
+                    } else if (targetMode == NettingMode.CROSS_EXCHANGE) {
+                        System.out.println("\n>>> [EXECUTING CROSS EXCHANGE NETTING TEST: DSE BUY 25, CSE SELL 15] <<<");
+                        System.out.printf("  -> Leg 1: Placing BUY Order: 25 shares of %s on DSE @ %.2f (Reflects on BOTH DSE & CSE)...%n", tradeInstrument, tradeRate);
+                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, 25, tradeRate, "DSE");
                         Thread.sleep(2000);
-
-                        System.out.printf("%n>>> [DAY NETTING DUAL TRADE: LEG 2/2 - SELL] Submitting SELL Order: %d shares of %s (Board: %s) for Client B %s on %s (Rate: %.2f)...%n",
-                                tradeQty, sym, board, sellerClient, targetExchange, tradeRate);
-                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", sellerClient, tradeInstrument, tradeQty, tradeRate, orderEx);
+                        System.out.printf("  -> Leg 2: Placing SELL Order: 15 shares of %s on CSE @ %.2f (Debits BOTH DSE & CSE)...%n", tradeInstrument, tradeRate);
+                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, 15, tradeRate, "CSE");
                         Thread.sleep(1500);
-
-                        String sellStatus = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, sellerClient, sym, "SELL");
-                        System.out.printf("  -> Exchange Order Terminal SELL Status (Seller %s): [%s]%n", sellerClient, sellStatus);
-
-                        boolean sellAccepted = "ACCEPTED".equalsIgnoreCase(sellStatus) || "FILLED".equalsIgnoreCase(sellStatus) || "TRADE EXECUTED".equalsIgnoreCase(sellStatus);
-                        if (!sellAccepted) {
-                            System.out.printf("  ✗ [SELL ORDER NOT ACCEPTED: %s] Initial SELL order for %s @ %.2f was not accepted!%n", sellStatus, tradeInstrument, tradeRate);
-                            OMSweb_Trade.RejectionOrderPriceInfo rej = OMSweb_Trade.extractRejectionOrderPriceInfo(driver, sellerClient, sym);
-                            double retryRate = tradeRate;
-                            if (rej.hasSuggestedPrice() || rej.hasUpperLimit() || rej.hasLowerLimit()) {
-                                retryRate = OMSweb_Trade.resolvePriceLimitSafe(tradeRate, rej.lowerLimit, rej.upperLimit, rej.suggestedPrice);
-                                System.out.printf("  -> [REJECTION ERROR MESSAGE FEEDBACK] Extracted suggested price from error message: %.2f (Limits: [%.2f - %.2f])%n",
-                                        retryRate, rej.lowerLimit, rej.upperLimit);
-                                tradeRate = retryRate;
-                            }
-                            OMSweb_Trade.dismissRejectionAlert(driver);
-                            System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying SELL with suggested price / smart Market Depth & DB prices...");
-                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", sellerClient, tradeInstrument, tradeQty, retryRate, orderEx, 6);
-                            if (success) {
-                                double acceptedPrice = OMSweb_Trade.getLastAcceptedPrice();
-                                if (acceptedPrice > 0.0) tradeRate = acceptedPrice;
-                                System.out.printf("  ✓ [LEG 2/2 COMPLETE] Accepted SELL order successfully placed @ %.2f.%n", tradeRate);
-                            } else {
-                                System.out.println("  [TRADE WARNING] Could not get an Accepted SELL order after retrying with Market Depth & DB prices.");
-                            }
-                        } else {
-                            System.out.printf("  ✓ [LEG 2/2 COMPLETE] Accepted SELL order placed and confirmed @ %.2f.%n", tradeRate);
-                        }
-
-                        System.out.printf("%n  ✓ [DAY NETTING DUAL TRADE COMPLETE] Both BUY (Client %s) and SELL (Client %s) legs executed (%d shares %s).%n",
-                                buyerClient, sellerClient, tradeQty, sym);
-                        System.out.println("     Scrip Netting active in OMS Web & qRMS. Waiting 2s for real-time widget updates...");
-                        Thread.sleep(2000);
-
-                    } else if ("BOTH_SELL_BUY".equals(tradeAction)) {
-                        // =============================================================
-                        // DUAL TRADE: LEG 1 (SELL for Client A) -> LEG 2 (BUY for Client B with Cash >= 500k from DB/Default)
-                        // =============================================================
-                        String sellerClient = cln;
-                        String buyerClient = resolveBuyerClient(sellerClient, "23986");
-                        System.out.printf("Confirm or enter Buyer Client for Leg 2 (default=%s in 4s, press ENTER to accept): ", buyerClient);
-                        String customBuyer = readLineWithTimeout(sc, buyerClient, 4);
-                        if (!customBuyer.isEmpty()) buyerClient = customBuyer;
-
-                        System.out.printf("%n>>> [DAY NETTING DUAL TRADE: LEG 1/2 - SELL] Submitting SELL Order: %d shares of %s (Board: %s) for Client A %s on %s (Rate: %.2f)...%n",
-                                tradeQty, sym, board, sellerClient, targetExchange, tradeRate);
-                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", sellerClient, tradeInstrument, tradeQty, tradeRate, orderEx);
-                        Thread.sleep(1500);
-
-                        String sellStatus = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, sellerClient, sym, "SELL");
-                        System.out.printf("  -> Exchange Order Terminal SELL Status (Seller %s): [%s]%n", sellerClient, sellStatus);
-
-                        boolean sellAccepted = "ACCEPTED".equalsIgnoreCase(sellStatus) || "FILLED".equalsIgnoreCase(sellStatus) || "TRADE EXECUTED".equalsIgnoreCase(sellStatus);
-                        if (!sellAccepted) {
-                            System.out.printf("  ✗ [SELL ORDER NOT ACCEPTED: %s] Initial SELL order for %s @ %.2f was not accepted!%n", sellStatus, tradeInstrument, tradeRate);
-                            OMSweb_Trade.RejectionOrderPriceInfo rej = OMSweb_Trade.extractRejectionOrderPriceInfo(driver, sellerClient, sym);
-                            double retryRate = tradeRate;
-                            if (rej.hasSuggestedPrice() || rej.hasUpperLimit() || rej.hasLowerLimit()) {
-                                retryRate = OMSweb_Trade.resolvePriceLimitSafe(tradeRate, rej.lowerLimit, rej.upperLimit, rej.suggestedPrice);
-                                System.out.printf("  -> [REJECTION ERROR MESSAGE FEEDBACK] Extracted suggested price from error message: %.2f (Limits: [%.2f - %.2f])%n",
-                                        retryRate, rej.lowerLimit, rej.upperLimit);
-                                tradeRate = retryRate;
-                            }
-                            OMSweb_Trade.dismissRejectionAlert(driver);
-                            System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying SELL with suggested price / smart Market Depth & DB prices...");
-                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", sellerClient, tradeInstrument, tradeQty, retryRate, orderEx, 6);
-                            if (success) {
-                                double acceptedPrice = OMSweb_Trade.getLastAcceptedPrice();
-                                if (acceptedPrice > 0.0) tradeRate = acceptedPrice;
-                                System.out.printf("  ✓ [LEG 1/2 COMPLETE] Accepted SELL order successfully placed @ %.2f. Waiting 2s before BUY leg...%n", tradeRate);
-                            } else {
-                                System.out.println("  [TRADE WARNING] Could not get an Accepted SELL order after retrying with Market Depth & DB prices.");
-                            }
-                        } else {
-                            System.out.printf("  ✓ [LEG 1/2 COMPLETE] Accepted SELL order placed and confirmed @ %.2f. Waiting 2s before BUY leg...%n", tradeRate);
-                        }
-                        Thread.sleep(2000);
-
-                        System.out.printf("%n>>> [DAY NETTING DUAL TRADE: LEG 2/2 - BUY] Submitting BUY Order: %d shares of %s (Board: %s) for Client B %s on %s (Rate: %.2f)...%n",
-                                tradeQty, sym, board, buyerClient, targetExchange, tradeRate);
-                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", buyerClient, tradeInstrument, tradeQty, tradeRate, orderEx);
-                        Thread.sleep(1500);
-
-                        String buyStatus = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, buyerClient, sym, "BUY");
-                        System.out.printf("  -> Exchange Order Terminal BUY Status (Buyer %s): [%s]%n", buyerClient, buyStatus);
-
-                        boolean buyAccepted = "ACCEPTED".equalsIgnoreCase(buyStatus) || "FILLED".equalsIgnoreCase(buyStatus) || "TRADE EXECUTED".equalsIgnoreCase(buyStatus);
-                        if (!buyAccepted) {
-                            System.out.printf("  ✗ [BUY ORDER NOT ACCEPTED: %s] Initial BUY order for %s @ %.2f was not accepted!%n", buyStatus, tradeInstrument, tradeRate);
-                            OMSweb_Trade.RejectionOrderPriceInfo rej = OMSweb_Trade.extractRejectionOrderPriceInfo(driver, buyerClient, sym);
-                            double retryRate = tradeRate;
-                            if (rej.hasSuggestedPrice() || rej.hasUpperLimit() || rej.hasLowerLimit()) {
-                                retryRate = OMSweb_Trade.resolvePriceLimitSafe(tradeRate, rej.lowerLimit, rej.upperLimit, rej.suggestedPrice);
-                                System.out.printf("  -> [REJECTION ERROR MESSAGE FEEDBACK] Extracted suggested price from error message: %.2f (Limits: [%.2f - %.2f])%n",
-                                        retryRate, rej.lowerLimit, rej.upperLimit);
-                                tradeRate = retryRate;
-                            }
-                            OMSweb_Trade.dismissRejectionAlert(driver);
-                            System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying BUY with suggested price / smart Market Depth & DB prices...");
-                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", buyerClient, tradeInstrument, tradeQty, retryRate, orderEx, 6);
-                            if (success) {
-                                double acceptedPrice = OMSweb_Trade.getLastAcceptedPrice();
-                                if (acceptedPrice > 0.0) tradeRate = acceptedPrice;
-                                System.out.printf("  ✓ [LEG 2/2 COMPLETE] Accepted BUY order successfully placed @ %.2f.%n", tradeRate);
-                            } else {
-                                System.out.println("  [TRADE WARNING] Could not get an Accepted BUY order after retrying with Market Depth & DB prices.");
-                            }
-                        } else {
-                            System.out.printf("  ✓ [LEG 2/2 COMPLETE] Accepted BUY order placed and confirmed @ %.2f.%n", tradeRate);
-                        }
-
-                        System.out.printf("%n  ✓ [DAY NETTING DUAL TRADE COMPLETE] Both SELL (Client %s) and BUY (Client %s) legs executed (%d shares %s).%n",
-                                sellerClient, buyerClient, tradeQty, sym);
-                        System.out.println("     Scrip Netting active in OMS Web & qRMS. Waiting 2s for real-time widget updates...");
-                        Thread.sleep(2000);
-
                     } else {
-                        // Single Leg Execution: BUY or SELL
-                        String side = tradeAction;
-                        System.out.printf("  -> Submitting %s Order: %d shares of %s (Board: %s) for Client %s on %s (Rate: %.2f)...%n",
-                                side, tradeQty, sym, board, cln, targetExchange, tradeRate);
-                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), side, cln, tradeInstrument, tradeQty, tradeRate, orderEx);
-                        Thread.sleep(1500);
-
-                        String status = OMSweb_Trade.checkLatestTerminalOrderStatus(driver, cln, sym, side);
-                        System.out.printf("  -> Exchange Order Terminal Status: [%s]%n", status);
-
-                        boolean orderAccepted = "ACCEPTED".equalsIgnoreCase(status) || "FILLED".equalsIgnoreCase(status) || "TRADE EXECUTED".equalsIgnoreCase(status);
-                        if (!orderAccepted) {
-                            System.out.printf("  ✗ [ORDER NOT ACCEPTED: %s] Initial order for %s @ %.2f was not accepted!%n", status, tradeInstrument, tradeRate);
-                            OMSweb_Trade.RejectionOrderPriceInfo rej = OMSweb_Trade.extractRejectionOrderPriceInfo(driver, cln, sym);
-                            double retryRate = tradeRate;
-                            if (rej.hasSuggestedPrice() || rej.hasUpperLimit() || rej.hasLowerLimit()) {
-                                retryRate = OMSweb_Trade.resolvePriceLimitSafe(tradeRate, rej.lowerLimit, rej.upperLimit, rej.suggestedPrice);
-                                System.out.printf("  -> [REJECTION ERROR MESSAGE FEEDBACK] Extracted suggested price from error message: %.2f (Limits: [%.2f - %.2f])%n",
-                                        retryRate, rej.lowerLimit, rej.upperLimit);
-                                tradeRate = retryRate;
-                            }
-                            OMSweb_Trade.dismissRejectionAlert(driver);
-                            System.out.println(">>> [AUTO-RESILIENT RETRY] Automatically retrying with suggested price / smart Market Depth & DB prices...");
-                            boolean success = OMSweb_Trade.executeTradeOrderWithResilientRetry(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), side, cln, tradeInstrument, tradeQty, retryRate, orderEx, 6);
-                            if (success) {
-                                double acceptedPrice = OMSweb_Trade.getLastAcceptedPrice();
-                                if (acceptedPrice > 0.0) tradeRate = acceptedPrice;
-                                System.out.printf("  ✓ [TRADE EXECUTED] Accepted order successfully placed @ %.2f. Waiting 2s for DOM updates...%n", tradeRate);
-                            } else {
-                                System.out.println("  [TRADE WARNING] Could not get an Accepted order after retrying with Market Depth & DB prices.");
-                            }
-                        } else {
-                            System.out.printf("  ✓ [TRADE EXECUTED] Accepted order placed and confirmed @ %.2f. Waiting 2s for DOM updates...%n", tradeRate);
-                        }
+                        // INDIVIDUAL EXCHANGE
+                        System.out.println("\n>>> [EXECUTING INDIVIDUAL EXCHANGE NETTING TEST: DSE 25, CSE 12, SELLS, EXCESS 35] <<<");
+                        System.out.printf("  -> Step 1: Placing DSE BUY Order: 25 shares of %s @ %.2f...%n", tradeInstrument, tradeRate);
+                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, 25, tradeRate, "DSE");
                         Thread.sleep(2000);
+                        System.out.printf("  -> Step 2: Placing CSE BUY Order: 12 shares of %s @ %.2f...%n", tradeInstrument, tradeRate);
+                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, 12, tradeRate, "CSE");
+                        Thread.sleep(2000);
+                        System.out.printf("  -> Step 3: Placing DSE SELL Order: 25 shares of %s (Liquidation from DSE saleable)...%n", tradeInstrument);
+                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, 25, tradeRate, "DSE");
+                        Thread.sleep(2000);
+                        System.out.printf("  -> Step 4: Placing CSE SELL Order: 12 shares of %s (Liquidation from CSE saleable)...%n", tradeInstrument);
+                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, 12, tradeRate, "CSE");
+                        Thread.sleep(2000);
+                        System.out.printf("  -> Step 5: Excess SELL Check: Placing DSE SELL Order for 35 shares (25 day-bought + 10 mature deducted on BOTH)...%n");
+                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, 35, tradeRate, "DSE");
+                        Thread.sleep(1500);
                     }
                 }
 
