@@ -37,6 +37,11 @@ import org.openqa.selenium.support.ui.WebDriverWait;
  */
 public class Day_Netting {
 
+    public static final boolean isCi = "true".equalsIgnoreCase(System.getenv("CI"))
+            || "true".equalsIgnoreCase(System.getenv("HEADLESS"))
+            || "true".equalsIgnoreCase(System.getenv("DOCKER_MODE"))
+            || "true".equalsIgnoreCase(System.getenv("AUTOMATE_MODE"));
+
     // =========================================================================
     // 1. DATA MODELS & ENUMS
     // =========================================================================
@@ -3600,7 +3605,10 @@ public class Day_Netting {
     // =========================================================================
 
     public static String readLineWithTimeout(Scanner sc, String defaultVal, int timeoutSeconds) {
-        if (sc == null) return defaultVal;
+        if (sc == null || isCi) {
+            System.out.println(" [Auto-selected default: " + defaultVal + "]");
+            return defaultVal;
+        }
         try {
             long end = System.currentTimeMillis() + (timeoutSeconds * 1000L);
             while (System.currentTimeMillis() < end) {
@@ -3618,7 +3626,10 @@ public class Day_Netting {
     }
 
     public static String readLineWithIdleWatchdog(WebDriver driver, Scanner sc, String defaultVal, int timeoutSeconds) {
-        if (sc == null) return defaultVal;
+        if (sc == null || isCi) {
+            System.out.println(" [Auto-selected default: " + defaultVal + "]");
+            return defaultVal;
+        }
         long timeoutMs = timeoutSeconds * 1000L;
         long start = System.currentTimeMillis();
 
@@ -3649,11 +3660,6 @@ public class Day_Netting {
         System.out.println("=======================================================");
 
         navigateToRmsNettingTab(driver);
-
-        boolean isCi = "true".equalsIgnoreCase(System.getenv("CI"))
-                || "true".equalsIgnoreCase(System.getenv("HEADLESS"))
-                || "true".equalsIgnoreCase(System.getenv("DOCKER_MODE"))
-                || "true".equalsIgnoreCase(System.getenv("AUTOMATE_MODE"));
 
         boolean running = true;
         while (running) {
@@ -3691,8 +3697,10 @@ public class Day_Netting {
                 System.out.println("  1. None (Netting disabled across the system)");
                 System.out.println("  2. Individual Exchange (Netting within same exchange) [Default]");
                 System.out.println("  3. Cross Exchange (Netting across DSE & CSE)");
-                System.out.print("Enter Choice (1-3, default=2 in 4s): ");
-                String mChoice = readLineWithTimeout(sc, "2", 4);
+                String envMode = System.getenv("NETTING_MODE_CHOICE");
+                String defMode = (envMode != null && !envMode.trim().isEmpty()) ? envMode.trim() : "2";
+                System.out.printf("Enter Choice (1-3, default=%s in 4s): ", defMode);
+                String mChoice = readLineWithTimeout(sc, defMode, 4);
                 NettingMode targetMode = "1".equals(mChoice) || "none".equalsIgnoreCase(mChoice) ? NettingMode.NONE :
                                          "3".equals(mChoice) || "cross".equalsIgnoreCase(mChoice) ? NettingMode.CROSS_EXCHANGE :
                                          NettingMode.INDIVIDUAL_EXCHANGE;
@@ -3702,8 +3710,10 @@ public class Day_Netting {
                 System.out.println("  1. DSE (Dhaka Stock Exchange) [Default]");
                 System.out.println("  2. CSE (Chittagong Stock Exchange)");
                 System.out.println("  3. BOTH (DSE & CSE)");
-                System.out.print("Enter Choice (1-3, default=1 [DSE] in 4s): ");
-                String exChoice = readLineWithTimeout(sc, "1", 4);
+                String envEx = System.getenv("NETTING_EXCHANGE_CHOICE");
+                String defEx = (envEx != null && !envEx.trim().isEmpty()) ? envEx.trim() : "1";
+                System.out.printf("Enter Choice (1-3, default=%s in 4s): ", defEx);
+                String exChoice = readLineWithTimeout(sc, defEx, 4);
                 String targetExchange = "DSE";
                 if ("2".equals(exChoice) || "cse".equalsIgnoreCase(exChoice)) {
                     targetExchange = "CSE";
