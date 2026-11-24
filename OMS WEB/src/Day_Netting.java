@@ -2441,10 +2441,11 @@ public class Day_Netting {
             }
             OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Account_Limits.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
             try { snap.accountLimitsData = Account_Limits.getUiSnapshot(driver, snap.targetClient); } catch (Exception ignored) {}
-            System.out.printf("  ✓ [Account Limits Data] Client: %s | Rem Cash: %s | Day Order: %s | Total Tx: %s%n",
+            System.out.printf("  ✓ [Account Limits Data] Client: %s | Rem Cash: %s | Day Order: %s | Comm: %s | Total Tx: %s%n",
                     snap.targetClient,
                     snap.accountLimitsData.getOrDefault("Remaining_Cash", snap.accountLimitsData.getOrDefault("remaining_cash", "-")),
                     snap.accountLimitsData.getOrDefault("Cash_Day_Order", snap.accountLimitsData.getOrDefault("Day_Order", snap.accountLimitsData.getOrDefault("Buy_Day_Order", snap.accountLimitsData.getOrDefault("Blocked_Day", "-")))),
+                    snap.accountLimitsData.getOrDefault("Commission_Amount", "-"),
                     snap.accountLimitsData.getOrDefault("Total_Transaction", snap.accountLimitsData.getOrDefault("Net_Transaction", snap.accountLimitsData.getOrDefault("Buy_Exec_Value", snap.accountLimitsData.getOrDefault("Total_Tx", "-")))));
         } catch (Exception e) {
             System.out.println("  [WARN: Account Limits] " + e.getMessage());
@@ -2545,6 +2546,18 @@ public class Day_Netting {
         printNettingDiffRow("Account Limits", "Remaining Cash", prev.accountLimitsData.getOrDefault("Remaining_Cash", prev.accountLimitsData.getOrDefault("remaining_cash", "0")), curr.accountLimitsData.getOrDefault("Remaining_Cash", curr.accountLimitsData.getOrDefault("remaining_cash", "0")), false);
         printNettingDiffRow("Account Limits", "Day Order (Tx Value)", prev.accountLimitsData.getOrDefault("Cash_Day_Order", prev.accountLimitsData.getOrDefault("Day_Order", prev.accountLimitsData.getOrDefault("Buy_Day_Order", "0"))), curr.accountLimitsData.getOrDefault("Cash_Day_Order", curr.accountLimitsData.getOrDefault("Day_Order", curr.accountLimitsData.getOrDefault("Buy_Day_Order", "0"))), false);
         printNettingDiffRow("Account Limits", "Total Transaction", prev.accountLimitsData.getOrDefault("Total_Transaction", prev.accountLimitsData.getOrDefault("Net_Transaction", prev.accountLimitsData.getOrDefault("Buy_Exec_Value", "0"))), curr.accountLimitsData.getOrDefault("Total_Transaction", curr.accountLimitsData.getOrDefault("Net_Transaction", curr.accountLimitsData.getOrDefault("Buy_Exec_Value", "0"))), false);
+
+        double pCashVal = OMSweb_Trade.parseNumSafe(prev.accountLimitsData.getOrDefault("Remaining_Cash", "0"));
+        double cCashVal = OMSweb_Trade.parseNumSafe(curr.accountLimitsData.getOrDefault("Remaining_Cash", "0"));
+        double currDayOrder = OMSweb_Trade.parseNumSafe(curr.accountLimitsData.getOrDefault("Cash_Day_Order", curr.accountLimitsData.getOrDefault("Day_Order", curr.accountLimitsData.getOrDefault("Buy_Day_Order", "0"))));
+        double derivedComm = 0.0;
+        if (pCashVal > 0 && cCashVal > 0 && pCashVal > cCashVal && currDayOrder > 0) {
+            derivedComm = (pCashVal - cCashVal) - currDayOrder;
+            if (derivedComm < 0) derivedComm = 0.0;
+        }
+        String prevComm = prev.accountLimitsData.getOrDefault("Commission_Amount", "0.00");
+        String currComm = curr.accountLimitsData.getOrDefault("Commission_Amount", derivedComm > 0 ? String.format(Locale.US, "%.2f", derivedComm) : "0.00");
+        printNettingDiffRow("Account Limits", "Commission Amount", prevComm, currComm, false);
 
         // 5. Market Depth
         printNettingDiffRow("Market Depth", "LTP", prev.marketDepthData.getOrDefault("LTP", prev.marketDepthData.getOrDefault("ltp", "-")), curr.marketDepthData.getOrDefault("LTP", curr.marketDepthData.getOrDefault("ltp", "-")), false);
@@ -3078,11 +3091,19 @@ public class Day_Netting {
         double dayOrder = OMSweb_Trade.parseNumSafe(curr.getOrDefault("Cash_Day_Order", curr.getOrDefault("Day_Order", curr.getOrDefault("Buy_Day_Order", "0"))));
         double totalTx = OMSweb_Trade.parseNumSafe(curr.getOrDefault("Total_Transaction", curr.getOrDefault("Net_Transaction", curr.getOrDefault("Buy_Exec_Value", "0"))));
         double txVal = (dayOrder > 0) ? dayOrder : totalTx;
+        double comm = OMSweb_Trade.parseNumSafe(curr.getOrDefault("Commission_Amount", "0"));
+        if (comm <= 0 && pCash > 0 && cCash > 0 && pCash > cCash && txVal > 0) {
+            comm = (pCash - cCash) - txVal;
+            if (comm < 0) comm = 0;
+        }
         if (txVal > 0 && cCash != pCash) {
+            if (comm > 0) {
+                return String.format(Locale.US, "Day Order: %.2f BDT | Commission: %.2f BDT | Remaining Cash: %,.2f -> %,.2f BDT (Total Delta: %+.2f BDT)", txVal, comm, pCash, cCash, (cCash - pCash));
+            }
             return String.format(Locale.US, "Day Order / Total Tx: %.2f BDT | Remaining Cash: %,.2f -> %,.2f BDT (Delta: %+.2f BDT)", txVal, pCash, cCash, (cCash - pCash));
         }
         if (cCash != pCash) return String.format(Locale.US, "Cash Balance: %,.2f -> %,.2f BDT (Delta: %+.2f BDT)", pCash, cCash, (cCash - pCash));
-        if (txVal > 0) return String.format(Locale.US, "Day Order / Total Tx: %.2f BDT", txVal);
+        if (txVal > 0) return String.format(Locale.US, "Day Order / Total Tx: %.2f BDT (Comm: %.2f BDT)", txVal, comm);
         return "Limits verified in sync";
     }
 

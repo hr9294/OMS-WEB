@@ -823,6 +823,33 @@ public class Account_Limits {
         }
         Map<String, String> uiData = fetchFromUiTables(driver);
         uiData.put("DATA_SOURCE", "UI Tables DOM");
+
+        // Fetch client commission rate and compute commission amount
+        if (driver != null && clientCode != null && !clientCode.trim().isEmpty()) {
+            try {
+                String clientJson = executeBrowserFetch(driver, "/shared/getclientdata/?cln_code=" + clientCode.trim());
+                if (clientJson != null && clientJson.contains("\"commission\"")) {
+                    int cIdx = clientJson.indexOf("\"commission\":");
+                    if (cIdx != -1) {
+                        String sub = clientJson.substring(cIdx + 13).trim();
+                        int end = 0;
+                        while (end < sub.length() && (Character.isDigit(sub.charAt(end)) || sub.charAt(end) == '.')) {
+                            end++;
+                        }
+                        if (end > 0) {
+                            double commRate = OMSweb_Trade.parseNumSafe(sub.substring(0, end));
+                            uiData.put("Commission_Rate", String.format(Locale.US, "%.4f", commRate));
+
+                            double dayOrder = OMSweb_Trade.parseNumSafe(uiData.getOrDefault("Cash_Day_Order", "0"));
+                            if (dayOrder <= 0) dayOrder = OMSweb_Trade.parseNumSafe(uiData.getOrDefault("Total_Transaction", "0"));
+                            if (dayOrder <= 0) dayOrder = OMSweb_Trade.parseNumSafe(uiData.getOrDefault("Buy_Exec_Value", "0"));
+                            double commAmt = dayOrder * commRate;
+                            uiData.put("Commission_Amount", String.format(Locale.US, "%.2f", commAmt));
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
         return uiData;
     }
 
