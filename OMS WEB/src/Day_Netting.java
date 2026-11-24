@@ -4493,8 +4493,35 @@ public class Day_Netting {
             return;
         }
 
-        WebDriver driver = OMSwebmain.createDriver();
         Scanner sc = new Scanner(System.in);
+        System.out.println("===============================================================================");
+        System.out.println("                  ECLIPSE DAY NETTING DIRECT EXECUTION ENGINE                 ");
+        System.out.println("===============================================================================");
+        System.out.println("Select Execution Instruction:");
+        System.out.println("  1. Run QA Multi-Exchange Audit Suite (None, Individual, Cross - Fast QA) [Default in 4s]");
+        System.out.println("  2. Launch Live Browser Automation (devoms.quantbd.com)");
+        System.out.print("Enter Choice (1-2, default=1 in 4s): ");
+
+        String choice = "1";
+        try {
+            long startWait = System.currentTimeMillis();
+            while (System.currentTimeMillis() - startWait < 4000) {
+                if (System.in.available() > 0) {
+                    choice = sc.nextLine().trim();
+                    break;
+                }
+                Thread.sleep(100);
+            }
+        } catch (Exception ignored) {}
+
+        if ("1".equals(choice) || choice.isEmpty() || "qa".equalsIgnoreCase(choice)) {
+            System.out.println("\n[ECLIPSE RUNNER] Executing QA Multi-Exchange Audit Suite (Instruction-Wise)...");
+            boolean passed = testQaDayNettingScenarios();
+            System.out.printf("[ECLIPSE QA RESULT] %s%n", passed ? "SUCCESS (ALL SCENARIOS PASSED)" : "FAILED");
+            return;
+        }
+
+        WebDriver driver = OMSwebmain.createDriver();
         try {
             driver.get("https://devoms.quantbd.com");
             Thread.sleep(800);
