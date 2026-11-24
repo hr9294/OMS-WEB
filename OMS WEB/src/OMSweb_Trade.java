@@ -2212,12 +2212,24 @@ public class OMSweb_Trade {
 				"}" +
 				"// 2. Global search bar (#instrument)\n" +
 				"var gi = document.getElementById('instrument');" +
-				"if (gi) { gi.value = val; if (window.jQuery) $(gi).val(val); }" +
-				"// 3. Market Depth & Portfolio symbol inputs\n" +
-				"var otherInputs = document.querySelectorAll('input#market_depth_symbol, input[id*=\"market_depth_symbol\"], input#portfolio_symbol, input[id*=\"portfolio_symbol\"]');" +
+				"if (gi) { gi.value = val; if (window.jQuery) { $(gi).val(val).trigger('input').trigger('change'); try { if (typeof get_widget_data === 'function') get_widget_data(gi); } catch(e){} } }" +
+				"// 3. Market Depth symbol inputs (#symbol_market_depth, .mktdpt_symbol_name)\n" +
+				"var mdInputs = document.querySelectorAll('#symbol_market_depth, input[id*=\"symbol_market_depth\"], input[id*=\"symbol_mktdpt\"], input.mktdpt_symbol_name, input#depth_symbol, input#market_depth_symbol');" +
+				"for (var m = 0; m < mdInputs.length; m++) {" +
+				"    mdInputs[m].value = val;" +
+				"    if (window.jQuery) $(mdInputs[m]).val(val).trigger('input').trigger('change');" +
+				"}" +
+				"// 4. Order Terminal symbol inputs\n" +
+				"var otInputs = document.querySelectorAll('#order_terminal_symbol_terminal_1, input[id*=\"order_terminal_symbol\"], input.order_terminal_symbol');" +
+				"for (var t = 0; t < otInputs.length; t++) {" +
+				"    otInputs[t].value = val;" +
+				"    if (window.jQuery) $(otInputs[t]).val(val).trigger('input').trigger('change').trigger('keyup').trigger('orderTerminalSymbolChanged');" +
+				"}" +
+				"// 5. Watchlist & portfolio symbol inputs\n" +
+				"var otherInputs = document.querySelectorAll('input#portfolio_symbol, input[id*=\"portfolio_symbol\"], input.wl-symbol, input.wl-search-symbol');" +
 				"for (var o = 0; o < otherInputs.length; o++) {" +
 				"    otherInputs[o].value = val;" +
-				"    if (window.jQuery) $(otherInputs[o]).val(val).trigger('change');" +
+				"    if (window.jQuery) $(otherInputs[o]).val(val).trigger('input').trigger('change');" +
 				"}" +
 				"try { if (typeof verify_fields === 'function') verify_fields(); } catch(e){}",
 
@@ -6593,10 +6605,11 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 	public static void propagateClientCodeToAllWidgets(WebDriver driver, String clientCode, String symbol) {
 		if (driver == null || clientCode == null || clientCode.trim().isEmpty()) return;
 		String cleanClient = clientCode.trim();
-		String cleanSym = (symbol != null) ? cleanSymbol(symbol) : "";
+		String publicSym = (symbol != null && !symbol.trim().isEmpty()) ? toPublicSymbol(symbol) : "";
+		String cleanSym = (symbol != null && !symbol.trim().isEmpty()) ? cleanSymbol(symbol) : "";
 		activeClientCode = cleanClient;
-		if (symbol != null && !symbol.trim().isEmpty()) {
-			activeSymbol = cleanSym;
+		if (!publicSym.isEmpty()) {
+			activeSymbol = publicSym;
 		}
 		System.out.printf("%n>>> [CLIENT REFLECTION] Reflecting Client Code '%s' across widgets (Order Window, Portfolio, Limits, Terminal, Summary - Position excluded)...%n", cleanClient);
 
@@ -6714,7 +6727,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 
 		// 4. Order Terminal Widget (order_terminal_code & filterOrderTerminal)
 		try {
-			Order_Terminal.filterOrderTerminal(driver, cleanClient, cleanSym);
+			Order_Terminal.filterOrderTerminal(driver, cleanClient, !publicSym.isEmpty() ? publicSym : cleanSym);
 		} catch (Exception ignored) {}
 
 		// 5. Order Summary Widget (order_summary_code & filterOrderSummary)
@@ -6722,7 +6735,14 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			Order_Summary.filterOrderSummary(driver, cleanClient, cleanSym);
 		} catch (Exception ignored) {}
 
-		// 6. Position Widget: Excluded per user request - do not reflect client code into position widget
+		// 6. Ensure full public symbol (e.g. GP.PUBLIC) is retained across widgets
+		if (!publicSym.isEmpty()) {
+			try {
+				ensureSymbolBoardRetained(driver, publicSym);
+			} catch (Exception ignored) {}
+		}
+
+		// 7. Position Widget: Excluded per user request - do not reflect client code into position widget
 
 		System.out.printf("  ✓ [CLIENT REFLECTED] Target Client '%s' successfully propagated across all widgets.%n", cleanClient);
 	}

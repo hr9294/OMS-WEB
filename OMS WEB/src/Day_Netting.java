@@ -2441,11 +2441,11 @@ public class Day_Netting {
             }
             OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Account_Limits.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
             try { snap.accountLimitsData = Account_Limits.getUiSnapshot(driver, snap.targetClient); } catch (Exception ignored) {}
-            System.out.printf("  ✓ [Account Limits Data] Client: %s | Rem Cash: %s | Blocked/Day: %s | Total Tx: %s%n",
+            System.out.printf("  ✓ [Account Limits Data] Client: %s | Rem Cash: %s | Day Order: %s | Total Tx: %s%n",
                     snap.targetClient,
                     snap.accountLimitsData.getOrDefault("Remaining_Cash", snap.accountLimitsData.getOrDefault("remaining_cash", "-")),
-                    snap.accountLimitsData.getOrDefault("Blocked_Day", snap.accountLimitsData.getOrDefault("blocked_day", "-")),
-                    snap.accountLimitsData.getOrDefault("Total_Tx", snap.accountLimitsData.getOrDefault("total_tx", "-")));
+                    snap.accountLimitsData.getOrDefault("Cash_Day_Order", snap.accountLimitsData.getOrDefault("Day_Order", snap.accountLimitsData.getOrDefault("Buy_Day_Order", snap.accountLimitsData.getOrDefault("Blocked_Day", "-")))),
+                    snap.accountLimitsData.getOrDefault("Total_Transaction", snap.accountLimitsData.getOrDefault("Net_Transaction", snap.accountLimitsData.getOrDefault("Buy_Exec_Value", snap.accountLimitsData.getOrDefault("Total_Tx", "-")))));
         } catch (Exception e) {
             System.out.println("  [WARN: Account Limits] " + e.getMessage());
         } finally {
@@ -2543,8 +2543,8 @@ public class Day_Netting {
 
         // 4. Account Limits
         printNettingDiffRow("Account Limits", "Remaining Cash", prev.accountLimitsData.getOrDefault("Remaining_Cash", prev.accountLimitsData.getOrDefault("remaining_cash", "0")), curr.accountLimitsData.getOrDefault("Remaining_Cash", curr.accountLimitsData.getOrDefault("remaining_cash", "0")), false);
-        printNettingDiffRow("Account Limits", "Blocked / Day Order", prev.accountLimitsData.getOrDefault("Blocked_Day", prev.accountLimitsData.getOrDefault("blocked_day", "0")), curr.accountLimitsData.getOrDefault("Blocked_Day", curr.accountLimitsData.getOrDefault("blocked_day", "0")), false);
-        printNettingDiffRow("Account Limits", "Total Transaction", prev.accountLimitsData.getOrDefault("Total_Tx", prev.accountLimitsData.getOrDefault("total_tx", "0")), curr.accountLimitsData.getOrDefault("Total_Tx", curr.accountLimitsData.getOrDefault("total_tx", "0")), false);
+        printNettingDiffRow("Account Limits", "Day Order (Tx Value)", prev.accountLimitsData.getOrDefault("Cash_Day_Order", prev.accountLimitsData.getOrDefault("Day_Order", prev.accountLimitsData.getOrDefault("Buy_Day_Order", "0"))), curr.accountLimitsData.getOrDefault("Cash_Day_Order", curr.accountLimitsData.getOrDefault("Day_Order", curr.accountLimitsData.getOrDefault("Buy_Day_Order", "0"))), false);
+        printNettingDiffRow("Account Limits", "Total Transaction", prev.accountLimitsData.getOrDefault("Total_Transaction", prev.accountLimitsData.getOrDefault("Net_Transaction", prev.accountLimitsData.getOrDefault("Buy_Exec_Value", "0"))), curr.accountLimitsData.getOrDefault("Total_Transaction", curr.accountLimitsData.getOrDefault("Net_Transaction", curr.accountLimitsData.getOrDefault("Buy_Exec_Value", "0"))), false);
 
         // 5. Market Depth
         printNettingDiffRow("Market Depth", "LTP", prev.marketDepthData.getOrDefault("LTP", prev.marketDepthData.getOrDefault("ltp", "-")), curr.marketDepthData.getOrDefault("LTP", curr.marketDepthData.getOrDefault("ltp", "-")), false);
@@ -3075,7 +3075,14 @@ public class Day_Netting {
     private static String getLimitsDiffVerdict(Map<String, String> prev, Map<String, String> curr) {
         double pCash = OMSweb_Trade.parseNumSafe(prev.getOrDefault("Remaining_Cash", prev.getOrDefault("remaining_cash", "0")));
         double cCash = OMSweb_Trade.parseNumSafe(curr.getOrDefault("Remaining_Cash", curr.getOrDefault("remaining_cash", "0")));
+        double dayOrder = OMSweb_Trade.parseNumSafe(curr.getOrDefault("Cash_Day_Order", curr.getOrDefault("Day_Order", curr.getOrDefault("Buy_Day_Order", "0"))));
+        double totalTx = OMSweb_Trade.parseNumSafe(curr.getOrDefault("Total_Transaction", curr.getOrDefault("Net_Transaction", curr.getOrDefault("Buy_Exec_Value", "0"))));
+        double txVal = (dayOrder > 0) ? dayOrder : totalTx;
+        if (txVal > 0 && cCash != pCash) {
+            return String.format(Locale.US, "Day Order / Total Tx: %.2f BDT | Remaining Cash: %,.2f -> %,.2f BDT (Delta: %+.2f BDT)", txVal, pCash, cCash, (cCash - pCash));
+        }
         if (cCash != pCash) return String.format(Locale.US, "Cash Balance: %,.2f -> %,.2f BDT (Delta: %+.2f BDT)", pCash, cCash, (cCash - pCash));
+        if (txVal > 0) return String.format(Locale.US, "Day Order / Total Tx: %.2f BDT", txVal);
         return "Limits verified in sync";
     }
 

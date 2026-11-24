@@ -169,13 +169,16 @@ public class Order_Terminal {
     public static void filterOrderTerminal(WebDriver driver, String clientCode, String symbol) {
         if (driver == null) return;
         String cleanClient = (clientCode != null) ? clientCode.trim() : "";
-        String cleanSym = (symbol != null) ? cleanSymbol(symbol) : "";
+        String publicSym = (symbol != null && !symbol.trim().isEmpty()) ? OMSweb_Trade.toPublicSymbol(symbol) : "";
+        String cleanSym = (symbol != null && !symbol.trim().isEmpty()) ? cleanSymbol(symbol) : "";
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
             js.executeScript(
                 "var code = arguments[0];\n" +
-                "var sym = (arguments[1] || '').trim();\n" +
+                "var pubSym = (arguments[1] || '').trim();\n" +
+                "var cleanSym = (arguments[2] || '').trim();\n" +
                 "var jq = window.jQuery;\n" +
+                "// 1. Set Client Code in Order Terminal\n" +
                 "var otInputs = document.querySelectorAll('input[id*=\"order_terminal_code\"], input.order_terminal_code');\n" +
                 "if (otInputs.length === 0) {\n" +
                 "    var el = document.getElementById('order_terminal_code_terminal_1');\n" +
@@ -190,15 +193,20 @@ public class Order_Terminal {
                 "        if (typeof get_client_code_data === 'function') { try { get_client_code_data(inp); } catch(e){} }\n" +
                 "    }\n" +
                 "}\n" +
-                "if (sym) {\n" +
+                "// 2. Set Symbol in Order Terminal (DevOMS uses symbol_board e.g. GP.PUBLIC)\n" +
+                "if (pubSym) {\n" +
                 "    var otSyms = document.querySelectorAll('input[id*=\"order_terminal_symbol\"], input.order_terminal_symbol');\n" +
                 "    for (var j = 0; j < otSyms.length; j++) {\n" +
-                "        otSyms[j].value = sym;\n" +
-                "        if (jq) jq(otSyms[j]).val(sym).trigger('input').trigger('change').trigger('keyup');\n" +
+                "        var sInp = otSyms[j];\n" +
+                "        sInp.value = pubSym;\n" +
+                "        if (jq) {\n" +
+                "            jq(sInp).val(pubSym).trigger('input').trigger('change').trigger('keyup').trigger('orderTerminalSymbolChanged');\n" +
+                "        }\n" +
                 "    }\n" +
                 "}\n" +
                 "if (typeof get_order_history === 'function') { try { get_order_history(); } catch(e){} }\n",
                 cleanClient,
+                publicSym,
                 cleanSym
             );
             Thread.sleep(400);
@@ -214,19 +222,20 @@ public class Order_Terminal {
                         Thread.sleep(300);
                     }
                 }
-                if (!cleanSym.isEmpty()) {
+                if (!publicSym.isEmpty()) {
                     WebElement symInput = driver.findElement(INPUT_SYMBOL);
-                    if (symInput.isDisplayed() && !cleanSym.equals(symInput.getDomProperty("value"))) {
+                    if (symInput.isDisplayed() && !publicSym.equals(symInput.getDomProperty("value"))) {
                         symInput.clear();
-                        symInput.sendKeys(cleanSym);
+                        symInput.sendKeys(publicSym);
                         symInput.sendKeys(Keys.ENTER);
                         Thread.sleep(300);
                     }
                 }
             } catch (Exception ignored) {}
 
-            // Auto-recovery: If filtering results in 0 records (e.g. "Records : 0 of 50"),
-            // first clear conflicting symbol filter so client code orders reflect.
+            // Auto-recovery: DevOMS isOrderAddable evaluates (filters.symbol && filters.symbol != symbol_board).
+            // If filtering results in 0 records (e.g. "Records : 0 of 50"),
+            // first clear the symbol filter so client code orders reflect.
             // If still 0 records, click Reset to ensure order rows are visible.
             try {
                 Boolean zeroRecords = (Boolean) js.executeScript(
@@ -242,7 +251,7 @@ public class Order_Terminal {
                         "var sInp = document.querySelector('input[id*=\"order_terminal_symbol\"], input.order_terminal_symbol');\n" +
                         "if (sInp) {\n" +
                         "    sInp.value = '';\n" +
-                        "    if (window.jQuery) { $(sInp).val('').trigger('input').trigger('change').trigger('keyup'); }\n" +
+                        "    if (window.jQuery) { $(sInp).val('').trigger('input').trigger('change').trigger('keyup').trigger('orderTerminalSymbolChanged'); }\n" +
                         "}\n" +
                         "if (typeof get_order_history === 'function') { try { get_order_history(); } catch(e){} }\n" +
                         "var tbl = document.getElementById('order_terminal_table') || document.querySelector('table.order_terminal_table') || document.querySelector('table[id*=market_table]');\n" +
@@ -276,11 +285,11 @@ public class Order_Terminal {
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
             js.executeScript(
-                "var cInp = document.querySelector('#order_terminal_code, input[placeholder*=\"Code\"], input[placeholder*=\"code\"]');" +
-                "if (cInp) { cInp.value = ''; try { $(cInp).trigger('input').trigger('change'); } catch(e){} }" +
-                "var sInp = document.querySelector('#order_terminal_symbol, input[placeholder*=\"Symbol\"], input[placeholder*=\"symbol\"]');" +
-                "if (sInp) { sInp.value = ''; try { $(sInp).trigger('input').trigger('change'); } catch(e){} }" +
-                "var statusSel = document.querySelector('#order_status_filter, select[name*=\"status\"]');" +
+                "var cInp = document.querySelector('#order_terminal_code, input[id*=\"order_terminal_code\"], input.order_terminal_code, input[placeholder*=\"Code\"], input[placeholder*=\"code\"]');" +
+                "if (cInp) { cInp.value = ''; try { $(cInp).val('').trigger('input').trigger('change').trigger('keyup').trigger('orderTerminalCodeChanged'); } catch(e){} }" +
+                "var sInp = document.querySelector('#order_terminal_symbol, input[id*=\"order_terminal_symbol\"], input.order_terminal_symbol, input[placeholder*=\"Symbol\"], input[placeholder*=\"symbol\"]');" +
+                "if (sInp) { sInp.value = ''; try { $(sInp).val('').trigger('input').trigger('change').trigger('keyup').trigger('orderTerminalSymbolChanged'); } catch(e){} }" +
+                "var statusSel = document.querySelector('#order_status_filter, select[id*=\"order_status\"], select[name*=\"status\"]');" +
                 "if (statusSel) { statusSel.selectedIndex = 0; try { $(statusSel).trigger('change'); } catch(e){} }"
             );
             try { driver.findElement(BTN_CLEAR).click(); } catch (Exception ignored) {}
