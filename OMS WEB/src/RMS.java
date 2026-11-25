@@ -845,9 +845,11 @@ public class RMS {
                 "}\n" +
                 "return res;\n";
             Object rawObj = js.executeScript(script);
-            if (rawObj instanceof List<?> rawList) {
+            if (rawObj instanceof List<?>) {
+                List<?> rawList = (List<?>) rawObj;
                 for (Object item : rawList) {
-                    if (!(item instanceof Map<?, ?> r)) continue;
+                    if (!(item instanceof Map<?, ?>)) continue;
+                    Map<?, ?> r = (Map<?, ?>) item;
                     String no = r.containsKey("no") && r.get("no") != null ? String.valueOf(r.get("no")) : "1";
                     String cln = r.containsKey("client_code") && r.get("client_code") != null ? String.valueOf(r.get("client_code")) : "-";
                     String dt = r.containsKey("datetime") && r.get("datetime") != null ? String.valueOf(r.get("datetime")) : "-";
@@ -1214,9 +1216,11 @@ public class RMS {
                 "}\n" +
                 "return res;\n";
             Object rawObj = js.executeScript(script, exchange);
-            if (rawObj instanceof List<?> rawList) {
+            if (rawObj instanceof List<?>) {
+                List<?> rawList = (List<?>) rawObj;
                 for (Object item : rawList) {
-                    if (!(item instanceof Map<?, ?> r)) continue;
+                    if (!(item instanceof Map<?, ?>)) continue;
+                    Map<?, ?> r = (Map<?, ?>) item;
                     String rEx = r.containsKey("exchange") && r.get("exchange") != null ? String.valueOf(r.get("exchange")) : "DSE";
                     String rTicker = r.containsKey("ticker") && r.get("ticker") != null ? String.valueOf(r.get("ticker")) : "-";
                     list.add(new ApplicableSymbolRecord(rEx, rTicker, "APPLICABLE (Scrip Netting Active)", true));
@@ -1460,7 +1464,8 @@ public class RMS {
                 "    spotExchange: sInfo.exchange\n" +
                 "};\n";
             Object rawObj = js.executeScript(script);
-            if (rawObj instanceof Map<?, ?> res) {
+            if (rawObj instanceof Map<?, ?>) {
+                Map<?, ?> res = (Map<?, ?>) rawObj;
                 boolean bBlock = Boolean.parseBoolean(String.valueOf(res.containsKey("boardBlocking") ? res.get("boardBlocking") : "true"));
                 boolean sBlock = Boolean.parseBoolean(String.valueOf(res.containsKey("spotBlocking") ? res.get("spotBlocking") : "false"));
                 String bEx = res.get("boardExchange") != null ? String.valueOf(res.get("boardExchange")) : "CSE";
