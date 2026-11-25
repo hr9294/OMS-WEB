@@ -25,6 +25,158 @@ active_client_code: str = DEFAULT_CLIENT_CODE
 active_exchange: str = DEFAULT_EXCHANGE
 active_widget_color_name: str = "Turquoise"
 active_widget_color_hex: str = "#42EADDFF"
+is_recovering_from_idle: bool = False
+last_idle_recovery_time: float = 0.0
+last_accepted_price: float = 0.0
+last_rejection_alert_text: str = ""
+
+parse_num_safe = oms_price.parse_float
+clean_symbol = oms_price.clean_symbol
+to_public_symbol = oms_price.to_public_symbol
+to_board_symbol = oms_price.to_board_symbol
+
+
+def is_already_on_trade_page(driver: webdriver.Chrome) -> bool:
+    if not driver:
+        return False
+    try:
+        return bool(driver.execute_script("""
+            var href = (window.location.href || '').toLowerCase();
+            if (href.indexOf('trade_portal') !== -1) return true;
+            var activeTab = document.querySelector('li.lm_tab.lm_active[title*="Trade"], div.lm_tab.lm_active[title*="Trade"]');
+            if (activeTab) return true;
+            var mw = document.getElementById('marketwatch_symbol');
+            var buyBtn = document.querySelector('[title="Place BUY Order"], .new_buy_order, button.btn-buy');
+            return !!(mw && (mw.offsetParent !== null || mw.offsetWidth > 0) && buyBtn);
+        """))
+    except Exception:
+        return False
+
+
+def show_frontend_banner(driver: webdriver.Chrome, msg: str, border_color: str = "#10b981") -> None:
+    if not driver or not msg:
+        return
+    try:
+        driver.execute_script("""
+            var id = 'oms-auto-banner';
+            var b = document.getElementById(id);
+            if (!b) {
+                b = document.createElement('div'); b.id = id;
+                b.style.cssText = 'position:fixed;top:8px;right:12px;z-index:99999;background:#0f172a;color:#f8fafc;padding:6px 12px;border-radius:6px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.35);';
+                document.body.appendChild(b);
+            }
+            b.style.borderLeft = '4px solid ' + arguments[1];
+            b.textContent = arguments[0];
+        """, msg, border_color)
+    except Exception:
+        pass
+
+
+def maximize_widget(driver: webdriver.Chrome, title_kw: str) -> bool:
+    if not driver or not title_kw:
+        return False
+    try:
+        return bool(driver.execute_script("""
+            var kw = (arguments[0] || '').toLowerCase();
+            var tab = Array.from(document.querySelectorAll('.lm_tab')).find(function(t) {
+                return (t.getAttribute('title') || t.innerText || '').toLowerCase().indexOf(kw) !== -1;
+            });
+            var stack = tab ? tab.closest('.lm_stack') : null;
+            var maxBtn = stack ? stack.querySelector('.lm_maximise') : null;
+            if (maxBtn && !stack.classList.contains('lm_maximised')) { maxBtn.click(); return true; }
+            return false;
+        """, title_kw))
+    except Exception:
+        return False
+
+
+def minimize_or_restore_widget(driver: webdriver.Chrome) -> bool:
+    if not driver:
+        return False
+    try:
+        return bool(driver.execute_script("""
+            var btns = Array.from(document.querySelectorAll('.lm_stack.lm_maximised .lm_maximise'));
+            btns.forEach(function(b) { b.click(); });
+            return btns.length > 0;
+        """))
+    except Exception:
+        return False
+
+
+def save_screenshot(driver: webdriver.Chrome, filename: str) -> Optional[str]:
+    if not driver or not filename:
+        return None
+    try:
+        import os
+        os.makedirs("screenshots", exist_ok=True)
+        path = os.path.join("screenshots", filename)
+        driver.save_screenshot(path)
+        return path
+    except Exception:
+        return None
+
+
+def insert_global_symbol_and_select_public(driver: webdriver.Chrome, symbol: str) -> bool:
+    if not driver or not symbol:
+        return False
+    pub_sym = to_public_symbol(symbol)
+    try:
+        driver.execute_script("""
+            var val = arguments[0];
+            ['#instrument', '#order_instrument', '#marketwatch_symbol'].forEach(function(sel) {
+                var el = document.querySelector(sel);
+                if (el) { el.value = val; if (window.jQuery) $(el).val(val).trigger('input').trigger('change'); }
+            });
+        """, pub_sym)
+        time.sleep(0.4)
+        return True
+    except Exception:
+        return False
+
+
+def ensure_symbol_board_retained(driver: webdriver.Chrome, symbol: str) -> None:
+    if not driver or not symbol:
+        return
+    try:
+        driver.execute_script("""
+            var val = arguments[0];
+            document.querySelectorAll('#order_instrument, #instrument, #symbol_market_depth, input[id*="order_terminal_symbol"]').forEach(function(el) {
+                el.value = val;
+                if (window.jQuery) $(el).val(val).trigger('input').trigger('change');
+            });
+        """, to_public_symbol(symbol))
+    except Exception:
+        pass
+
+
+def fill_order_fields(driver: webdriver.Chrome, symbol: str, qty: Any, client_code: str) -> None:
+    if not driver:
+        return
+    try:
+        driver.execute_script("""
+            var sym = arguments[0], qty = arguments[1], cln = arguments[2];
+            var ci = document.getElementById('order_client_code');
+            if (ci && cln) { ci.value = cln; if (window.jQuery) $(ci).val(cln).trigger('input').trigger('change'); }
+            var si = document.getElementById('order_instrument');
+            if (si && sym) { si.value = sym; if (window.jQuery) $(si).val(sym).trigger('input').trigger('change'); }
+            var qi = document.getElementById('order_qty');
+            if (qi && qty) { qi.value = String(qty); if (window.jQuery) $(qi).val(String(qty)).trigger('input').trigger('change'); }
+        """, symbol, str(qty), client_code)
+    except Exception:
+        pass
+
+
+def auto_confirm_order_or_cancellation(driver: webdriver.Chrome, timeout: float = 3.0) -> bool:
+    if not driver:
+        return False
+    try:
+        btn = WebDriverWait(driver, timeout).until(
+            EC.element_to_be_clickable((By.XPATH, "//button[@id='cnfirmConfirmBtn'] | //button[normalize-space()='YES'] | //button[normalize-space()='Yes']"))
+        )
+        btn.click()
+        return True
+    except Exception:
+        return False
 
 
 def select_exchange_in_modal(driver: webdriver.Chrome, exchange: str = "DSE") -> None:
@@ -2069,3 +2221,410 @@ def run_sequential_buy_lifecycle_audit(
     print("| Widget All Rows Audit     : PASSED - Complete Pre & Post All Columns for selected symbol. |")
     print("| Default Color Channel     : PASSED - All 6 widgets synced to Turquoise (#42EADDFF).    |")
     print("+========================================================================================+\n")
+
+
+
+# =========================================================================
+# PRICE LIMIT BREACH CLAMPING, DB PRICE BAND & RESILIENT RETRY ENGINE
+# =========================================================================
+
+class MarketPriceBand:
+    def __init__(self, symbol: str, exchange: str, ltp: float, ycp: float, sh: float, sl: float, ch: float, cl: float):
+        self.symbol = symbol
+        self.exchange = exchange
+        self.ltp = ltp
+        self.ycp = ycp
+        self.sh = sh
+        self.sl = sl
+        self.ch = ch
+        self.cl = cl
+        rate = ltp if ltp > 0 else (ycp if ycp > 0 else (sh if sh > 0 else (sl if sl > 0 else (ch if ch > 0 else (cl if cl > 0 else 25.0)))))
+        upper = sh if sh > 0 else ch
+        lower = sl if sl > 0 else cl
+        if upper > 0 and rate > upper:
+            rate = upper
+        elif lower > 0 and rate < lower:
+            rate = lower
+        self.safe_rate = round(rate, 2)
+
+    def __repr__(self) -> str:
+        return (
+            f"[PRICE BAND: {self.symbol} on {self.exchange}] LTP: {self.ltp:.2f} | YCP: {self.ycp:.2f} | "
+            f"SH: {self.sh:.2f} | SL: {self.sl:.2f} | CH: {self.ch:.2f} | CL: {self.cl:.2f} -> Safe: {self.safe_rate:.2f}"
+        )
+
+
+def fetch_market_db_price_band(instrument: str, exchange: str = "DSE", driver: Optional[webdriver.Chrome] = None) -> MarketPriceBand:
+    clean_sym = clean_symbol(instrument)
+    ex = (exchange or "DSE").strip().upper()
+    ltp = ycp = sh = sl = ch = cl = 0.0
+    sourced = False
+    try:
+        from config import get_marketdata_db_connection
+        conn = get_marketdata_db_connection()
+        if conn:
+            table = "cse_md_ltp" if ex == "CSE" else "dse_md_ltp"
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"SELECT ltp, ycp, circuit_up, circuit_down, high, low FROM {table} WHERE symbol = %s AND board = 'PUBLIC' LIMIT 1",
+                        (clean_sym,),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        ltp, ycp, ch, cl, sh, sl = (float(x or 0.0) for x in row)
+                        sourced = True
+            finally:
+                conn.close()
+    except Exception:
+        pass
+
+    if not sourced and driver is not None:
+        try:
+            import market_depth
+            depth = market_depth.get_snapshot(driver, clean_sym, ex)
+            if depth:
+                ltp = parse_num_safe(depth.get("LTP") or depth.get("Last") or depth.get("ltp"))
+                ycp = parse_num_safe(depth.get("YCP") or depth.get("Close") or depth.get("ycp"))
+                sh = parse_num_safe(depth.get("SH"))
+                sl = parse_num_safe(depth.get("SL"))
+                ch = parse_num_safe(depth.get("CH"))
+                cl = parse_num_safe(depth.get("CL"))
+        except Exception:
+            pass
+    return MarketPriceBand(clean_sym, ex, ltp, ycp, sh, sl, ch, cl)
+
+
+class RejectionOrderPriceInfo:
+    def __init__(self, suggested_price: float, upper_limit: float, lower_limit: float, raw_message: str):
+        self.suggested_price = suggested_price
+        self.upper_limit = upper_limit
+        self.lower_limit = lower_limit
+        self.raw_message = raw_message or ""
+
+    def has_suggested_price(self) -> bool:
+        return self.suggested_price > 0.0
+
+    def has_upper_limit(self) -> bool:
+        return self.upper_limit > 0.0
+
+    def has_lower_limit(self) -> bool:
+        return self.lower_limit > 0.0
+
+
+def parse_rejection_text(raw_msg: str) -> RejectionOrderPriceInfo:
+    if not raw_msg or not raw_msg.strip():
+        return RejectionOrderPriceInfo(0.0, 0.0, 0.0, "")
+
+    extracted_suggested = 0.0
+    extracted_upper = 0.0
+    extracted_lower = 0.0
+
+    m_more = re.search(r"(?i)price cannot be (?:more|greater|higher|above)\s+than\s*([0-9]+(?:\.[0-9]+)?)", raw_msg)
+    if m_more:
+        extracted_upper = parse_num_safe(m_more.group(1))
+        extracted_suggested = extracted_upper
+
+    m_less = re.search(r"(?i)price cannot be (?:less|lower|below)\s+than\s*([0-9]+(?:\.[0-9]+)?)", raw_msg)
+    if m_less:
+        extracted_lower = parse_num_safe(m_less.group(1))
+        if extracted_suggested <= 0.0:
+            extracted_suggested = extracted_lower
+
+    if extracted_suggested <= 0.0:
+        m_sug = re.search(r"(?i)\b(?:suggested|suggest|recommended|acceptable)\b[^0-9]{1,20}?([0-9]+(?:\.[0-9]+)?)", raw_msg)
+        if m_sug:
+            extracted_suggested = parse_num_safe(m_sug.group(1))
+
+    m_rng = re.search(r"(?i)(?:\[|between\s+)([0-9]+(?:\.[0-9]+)?)\s*(?:-|to|and)\s*([0-9]+(?:\.[0-9]+)?)\]?", raw_msg)
+    if m_rng:
+        if extracted_lower <= 0.0:
+            extracted_lower = parse_num_safe(m_rng.group(1))
+        if extracted_upper <= 0.0:
+            extracted_upper = parse_num_safe(m_rng.group(2))
+
+    if extracted_upper <= 0.0:
+        m_up = re.search(r"(?i)\b(?:upper(?:\s+circuit)?(?:\s+limit)?|highest|circuit\s+high|circuit_up|ceiling|max(?:imum)?)\b[^0-9]{1,20}?([0-9]+(?:\.[0-9]+)?)", raw_msg)
+        if m_up:
+            extracted_upper = parse_num_safe(m_up.group(1))
+
+    if extracted_lower <= 0.0:
+        m_lo = re.search(r"(?i)\b(?:lower(?:\s+circuit)?(?:\s+limit)?|lowest|circuit\s+low|circuit_down|floor|min(?:imum)?)\b[^0-9]{1,20}?([0-9]+(?:\.[0-9]+)?)", raw_msg)
+        if m_lo:
+            extracted_lower = parse_num_safe(m_lo.group(1))
+
+    if extracted_suggested <= 0.0:
+        low_msg = raw_msg.lower()
+        if extracted_upper > 0.0 and ("more than" in low_msg or "exceed" in low_msg):
+            extracted_suggested = extracted_upper
+        elif extracted_lower > 0.0 and any(k in low_msg for k in ("less than", "below", "lower than")):
+            extracted_suggested = extracted_lower
+
+    if extracted_lower > 0.0 and extracted_upper > 0.0 and extracted_lower > extracted_upper:
+        extracted_lower = 0.0
+
+    return RejectionOrderPriceInfo(extracted_suggested, extracted_upper, extracted_lower, raw_msg)
+
+
+def extract_rejection_order_price_info(driver: Optional[webdriver.Chrome], client_code: str = "", symbol: str = "") -> RejectionOrderPriceInfo:
+    if not driver:
+        return parse_rejection_text(last_rejection_alert_text)
+    try:
+        raw_msg = driver.execute_script("""
+            var msgs = [];
+            document.querySelectorAll('.toast, .toast-message, .noty_body, .alert, .alert-danger, .swal2-html-container, .jconfirm-content, .modal-body, div[role="alert"], .tooltip-inner').forEach(function(el) {
+                var t = (el.innerText || el.textContent || '').trim();
+                if (t) msgs.push(t);
+            });
+            document.querySelectorAll('div, span, p, td, i').forEach(function(el) {
+                var tip = el.getAttribute('data-original-title') || el.getAttribute('data-bs-original-title') || el.getAttribute('title') || '';
+                if (tip && (tip.indexOf('Trade Rule') !== -1 || tip.indexOf('Price limit') !== -1 || tip.indexOf('cannot be') !== -1 || tip.indexOf('Reason:') !== -1)) msgs.push(tip.trim());
+            });
+            return msgs.join(' | ');
+        """) or ""
+        if last_rejection_alert_text:
+            raw_msg = f"{raw_msg} | {last_rejection_alert_text}" if raw_msg else last_rejection_alert_text
+        return parse_rejection_text(raw_msg)
+    except Exception:
+        return parse_rejection_text(last_rejection_alert_text)
+
+
+def dismiss_rejection_alert(driver: Optional[webdriver.Chrome]) -> None:
+    global last_rejection_alert_text
+    if not driver:
+        return
+    try:
+        txt = driver.execute_script("""
+            var msgs = [];
+            document.querySelectorAll('.jconfirm-content, .swal2-html-container, .toast, .alert-danger, div[role="alert"]').forEach(function(el) {
+                var t = (el.innerText || '').trim();
+                if (t) msgs.push(t);
+            });
+            document.querySelectorAll('.toast, .noty_bar, .jconfirm .btn, .swal2-confirm, button[data-dismiss="alert"]').forEach(function(el) {
+                try { el.click(); } catch(e) {}
+            });
+            return msgs.join(' | ');
+        """)
+        if txt:
+            last_rejection_alert_text = str(txt)
+    except Exception:
+        pass
+    try:
+        al = driver.switch_to.alert
+        if al.text:
+            last_rejection_alert_text = f"{last_rejection_alert_text} | {al.text}".strip(" |")
+        al.dismiss()
+    except Exception:
+        pass
+
+
+def resolve_price_limit_safe(candidate_price: float, lower_limit: float, upper_limit: float, suggested_price: float) -> float:
+    if lower_limit > 0.0 and upper_limit > 0.0 and lower_limit > upper_limit:
+        lower_limit = 0.0
+    if upper_limit > 0.0 and candidate_price > upper_limit:
+        return upper_limit
+    if lower_limit > 0.0 and candidate_price > 0.0 and candidate_price < lower_limit:
+        return lower_limit
+    if candidate_price > 0.0:
+        return candidate_price
+    base_sugg = suggested_price if suggested_price > 0.0 else 280.0
+    if upper_limit > 0.0 and base_sugg > upper_limit:
+        return upper_limit
+    if lower_limit > 0.0 and base_sugg < lower_limit:
+        return lower_limit
+    return base_sugg
+
+
+def check_latest_terminal_order_status(driver: Optional[webdriver.Chrome], client_code: str = "", symbol: str = "", side: str = "") -> str:
+    if not driver:
+        return "UNKNOWN"
+    try:
+        st = driver.execute_script("""
+            var sym = (arguments[0] || '').toUpperCase(), cln = (arguments[1] || '').toLowerCase();
+            var tbl = document.getElementById('order_terminal_table') || document.querySelector('table.order_terminal_table');
+            if (!tbl) return 'UNKNOWN';
+            var rows = tbl.querySelectorAll('tbody tr');
+            for (var i = 0; i < Math.min(rows.length, 8); i++) {
+                var txt = (rows[i].innerText || '').toUpperCase();
+                if (sym && txt.indexOf(sym) === -1) continue;
+                if (cln && txt.toLowerCase().indexOf(cln) === -1) continue;
+                if (txt.indexOf('FILLED') !== -1) return 'FILLED';
+                if (txt.indexOf('ACCEPTED') !== -1) return 'ACCEPTED';
+                if (txt.indexOf('REJECT') !== -1) return 'REJECTED';
+            }
+            return 'UNKNOWN';
+        """, clean_symbol(symbol), (client_code or "").strip())
+        return str(st or "UNKNOWN")
+    except Exception:
+        return "UNKNOWN"
+
+
+def collect_smart_market_prices(driver: Optional[webdriver.Chrome], symbol: str, exchange: str = "DSE", side: str = "BUY", initial_rate: float = 0.0) -> List[float]:
+    band = fetch_market_db_price_band(symbol, exchange, driver)
+    upper = band.sh if band.sh > 0 else band.ch
+    lower = band.sl if band.sl > 0 else band.cl
+    sugg = band.safe_rate
+    raw = [initial_rate, sugg, band.ltp, band.ycp]
+    if upper > 0 and lower > 0:
+        raw.append(round((upper + lower) / 2.0, 1))
+    if upper > 0:
+        raw.append(upper)
+    if lower > 0:
+        raw.append(lower)
+    valid: List[float] = []
+    for r in raw:
+        if r and r > 0:
+            c = round(resolve_price_limit_safe(r, lower, upper, sugg), 2)
+            if c > 0 and c not in valid:
+                valid.append(c)
+    return valid or [round(resolve_price_limit_safe(sugg, lower, upper, 266.90), 2)]
+
+
+def submit_single_order_attempt(
+    driver: webdriver.Chrome, side: str, client_code: str, symbol: str, qty: int, rate: float, exchange: str = "DSE"
+) -> None:
+    if not driver:
+        return
+    if not is_already_on_trade_page(driver):
+        navigate_to_trade_page(driver, force=False)
+        time.sleep(0.5)
+    dismiss_rejection_alert(driver)
+    try:
+        driver.execute_script("""
+            var s = arguments[0].toUpperCase();
+            var b = document.querySelector("[title='Place " + s + " Order'], .new_" + s.toLowerCase() + "_order");
+            if (b) b.click();
+        """, side)
+        time.sleep(0.4)
+    except Exception:
+        pass
+    select_exchange_in_modal(driver, exchange or "DSE")
+    fill_order_fields(driver, symbol, qty, client_code)
+    try:
+        driver.execute_script("""
+            var el = document.getElementById('limit_order_rate');
+            if (el) { el.value = arguments[0]; if (window.jQuery) $(el).trigger('input').trigger('change'); }
+            var side = arguments[1].toUpperCase();
+            var btns = Array.from(document.querySelectorAll('.form-submit-btn-holder button, button.btn-buy, button.btn-sell, .order_submit_btn'));
+            var target = btns.find(function(b) { return (b.innerText || '').trim().toUpperCase().indexOf(side) !== -1; });
+            if (target) { target.disabled = false; target.click(); }
+        """, f"{rate:.2f}", side)
+    except Exception:
+        pass
+    time.sleep(0.4)
+    auto_confirm_order_or_cancellation(driver, 3.0)
+    time.sleep(1.0)
+    dismiss_lingering_autocomplete(driver)
+
+
+class PriceLimitBreachException(Exception):
+    def __init__(self, symbol: str, attempted_price: float, lower_limit: float, upper_limit: float, total_retries: int):
+        self.symbol = symbol
+        self.attempted_price = attempted_price
+        self.lower_limit = lower_limit
+        self.upper_limit = upper_limit
+        self.total_retries = total_retries
+        super().__init__(
+            f"Price Limit Breach for [{symbol}]: Target price {attempted_price:.2f} outside circuit limits "
+            f"[{lower_limit:.2f} - {upper_limit:.2f}] after {total_retries} retries."
+        )
+
+
+class BackoffConfig:
+    def __init__(self, initial_delay_ms: int = 300, max_delay_ms: int = 3000, multiplier: float = 1.5, jitter: bool = True):
+        self.initial_delay_ms = max(50, initial_delay_ms)
+        self.max_delay_ms = max(self.initial_delay_ms, max_delay_ms)
+        self.multiplier = max(1.0, multiplier)
+        self.jitter = jitter
+
+    def calculate_delay_sec(self, attempt: int) -> float:
+        import random
+        delay = min(self.initial_delay_ms * (self.multiplier ** max(0, attempt - 1)), self.max_delay_ms)
+        if self.jitter:
+            delay *= 0.85 + (random.random() * 0.30)
+        return delay / 1000.0
+
+
+def execute_trade_order_with_resilient_retry(
+    driver: webdriver.Chrome, side: str, client_code: str, symbol: str, qty: int,
+    initial_rate: float, exchange: str = "DSE", max_retries: int = 3, backoff: Optional[BackoffConfig] = None
+) -> bool:
+    global last_accepted_price, last_rejection_alert_text
+    backoff = backoff or BackoffConfig()
+    attempts = max(max_retries, 3)
+    last_lower = last_upper = 0.0
+    last_attempted = initial_rate
+
+    on_screen = extract_rejection_order_price_info(driver, client_code, symbol)
+    upfront_suggested = 0.0
+    if on_screen.has_suggested_price() or on_screen.has_upper_limit() or on_screen.has_lower_limit():
+        upfront_suggested = resolve_price_limit_safe(on_screen.suggested_price, on_screen.lower_limit, on_screen.upper_limit, on_screen.suggested_price)
+        if on_screen.has_upper_limit():
+            last_upper = on_screen.upper_limit
+        if on_screen.has_lower_limit():
+            last_lower = on_screen.lower_limit
+        dismiss_rejection_alert(driver)
+
+    for i in range(attempts):
+        candidates = collect_smart_market_prices(driver, symbol, exchange, side, initial_rate)
+        if upfront_suggested > 0.0:
+            rate = upfront_suggested
+        elif initial_rate > 0.0 and i == 0:
+            rate = initial_rate
+        else:
+            rate = candidates[i] if i < len(candidates) else candidates[0]
+
+        rate = resolve_price_limit_safe(rate, last_lower, last_upper, upfront_suggested or rate)
+        last_attempted = rate
+        submit_single_order_attempt(driver, side, client_code, symbol, qty, rate, exchange)
+        time.sleep(1.2)
+        status = check_latest_terminal_order_status(driver, client_code, symbol, side)
+        if status in ("ACCEPTED", "FILLED"):
+            last_accepted_price = rate
+            last_rejection_alert_text = ""
+            return True
+
+        rej = extract_rejection_order_price_info(driver, client_code, symbol)
+        if rej.has_upper_limit() and (last_upper <= 0.0 or rej.upper_limit <= last_upper):
+            last_upper = rej.upper_limit
+        if rej.has_lower_limit() and (last_lower <= 0.0 or rej.lower_limit >= last_lower):
+            if last_upper <= 0.0 or rej.lower_limit <= last_upper:
+                last_lower = rej.lower_limit
+        if rej.has_suggested_price() or rej.has_upper_limit() or rej.has_lower_limit():
+            upfront_suggested = resolve_price_limit_safe(rej.suggested_price, last_lower, last_upper, rej.suggested_price)
+            dismiss_rejection_alert(driver)
+        time.sleep(backoff.calculate_delay_sec(i + 1))
+
+    if 0 < last_lower <= last_upper and (last_attempted < last_lower or last_attempted > last_upper):
+        raise PriceLimitBreachException(symbol, last_attempted, last_lower, last_upper, attempts)
+    return False
+
+
+def test_price_limit_breach_clamping() -> bool:
+    print("\n=== PRICE LIMIT BREACH & SUGGESTED PRICE RESOLUTION UNIT TESTS ===")
+    checks = [
+        ("Price > Upper", abs(resolve_price_limit_safe(350.0, 200.0, 300.0, 250.0) - 300.0) < 0.001),
+        ("Price < Lower", abs(resolve_price_limit_safe(150.0, 200.0, 300.0, 250.0) - 200.0) < 0.001),
+        ("Within Band", abs(resolve_price_limit_safe(245.50, 200.0, 300.0, 250.0) - 245.50) < 0.001),
+        ("Fallback Suggested > Upper", abs(resolve_price_limit_safe(0.0, 200.0, 300.0, 320.0) - 300.0) < 0.001),
+        ("Fallback Suggested < Lower", abs(resolve_price_limit_safe(0.0, 200.0, 300.0, 180.0) - 200.0) < 0.001),
+        ("Fallback Suggested Within Band", abs(resolve_price_limit_safe(0.0, 200.0, 300.0, 255.0) - 255.0) < 0.001),
+    ]
+    r1 = parse_rejection_text("Order rejected: Price 350.00 is out of bounds. Suggested price: 280.00 [240.00 - 300.00]")
+    checks.append(("Parse Rejection Suggested & Range", abs(r1.suggested_price - 280.0) < 0.001 and abs(r1.lower_limit - 240.0) < 0.001 and abs(r1.upper_limit - 300.0) < 0.001))
+    r2 = parse_rejection_text("Order rejected: Price 350.00 exceeds upper circuit limit 300.00. Suggested: 280.00")
+    checks.append(("Rejection Upper Breach", abs(resolve_price_limit_safe(350.0, r2.lower_limit, r2.upper_limit, r2.suggested_price) - 300.0) < 0.001))
+    r3 = parse_rejection_text("Order rejected: Price 150.00 is below lower circuit limit 200.00. Suggested price: 250.00")
+    checks.append(("Rejection Lower Breach", abs(resolve_price_limit_safe(150.0, r3.lower_limit, r3.upper_limit, r3.suggested_price) - 200.0) < 0.001))
+    r4 = parse_rejection_text("Error: Trade Rule - Price limit exceeded. Price cannot be more than 266.90")
+    checks.append(("Trade Rule cannot be more than", abs(resolve_price_limit_safe(275.0, r4.lower_limit, r4.upper_limit, r4.suggested_price) - 266.90) < 0.001))
+    r5 = parse_rejection_text("Error: Trade Rule - Price limit exceeded. Price cannot be less than 218.40")
+    checks.append(("Trade Rule cannot be less than", abs(resolve_price_limit_safe(210.0, r5.lower_limit, r5.upper_limit, r5.suggested_price) - 218.40) < 0.001))
+    r6 = parse_rejection_text("Reason: (299): Trade Rule - Price limit exceeded. Price cannot be more than 266.90")
+    checks.append(("Terminal Tooltip 266.90", abs(resolve_price_limit_safe(12113.5, r6.lower_limit, r6.upper_limit, r6.suggested_price) - 266.90) < 0.001))
+
+    for idx, (label, ok) in enumerate(checks, 1):
+        print(f"Test {idx:2d} [{label}]: {'PASS' if ok else 'FAIL'}")
+    all_ok = all(ok for _, ok in checks)
+    print(f"ALL PRICE LIMIT TESTS: {sum(1 for _, ok in checks if ok)}/{len(checks)} PASSED\n")
+    return all_ok

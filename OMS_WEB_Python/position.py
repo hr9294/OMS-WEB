@@ -1,14 +1,15 @@
 """
 OMS-WEB Position Widget Module
 Manages Position inspections, holding clients discovery, saleable balances,
-and Position-specific widget color linking.
+and DB/API/DOM position resolution.
 """
-import re
+import json
 import time
 from typing import List, Dict, Any, Optional
 from selenium import webdriver
 
-from config import COLOR_NAMES, COLOR_HEXES
+import oms_price
+from config import get_qtrader_db_connection
 
 
 class ClientPosition:
@@ -19,10 +20,10 @@ class ClientPosition:
         exchange: str,
         total_qty: float,
         saleable_qty: float,
-        avg_rate: float,
-        total_cost: float,
-        market_val: float,
-        unrealized_pnl: float,
+        avg_rate: float = 0.0,
+        total_cost: float = 0.0,
+        market_val: float = 0.0,
+        unrealized_pnl: float = 0.0,
     ):
         self.client_code = client_code
         self.symbol = symbol
@@ -37,182 +38,215 @@ class ClientPosition:
     def __repr__(self) -> str:
         return (
             f"Client: {self.client_code:<8} | {self.symbol} ({self.exchange}) | "
-            f"Total: {self.total_qty:,.0f} | Saleable: {self.saleable_qty:,.0f} | "
-            f"AvgRate: {self.avg_rate:.2f} | P/L: {self.unrealized_pnl:,.2f}"
+            f"Total: {self.total_qty:,.0f} | Saleable: {self.saleable_qty:,.0f} | AvgRate: {self.avg_rate:.2f}"
         )
 
 
-def parse_float(val: Any) -> float:
-    if val is None:
-        return 0.0
-    try:
-        clean = re.sub(r"[^\d.-]", "", str(val).strip())
-        return float(clean) if clean else 0.0
-    except (ValueError, TypeError):
-        return 0.0
+parse_float = oms_price.parse_float
 
 
 def navigate_to_position(driver: webdriver.Chrome) -> None:
-    """Navigates to Position widget in GoldenLayout."""
+    if not driver:
+        return
     try:
-        script = """
-        var tabs = Array.from(document.querySelectorAll('.lm_tab'));
-        var posTab = tabs.find(function(t) { return (t.innerText || '').includes('Position'); });
-        if (posTab) { posTab.click(); return true; }
-        return false;
-        """
-        driver.execute_script(script)
+        driver.execute_script("""
+            var tabs = Array.from(document.querySelectorAll('.lm_tab'));
+            var posTab = tabs.find(function(t) { return (t.innerText || '').includes('Position'); });
+            if (posTab) posTab.click();
+        """)
         time.sleep(0.4)
     except Exception:
         pass
 
 
 def search_symbol_in_position(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> None:
-    """Inputs target symbol in Position widget filter."""
+    if not driver:
+        return
     try:
-        script = """
-        var sym = arguments[0];
-        var inp = document.querySelector('#position_symbol_search, #pos_symbol, input[placeholder*="symbol" i]');
-        if (inp) {
-            inp.value = sym;
-            inp.dispatchEvent(new Event('input', { bubbles: true }));
-            inp.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-        """
-        driver.execute_script(script, symbol)
+        driver.execute_script("""
+            var inp = document.querySelector('#position_symbol_search, #pos_symbol, input[placeholder*="symbol" i]');
+            if (inp) {
+                inp.value = arguments[0];
+                inp.dispatchEvent(new Event('input', { bubbles: true }));
+                inp.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        """, oms_price.to_public_symbol(symbol))
         time.sleep(0.5)
     except Exception:
         pass
 
 
-def get_positions(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> List[ClientPosition]:
-    """Scrapes all client position rows for the symbol from the position table."""
-    navigate_to_position(driver)
-    search_symbol_in_position(driver, symbol, exchange)
-
-    script = """
-    var sym = arguments[0].toLowerCase();
-    var table = document.getElementById('symbol_position_table') || document.querySelector('table[id*="position"]');
-    if (!table) {
-        var tables = Array.from(document.querySelectorAll('table'));
-        table = tables.find(function(t) { return (t.innerText || '').toLowerCase().includes('saleable'); });
-    }
-    if (!table) return [];
-
-    var rows = Array.from(table.querySelectorAll('tbody tr'));
-    var results = [];
-    rows.forEach(function(r) {
-        var cells = Array.from(r.querySelectorAll('td'));
-        if (cells.length >= 5) {
-            var rowText = cells.map(function(c) { return c.innerText.trim(); });
-            results.push(rowText);
-        }
-    });
-    return results;
-    """
-    rows_data = driver.execute_script(script, symbol) or []
-    positions: List[ClientPosition] = []
-
-    for r in rows_data:
-        if len(r) >= 5:
-            code = r[0]
-            if not code or code == "-" or "client" in code.lower():
+def fetch_positions_from_api(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> List[ClientPosition]:
+    if not driver or not symbol:
+        return []
+    clean_sym = oms_price.clean_symbol(symbol)
+    ex = (exchange or "DSE").strip().upper()
+    out: List[ClientPosition] = []
+    try:
+        raw = driver.execute_async_script("""
+            var cb = arguments[arguments.length - 1];
+            var url = '/shared/getsymbolclient/?page=1&per_page=100&symbol=' + encodeURIComponent(arguments[0]) + '&clientcode=&exchange=' + encodeURIComponent(arguments[1]);
+            fetch(url, { headers: { 'Accept': 'application/json' }, credentials: 'include' })
+            .then(function(r){ return r.text(); })
+            .then(function(t){ cb(t); })
+            .catch(function(){ cb(null); });
+        """, clean_sym, ex)
+        if not raw:
+            return out
+        parsed = json.loads(raw)
+        rows = parsed.get("data", {}).get("data", []) if isinstance(parsed.get("data"), dict) else (parsed if isinstance(parsed, list) else [])
+        for r in rows:
+            if not isinstance(r, dict):
                 continue
-            total_qty = parse_float(r[1] if len(r) > 1 else 0)
-            saleable = parse_float(r[2] if len(r) > 2 else 0)
-            avg_rate = parse_float(r[3] if len(r) > 3 else 0)
-            cost = parse_float(r[4] if len(r) > 4 else 0)
-            mkt_val = parse_float(r[5] if len(r) > 5 else 0)
-            pnl = parse_float(r[6] if len(r) > 6 else 0)
-
-            positions.append(ClientPosition(
-                client_code=code,
-                symbol=symbol,
-                exchange=exchange,
-                total_qty=total_qty,
-                saleable_qty=saleable,
-                avg_rate=avg_rate,
-                total_cost=cost,
-                market_val=mkt_val,
-                unrealized_pnl=pnl,
+            code = str(r.get("client_code") or "").strip()
+            if not code:
+                continue
+            tot = parse_float(r.get("total_qty") or r.get("qty"))
+            sal = parse_float(r.get("saleable_qty") or r.get("qty"))
+            out.append(ClientPosition(
+                client_code=code, symbol=clean_sym, exchange=ex,
+                total_qty=tot, saleable_qty=sal,
+                avg_rate=parse_float(r.get("avg_rate") or r.get("avg_cost")),
+                total_cost=parse_float(r.get("total_cost")),
+                market_val=parse_float(r.get("value")),
+                unrealized_pnl=parse_float(r.get("gain")),
             ))
+    except Exception:
+        pass
+    return out
 
+
+def extract_from_dom_table(driver: webdriver.Chrome, clean_sym: str, exchange: str = "DSE") -> List[ClientPosition]:
+    if not driver:
+        return []
+    rows_data = driver.execute_script("""
+        var table = document.getElementById('symbol_position_table') || document.querySelector('table[id*="position"]');
+        if (!table) {
+            table = Array.from(document.querySelectorAll('table')).find(function(t) { return (t.innerText || '').toLowerCase().includes('saleable'); });
+        }
+        if (!table) return [];
+        return Array.from(table.querySelectorAll('tbody tr')).map(function(r) {
+            return Array.from(r.querySelectorAll('td')).map(function(c) { return c.innerText.trim(); });
+        }).filter(function(a) { return a.length >= 5; });
+    """) or []
+    positions: List[ClientPosition] = []
+    for r in rows_data:
+        code = str(r[0]).strip()
+        if not code or code == "-" or "client" in code.lower():
+            continue
+        positions.append(ClientPosition(
+            client_code=code, symbol=clean_sym, exchange=exchange,
+            total_qty=parse_float(r[1]), saleable_qty=parse_float(r[2]),
+            avg_rate=parse_float(r[3]), total_cost=parse_float(r[4]),
+            market_val=parse_float(r[5] if len(r) > 5 else 0),
+            unrealized_pnl=parse_float(r[6] if len(r) > 6 else 0),
+        ))
     return positions
 
 
+def get_positions(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> List[ClientPosition]:
+    clean_sym = oms_price.clean_symbol(symbol)
+    api = fetch_positions_from_api(driver, clean_sym, exchange)
+    if api:
+        return api
+    navigate_to_position(driver)
+    search_symbol_in_position(driver, clean_sym, exchange)
+    return extract_from_dom_table(driver, clean_sym, exchange)
+
+
+def get_api_snapshot(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> List[ClientPosition]:
+    return fetch_positions_from_api(driver, symbol, exchange)
+
+
+def get_ui_snapshot(driver: webdriver.Chrome, client_code: str, symbol: str, exchange: str = "DSE") -> List[ClientPosition]:
+    res = get_positions(driver, symbol, exchange)
+    if client_code:
+        filtered = [p for p in res if p.client_code.strip().lower() == client_code.strip().lower()]
+        return filtered or res
+    return res
+
+
 def get_clients_with_saleable(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> List[ClientPosition]:
-    """Returns holding clients who have saleable_qty > 0."""
-    all_pos = get_positions(driver, symbol, exchange)
-    return [p for p in all_pos if p.saleable_qty > 0]
+    return [p for p in get_positions(driver, symbol, exchange) if p.saleable_qty > 0]
 
 
 def prompt_or_select_clients_for_sell(
-    driver: webdriver.Chrome,
-    symbol: str,
-    exchange: str = "DSE",
-    default_client: str = "23986"
+    driver: webdriver.Chrome, symbol: str, exchange: str = "DSE", default_client: str = "23986"
 ) -> List[ClientPosition]:
-    """Finds real holding clients with saleable shares for SELL orders."""
     holdings = get_clients_with_saleable(driver, symbol, exchange)
     if holdings:
-        print(f"\n[POSITION] Found {len(holdings)} client(s) holding saleable shares of {symbol}:")
+        print(f"\n[POSITION] Found {len(holdings)} client(s) holding saleable {symbol}:")
         for idx, h in enumerate(holdings, 1):
-            print(f"  {idx}. Client {h.client_code:<8} | Saleable: {h.saleable_qty:,.0f} shares | Avg Rate: {h.avg_rate:.2f}")
+            print(f"  {idx}. {h}")
         return holdings
-    else:
-        print(f"[POSITION] No clients found with saleable shares of {symbol}. Fallback to {default_client}.")
-        return []
+    print(f"[POSITION] No saleable holders for {symbol}. Fallback: {default_client}.")
+    return []
 
 
 def get_snapshot(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> Dict[str, str]:
-    """Captures summary snapshot of position holdings for symbol."""
     positions = get_positions(driver, symbol, exchange)
-    total_shares = sum(p.total_qty for p in positions)
-    saleable_shares = sum(p.saleable_qty for p in positions)
     return {
         "symbol": symbol,
         "exchange": exchange,
         "total_holding_clients": str(len(positions)),
-        "total_shares": f"{total_shares:,.0f}",
-        "saleable_shares": f"{saleable_shares:,.0f}",
+        "total_shares": f"{sum(p.total_qty for p in positions):,.0f}",
+        "saleable_shares": f"{sum(p.saleable_qty for p in positions):,.0f}",
     }
 
 
-def find_client_with_saleable(
-    driver: webdriver.Chrome,
-    symbol: str,
-    required_qty: float,
-    preferred_client: Optional[str] = None,
-    exchange: str = "DSE"
+def _select_best_holder(
+    positions: List[ClientPosition], required_qty: float, preferred_client: Optional[str] = None, exclude_client: Optional[str] = None
 ) -> Optional[ClientPosition]:
-    """
-    Finds a client holding sufficient saleable shares for a symbol.
-    If preferred_client has >= required_qty, returns preferred_client.
-    Otherwise, searches all position holders for the symbol:
-    - Returns the first holder with saleable_qty >= required_qty.
-    - If none has >= required_qty, returns the holder with the MAXIMUM saleable_qty.
-    - If no holders found, returns None.
-    """
-    positions = fetch_positions_from_api(driver, symbol, exchange)
-    if not positions:
-        positions = extract_from_dom_table(driver, oms_price.clean_symbol(symbol))
-    if not positions:
+    excl = exclude_client.strip().lower() if exclude_client else ""
+    pref = preferred_client.strip().lower() if preferred_client else ""
+    candidates = [p for p in positions if not excl or p.client_code.strip().lower() != excl]
+    if not candidates:
         return None
+    for cp in candidates:
+        if pref and cp.client_code.strip().lower() == pref and cp.saleable_qty >= required_qty:
+            return cp
+    for cp in candidates:
+        if cp.saleable_qty >= required_qty:
+            return cp
+    return max(candidates, key=lambda c: c.saleable_qty)
 
-    preferred = None
-    max_saleable = None
-    qualifying = None
 
-    for cp in positions:
-        if preferred_client and cp.client_code.strip().lower() == str(preferred_client).strip().lower():
-            preferred = cp
-        if max_saleable is None or cp.saleable_qty > max_saleable.saleable_qty:
-            max_saleable = cp
-        if cp.saleable_qty >= required_qty and qualifying is None:
-            qualifying = cp
+def find_client_with_saleable(
+    driver: webdriver.Chrome, symbol: str, required_qty: float, preferred_client: Optional[str] = None, exchange: str = "DSE"
+) -> Optional[ClientPosition]:
+    return _select_best_holder(get_positions(driver, symbol, exchange), required_qty, preferred_client=preferred_client)
 
-    if preferred and preferred.saleable_qty >= required_qty:
-        return preferred
-    if qualifying:
-        return qualifying
-    return max_saleable
+
+def find_client_with_saleable_excluding(
+    driver: webdriver.Chrome, symbol: str, required_qty: float, exclude_client: Optional[str], exchange: str = "DSE"
+) -> Optional[ClientPosition]:
+    return _select_best_holder(get_positions(driver, symbol, exchange), required_qty, exclude_client=exclude_client)
+
+
+def find_holder_with_sufficient_shares_from_db(symbol: str, required_qty: float, exclude_client: Optional[str] = None) -> Optional[str]:
+    clean_sym = oms_price.clean_symbol(symbol)
+    if not clean_sym:
+        return None
+    conn = get_qtrader_db_connection()
+    if not conn:
+        return None
+    try:
+        excl = exclude_client.strip() if exclude_client else ""
+        sql = (
+            'SELECT "ClientCode" FROM public.clients_portfolio WHERE UPPER(symbol) = UPPER(%s) '
+            'AND COALESCE(saleable_qty, total_qty, 0) >= %s '
+            + ('AND "ClientCode" != %s ' if excl else '')
+            + 'ORDER BY COALESCE(saleable_qty, total_qty, 0) DESC LIMIT 1;'
+        )
+        with conn.cursor() as cur:
+            params = (clean_sym, required_qty, excl) if excl else (clean_sym, required_qty)
+            cur.execute(sql, params)
+            row = cur.fetchone()
+            return str(row[0]).strip() if row else None
+    except Exception:
+        return None
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass

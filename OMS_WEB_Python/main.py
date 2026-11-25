@@ -4,18 +4,19 @@ Unified Python runner matching OMSwebmain.java architecture.
 """
 import argparse
 import sys
-import time
 
-if hasattr(sys.stdout, 'reconfigure'):
-    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-if hasattr(sys.stderr, 'reconfigure'):
-    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
+import config
 from driver_factory import create_driver
 import oms_login
 import oms_trade
 import oms_multi_order
 import oms_multiple_trade
+import oms_upload_data
 import account_limits
 import position
 import client_portfolio
@@ -24,6 +25,8 @@ import order_terminal
 import widget_color
 import oms_dashboard
 import rms
+import day_netting
+import oms_test_runner
 
 
 def print_banner() -> None:
@@ -33,120 +36,114 @@ def print_banner() -> None:
     print("+=============================================================================+")
 
 
+def _dispatch_mode(driver, mode: str) -> None:
+    if mode == "db-ltp":
+        from db_market_data import print_public_board_summary
+        print_public_board_summary("DSE", limit=50)
+    elif mode == "multi-order":
+        oms_multi_order.run_multi_order_pipeline(driver)
+    elif mode == "load-test":
+        oms_multiple_trade.run_load_test(driver)
+    elif mode == "upload":
+        oms_upload_data.run_upload_console(driver)
+    elif mode == "day-netting":
+        day_netting.run_day_netting_console(driver)
+    elif mode == "account-limits":
+        account_limits.get_active_buy_clients_with_cash(driver, 100000.0, 5)
+    elif mode == "position":
+        sym = config.read_line_with_timeout("Enter Symbol for Position check (default GP): ", "GP", 4.0) or "GP"
+        position.prompt_or_select_clients_for_sell(driver, sym)
+    elif mode == "portfolio":
+        code = config.read_line_with_timeout("Enter Client Code (default 23986): ", "23986", 4.0) or "23986"
+        client_portfolio.print_portfolio(code, client_portfolio.get_snapshot(driver, code))
+    elif mode == "depth":
+        sym = config.read_line_with_timeout("Enter Symbol for Market Depth (default GP): ", "GP", 4.0) or "GP"
+        print(f"\nMarket Depth for {sym}: {market_depth.get_snapshot(driver, sym)}")
+    elif mode == "terminal":
+        print(f"\nOrder Terminal Status: {order_terminal.get_snapshot(driver)}")
+    elif mode == "dashboard":
+        oms_dashboard.run_live_reflection_audit(driver)
+    elif mode == "rms":
+        rms.run_rms_console(driver)
+    else:
+        oms_trade.run_trade_workflow(driver)
+
+
+def run_session_loop(driver, initial_mode: str = "") -> None:
+    mode_map = {
+        "1": "trade", "2": "multi-order", "3": "load-test", "4": "upload",
+        "5": "account-limits", "6": "day-netting", "7": "dashboard", "8": "rms",
+        "9": "db-ltp", "10": "position", "11": "portfolio", "12": "depth", "13": "terminal",
+    }
+    first_pass = bool(initial_mode)
+    while True:
+        if first_pass:
+            first_pass = False
+            _dispatch_mode(driver, initial_mode)
+            if config.IS_CI:
+                break
+            continue
+
+        print("\n=== [UFTFAST OMS ACTIVE SESSION] Select Action ===")
+        print("  1. Standard Trade & 6-Widget Verification")
+        print("  2. Multi-Order Execution & Real-time 6-Widget Audit")
+        print("  3. High-Speed Multi-Trade & Load Testing Engine")
+        print("  4. Upload File Engine (Client, Stock, Cash - Safe Guarded)")
+        print("  5. Account Limits & High-Cash Client Discovery")
+        print("  6. Day Netting Engine (Scrip Netting, RMS Controls & 9-Scenario) [Default]")
+        print("  7. Dashboard 12-Model Reflection & Live Audit")
+        print("  8. RMS Risk Management Engine (qRMS + Connected Trade Gate)")
+        print("  9. View Live Public Board Symbols & LTPs from DB")
+        print("  10-13. Position / Portfolio / Market Depth / Order Terminal")
+        print("  0. Exit Application")
+        choice = config.read_line_with_timeout("Enter Choice (0-13, default 6 in 5s): ", "6", 5.0)
+        if choice in ("0", "exit", "quit"):
+            break
+        try:
+            oms_trade.ensure_trade_settings_restored(driver)
+        except Exception:
+            pass
+        _dispatch_mode(driver, mode_map.get(choice, "day-netting"))
+        if config.IS_CI:
+            break
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="OMS-WEB Python Automation Suite")
-    parser.add_argument("--mode", choices=["trade", "multi-order", "load-test", "account-limits", "position", "portfolio", "depth", "terminal", "db-ltp", "dashboard", "rms"],
-                        help="Directly launch a specific engine without prompt")
+    parser.add_argument(
+        "--mode",
+        choices=[
+            "trade", "multi-order", "load-test", "upload", "day-netting",
+            "account-limits", "position", "portfolio", "depth", "terminal",
+            "db-ltp", "dashboard", "rms", "test-runner",
+        ],
+        help="Directly launch a specific engine without prompt",
+    )
     parser.add_argument("--headless", action="store_true", help="Run Chrome in headless mode")
     parser.add_argument("--username", help="OMS username override")
     parser.add_argument("--password", help="OMS password override")
     args = parser.parse_args()
 
     print_banner()
+    if args.mode == "test-runner":
+        sys.exit(0 if oms_test_runner.run_unified_tests("all") else 1)
 
-    print("[SETUP] Initializing Chrome browser session...")
-    driver = create_driver(headless=args.headless)
-
+    driver = create_driver(headless=args.headless or config.IS_HEADLESS)
     try:
-        # Perform Login
-        logged_in = oms_login.login(
-            driver=driver,
-            username=args.username,
-            password=args.password
-        )
-        if not logged_in:
+        if not oms_login.login(driver=driver, username=args.username, password=args.password):
             print("[ERROR] Login failed. Exiting suite.")
             return
-
-        mode = args.mode
-        if not mode:
-            # 1. FIRST OPEN THE TRADE PAGE (Force navigation on initial startup)
-            print("\n[UFTFAST OMS] 1. Opening Trade Page...")
+        if not args.mode:
             oms_trade.navigate_to_trade_page(driver, force=True)
-
-            # 2. THEN SELECT WIDGET COLOR LINK
-            print("[UFTFAST OMS] 2. Configuring Widget Color Link...")
             widget_color.run_widget_color_selection(driver)
-
-            # 3. THEN TRADE EXECUTION OPTION
-            print("\n[UFTFAST OMS] 3. Select Trading Execution Option:")
-            print("  1. Standard Trade & 6-Widget Verification [Default]")
-            print("  2. Multi-Order Execution, Right-Click 'Execute at Market' & Real-time 6-Widget Audit")
-            print("  3. High-Speed Multi-Trade & Load Testing Engine (Throughput / TPS)")
-            print("  4. Account Limits & High-Cash Client Discovery")
-            print("  5. Position & Saleable Holdings Viewer")
-            print("  6. Client Portfolio Viewer")
-            print("  7. Market Depth & Quotes")
-            print("  8. Order Terminal Viewer")
-            print("  9. Collect & View Live Public Board Symbols & LTPs from DB Table (dse_md_ltp)")
-            print("  10. Dashboard 12-Model Data Reflection & Live Audit")
-            print("  11. RMS Risk Management Engine (qRMS Settings, Clients RMS, Scrip Controls & Board Restrictions)")
-            choice = input("Enter Choice (1-11, default 1): ").strip()
-
-            mode_map = {
-                "1": "trade",
-                "2": "multi-order",
-                "3": "load-test",
-                "4": "account-limits",
-                "5": "position",
-                "6": "portfolio",
-                "7": "depth",
-                "8": "terminal",
-                "9": "db-ltp",
-                "10": "dashboard",
-                "11": "rms"
-            }
-            mode = mode_map.get(choice, "trade")
-
-        # Check and handle idle popup / settings restore if session was waiting
-        try:
-            oms_trade.ensure_trade_settings_restored(driver)
-        except Exception:
-            pass
-
-        # Launch selected workflow
-        if mode == "db-ltp":
-            from db_market_data import print_public_board_summary
-            print_public_board_summary("DSE", limit=50)
-        elif mode == "multi-order":
-            oms_multi_order.run_multi_order_pipeline(driver)
-        elif mode == "load-test":
-            oms_multiple_trade.run_load_test(driver)
-        elif mode == "account-limits":
-            account_limits.get_active_buy_clients_with_cash(driver, 100000.0, 5)
-        elif mode == "position":
-            sym = input("Enter Symbol for Position check (default GP): ").strip() or "GP"
-            position.prompt_or_select_clients_for_sell(driver, sym)
-        elif mode == "portfolio":
-            code = input("Enter Client Code (default 23986): ").strip() or "23986"
-            client_portfolio.print_portfolio(code, client_portfolio.get_snapshot(driver, code))
-        elif mode == "depth":
-            sym = input("Enter Symbol for Market Depth (default GP): ").strip() or "GP"
-            snap = market_depth.get_snapshot(driver, sym)
-            print(f"\nMarket Depth for {sym}: {snap}")
-        elif mode == "terminal":
-            snap = order_terminal.get_snapshot(driver)
-            print(f"\nOrder Terminal Status: {snap}")
-        elif mode == "dashboard":
-            oms_dashboard.run_live_reflection_audit(driver)
-        elif mode == "rms":
-            rms.run_rms_console(driver)
-        else:
-            oms_trade.run_trade_workflow(driver)
-
+        run_session_loop(driver, initial_mode=args.mode or "")
     except KeyboardInterrupt:
         print("\n[OMS-WEB] Execution interrupted by user.")
-    except Exception as e:
-        print(f"\n[OMS-WEB: ERROR] An unexpected exception occurred: {e}")
-        import traceback
-        traceback.print_exc()
     finally:
-        print("\n[OMS-WEB] Session finished.")
-        keep_open = input("Close browser window now? (1=YES / 0=NO, default 1): ").strip()
+        keep_open = config.read_line_with_timeout("Close browser window now? (1=YES / 0=NO, default 1): ", "1", 4.0)
         if keep_open != "0":
             try:
                 driver.quit()
-                print("[BROWSER] Session closed.")
             except Exception:
                 pass
 

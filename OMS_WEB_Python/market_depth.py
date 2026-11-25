@@ -4,52 +4,128 @@ Inspects top 5 Bid & Ask market depth, order book queue, and live quote snapshot
 """
 import json
 import time
-from typing import Dict, Any, Optional
+from typing import Dict
 from selenium import webdriver
 
-from config import SHARED_MARKET_DEPTH_URL
 import oms_price
 
 
 def navigate_to_market_depth(driver: webdriver.Chrome) -> None:
-    """Navigates to Market Depth widget."""
+    if not driver:
+        return
     try:
-        script = """
-        var tabs = Array.from(document.querySelectorAll('.lm_tab'));
-        var depthTab = tabs.find(function(t) { return (t.innerText || '').includes('Depth'); });
-        if (depthTab) { depthTab.click(); return true; }
-        return false;
-        """
-        driver.execute_script(script)
+        driver.execute_script("""
+            var tabs = Array.from(document.querySelectorAll('.lm_tab'));
+            var d = tabs.find(function(t) { return (t.innerText || '').includes('Depth'); });
+            if (d) d.click();
+        """)
         time.sleep(0.4)
     except Exception:
         pass
 
 
 def search_symbol_in_depth(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> None:
-    """Inputs symbol into Market Depth search input."""
+    """Retains Public symbol format (e.g. GP.PUBLIC) and triggers getmktdepth."""
+    if not driver or not symbol:
+        return
+    pub_sym = oms_price.to_public_symbol(symbol)
+    base_sym = oms_price.clean_symbol(symbol)
+    ex = (exchange or "DSE").strip().upper()
     try:
-        script = """
-        var sym = arguments[0];
-        var inp = document.querySelector('#depth_symbol, input[id*="depth" i]');
-        if (inp) {
-            inp.value = sym;
-            inp.dispatchEvent(new Event('input', { bubbles: true }));
-            inp.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-        """
-        driver.execute_script(script, symbol)
+        driver.execute_script("""
+            var pubSym = (arguments[0] || '').trim().toUpperCase();
+            var baseSym = (arguments[1] || '').trim().toUpperCase();
+            var ex = (arguments[2] || 'DSE').trim().toUpperCase();
+            document.querySelectorAll('select[id*="exchange_market_depth"], select[id*="exchange_mktdpt"], select.md_exch').forEach(function(s) {
+                for (var o = 0; o < s.options.length; o++) {
+                    if (s.options[o].text.trim().toUpperCase() === ex || s.options[o].value.trim().toUpperCase() === ex) {
+                        s.selectedIndex = o;
+                        if (window.jQuery) $(s).trigger('change');
+                        try { change_mkt_exchange(ex, s.id); } catch(e) {}
+                        break;
+                    }
+                }
+            });
+            document.querySelectorAll('input[id*="symbol_market_depth"], input[id*="symbol_mktdpt"], input.mktdpt_symbol_name, #depth_symbol').forEach(function(i) {
+                i.value = pubSym;
+                if (window.jQuery) $(i).val(pubSym).trigger('input').trigger('change');
+                else { i.dispatchEvent(new Event('input', {bubbles:true})); i.dispatchEvent(new Event('change', {bubbles:true})); }
+                if (typeof getmktdepth === 'function') {
+                    try { getmktdepth(pubSym, i.id); } catch(e) { try { getmktdepth(baseSym, i.id); } catch(e2){} }
+                }
+            });
+        """, pub_sym, base_sym, ex)
         time.sleep(0.4)
     except Exception:
         pass
 
 
-def get_snapshot(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> Dict[str, str]:
-    """Captures snapshot of Market Depth quote and order book."""
+def get_api_snapshot(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> Dict[str, str]:
     sym = oms_price.clean_symbol(symbol)
     ex = (exchange or "DSE").upper()
+    snapshot = {
+        "symbol": sym, "exchange": ex, "ltp": "0.00", "ycp": "0.00",
+        "high": "0.00", "low": "0.00", "total_buy_qty": "0", "total_sell_qty": "0",
+    }
+    if not driver:
+        return snapshot
+    try:
+        resp = driver.execute_script("""
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', '/shared/marketdepth/?symbol=' + encodeURIComponent(arguments[0]) + '&exchange=' + encodeURIComponent(arguments[1]), false);
+            try { xhr.send(); if (xhr.status === 200) return xhr.responseText; } catch(e) {}
+            return null;
+        """, sym, ex)
+        if resp:
+            data = json.loads(resp)
+            if isinstance(data, dict):
+                sd = data.get("symbol_data") if isinstance(data.get("symbol_data"), dict) else data
+                snapshot["ltp"] = str(sd.get("ltp") or sd.get("LTP") or "0.00")
+                snapshot["LTP"] = snapshot["ltp"]
+                snapshot["ycp"] = str(sd.get("ycp") or sd.get("close") or "0.00")
+                snapshot["YCP"] = snapshot["ycp"]
+                snapshot["high"] = str(sd.get("high") or "0.00")
+                snapshot["low"] = str(sd.get("low") or "0.00")
+                snapshot["SH"] = str(sd.get("circuit_up") or sd.get("SH") or "0.00")
+                snapshot["SL"] = str(sd.get("circuit_down") or sd.get("SL") or "0.00")
+                snapshot["total_buy_qty"] = str(sd.get("total_buy_qty") or sd.get("buy_volume") or "0")
+                snapshot["total_sell_qty"] = str(sd.get("total_sell_qty") or sd.get("sell_volume") or "0")
+    except Exception:
+        pass
+    return snapshot
 
-    # Tier 0: Direct DB Tables (dse_md_ltp, dse_md_bbo, dse_md_mktdepth)
+
+def get_ui_snapshot(driver: webdriver.Chrome) -> Dict[str, str]:
+    if not driver:
+        return {}
+    try:
+        return driver.execute_script("""
+            var res = { LTP: '-', HIGH: '-', LOW: '-', 'BUY%': '-', 'SELL%': '-' };
+            var symTables = document.querySelectorAll('div[id^="symdata_"] table, table.marketdepth-table');
+            if (symTables.length > 0) {
+                var rows = symTables[0].querySelectorAll('tr');
+                if (rows.length >= 2) {
+                    var h1 = rows[0].querySelectorAll('td,th'), v1 = rows[1].querySelectorAll('td');
+                    for (var i = 0; i < h1.length && i < v1.length; i++) {
+                        var k = h1[i].innerText.trim().toUpperCase();
+                        if (k === 'LTP') res.LTP = v1[i].innerText.trim();
+                        if (k === 'HIGH') res.HIGH = v1[i].innerText.trim();
+                        if (k === 'LOW') res.LOW = v1[i].innerText.trim();
+                    }
+                }
+            }
+            var bs = document.querySelector('span[class*="buypercent"]'), ss = document.querySelector('span[class*="sellpercent"]');
+            if (bs) res['BUY%'] = bs.innerText.trim();
+            if (ss) res['SELL%'] = ss.innerText.trim();
+            return res;
+        """) or {}
+    except Exception:
+        return {}
+
+
+def get_snapshot(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> Dict[str, str]:
+    sym = oms_price.clean_symbol(symbol)
+    ex = (exchange or "DSE").upper()
     try:
         from db_market_data import fetch_complete_market_depth
         db_depth = fetch_complete_market_depth(sym, ex)
@@ -57,44 +133,4 @@ def get_snapshot(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -
             return db_depth
     except Exception:
         pass
-
-    script = """
-    var sym = arguments[0];
-    var ex = arguments[1];
-    var url = '/shared/marketdepth/?symbol=' + encodeURIComponent(sym) + '&exchange=' + encodeURIComponent(ex);
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', url, false);
-    try {
-        xhr.send();
-        if (xhr.status === 200) {
-            return xhr.responseText;
-        }
-    } catch(e) {}
-    return null;
-    """
-    snapshot = {
-        "symbol": sym,
-        "exchange": ex,
-        "ltp": "0.00",
-        "ycp": "0.00",
-        "high": "0.00",
-        "low": "0.00",
-        "total_buy_qty": "0",
-        "total_sell_qty": "0",
-    }
-
-    try:
-        resp = driver.execute_script(script, sym, ex)
-        if resp:
-            data = json.loads(resp)
-            if isinstance(data, dict):
-                snapshot["ltp"] = str(data.get("ltp") or data.get("LTP") or "0.00")
-                snapshot["ycp"] = str(data.get("ycp") or data.get("close") or "0.00")
-                snapshot["high"] = str(data.get("high") or "0.00")
-                snapshot["low"] = str(data.get("low") or "0.00")
-                snapshot["total_buy_qty"] = str(data.get("total_buy_qty") or data.get("buy_volume") or "0")
-                snapshot["total_sell_qty"] = str(data.get("total_sell_qty") or data.get("sell_volume") or "0")
-    except Exception:
-        pass
-
-    return snapshot
+    return get_api_snapshot(driver, sym, ex)

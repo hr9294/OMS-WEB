@@ -10,16 +10,30 @@
             "problemMatcher": []
         },
         {
-            "label": "python: run main",
+            "label": "python: run test runner",
             "type": "shell",
-            "command": "python main.py",
+            "command": "python oms_test_runner.py",
             "options": { "cwd": "${workspaceFolder}/OMS_WEB_Python" },
             "problemMatcher": []
         },
         {
-            "label": "python: run multi-order",
+            "label": "python: run day-netting qa",
             "type": "shell",
-            "command": "python main.py --mode multi-order",
+            "command": "python day_netting.py qa",
+            "options": { "cwd": "${workspaceFolder}/OMS_WEB_Python" },
+            "problemMatcher": []
+        },
+        {
+            "label": "python: run rms tests",
+            "type": "shell",
+            "command": "python rms.py",
+            "options": { "cwd": "${workspaceFolder}/OMS_WEB_Python" },
+            "problemMatcher": []
+        },
+        {
+            "label": "python: run main",
+            "type": "shell",
+            "command": "python main.py",
             "options": { "cwd": "${workspaceFolder}/OMS_WEB_Python" },
             "problemMatcher": []
         }

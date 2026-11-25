@@ -31,23 +31,63 @@ def navigate_to_order_terminal(driver: webdriver.Chrome) -> None:
 
 
 def clear_filter(driver: webdriver.Chrome) -> None:
-    """Clears and resets search filters in Order Terminal."""
+    """Clears and resets search filters in Order Terminal (with DevOMS trigger support)."""
+    if not driver:
+        return
     try:
         script = """
-        var clearBtn = document.querySelector('#clear_filter, button[title*="Clear" i], #reset_filter, button[title*="Reset" i]');
-        if (clearBtn) { clearBtn.click(); }
-        var inputs = document.querySelectorAll('#order_terminal_code, #order_terminal_symbol');
-        inputs.forEach(function(inp) {
-            inp.value = '';
-            inp.dispatchEvent(new Event('input', { bubbles: true }));
-            inp.dispatchEvent(new Event('change', { bubbles: true }));
-        });
-        var statusSel = document.querySelector('#order_status_filter, select[name*="status"]');
-        if (statusSel) { statusSel.selectedIndex = 0; $(statusSel).trigger('change'); }
-        if (typeof get_order_history === 'function') { get_order_history(); }
+        var cInp = document.querySelector('#order_terminal_code, input[id*="order_terminal_code"], input.order_terminal_code');
+        if (cInp) { cInp.value = ''; if (window.jQuery) $(cInp).val('').trigger('input').trigger('change').trigger('keyup').trigger('orderTerminalCodeChanged'); }
+        var sInp = document.querySelector('#order_terminal_symbol, input[id*="order_terminal_symbol"], input.order_terminal_symbol');
+        if (sInp) { sInp.value = ''; if (window.jQuery) $(sInp).val('').trigger('input').trigger('change').trigger('keyup').trigger('orderTerminalSymbolChanged'); }
+        var statusSel = document.querySelector('#order_status_filter, select[id*="order_status"], select[name*="status"]');
+        if (statusSel) { statusSel.selectedIndex = 0; if (window.jQuery) $(statusSel).trigger('change'); }
+        var clearBtn = document.querySelector('#clear_filter, button[title*="Clear" i], #reset_filter');
+        if (clearBtn) clearBtn.click();
+        if (typeof get_order_history === 'function') { try { get_order_history(); } catch(e){} }
         """
         driver.execute_script(script)
         time.sleep(0.4)
+    except Exception:
+        pass
+
+
+def filter_order_terminal(driver: webdriver.Chrome, client_code: str = "", symbol: str = "") -> None:
+    """Applies Order Terminal client/symbol filters using GP.PUBLIC format and recovers from 0-record filters."""
+    if not driver:
+        return
+    import oms_price
+    clean_client = (client_code or "").strip()
+    public_sym = oms_price.to_public_symbol(symbol) if (symbol and symbol.strip()) else ""
+    try:
+        driver.execute_script("""
+            var code = arguments[0], pubSym = arguments[1], jq = window.jQuery;
+            document.querySelectorAll('input[id*="order_terminal_code"], input.order_terminal_code').forEach(function(inp) {
+                if (code) inp.value = code;
+                if (jq) { if (code) jq(inp).val(code); jq(inp).trigger('input').trigger('change').trigger('keyup').trigger('orderTerminalCodeChanged'); }
+            });
+            if (pubSym) {
+                document.querySelectorAll('input[id*="order_terminal_symbol"], input.order_terminal_symbol').forEach(function(sInp) {
+                    sInp.value = pubSym;
+                    if (jq) jq(sInp).val(pubSym).trigger('input').trigger('change').trigger('keyup').trigger('orderTerminalSymbolChanged');
+                });
+            }
+            if (typeof get_order_history === 'function') { try { get_order_history(); } catch(e){} }
+        """, clean_client, public_sym)
+        time.sleep(0.4)
+        zero_rows = driver.execute_script("""
+            var tbl = document.getElementById('order_terminal_table') || document.querySelector('table.order_terminal_table');
+            var rows = tbl ? tbl.querySelectorAll('tbody tr') : [];
+            return rows.length === 0 || (rows.length === 1 && (rows[0].innerText || '').indexOf('No Record') !== -1);
+        """)
+        if zero_rows:
+            driver.execute_script("""
+                document.querySelectorAll('input[id*="order_terminal_symbol"], input.order_terminal_symbol').forEach(function(s) {
+                    s.value = ''; if (window.jQuery) $(s).val('').trigger('input').trigger('change').trigger('orderTerminalSymbolChanged');
+                });
+                if (typeof get_order_history === 'function') { try { get_order_history(); } catch(e){} }
+            """)
+            time.sleep(0.4)
     except Exception:
         pass
 
@@ -300,12 +340,12 @@ def execute_separated_buy_and_sell_at_market(driver: webdriver.Chrome, symbol: O
 
 
 def _trigger_context_menu_and_confirm(driver: webdriver.Chrome) -> bool:
-    """Dispatches right-click
+    """Dispatches right-click contextmenu event on selected row, clicks 'Execute at Market', and confirms."""
     try:
         import oms_trade
         oms_trade.ensure_ui_unlocked(driver)
-    except Exception: pass
- contextmenu event on selected row, clicks 'Execute at Market', and confirms."""
+    except Exception:
+        pass
     time.sleep(0.5)
     context_script = """
     var rows = Array.from(document.querySelectorAll('#order_terminal_table tbody tr, table tbody tr'));
@@ -444,12 +484,12 @@ def _trigger_context_menu_and_confirm(driver: webdriver.Chrome) -> bool:
 
 
 def select_multiple_buy_orders_only_at_market(driver: webdriver.Chrome, symbol: Optional[str] = None, client_codes: Optional[List[str]] = None) -> bool:
-    """
+    """Selects MULTIPLE BUY orders only (Accepted & Partially Filled), leaving resting SELL order unselected, right-clicks, and executes at market."""
     try:
         import oms_trade
         oms_trade.ensure_ui_unlocked(driver)
-    except Exception: pass
-Selects MULTIPLE BUY orders only (Accepted & Partially Filled), leaving resting SELL order unselected, right-clicks, and executes at market."""
+    except Exception:
+        pass
     navigate_to_order_terminal(driver)
     refresh(driver)
     time.sleep(0.8)
@@ -714,3 +754,92 @@ def select_multiple_sell_and_one_buy_at_market(driver: webdriver.Chrome, symbol:
         return False
 
     return _trigger_context_menu_and_confirm(driver)
+
+
+
+def get_ui_snapshot(
+    driver: webdriver.Chrome,
+    symbol: Optional[str] = None,
+    client_code: Optional[str] = None,
+) -> Dict[str, str]:
+    """Extracts detailed row snapshot from Order Terminal DOM table."""
+    if not driver:
+        return {}
+    import oms_price
+    clean_sym = oms_price.clean_symbol(symbol) if symbol else ""
+    clean_cln = (client_code or "").strip().lower()
+    for attempt in (1, 2):
+        try:
+            row_data = driver.execute_script("""
+                var sym = (arguments[0] || '').toUpperCase();
+                var cln = (arguments[1] || '').toLowerCase();
+                var tbl = document.getElementById('order_terminal_table') || document.querySelector('table.order_terminal_table') || document.querySelector('table[id*=market_table]');
+                if (!tbl) return null;
+                var headers = Array.from(tbl.querySelectorAll('thead th, tr:first-child th')).map(function(h){ return h.innerText.trim(); });
+                var rows = Array.from(tbl.querySelectorAll('tbody tr'));
+                for (var i = 0; i < rows.length; i++) {
+                    var cells = rows[i].querySelectorAll('td');
+                    if (cells.length < 3) continue;
+                    var txt = (rows[i].innerText || '').toUpperCase();
+                    if (txt.indexOf('NO RECORD') !== -1) continue;
+                    if (sym && txt.indexOf(sym) === -1) continue;
+                    if (cln && txt.toLowerCase().indexOf(cln) === -1) continue;
+                    var out = {};
+                    for (var j = 0; j < headers.length && j < cells.length; j++) {
+                        if (headers[j]) out[headers[j].replace(/\\s+/g, '_')] = cells[j].innerText.trim();
+                    }
+                    out.Order_ID = out.Order_ID || (cells[1] ? cells[1].innerText.trim() : '-');
+                    out.Client_Code = out.Client_Code || (cells[2] ? cells[2].innerText.trim() : '-');
+                    out.Symbol = out.Symbol || (cells[3] ? cells[3].innerText.trim() : sym);
+                    out.Side = out.Side || (cells[4] ? cells[4].innerText.trim() : '-');
+                    out.Price = out.Price || out.Rate || (cells[5] ? cells[5].innerText.trim() : '0');
+                    out.Exec_Qty = out.Exec_Qty || (cells[6] ? cells[6].innerText.trim() : '0');
+                    out.Due_Qty = out.Due_Qty || (cells[7] ? cells[7].innerText.trim() : '0');
+                    out.Status = out.Status || (cells[cells.length - 1] ? cells[cells.length - 1].innerText.trim() : '-');
+                    out.DATA_SOURCE = 'UI_DOM';
+                    return out;
+                }
+                return {};
+            """, clean_sym, clean_cln)
+            if isinstance(row_data, dict) and row_data:
+                return {str(k): str(v) for k, v in row_data.items()}
+            if attempt == 1:
+                clear_filter(driver)
+        except Exception:
+            break
+    return {}
+
+
+get_api_snapshot = get_ui_snapshot
+
+
+def verify(
+    before: Optional[Dict[str, str]],
+    after: Optional[Dict[str, str]],
+    symbol: str = "GP",
+    side: str = "BUY",
+    trade_qty: int = 1,
+    trade_rate: float = 0.0,
+    exchange: str = "DSE",
+) -> bool:
+    """Null-safe quantitative verification of pre/post Order Terminal snapshots."""
+    before = before if before is not None else {}
+    after = after if after is not None else {}
+    before.setdefault("Progress", "0%")
+
+    post_order_id = after.get("Order_ID", "-")
+    pre_order_id = before.get("Order_ID", "-")
+    post_status = after.get("Status", "-")
+    post_side = after.get("Side", "-")
+
+    side_pass = post_side.lower() == (side or "").lower()
+    order_new_pass = post_order_id != "-" and post_order_id != pre_order_id
+    status_pass = any(k in post_status.lower() for k in ("accept", "fill", "partial", "exec", "new"))
+
+    print(
+        f"[ORDER TERMINAL AUDIT] {side.upper()} {trade_qty} {symbol} @ {trade_rate:.2f} ({exchange}) | "
+        f"ID: {pre_order_id}->{post_order_id} ({'PASS' if order_new_pass else 'FAIL'}) | "
+        f"Side: {post_side} ({'PASS' if side_pass else 'FAIL'}) | "
+        f"Status: {post_status} ({'PASS' if status_pass else 'FAIL'})"
+    )
+    return side_pass and order_new_pass and status_pass
