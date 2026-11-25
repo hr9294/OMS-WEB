@@ -205,17 +205,17 @@ public class OMSwebmain {
                 if (envAction == null || envAction.trim().isEmpty()) {
                     envAction = System.getenv("AUTOMATE_ACTION");
                 }
-                engChoice = (envAction != null && !envAction.trim().isEmpty()) ? envAction.trim() : "1";
+                engChoice = (envAction != null && !envAction.trim().isEmpty()) ? envAction.trim() : "6";
                 System.out.printf("\n[DOCKER AUTOMATE MODE] Automatically selected action: %s%n", engChoice);
             } else {
-                // MANUAL MODE: Wait for user choice with 5-minute idle auto-reload watchdog
-                while (engChoice.isEmpty()) {
-                    System.out.print("Enter Choice (1-8 to execute, 0=Exit): ");
-                    engChoice = readLineWithIdleWatchdog(driver, sc, 300);
-                    if (engChoice.isEmpty()) {
-                        break;
-                    }
+                // MANUAL / ECLIPSE MODE: Auto-default to 6 (Day Netting Engine) in 5s if no input
+                String envAction = System.getenv("ACTION_CHOICE");
+                if (envAction == null || envAction.trim().isEmpty()) {
+                    envAction = System.getenv("AUTOMATE_ACTION");
                 }
+                String defAction = (envAction != null && !envAction.trim().isEmpty()) ? envAction.trim() : "6";
+                System.out.printf("Enter Choice (1-8 to execute, 0=Exit, default=%s in 5s): ", defAction);
+                engChoice = readLineWithIdleWatchdog(driver, sc, defAction, 5);
             }
 
             if (!"0".equals(engChoice) && !"exit".equalsIgnoreCase(engChoice) && !"quit".equalsIgnoreCase(engChoice)) {
@@ -275,6 +275,25 @@ public class OMSwebmain {
             System.out.println(" Selection menu will now reappear below for your further action.");
             System.out.println("=============================================================================");
         }
+    }
+
+    public static String readLineWithIdleWatchdog(WebDriver driver, Scanner sc, String defaultValue, int timeoutSeconds) {
+        if (sc == null) return defaultValue;
+        long timeoutMs = timeoutSeconds * 1000L;
+        long start = System.currentTimeMillis();
+        while (System.currentTimeMillis() - start < timeoutMs) {
+            try {
+                if (System.in.available() > 0) {
+                    if (sc.hasNextLine()) {
+                        String input = sc.nextLine().trim();
+                        return input.isEmpty() ? defaultValue : input;
+                    }
+                }
+            } catch (Exception ignored) {}
+            try { Thread.sleep(100); } catch (Exception ignored) {}
+        }
+        System.out.printf("%n[AUTO-SELECTION] Defaulting to option '%s' after %ds.%n", defaultValue, timeoutSeconds);
+        return defaultValue;
     }
 
     public static String readLineWithIdleWatchdog(WebDriver driver, Scanner sc, int idleSeconds) {

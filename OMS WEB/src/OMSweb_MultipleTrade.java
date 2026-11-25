@@ -864,7 +864,7 @@ public class OMSweb_MultipleTrade {
             Instant orderStart = Instant.now();
 
             try {
-                CircuitLimits limits = (symbolCircuits != null) ? symbolCircuits.get(order.symbol) : null;
+                CircuitLimits limits = symbolCircuits.get(order.symbol);
                 boolean ok = placeSingleOrderFast(driver, wait, js, order, limits);
                 long latency = Duration.between(orderStart, Instant.now()).toMillis();
 

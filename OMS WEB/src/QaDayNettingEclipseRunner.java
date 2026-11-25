@@ -1,5 +1,3 @@
-import java.util.Locale;
-
 /**
  * ===============================================================================
  *            ECLIPSE DIRECT RUNNER: QA DAY NETTING MULTI-EXCHANGE TEST SUITE

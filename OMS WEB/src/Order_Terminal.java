@@ -1762,12 +1762,10 @@ public class Order_Terminal {
                     return data;
                 }
 
-                if (targetRow != null) {
-                    List<WebElement> cells = targetRow.findElements(By.xpath("./td"));
-                    for (Map.Entry<String, Integer> entry : headerMap.entrySet()) {
-                        if (entry.getValue() < cells.size()) {
-                            data.put(normalizeKey(entry.getKey()), cells.get(entry.getValue()).getText().trim());
-                        }
+                List<WebElement> cells = targetRow.findElements(By.xpath("./td"));
+                for (Map.Entry<String, Integer> entry : headerMap.entrySet()) {
+                    if (entry.getValue() < cells.size()) {
+                        data.put(normalizeKey(entry.getKey()), cells.get(entry.getValue()).getText().trim());
                     }
                 }
                 return data;
@@ -1955,6 +1953,8 @@ public class Order_Terminal {
     // =========================================================================
     public static void verify(Map<String, String> before, Map<String, String> after,
                               String symbol, String side, int tradeQty, double tradeRate, String exchange) {
+        if (before == null) before = new HashMap<>();
+        if (after == null) after = new HashMap<>();
         String postOrderId   = after.getOrDefault("Order_ID", "-");
         String preOrderId    = before.getOrDefault("Order_ID", "-");
         String postStatus    = after.getOrDefault("Status", "-");
@@ -1968,9 +1968,7 @@ public class Order_Terminal {
         String postProgress  = after.getOrDefault("Progress", "0%");
 
         // Ensure Pre-Trade progress is always 0% prior to trade execution
-        if (before != null) {
-            before.put("Progress", "0%");
-        }
+        before.put("Progress", "0%");
         String preProgress   = "0%";
         boolean sidePass     = postSide.equalsIgnoreCase(side);
         boolean orderNewPass = !postOrderId.equals("-") && !postOrderId.equals(preOrderId);

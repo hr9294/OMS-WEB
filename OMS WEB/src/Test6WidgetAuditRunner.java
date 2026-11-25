@@ -1,5 +1,3 @@
-import java.util.*;
-
 public class Test6WidgetAuditRunner {
 
     public static void main(String[] args) {

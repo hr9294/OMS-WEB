@@ -659,12 +659,14 @@ public class OMSweb_Trade {
 
 		boolean isBuySellExport = false;
 
-		for (String arg : args) {
+		if (args != null) {
+			for (String arg : args) {
 
-			if ("CSE".equalsIgnoreCase(arg)) isCse = true;
+				if ("CSE".equalsIgnoreCase(arg)) isCse = true;
 
-			if ("EXPORT".equalsIgnoreCase(arg) || "BUY_SELL_EXPORT".equalsIgnoreCase(arg) || "TRADE_EXPORT".equalsIgnoreCase(arg) || "6".equals(arg)) isBuySellExport = true;
+				if ("EXPORT".equalsIgnoreCase(arg) || "BUY_SELL_EXPORT".equalsIgnoreCase(arg) || "TRADE_EXPORT".equalsIgnoreCase(arg) || "6".equals(arg)) isBuySellExport = true;
 
+			}
 		}
 
 		WebDriver driver = new ChromeDriver(options);
