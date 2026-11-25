@@ -9,12 +9,10 @@ import re
 import time
 from typing import List, Dict, Any, Optional
 from selenium import webdriver
-
 from config import SEED_CLIENT_CODES, DEFAULT_MIN_CASH_BDT, get_qtrader_db_connection
 import client_portfolio
 import oms_price
 import oms_trade
-
 
 class ClientCashInfo:
     def __init__(self, client_code: str, cash: float, bo_id: str, status: str, client_name: str):
@@ -29,7 +27,6 @@ class ClientCashInfo:
             f"Client: {self.client_code:<8} | Cash: {self.cash:12,.2f} BDT | "
             f"BO ID: {self.bo_id:<16} | Status: {self.status:<8} | Name: {self.client_name}"
         )
-
 
 class ClientCashRecord:
     def __init__(
@@ -51,13 +48,11 @@ class ClientCashRecord:
     def __repr__(self) -> str:
         return f"ClientCashRecord({self.client_code}, cash={self.cash:,.2f}, mature={self.mature_balance:,.2f})"
 
-
 class InsufficientCashLimitException(RuntimeException if hasattr(__builtins__, "RuntimeException") else Exception):
     def __init__(self, required_cash: float, reason: str):
         self.required_cash = required_cash
         self.reason = reason
         super().__init__(f"Cash Limit Allocation Failed: Required {required_cash:,.2f} BDT could not be resolved. {reason}")
-
 
 class ResolvedCashLimit:
     def __init__(self, client_code: str, allocated_limit: float, source: str):
@@ -65,9 +60,7 @@ class ResolvedCashLimit:
         self.allocated_limit = allocated_limit
         self.source = source
 
-
 parse_float = oms_price.parse_float
-
 
 def fetch_client_cash_record_from_db(client_code: str) -> Optional[ClientCashRecord]:
     if not client_code or not client_code.strip():
@@ -109,11 +102,9 @@ def fetch_client_cash_record_from_db(client_code: str) -> Optional[ClientCashRec
             pass
     return None
 
-
 def fetch_client_cash_from_db(client_code: str) -> float:
     rec = fetch_client_cash_record_from_db(client_code)
     return rec.cash if rec else 0.0
-
 
 def find_client_with_sufficient_cash_from_db(
     required_cash: float, exclude_client: Optional[str] = None, fallback_client: Optional[str] = None
@@ -143,14 +134,12 @@ def find_client_with_sufficient_cash_from_db(
                 conn.close()
             except Exception:
                 pass
-
     if fallback_client and fallback_client.strip() and fallback_client.strip().lower() != excl.lower():
         return fallback_client.strip()
     for d in ["23986", "34601", "34649", "15740", "00224", "39187", "00516", "00916", "08096"]:
         if d.lower() != excl.lower():
             return d
     return "23986"
-
 
 def resolve_cash_limit(
     specified_cash_limit: Optional[float],
@@ -163,10 +152,8 @@ def resolve_cash_limit(
     if specified_cash_limit is not None and specified_cash_limit > 0.0:
         code = default_client_code.strip() if default_client_code and default_client_code.strip() else "SPECIFIED"
         return ResolvedCashLimit(code, specified_cash_limit, "EXPLICITLY_SPECIFIED")
-
     if default_client_code and default_client_code.strip() and default_client_limit is not None and default_client_limit > 0.0:
         return ResolvedCashLimit(default_client_code.strip(), default_client_limit, "DEFAULT_CLIENT")
-
     conn = get_qtrader_db_connection()
     if conn:
         excl = exclude_client.strip() if exclude_client else ""
@@ -191,11 +178,9 @@ def resolve_cash_limit(
                 conn.close()
             except Exception:
                 pass
-
     raise InsufficientCashLimitException(
         required_amount, f"No active client entity with Cash >= {required_amount:,.2f} BDT found in database."
     )
-
 
 def navigate_to_account_limits(driver: webdriver.Chrome) -> None:
     if not driver:
@@ -209,7 +194,6 @@ def navigate_to_account_limits(driver: webdriver.Chrome) -> None:
         time.sleep(0.5)
     except Exception:
         pass
-
 
 def filter_by_client(driver: webdriver.Chrome, client_code: str) -> None:
     if not driver or not client_code:
@@ -229,13 +213,11 @@ def filter_by_client(driver: webdriver.Chrome, client_code: str) -> None:
     except Exception:
         pass
 
-
 def get_active_buy_clients_with_cash(
     driver: webdriver.Chrome, min_cash: float = DEFAULT_MIN_CASH_BDT, target_count: int = 5
 ) -> List[str]:
     print(f"\n[ACCOUNT LIMITS] Querying verified BUY clients with Cash >= {min_cash:,.2f} BDT...")
     discovered_cash_map: Dict[str, float] = {seed: 0.0 for seed in SEED_CLIENT_CODES}
-
     if driver:
         try:
             ccd_res = driver.execute_async_script("""
@@ -260,7 +242,6 @@ def get_active_buy_clients_with_cash(
                         discovered_cash_map[code] = parse_float(item.get("cash", 0))
         except Exception as e:
             print(f"[ACCOUNT LIMITS: WARN] Limits engine query: {e}")
-
     eligible_clients: List[ClientCashInfo] = []
     all_verified: List[ClientCashInfo] = []
     for code, table_cash in discovered_cash_map.items():
@@ -276,11 +257,9 @@ def get_active_buy_clients_with_cash(
             all_verified.append(info)
             if effective_cash >= min_cash:
                 eligible_clients.append(info)
-
     pool = sorted(eligible_clients or all_verified, key=lambda c: c.cash, reverse=True)
     if not pool:
         return ["23986", "10009", "10004", "10102"]
-
     chosen = sorted(random.sample(pool[:max(target_count * 2, 8)], min(target_count, len(pool))), key=lambda c: c.cash, reverse=True)
     for idx, c in enumerate(chosen, 1):
         print(f"  {idx}. {c}")
@@ -291,7 +270,6 @@ def get_active_buy_clients_with_cash(
     except Exception:
         pass
     return chosen_codes
-
 
 def get_api_snapshot(driver: webdriver.Chrome, client_code: str, preferred_exchange: str = "DSE") -> Dict[str, str]:
     details = client_portfolio.get_client_details(driver, client_code)
@@ -313,9 +291,7 @@ def get_api_snapshot(driver: webdriver.Chrome, client_code: str, preferred_excha
         out["Commission_Rate"] = details["commission"]
     return out
 
-
 get_snapshot = get_api_snapshot
-
 
 def get_ui_snapshot(driver: webdriver.Chrome, client_code: str) -> Dict[str, str]:
     ui_data: Dict[str, str] = {"DATA_SOURCE": "UI Tables DOM"}
@@ -360,7 +336,6 @@ def get_ui_snapshot(driver: webdriver.Chrome, client_code: str) -> Dict[str, str
         pass
     return ui_data
 
-
 def verify(
     before: Optional[Dict[str, str]],
     after: Optional[Dict[str, str]],
@@ -377,7 +352,6 @@ def verify(
     eff_exec = executed_qty if executed_qty > 0 else trade_qty
     exec_val = eff_exec * trade_rate
     tot_val = trade_qty * trade_rate
-
     old_day = parse_float(before.get("Cash_Day_Order"))
     new_day = parse_float(after.get("Cash_Day_Order"))
     old_tx = parse_float(before.get("Total_Transaction"))
@@ -385,7 +359,6 @@ def verify(
     exec_key = "Buy_Exec_Value" if is_buy else "Sell_Exec_Value"
     old_ex = parse_float(before.get(exec_key))
     new_ex = parse_float(after.get(exec_key))
-
     day_pass = abs(new_day - (old_day + tot_val)) <= 1.0
     tx_pass = abs(new_tx - (old_tx + exec_val)) <= 1.0 or eff_exec == 0
     ex_pass = abs(new_ex - (old_ex + exec_val)) <= 1.0 or eff_exec == 0
@@ -395,26 +368,21 @@ def verify(
           f"{exec_key}: {old_ex:.2f}->{new_ex:.2f} ({'PASS' if ex_pass else 'FAIL'})")
     return day_pass and tx_pass and ex_pass
 
-
 def test_resolve_cash_limit_scenarios() -> bool:
     print("\n=== CASH LIMIT 3-TIER PRECEDENCE UNIT TEST SUITE ===")
     all_passed = True
-
     r1 = resolve_cash_limit(750000.0, None, None, 100000.0, None)
     p1 = r1.allocated_limit == 750000.0 and r1.source == "EXPLICITLY_SPECIFIED"
     print(f"Test 1 [Specified Limit]: {r1.allocated_limit:,.2f} ({r1.source}) -> {'PASS' if p1 else 'FAIL'}")
     all_passed &= p1
-
     r2 = resolve_cash_limit(None, "23986", 600000.0, 100000.0, None)
     p2 = r2.allocated_limit == 600000.0 and r2.client_code == "23986" and r2.source == "DEFAULT_CLIENT"
     print(f"Test 2 [Default Client]: {r2.client_code}, {r2.allocated_limit:,.2f} ({r2.source}) -> {'PASS' if p2 else 'FAIL'}")
     all_passed &= p2
-
     r3 = resolve_cash_limit(900000.0, "23986", 600000.0, 100000.0, None)
     p3 = r3.allocated_limit == 900000.0 and r3.source == "EXPLICITLY_SPECIFIED"
     print(f"Test 3 [Specified Overrides Default]: {r3.allocated_limit:,.2f} ({r3.source}) -> {'PASS' if p3 else 'FAIL'}")
     all_passed &= p3
-
     try:
         r4 = resolve_cash_limit(None, None, None, 10000.0, None)
         p4 = r4.allocated_limit >= 10000.0 and r4.source == "DATABASE_QUERY"
@@ -422,7 +390,6 @@ def test_resolve_cash_limit_scenarios() -> bool:
         all_passed &= p4
     except InsufficientCashLimitException as e:
         print(f"Test 4 [DB Lookup Fallback]: DB unavailable in test env -> SKIPPED/PASS ({e})")
-
     p5 = False
     try:
         resolve_cash_limit(None, None, None, 999999999999.0, None)
@@ -430,6 +397,5 @@ def test_resolve_cash_limit_scenarios() -> bool:
         p5 = True
         print("Test 5 [Exception on Insufficient Cash]: Caught expected exception -> PASS")
     all_passed &= p5
-
     print(f"ALL CASH LIMIT TESTS: {'ALL PASSED (5/5)' if all_passed else 'SOME FAILED'}\n")
     return all_passed

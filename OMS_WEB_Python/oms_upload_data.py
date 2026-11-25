@@ -9,9 +9,7 @@ import time
 from typing import List, Dict, Optional
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-
 import config
-
 
 DEFAULT_NO_UPLOAD = config.DEFAULT_NO_UPLOAD
 
@@ -26,7 +24,6 @@ SUB_MENU_NAMES = [
     "Dealer Terminal File",
     "CSE Circuit Breaker File",
 ]
-
 
 class UploadSubMenu(Enum):
     CLIENT_FILE = (1, "Client File", "client_file")
@@ -51,7 +48,6 @@ class UploadSubMenu(Enum):
                 return m
         return None
 
-
 class SubMenuItemData:
     def __init__(self, index: int, name: str):
         self.index = index
@@ -61,7 +57,6 @@ class SubMenuItemData:
         self.is_displayed = False
         self.is_enabled = True
 
-
 class UploadedFileRecord:
     def __init__(self, index: int, file_name: str, status: str = "Uploaded"):
         self.index = index
@@ -69,13 +64,11 @@ class UploadedFileRecord:
         self.status = status
         self.raw_attributes: Dict[str, str] = {}
 
-
 class ZipReportInfo:
     def __init__(self):
         self.has_download_btn = False
         self.has_delete_btn = False
         self.label = "all reports zip file"
-
 
 class MenuData:
     def __init__(self):
@@ -85,7 +78,6 @@ class MenuData:
         self.sub_menus: List[SubMenuItemData] = [SubMenuItemData(i + 1, n) for i, n in enumerate(SUB_MENU_NAMES)]
         self.uploaded_files: List[UploadedFileRecord] = []
         self.zip_report_info = ZipReportInfo()
-
 
 class UploadExecutionResult:
     def __init__(self, attempted: bool, uploaded: bool, dry_run: bool, resolved_path: str, status: str, message: str):
@@ -101,7 +93,6 @@ class UploadExecutionResult:
             f"UploadExecutionResult[attempted={self.attempted}, uploaded={self.uploaded}, "
             f"dry_run={self.dry_run}, status={self.status}, path={self.resolved_path}]"
         )
-
 
 def dismiss_overlays(driver: Optional[webdriver.Chrome]) -> None:
     if not driver:
@@ -121,7 +112,6 @@ def dismiss_overlays(driver: Optional[webdriver.Chrome]) -> None:
             pass
     except Exception:
         pass
-
 
 def navigate_to_upload_data_page(driver: Optional[webdriver.Chrome], timeout: float = 5.0) -> bool:
     if not driver:
@@ -144,7 +134,6 @@ def navigate_to_upload_data_page(driver: Optional[webdriver.Chrome], timeout: fl
         pass
     return False
 
-
 def open_upload_data_menu(driver: Optional[webdriver.Chrome]) -> bool:
     if not driver:
         return False
@@ -163,7 +152,6 @@ def open_upload_data_menu(driver: Optional[webdriver.Chrome]) -> bool:
     except Exception:
         return False
 
-
 def verify_sub_menu_present(driver: Optional[webdriver.Chrome], sub_menu: Optional[UploadSubMenu]) -> bool:
     if not driver or not sub_menu:
         return False
@@ -177,7 +165,6 @@ def verify_sub_menu_present(driver: Optional[webdriver.Chrome], sub_menu: Option
         ))
     except Exception:
         return False
-
 
 def capture_menu_and_submenu_data(driver: Optional[webdriver.Chrome]) -> MenuData:
     res = MenuData()
@@ -225,7 +212,6 @@ def capture_menu_and_submenu_data(driver: Optional[webdriver.Chrome]) -> MenuDat
         pass
     return res
 
-
 def resolve_default_sample_file_path(sub_menu: Optional[UploadSubMenu]) -> str:
     if sub_menu is None:
         return ""
@@ -249,7 +235,6 @@ def resolve_default_sample_file_path(sub_menu: Optional[UploadSubMenu]) -> str:
             return os.path.normpath(cand)
     return rel
 
-
 def confirm_upload_modal_if_present(driver: Optional[webdriver.Chrome]) -> None:
     if not driver:
         return
@@ -261,7 +246,6 @@ def confirm_upload_modal_if_present(driver: Optional[webdriver.Chrome]) -> None:
         """)
     except Exception:
         pass
-
 
 def upload_file_safely(
     driver: Optional[webdriver.Chrome], sub_menu: Optional[UploadSubMenu], file_path: str, dry_run: bool = True
@@ -306,10 +290,8 @@ def upload_file_safely(
         print(f"[UPLOAD: ERROR] {e}")
         return False
 
-
 def upload_stock_file(driver: Optional[webdriver.Chrome], file_path: str, dry_run: bool = True) -> bool:
     return upload_file_safely(driver, UploadSubMenu.STOCK_FILE, file_path, dry_run)
-
 
 def upload_stock_file_with_guard(
     driver: Optional[webdriver.Chrome], explicit_path: str = "", allow_live_upload: bool = False
@@ -318,21 +300,16 @@ def upload_stock_file_with_guard(
     resolved = (explicit_path or "").strip() or os.environ.get("STOCK_FILE_PATH", "").strip()
     if not resolved:
         resolved = resolve_default_sample_file_path(UploadSubMenu.STOCK_FILE)
-
     exists = bool(resolved and os.path.isfile(resolved))
     final_path = os.path.abspath(resolved) if exists else resolved
-
     if (DEFAULT_NO_UPLOAD and not allow_live_upload) or (config.IS_CI and not allow_live_upload):
         if driver is not None:
             upload_stock_file(driver, final_path, True)
         return UploadExecutionResult(False, False, True, final_path, "DRY_RUN_GUARD", "Stock file upload skipped because dry-run guard is active.")
-
     if not exists:
         return UploadExecutionResult(False, False, True, final_path, "FILE_NOT_FOUND", f"Stock file does not exist: {final_path}")
-
     if driver is None:
         return UploadExecutionResult(False, False, True, final_path, "OFFLINE_NO_DRIVER", "WebDriver is None; live Stock File upload skipped.")
-
     navigate_to_upload_data_page(driver)
     uploaded = upload_stock_file(driver, final_path, False)
     try:
@@ -346,12 +323,10 @@ def upload_stock_file_with_guard(
         "Stock file uploaded and returned to Trade Portal." if uploaded else "Stock file upload failed.",
     )
 
-
 def print_full_report(data: MenuData) -> None:
     print(f"\n[UPLOAD DATA AUDIT] ButtonFound={data.menu_button_found} | DropdownOpen={data.dropdown_opened} | SubMenus={len(data.sub_menus)} | Files={len(data.uploaded_files)}")
     for sm in data.sub_menus:
         print(f"  {sm.index}. {sm.name:<28} | Displayed={sm.is_displayed}")
-
 
 def run_upload_console(driver: webdriver.Chrome) -> None:
     navigate_to_upload_data_page(driver)

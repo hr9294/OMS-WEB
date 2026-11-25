@@ -11,9 +11,7 @@ import time
 from enum import Enum
 from typing import List, Dict, Any, Optional
 from selenium import webdriver
-
 from config import IS_CI, read_line_with_timeout
-
 
 class NettingMode(Enum):
     NONE = ("None", "Netting Disabled across all exchanges")
@@ -35,7 +33,6 @@ class NettingMode(Enum):
             return cls.CROSS_EXCHANGE
         return cls.INDIVIDUAL_EXCHANGE
 
-
 class ClientRiskStatus(Enum):
     ALLOWED = ("Allowed", True)
     BLOCKED = ("Blocked / Disallowed", False)
@@ -44,7 +41,6 @@ class ClientRiskStatus(Enum):
     def __init__(self, label: str, allowed: bool):
         self.label = label
         self.allowed = allowed
-
 
 class RMSApplicationSettings:
     def __init__(
@@ -68,14 +64,12 @@ class RMSApplicationSettings:
             f"DSE={self.is_dse_day_netting_enabled}, CSE={self.is_cse_day_netting_enabled})"
         )
 
-
 class ApplicableSymbolRecord:
     def __init__(self, exchange: str, ticker: str, status: str = "APPLICABLE (Scrip Netting Active)", is_netting_eligible: bool = True):
         self.exchange = exchange
         self.ticker = ticker
         self.status = status
         self.is_netting_eligible = is_netting_eligible
-
 
 class ClientRmsRecord:
     def __init__(self, no: str, client_code: str, datetime_added: str, status: str, is_allowed: bool):
@@ -84,7 +78,6 @@ class ClientRmsRecord:
         self.datetime_added = datetime_added
         self.status = status
         self.is_allowed = is_allowed
-
 
 class ClientExclusivityResult:
     def __init__(
@@ -104,7 +97,6 @@ class ClientExclusivityResult:
             f"others={list(self.other_clients)}, overlap={self.has_overlap}, valid={self.valid}]"
         )
 
-
 class BoardRestrictionRecord:
     def __init__(self, exchange: str, board_tag: str, restriction_type: str, is_blocked: bool, status_label: str):
         self.exchange = exchange
@@ -112,7 +104,6 @@ class BoardRestrictionRecord:
         self.restriction_type = restriction_type
         self.is_blocked = is_blocked
         self.status_label = status_label
-
 
 class PreTradeRmsAuditReport:
     def __init__(
@@ -133,19 +124,14 @@ class PreTradeRmsAuditReport:
         self.quantity = quantity
         self.price = price
         self.order_value = quantity * price
-
         self.symbol_applicable = True
         self.symbol_reason = "Symbol is eligible in qRMS Applicable Symbols."
-
         self.client_allowed = True
         self.client_reason = "Client is listed on Allowed Clients RMS."
-
         self.board_allowed = True
         self.board_reason = "Board is authorized for trading."
-
         self.limit_approved = True
         self.limit_reason = "Order value is within allocated buying power."
-
         self.overall_approved = True
         self.verdict = "APPROVED"
 
@@ -170,7 +156,6 @@ class PreTradeRmsAuditReport:
         verdict_str = "APPROVED FOR PLACEMENT (PASS)" if self.overall_approved else "REJECTED BY RMS (BLOCKED)"
         print(f"| {'FINAL RMS VERDICT':<22} : {verdict_str:<60} |")
         print("+========================================================================================+\n")
-
 
 class RmsTradeVerificationResult:
     def __init__(self, pre_trade_audit: Optional[PreTradeRmsAuditReport]):
@@ -206,7 +191,6 @@ class RmsTradeVerificationResult:
               f"Attempted={self.order_attempted} | Accepted={self.order_accepted_in_terminal} | "
               f"Result={'PASS' if self.verification_passed else 'FAIL'} | {self.summary}\n")
 
-
 # =============================================================================
 # 1. NAVIGATION & PORTAL ROUTING
 # =============================================================================
@@ -223,7 +207,6 @@ def dismiss_overlays(driver: webdriver.Chrome) -> None:
         """)
     except Exception:
         pass
-
 
 def navigate_to_rms_portal(driver: webdriver.Chrome) -> bool:
     if not driver:
@@ -250,7 +233,6 @@ def navigate_to_rms_portal(driver: webdriver.Chrome) -> bool:
     except Exception as e:
         print(f"[RMS: WARN] Portal navigation: {e}")
         return False
-
 
 def navigate_to_application_settings(driver: webdriver.Chrome) -> bool:
     if not driver:
@@ -288,7 +270,6 @@ def navigate_to_application_settings(driver: webdriver.Chrome) -> bool:
         print(f"[RMS SETTINGS: WARN] {e}")
         return False
 
-
 def navigate_to_clients_rms_tab(driver: webdriver.Chrome) -> bool:
     if not driver:
         return False
@@ -312,7 +293,6 @@ def navigate_to_clients_rms_tab(driver: webdriver.Chrome) -> bool:
     except Exception as e:
         print(f"[RMS CLIENTS: WARN] {e}")
         return False
-
 
 def navigate_to_applicable_symbol_tab(driver: webdriver.Chrome) -> bool:
     if not driver:
@@ -338,7 +318,6 @@ def navigate_to_applicable_symbol_tab(driver: webdriver.Chrome) -> bool:
         print(f"[RMS APPLICABLE SYMBOLS: WARN] {e}")
         return False
 
-
 def navigate_to_unauthorized_boards_tab(driver: webdriver.Chrome) -> bool:
     if not driver:
         return False
@@ -363,7 +342,6 @@ def navigate_to_unauthorized_boards_tab(driver: webdriver.Chrome) -> bool:
         print(f"[RMS UNAUTHORIZED BOARDS: WARN] {e}")
         return False
 
-
 def return_to_trade_portal(driver: webdriver.Chrome) -> bool:
     if not driver:
         return False
@@ -381,7 +359,6 @@ def return_to_trade_portal(driver: webdriver.Chrome) -> bool:
     except Exception as e:
         print(f"[RMS: WARN] Return to trade: {e}")
         return False
-
 
 # =============================================================================
 # 2. qRMS APPLICATION SETTINGS ENGINE
@@ -417,7 +394,6 @@ def submit_password_authentication(driver: webdriver.Chrome, password: str = "12
     except Exception:
         pass
     return False
-
 
 def fetch_application_settings(driver: webdriver.Chrome) -> RMSApplicationSettings:
     settings = RMSApplicationSettings()
@@ -462,7 +438,6 @@ def fetch_application_settings(driver: webdriver.Chrome) -> RMSApplicationSettin
         pass
     return settings
 
-
 def display_application_settings_table(driver: webdriver.Chrome) -> None:
     s = fetch_application_settings(driver)
     print("\n+========================================================================================================================+")
@@ -475,7 +450,6 @@ def display_application_settings_table(driver: webdriver.Chrome) -> None:
     print(f"| {'IS_DSE_DAY_NETTING_ENABLED':<28} | {str(s.is_dse_day_netting_enabled):<24} | {'DSE day netting feature enabled and synced':<60} |")
     print(f"| {'IS_CSE_DAY_NETTING_ENABLED':<28} | {str(s.is_cse_day_netting_enabled):<24} | {'CSE day netting feature enabled and synced':<60} |")
     print("+------------------------------+--------------------------+--------------------------------------------------------------+\n")
-
 
 def configure_all_application_settings(
     driver: webdriver.Chrome,
@@ -496,7 +470,6 @@ def configure_all_application_settings(
         print(f"    * ALLOW_Z_AND_SPOT_NETTING   : {allow_z_spot}")
         print(f"    * IS_DSE_DAY_NETTING_ENABLED : {dse_enabled}")
         print(f"    * IS_CSE_DAY_NETTING_ENABLED : {cse_enabled}")
-
         script = """
             var targetMode = arguments[0].toUpperCase();
             var allowZSpot = arguments[1];
@@ -584,13 +557,11 @@ def configure_all_application_settings(
         print(f"[qRMS APPLICATION SETTINGS: ERROR] {e}")
         return status
 
-
 # =============================================================================
 # 3. CLIENTS RMS (CLIENT NETTING & RISK ELIGIBILITY)
 # =============================================================================
 
 CLIENTS_RMS_ROOT_JS = "var root = document.querySelector('#clients_rms, .tab-pane.active, main, body') || document.body;\n"
-
 
 def switch_clients_list(driver: Optional[webdriver.Chrome], allowed: bool) -> bool:
     if not driver:
@@ -612,7 +583,6 @@ def switch_clients_list(driver: Optional[webdriver.Chrome], allowed: bool) -> bo
         return bool(switched)
     except Exception:
         return False
-
 
 def fetch_clients_rms_current_view(driver: Optional[webdriver.Chrome], allowed_label: bool) -> List[ClientRmsRecord]:
     out: List[ClientRmsRecord] = []
@@ -641,13 +611,11 @@ def fetch_clients_rms_current_view(driver: Optional[webdriver.Chrome], allowed_l
         pass
     return out
 
-
 def fetch_clients_rms_list(driver: Optional[webdriver.Chrome], allowed: bool) -> List[ClientRmsRecord]:
     if not driver:
         return []
     switch_clients_list(driver, allowed)
     return fetch_clients_rms_current_view(driver, allowed)
-
 
 def display_clients_rms_table(driver: webdriver.Chrome, allowed: bool) -> None:
     records = fetch_clients_rms_list(driver, allowed)
@@ -663,7 +631,6 @@ def display_clients_rms_table(driver: webdriver.Chrome, allowed: bool) -> None:
             print(f"| {r.no:<4} | {r.client_code:<16} | {r.datetime_added:<24} | {r.status:<31} |")
     print("+------+------------------+--------------------------+---------------------------------+\n")
 
-
 def add_client_to_risk_list(driver: webdriver.Chrome, client_code: str, allowed: bool = True, password: str = "12345") -> bool:
     if not driver or not client_code:
         return False
@@ -672,14 +639,12 @@ def add_client_to_risk_list(driver: webdriver.Chrome, client_code: str, allowed:
         navigate_to_clients_rms_tab(driver)
         switch_clients_list(driver, allowed)
         print(f"[RMS CLIENTS] Adding Client '{cln}' to {'ALLOWED' if allowed else 'DISALLOWED'} list...")
-
         driver.execute_script("""
             var btns = Array.from(document.querySelectorAll('button, a.btn, .btn'));
             var addBtn = btns.find(function(b) { var t = (b.innerText||b.textContent||'').trim().toLowerCase(); return t === '+ add' || t === 'add' || t.indexOf('+ add') !== -1; });
             if (addBtn) { if (window.jQuery) window.jQuery(addBtn).trigger('click'); addBtn.click(); }
         """)
         time.sleep(0.5)
-
         driver.execute_script("""
             var cln = arguments[0];
             var modal = document.querySelector('.modal, [role="dialog"], body');
@@ -696,7 +661,6 @@ def add_client_to_risk_list(driver: webdriver.Chrome, client_code: str, allowed:
             if (subBtn) { subBtn.click(); }
         """, cln)
         time.sleep(0.6)
-
         submit_password_authentication(driver, password)
 
         # In-memory registry
@@ -712,7 +676,6 @@ def add_client_to_risk_list(driver: webdriver.Chrome, client_code: str, allowed:
     except Exception as e:
         print(f"[RMS CLIENTS: ERROR] {e}")
         return False
-
 
 def is_client_netting_allowed(driver: Optional[webdriver.Chrome], client_code: str) -> bool:
     if not client_code:
@@ -732,7 +695,6 @@ def is_client_netting_allowed(driver: Optional[webdriver.Chrome], client_code: s
     except Exception:
         pass
     return True
-
 
 def remove_client_from_risk_list(
     driver: Optional[webdriver.Chrome], client_code: str, allowed: bool = True, password: str = "12345"
@@ -777,13 +739,11 @@ def remove_client_from_risk_list(
     except Exception:
         return False
 
-
 def is_client_present_in_list(driver: Optional[webdriver.Chrome], client_code: str, allowed: bool) -> bool:
     if not driver or not client_code or not client_code.strip():
         return False
     cln = client_code.strip().upper()
     return any((r.client_code or "").strip().upper() == cln for r in fetch_clients_rms_list(driver, allowed))
-
 
 def set_client_netting_state(
     driver: Optional[webdriver.Chrome], client_code: str, allowed: bool, password: str = "12345"
@@ -802,7 +762,6 @@ def set_client_netting_state(
     except Exception:
         pass
     return added and is_client_present_in_list(driver, cln, allowed) and not is_client_present_in_list(driver, cln, not allowed)
-
 
 def verify_client_netting_allowed_live_rms(driver: Optional[webdriver.Chrome], client_code: str) -> bool:
     if not client_code or not client_code.strip():
@@ -825,7 +784,6 @@ def verify_client_netting_allowed_live_rms(driver: Optional[webdriver.Chrome], c
         pass
     return resolved
 
-
 def evaluate_client_exclusivity(
     primary_client: str, primary_allowed: bool, other_clients: List[str]
 ) -> ClientExclusivityResult:
@@ -842,13 +800,11 @@ def evaluate_client_exclusivity(
     reason = f"Exclusive partition valid: '{primary}' -> {'ALLOWED' if primary_allowed else 'DISALLOWED'} | {len(others)} other(s)."
     return ClientExclusivityResult(primary, primary_allowed, others, False, True, reason)
 
-
 def assert_client_exclusivity_rule(result: Optional[ClientExclusivityResult]) -> None:
     if result is None:
         raise ValueError("Client exclusivity result must not be None.")
     if result.has_overlap or not result.valid:
         raise ValueError(result.reason or "Client exclusivity rule violated.")
-
 
 def apply_client_exclusivity_rule(
     driver: Optional[webdriver.Chrome], primary_client: str, primary_allowed: bool,
@@ -862,7 +818,6 @@ def apply_client_exclusivity_rule(
     for other in res.other_clients:
         ok = ok and set_client_netting_state(driver, other, not res.primary_allowed, password)
     return ok
-
 
 # =============================================================================
 # 4. APPLICABLE SYMBOLS (SCRIP RISK CONTROLS)
@@ -904,7 +859,6 @@ def fetch_applicable_symbols_list(driver: webdriver.Chrome, exchange: str = "ALL
         pass
     return out
 
-
 def display_applicable_symbols_table(driver: webdriver.Chrome, exchange: str = "ALL") -> None:
     records = fetch_applicable_symbols_list(driver, exchange)
     print("\n+========================================================================================+")
@@ -921,7 +875,6 @@ def display_applicable_symbols_table(driver: webdriver.Chrome, exchange: str = "
             print(f"| {idx:<4} | {r.exchange:<10} | {r.ticker:<24} | {r.status:<37} |")
     print("+------+------------+--------------------------+-----------------------------------------+\n")
 
-
 def add_applicable_symbol(driver: webdriver.Chrome, exchange: str, symbol: str) -> bool:
     if not driver or not symbol:
         return False
@@ -930,7 +883,6 @@ def add_applicable_symbol(driver: webdriver.Chrome, exchange: str, symbol: str) 
     try:
         navigate_to_applicable_symbol_tab(driver)
         print(f"[RMS APPLICABLE SYMBOLS] Adding Symbol '{sym}' on '{ex}'...")
-
         driver.execute_script("""
             var btns = Array.from(document.querySelectorAll('button, a.btn, a, .btn'));
             var addBtn = btns.find(function(b) { var t = (b.innerText||b.textContent||'').trim().toLowerCase(); return t.indexOf('+ add symbol') !== -1 || (t.indexOf('add symbol') !== -1 && t.indexOf('✓') === -1); });
@@ -938,7 +890,6 @@ def add_applicable_symbol(driver: webdriver.Chrome, exchange: str, symbol: str) 
             return false;
         """)
         time.sleep(0.5)
-
         driver.execute_script("""
             var ex = arguments[0];
             var sym = arguments[1];
@@ -983,7 +934,6 @@ def add_applicable_symbol(driver: webdriver.Chrome, exchange: str, symbol: str) 
         print(f"[RMS APPLICABLE SYMBOLS: ERROR] {e}")
         return False
 
-
 def delete_applicable_symbol(driver: webdriver.Chrome, exchange: str, symbol: str) -> bool:
     if not driver or not symbol:
         return False
@@ -1015,7 +965,6 @@ def delete_applicable_symbol(driver: webdriver.Chrome, exchange: str, symbol: st
             return false;
         """, ex, sym)
         time.sleep(0.6)
-
         driver.execute_script("""
             var cBtns = Array.from(document.querySelectorAll('.modal button, .swal2-confirm, .btn-primary, .btn-danger'));
             var yes = cBtns.find(function(b) { var t = (b.innerText||'').toLowerCase(); return t === 'yes' || t === 'confirm' || t === 'ok'; });
@@ -1035,7 +984,6 @@ def delete_applicable_symbol(driver: webdriver.Chrome, exchange: str, symbol: st
     except Exception as e:
         print(f"[RMS APPLICABLE SYMBOLS: ERROR] {e}")
         return False
-
 
 def is_symbol_netting_applicable(driver: Optional[webdriver.Chrome], exchange: str, symbol: str) -> bool:
     if not symbol or not symbol.strip():
@@ -1063,7 +1011,6 @@ def is_symbol_netting_applicable(driver: Optional[webdriver.Chrome], exchange: s
             pass
     return True
 
-
 # =============================================================================
 # 5. UNAUTHORIZED BOARDS & MARKET RESTRICTIONS
 # =============================================================================
@@ -1083,7 +1030,6 @@ function findCard(kw, otherKw) {
     return loose.length > 0 ? loose[loose.length - 1] : null;
 }
 """
-
 
 def fetch_unauthorized_boards_settings(driver: Optional[webdriver.Chrome]) -> List[BoardRestrictionRecord]:
     out: List[BoardRestrictionRecord] = []
@@ -1127,7 +1073,6 @@ def fetch_unauthorized_boards_settings(driver: Optional[webdriver.Chrome]) -> Li
         pass
     return out
 
-
 def is_board_blocked(driver: Optional[webdriver.Chrome], exchange: str, board: str) -> bool:
     ex = (exchange or "DSE").strip().upper()
     brd = (board or "PUBLIC").strip().upper()
@@ -1150,7 +1095,6 @@ def is_board_blocked(driver: Optional[webdriver.Chrome], exchange: str, board: s
                 return r.is_blocked
     return brd == "BLOCK" and ex == "CSE"
 
-
 def display_unauthorized_boards_table(driver: webdriver.Chrome) -> None:
     records = fetch_unauthorized_boards_settings(driver)
     print("\n+--- qRMS UNAUTHORIZED MARKET & BOARDS SETTINGS ---+")
@@ -1160,7 +1104,6 @@ def display_unauthorized_boards_table(driver: webdriver.Chrome) -> None:
     else:
         for r in records:
             print(f"  {r.restriction_type:<20} | {r.exchange} | {r.board_tag:<8} | {r.status_label}")
-
 
 def configure_board_or_spot_blocking(
     driver: Optional[webdriver.Chrome], section_kw: str, exchange: str, board_tag: str, block: bool, password: str = "12345"
@@ -1217,18 +1160,15 @@ def configure_board_or_spot_blocking(
     except Exception:
         return False
 
-
 def configure_board_wise_blocking(
     driver: Optional[webdriver.Chrome], exchange: str = "CSE", board_tag: str = "BLOCK", block: bool = True, password: str = "12345"
 ) -> bool:
     return configure_board_or_spot_blocking(driver, "board wise blocking", exchange, board_tag, block, password)
 
-
 def configure_spot_market_blocking(
     driver: Optional[webdriver.Chrome], exchange: str = "CSE", block: bool = True, password: str = "12345"
 ) -> bool:
     return configure_board_or_spot_blocking(driver, "spot market blocking", exchange, "SPOT", block, password)
-
 
 # =============================================================================
 # 6. PRE-TRADE REAL-TIME RMS AUDIT & CONNECTED TRADE GATE
@@ -1264,7 +1204,6 @@ def resolve_connected_market_price(
         resolved = 270.0
     return oms_trade.resolve_price_limit_safe(resolved, lower, upper, resolved)
 
-
 def fetch_connected_available_cash(driver: Optional[webdriver.Chrome], client_code: str, exchange: str = "DSE") -> float:
     import account_limits, oms_price
     if driver:
@@ -1282,7 +1221,6 @@ def fetch_connected_available_cash(driver: Optional[webdriver.Chrome], client_co
     except Exception:
         pass
     return -1.0
-
 
 def _evaluate_connected_limits_and_holdings(
     driver: webdriver.Chrome, report: PreTradeRmsAuditReport, ex: str, base_sym: str, cln: str, brd: str, ord_side: str, qty: int
@@ -1310,7 +1248,6 @@ def _evaluate_connected_limits_and_holdings(
         except Exception:
             pass
 
-
 def perform_pre_trade_rms_audit(
     driver: Optional[webdriver.Chrome], exchange: str, symbol: str, client_code: str, board: str,
     price: float, quantity: int, side: str = "BUY"
@@ -1323,10 +1260,8 @@ def perform_pre_trade_rms_audit(
     ord_side = (side or "BUY").strip().upper()
     base_sym = oms_price.clean_symbol(sym)
     eff_price = resolve_connected_market_price(driver, base_sym, ex, 0.0) if (driver and price <= 0.0) else price
-
     report = PreTradeRmsAuditReport(ex, sym, cln, brd, ord_side, quantity, eff_price)
     app_settings = fetch_application_settings(driver)
-
     if app_settings.day_netting_settings.upper() == "NONE":
         report.symbol_applicable = False
         report.symbol_reason = "Day Netting is globally DISABLED in qRMS (DAY_NETTING_SETTINGS = NONE)"
@@ -1336,7 +1271,6 @@ def perform_pre_trade_rms_audit(
     elif ex == "DSE" and not app_settings.is_dse_day_netting_enabled:
         report.symbol_applicable = False
         report.symbol_reason = "DSE Day Netting is DISABLED in qRMS"
-
     if (brd == "SPOT" or base_sym.startswith("Z") or sym.endswith(".SPOT")) and not app_settings.allow_z_and_spot_netting:
         if ord_side == "BUY":
             report.symbol_applicable = False
@@ -1344,23 +1278,18 @@ def perform_pre_trade_rms_audit(
     elif report.symbol_applicable and not is_symbol_netting_applicable(driver, ex, base_sym):
         report.symbol_applicable = False
         report.symbol_reason = f"Symbol '{base_sym}' is NOT active in qRMS Applicable Symbols for {ex}."
-
     if not is_client_netting_allowed(driver, cln):
         report.client_allowed = False
         report.client_reason = f"Client {cln} is listed in Clients RMS DISALLOWED list."
-
     if is_board_blocked(driver, ex, brd):
         report.board_allowed = False
         report.board_reason = f"{ex} {brd} board is prohibited under Unauthorized Boards restrictions."
-
     if driver is not None:
         _evaluate_connected_limits_and_holdings(driver, report, ex, base_sym, cln, brd, ord_side, quantity)
-
     report.overall_approved = report.symbol_applicable and report.client_allowed and report.board_allowed and report.limit_approved
     report.verdict = "APPROVED FOR PLACEMENT" if report.overall_approved else "REJECTED BY RMS"
     report.print_audit_summary()
     return report
-
 
 def verify_rms_check_with_trade(
     driver: Optional[webdriver.Chrome], exchange: str = "DSE", symbol: str = "GP", client_code: str = "002",
@@ -1369,7 +1298,6 @@ def verify_rms_check_with_trade(
 ) -> RmsTradeVerificationResult:
     """Connects qRMS Audit with Market Data, Account Limits, Portfolio, Position, Order Terminal & Day Netting."""
     import oms_price, oms_trade, account_limits, client_portfolio, order_terminal, order_summary, position, day_netting
-
     ex = (exchange or "DSE").strip().upper()
     sym = (symbol or "GP").strip().upper()
     base_sym = oms_price.clean_symbol(sym)
@@ -1378,13 +1306,11 @@ def verify_rms_check_with_trade(
     ord_side = (side or "BUY").strip().upper()
     qty = max(1, quantity)
     resolved_price = resolve_connected_market_price(driver, base_sym, ex, explicit_price)
-
     pre_limits: Dict[str, str] = {}
     pre_portfolio: Dict[str, str] = {}
     pre_terminal: Dict[str, str] = {}
     pre_saleable = None
     pre_cash = fetch_connected_available_cash(driver, cln, ex)
-
     if driver is not None:
         return_to_trade_portal(driver)
         instrument = sym if "." in sym else f"{base_sym}.{brd}"
@@ -1399,7 +1325,6 @@ def verify_rms_check_with_trade(
             pre_saleable = day_netting.capture_saleable_baseline(driver, "RMS_TRADE_PRE", cln, base_sym)
         except Exception:
             pass
-
     audit = perform_pre_trade_rms_audit(driver, ex, sym, cln, brd, resolved_price, qty, ord_side)
     res = RmsTradeVerificationResult(audit)
     res.resolved_price = resolved_price
@@ -1407,21 +1332,18 @@ def verify_rms_check_with_trade(
     res.pre_available_cash = pre_cash
     res.pre_saleable = pre_saleable
     res.pre_order_terminal = pre_terminal
-
     if driver is None:
         res.order_status = "READY_TO_TRADE (OFFLINE)" if audit.overall_approved else "GATED_BEFORE_TRADE (OFFLINE)"
         res.verification_passed = True
         res.summary = "RMS audit approved connected trade gate (offline)" if audit.overall_approved else "RMS audit blocked trade prior to dispatch"
         res.print_connected_report()
         return res
-
     if not audit.overall_approved and not execute_even_if_blocked:
         res.order_status = "BLOCKED_BY_RMS_AUDIT"
         res.verification_passed = True
         res.summary = f"Trade safely withheld after Pre-Trade RMS rejection: {audit.verdict}"
         res.print_connected_report()
         return res
-
     return_to_trade_portal(driver)
     instrument = sym if "." in sym else f"{base_sym}.{brd}"
     res.order_attempted = True
@@ -1429,7 +1351,6 @@ def verify_rms_check_with_trade(
         oms_trade.submit_single_order_attempt(driver, ord_side, cln, instrument, qty, resolved_price, ex)
     except Exception as e:
         res.rejection_reason = f"Order submit exception: {e}"
-
     res.order_accepted_in_terminal = oms_trade.has_latest_order_in_terminal(driver, cln, base_sym)
     try:
         rej = oms_trade.extract_rejection_order_price_info(driver, cln, base_sym)
@@ -1438,7 +1359,6 @@ def verify_rms_check_with_trade(
         oms_trade.dismiss_rejection_alert(driver)
     except Exception:
         pass
-
     try:
         res.post_order_terminal = order_terminal.get_ui_snapshot(driver, base_sym, cln)
         res.order_status = res.post_order_terminal.get("Status", "Accepted" if res.order_accepted_in_terminal else "Rejected/Pending")
@@ -1446,7 +1366,6 @@ def verify_rms_check_with_trade(
             res.terminal_verified = order_terminal.verify(pre_terminal, res.post_order_terminal, base_sym, ord_side, qty, resolved_price, ex)
     except Exception:
         pass
-
     try:
         res.post_available_cash = fetch_connected_available_cash(driver, cln, ex)
         post_limits = account_limits.get_api_snapshot(driver, cln, ex)
@@ -1454,7 +1373,6 @@ def verify_rms_check_with_trade(
             res.limits_verified = account_limits.verify(pre_limits, post_limits, ord_side, qty, resolved_price, ex)
     except Exception:
         pass
-
     try:
         if pre_saleable:
             res.saleable_delta = day_netting.capture_saleable_delta(driver, pre_saleable, "RMS_TRADE_POST")
@@ -1470,12 +1388,10 @@ def verify_rms_check_with_trade(
         res.netting_verified = True
     except Exception:
         pass
-
     res.verification_passed = (res.order_attempted and res.order_accepted_in_terminal) if audit.overall_approved else (not res.order_accepted_in_terminal)
     res.summary = f"Audit={audit.verdict} | Accepted={res.order_accepted_in_terminal} | Terminal={res.terminal_verified} | Limits={res.limits_verified}"
     res.print_connected_report()
     return res
-
 
 def run_automated_rms_health_check(driver: webdriver.Chrome) -> None:
     print("\n=== [RMS AUDIT] FULL AUTOMATED RMS HEALTH & CONNECTED TRADE CHECK ===")
@@ -1485,7 +1401,6 @@ def run_automated_rms_health_check(driver: webdriver.Chrome) -> None:
     display_clients_rms_table(driver, True)
     display_applicable_symbols_table(driver, "DSE")
     display_unauthorized_boards_table(driver)
-
     live_rate = resolve_connected_market_price(driver, "GP", "DSE", 0.0)
     eligible_client = "23986"
     try:
@@ -1493,12 +1408,10 @@ def run_automated_rms_health_check(driver: webdriver.Chrome) -> None:
         eligible_client = account_limits.find_client_with_sufficient_cash_from_db(live_rate, fallback_client="23986")
     except Exception:
         pass
-
     verify_rms_check_with_trade(driver, "DSE", "GP", eligible_client, "PUBLIC", 1, live_rate, "BUY", False)
     verify_rms_check_with_trade(driver, "CSE", "GP.BLOCK", eligible_client, "BLOCK", 1, live_rate, "BUY", False)
     verify_rms_check_with_trade(driver, "DSE", "GP.SPOT", eligible_client, "SPOT", 1, live_rate, "BUY", False)
     return_to_trade_portal(driver)
-
 
 def run_rms_console(driver: webdriver.Chrome) -> None:
     if IS_CI:
@@ -1560,26 +1473,20 @@ def run_rms_console(driver: webdriver.Chrome) -> None:
         else:
             print("[INVALID] Please choose 0-8.")
 
-
 def test_pre_trade_rms_audit_scenarios() -> bool:
     print("\n=== RMS PRE-TRADE AUDIT & CONNECTED TRADE GATE UNIT TESTS ===")
     r1 = perform_pre_trade_rms_audit(None, "DSE", "GP", "23986", "PUBLIC", 270.50, 10, "BUY")
     p1 = r1.overall_approved and r1.verdict == "APPROVED FOR PLACEMENT"
-
     r2 = perform_pre_trade_rms_audit(None, "CSE", "GP.BLOCK", "23986", "BLOCK", 270.50, 10, "BUY")
     p2 = (not r2.overall_approved) and (not r2.board_allowed) and r2.verdict == "REJECTED BY RMS"
-
     r3 = perform_pre_trade_rms_audit(None, "DSE", "GP.SPOT", "23986", "SPOT", 270.50, 10, "BUY")
     p3 = (not r3.overall_approved) and (not r3.symbol_applicable) and r3.verdict == "REJECTED BY RMS"
-
     ex1 = evaluate_client_exclusivity("002", True, ["23986", "34601"])
     assert_client_exclusivity_rule(ex1)
     p4 = ex1.valid and (not ex1.has_overlap) and ex1.primary_client == "002" and len(ex1.other_clients) == 2
-
     ex2 = evaluate_client_exclusivity("002", False, ["23986"])
     assert_client_exclusivity_rule(ex2)
     p5 = ex2.valid and (not ex2.has_overlap) and (not ex2.primary_allowed) and "23986" in ex2.other_clients
-
     ex_ov = evaluate_client_exclusivity("23986", True, ["34601", " 23986 "])
     threw = False
     try:
@@ -1587,13 +1494,10 @@ def test_pre_trade_rms_audit_scenarios() -> bool:
     except ValueError:
         threw = True
     p6 = (not ex_ov.valid) and ex_ov.has_overlap and threw
-
     p7 = is_board_blocked(None, "CSE", "BLOCK") and (not is_board_blocked(None, "DSE", "PUBLIC"))
-
     t_ok = verify_rms_check_with_trade(None, "DSE", "GP", "002", "PUBLIC", 1, 270.50, "BUY", False)
     t_blk = verify_rms_check_with_trade(None, "CSE", "GP.BLOCK", "002", "BLOCK", 1, 270.50, "BUY", False)
     p8 = t_ok.verification_passed and t_ok.pre_trade_audit.overall_approved and t_blk.verification_passed and (not t_blk.order_attempted)
-
     results = [
         ("Standard DSE Buy", p1), ("CSE Block Restriction", p2), ("Spot Without Mature", p3),
         ("Exclusivity Allowed vs Others", p4), ("Exclusivity Disallowed vs Others", p5),
@@ -1605,7 +1509,6 @@ def test_pre_trade_rms_audit_scenarios() -> bool:
     passed_cnt = sum(1 for _, ok in results if ok)
     print(f"ALL PRE-TRADE RMS AUDIT TESTS: {passed_cnt}/{len(results)} PASSED\n")
     return passed_cnt == len(results)
-
 
 if __name__ == "__main__":
     import sys

@@ -10,28 +10,23 @@ public class Market_Watch {
     // =========================================================================
     // 1. SELECTORS & COLUMN DEFINITIONS
     // =========================================================================
-
     // Tab Selectors
     public static final By MARKET_WATCH_TAB = By.xpath(
             "//div[contains(@class,'lm_tab') and contains(.,'Market Watch')] | " +
             "//li[contains(@class,'lm_tab') and (.//span[contains(text(),'Market Watch')] or contains(.,'Market Watch'))] | " +
             "//a[normalize-space()='Market Watch'] | //div[@title='Market Watch']");
-
     public static final By TRADE_TAB = By.xpath(
             "//div[contains(@class,'lm_tab') and (contains(.,'Trade') or @title='Trade')] | " +
             "//li[contains(@class,'lm_tab') and (.//span[contains(text(),'Trade')] or contains(.,'Trade') or @title='Trade')]");
-
     // Controls Toolbar in Market Watch Widget Header
     public static final By INPUT_SEARCH_SYMBOL = By.xpath(
             "//input[@id='marketwatch_symbol'] | " +
             "//div[contains(@class,'market-watch') or contains(@class,'marketwatch')]//input[contains(@placeholder,'Search Symbol')] | " +
             "//input[@placeholder='Search Symbol']");
-
     public static final By BTN_CLEAR = By.xpath(
             "//button[normalize-space()='Clear' or contains(@class,'btn-danger')] | " +
             "//button[@id='marketwatch_clear'] | " +
             "//div[contains(@class,'marketwatch') or contains(@class,'market-watch')]//button[contains(.,'Clear')]");
-
     // 20 Exact UI Columns as displayed in the Market Watch Table:
     // Symbol | Sector | Category | LTP | CP | YCP | Vol | Chg | % Chg | B.Qty | BID | ASK | A.Qty | Trades | Turnover | Open | High | Low | L.VOL | Y.VOL
     public static final String[] MARKET_WATCH_COLUMNS = {
@@ -51,9 +46,7 @@ public class Market_Watch {
             System.out.print("Enter Symbol to Search (or press ENTER for all rows, e.g. GP, ACFL): ");
             symbol = sc.nextLine().trim().toUpperCase();
         }
-
         connectWidget(driver, symbol, "DSE");
-
         if (!symbol.isEmpty()) {
             Map<String, String> row = getUiSnapshot(driver, symbol);
             printMarketWatchTable(symbol, row);
@@ -110,7 +103,6 @@ public class Market_Watch {
                 "return inst && inst.offsetParent !== null;"
             );
             if (Boolean.TRUE.equals(alreadyVisible)) return;
-
             Boolean clicked = (Boolean) js.executeScript(
                 "var tabs = Array.from(document.querySelectorAll('.lm_tab, li.lm_tab, div.lm_tab'));" +
                 "var tradeTab = tabs.find(function(t) {" +
@@ -158,10 +150,8 @@ public class Market_Watch {
         if (driver == null) return;
         String cleanSym = cleanSymbol(symbol);
         String ex = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "DSE";
-
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             // 1. Set exchange toggle if present
             js.executeScript(
                 "var ex = arguments[0];" +
@@ -179,7 +169,6 @@ public class Market_Watch {
                 "}",
                 ex
             );
-
             // 2. Synchronize target symbol into #marketwatch_symbol
             if (!cleanSym.isEmpty()) {
                 WebElement mwInput = null;
@@ -190,7 +179,6 @@ public class Market_Watch {
                         mwInput = driver.findElement(INPUT_SEARCH_SYMBOL);
                     } catch (Exception ignored) {}
                 }
-
                 if (mwInput != null && mwInput.isDisplayed()) {
                     try {
                         mwInput.clear();
@@ -221,7 +209,6 @@ public class Market_Watch {
                     );
                 }
             }
-
             Thread.sleep(200);
         } catch (Exception ignored) {}
     }
@@ -269,18 +256,15 @@ public class Market_Watch {
         if (driver == null) return data;
         String cleanSym = cleanSymbol(symbol);
         JavascriptExecutor js = (JavascriptExecutor) driver;
-
         try {
             Object res = js.executeScript(
                 "var targetSym = (arguments[0] || '').trim().toUpperCase();" +
                 "var cleanTarget = targetSym.replace(/\\[.*?\\]/g, '').split('.')[0].trim();" +
-
                 // 1. Locate Market Watch table
                 "var tbl = document.getElementById('marketwatch_table') || " +
                 "          document.querySelector('table.marketwatch') || " +
                 "          document.querySelector('div[id*=\"marketwatch\"] table') || " +
                 "          document.querySelector('table[id*=\"marketwatch\"]');" +
-
                 // Fallback: search any table with Market Watch headers
                 "if (!tbl) {" +
                 "    var allTables = document.querySelectorAll('table');" +
@@ -292,31 +276,25 @@ public class Market_Watch {
                 "        }" +
                 "    }" +
                 "}" +
-
                 "if (!tbl) return {};" +
-
                 // 2. Read headers
                 "var headers = [];" +
                 "var ths = tbl.querySelectorAll('thead th, tr:first-child th');" +
                 "for (var h = 0; h < ths.length; h++) {" +
                 "    headers.push(ths[h].innerText.trim());" +
                 "}" +
-
                 // 3. Locate matching row for symbol
                 "var rows = tbl.querySelectorAll('tbody tr');" +
                 "if (rows.length === 0) rows = tbl.querySelectorAll('tr:not(:first-child)');" +
                 "var matchedRow = null;" +
-
                 "for (var r = 0; r < rows.length; r++) {" +
                 "    var row = rows[r];" +
                 "    var cells = row.querySelectorAll('td');" +
                 "    if (cells.length === 0) continue;" +
-
                 "    var symCell = row.querySelector('td.mw_table_symbol, td[class*=\"symbol\"]') || cells[0];" +
                 "    var cellText = (symCell ? symCell.innerText.trim() : '').toUpperCase();" +
                 "    var cleanCell = cellText.replace(/\\[.*?\\]/g, '').split('.')[0].trim();" +
                 "    var rowClass = (row.className || '').toUpperCase();" +
-
                 "    if (cleanTarget.length > 0) {" +
                 "        if (cleanCell === cleanTarget || cellText.indexOf(cleanTarget) !== -1 || rowClass.indexOf(cleanTarget) !== -1) {" +
                 "            matchedRow = row;" +
@@ -327,22 +305,17 @@ public class Market_Watch {
                 "        break;" +
                 "    }" +
                 "}" +
-
                 "if (!matchedRow && rows.length > 0 && cleanTarget.length === 0) {" +
                 "    matchedRow = rows[0];" +
                 "}" +
-
                 "if (!matchedRow) return {};" +
-
                 "var cells = matchedRow.querySelectorAll('td');" +
                 "var result = {};" +
-
                 // Map header index to cell value
                 "for (var c = 0; c < cells.length; c++) {" +
                 "    var rawHeader = (c < headers.length && headers[c] && headers[c].length > 0) ? headers[c] : ('col_' + c);" +
                 "    result[rawHeader] = cells[c].innerText.trim();" +
                 "}" +
-
                 // Normalize known 20 Market Watch columns
                 "for (var k = 0; k < headers.length && k < cells.length; k++) {" +
                 "    var ht = headers[k].toUpperCase().trim();" +
@@ -368,7 +341,6 @@ public class Market_Watch {
                 "    else if (ht === 'L.VOL' || ht === 'LVOL') result['L.VOL'] = v;" +
                 "    else if (ht === 'Y.VOL' || ht === 'YVOL') result['Y.VOL'] = v;" +
                 "}" +
-
                 // Class-based fallback if any specific column was missed
                 "var classMap = {" +
                 "    'Symbol': 'td.mw_table_symbol, td[class*=\"symbol\"]'," +
@@ -398,7 +370,6 @@ public class Market_Watch {
                 "        if (el && el.innerText.trim()) result[key] = el.innerText.trim();" +
                 "    }" +
                 "}" +
-
                 // Positional mapping fallback if 20 columns exist
                 "var order = ['Symbol', 'Sector', 'Category', 'LTP', 'CP', 'YCP', 'Vol', 'Chg', '% Chg', 'B.Qty', 'BID', 'ASK', 'A.Qty', 'Trades', 'Turnover', 'Open', 'High', 'Low', 'L.VOL', 'Y.VOL'];" +
                 "if (cells.length >= 20) {" +
@@ -408,11 +379,9 @@ public class Market_Watch {
                 "        }" +
                 "    }" +
                 "}" +
-
                 "return result;",
                 cleanSym
             );
-
             if (res instanceof Map) {
                 Map<String, Object> raw = (Map<String, Object>) res;
                 for (Map.Entry<String, Object> e : raw.entrySet()) {
@@ -420,7 +389,6 @@ public class Market_Watch {
                 }
             }
         } catch (Exception ignored) {}
-
         // Guarantee all 20 standard columns exist with sensible defaults
         if (!data.containsKey("Symbol")) data.put("Symbol", cleanSym.isEmpty() ? "-" : cleanSym);
         for (String col : MARKET_WATCH_COLUMNS) {
@@ -437,7 +405,6 @@ public class Market_Watch {
     public static List<Map<String, String>> getAllUiRows(WebDriver driver, String symbolFilter, int maxRows) {
         List<Map<String, String>> list = new ArrayList<>();
         if (driver == null) return list;
-
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
             Object res = js.executeScript(
@@ -448,24 +415,19 @@ public class Market_Watch {
                 "          document.querySelector('div[id*=\"marketwatch\"] table') || " +
                 "          document.querySelector('table[id*=\"marketwatch\"]');" +
                 "if (!tbl) return [];" +
-
                 "var headers = [];" +
                 "var ths = tbl.querySelectorAll('thead th, tr:first-child th');" +
                 "for (var h = 0; h < ths.length; h++) headers.push(ths[h].innerText.trim());" +
-
                 "var rows = tbl.querySelectorAll('tbody tr');" +
                 "if (rows.length === 0) rows = tbl.querySelectorAll('tr:not(:first-child)');" +
                 "var out = [];" +
                 "var order = ['Symbol', 'Sector', 'Category', 'LTP', 'CP', 'YCP', 'Vol', 'Chg', '% Chg', 'B.Qty', 'BID', 'ASK', 'A.Qty', 'Trades', 'Turnover', 'Open', 'High', 'Low', 'L.VOL', 'Y.VOL'];" +
-
                 "for (var r = 0; r < rows.length && out.length < max; r++) {" +
                 "    var cells = rows[r].querySelectorAll('td');" +
                 "    if (cells.length === 0) continue;" +
-
                 "    var symCell = rows[r].querySelector('td.mw_table_symbol, td[class*=\"symbol\"]') || cells[0];" +
                 "    var symText = (symCell ? symCell.innerText.trim() : '').toUpperCase();" +
                 "    if (target.length > 0 && symText.indexOf(target) === -1) continue;" +
-
                 "    var rowObj = {};" +
                 "    for (var c = 0; c < cells.length; c++) {" +
                 "        var hdr = (c < headers.length && headers[c]) ? headers[c] : ('col_' + c);" +
@@ -482,7 +444,6 @@ public class Market_Watch {
                 symbolFilter != null ? symbolFilter.trim().toUpperCase() : "",
                 maxRows > 0 ? maxRows : 100
             );
-
             if (res instanceof List) {
                 List<Map<String, Object>> rawList = (List<Map<String, Object>>) res;
                 for (Map<String, Object> r : rawList) {
@@ -494,7 +455,6 @@ public class Market_Watch {
                 }
             }
         } catch (Exception ignored) {}
-
         return list;
     }
 
@@ -539,7 +499,6 @@ public class Market_Watch {
         System.out.printf("| %-12s | %-10s | %-8s | %-8s | %-8s | %-8s | %-12s | %-8s | %-8s | %-8s | %-10s | %-10s | %-8s | %-8s | %-12s | %-8s | %-8s | %-8s | %-8s | %-12s |%n",
                 "Symbol", "Sector", "Category", "LTP", "CP", "YCP", "Vol", "Chg", "% Chg", "B.Qty", "BID", "ASK", "A.Qty", "Trades", "Turnover", "Open", "High", "Low", "L.VOL", "Y.VOL");
         System.out.println("+==============+============+==========+==========+==========+==========+==============+==========+==========+==========+============+============+==========+==========+==============+==========+==========+==========+==========+==============+");
-
         if (rows == null || rows.isEmpty()) {
             System.out.printf("| %-248s |%n", "No Market Watch row data rendered in DOM.");
         } else {
@@ -608,7 +567,6 @@ public class Market_Watch {
         }
         return "";
     }
-
     // Standalone launcher for Eclipse & command-line execution
     public static void main(String[] args) {
         WebDriver driver = OMSwebmain.createDriver();

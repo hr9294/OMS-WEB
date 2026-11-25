@@ -58,7 +58,6 @@ import org.openqa.selenium.support.ui.WebDriverWait;
  *     - Non-interactive automated execution (isCi mode)
  */
 public class RMS {
-
     public static final boolean isCi = "true".equalsIgnoreCase(System.getenv("CI"))
             || "true".equalsIgnoreCase(System.getenv("HEADLESS"))
             || "true".equalsIgnoreCase(System.getenv("DOCKER_MODE"))
@@ -75,10 +74,8 @@ public class RMS {
         NONE("None", "Netting Disabled across all exchanges"),
         INDIVIDUAL_EXCHANGE("Individual Exchange", "Netting within same Exchange (DSE / CSE)"),
         CROSS_EXCHANGE("Cross Exchange", "Netting across Exchanges (DSE & CSE)");
-
         private final String displayName;
         private final String description;
-
         NettingMode(String displayName, String description) {
             this.displayName = displayName;
             this.description = description;
@@ -103,10 +100,8 @@ public class RMS {
         ALLOWED("Allowed", true),
         BLOCKED("Blocked / Disallowed", false),
         RESTRICTED("Restricted Margin", false);
-
         private final String label;
         private final boolean allowed;
-
         ClientRiskStatus(String label, boolean allowed) {
             this.label = label;
             this.allowed = allowed;
@@ -125,11 +120,9 @@ public class RMS {
         public boolean isDseDayNettingEnabled = true;
         public boolean isCseDayNettingEnabled = true;
         public String timestamp = "";
-
         public RMSApplicationSettings() {
             this.timestamp = java.time.LocalDateTime.now().toString();
         }
-
         @Override
         public String toString() {
             return String.format(
@@ -147,7 +140,6 @@ public class RMS {
         public String ticker;
         public String status;
         public boolean isNettingEligible;
-
         public ApplicableSymbolRecord(String exchange, String ticker, String status, boolean isNettingEligible) {
             this.exchange = exchange;
             this.ticker = ticker;
@@ -165,7 +157,6 @@ public class RMS {
         public String datetime;
         public String status;
         public boolean isAllowed;
-
         public ClientRmsRecord(String no, String clientCode, String datetime, String status, boolean isAllowed) {
             this.no = no;
             this.clientCode = clientCode;
@@ -186,7 +177,6 @@ public class RMS {
         public final boolean hasOverlap;
         public final boolean valid;
         public final String reason;
-
         public ClientExclusivityResult(String primaryClient, boolean primaryAllowed,
                                        List<String> otherClients, boolean hasOverlap,
                                        boolean valid, String reason) {
@@ -199,7 +189,6 @@ public class RMS {
             this.valid = valid;
             this.reason = reason != null ? reason : "";
         }
-
         @Override
         public String toString() {
             return String.format(
@@ -218,7 +207,6 @@ public class RMS {
         public String restrictionType;
         public boolean isBlocked;
         public String statusLabel;
-
         public BoardRestrictionRecord(String exchange, String boardTag, String restrictionType, boolean isBlocked, String statusLabel) {
             this.exchange = exchange;
             this.boardTag = boardTag;
@@ -240,22 +228,16 @@ public class RMS {
         public int quantity;
         public double price;
         public double orderValue;
-
         public boolean symbolApplicable = true;
         public String symbolReason = "Symbol is eligible in qRMS Applicable Symbols.";
-
         public boolean clientAllowed = true;
         public String clientReason = "Client is listed on Allowed Clients RMS.";
-
         public boolean boardAllowed = true;
         public String boardReason = "Board is authorized for trading.";
-
         public boolean limitApproved = true;
         public String limitReason = "Order value is within allocated buying power.";
-
         public boolean overallApproved = true;
         public String verdict = "APPROVED";
-
         public PreTradeRmsAuditReport(String exchange, String symbol, String clientCode, String board,
                                       String orderSide, int quantity, double price) {
             this.exchange = exchange;
@@ -321,7 +303,6 @@ public class RMS {
         public boolean nettingVerified;
         public boolean verificationPassed;
         public String summary = "";
-
         public RmsTradeVerificationResult(PreTradeRmsAuditReport preTradeAudit) {
             this.preTradeAudit = preTradeAudit;
             if (preTradeAudit != null) {
@@ -371,7 +352,6 @@ public class RMS {
         try {
             System.out.println("[RMS] Navigating to qRMS Administration portal...");
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             // 1. Try DOM direct link
             Boolean clicked = (Boolean) js.executeScript(
                 "var links = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span'));\n" +
@@ -385,20 +365,16 @@ public class RMS {
                 "}\n" +
                 "return false;"
             );
-
             if (!Boolean.TRUE.equals(clicked)) {
                 // Direct URL fallback
                 driver.get("https://devoms.quantbd.com/rms");
             }
-
             Thread.sleep(800);
             dismissOverlays(driver);
-
             boolean onRms = Boolean.TRUE.equals(js.executeScript(
                 "return window.location.href.indexOf('rms') !== -1 || " +
                 "       document.querySelector('#rms, [id*=\"rms\"], .rms-container, [data-tab*=\"rms\"]') !== null;"
             ));
-
             System.out.printf("[RMS] Navigation to qRMS Portal: %s%n", onRms ? "CONFIRMED" : "ACTIVE IN CONTEXT");
             return true;
         } catch (Exception e) {
@@ -415,7 +391,6 @@ public class RMS {
         try {
             System.out.println("[RMS SETTINGS] Navigating to Settings -> Application Settings...");
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             // 1. Click 'Settings' tab
             js.executeScript(
                 "var links = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
@@ -424,7 +399,6 @@ public class RMS {
                 "return false;"
             );
             Thread.sleep(600);
-
             // 2. Click 'Application Settings' subtab
             js.executeScript(
                 "var subTabs = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
@@ -433,7 +407,6 @@ public class RMS {
                 "return false;"
             );
             Thread.sleep(600);
-
             // 3. Search 'nett' to reveal netting settings
             js.executeScript(
                 "var inps = Array.from(document.querySelectorAll('input[type=\"search\"], input[placeholder*=\"search\" i], input.form-control, .search-box input'));\n" +
@@ -462,7 +435,6 @@ public class RMS {
         try {
             System.out.println("[RMS CLIENTS] Navigating to Netting -> Clients RMS...");
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             // 1. Ensure Netting top tab is clicked
             js.executeScript(
                 "var tabs = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
@@ -470,7 +442,6 @@ public class RMS {
                 "if (nt) { if (window.jQuery) window.jQuery(nt).trigger('click'); nt.click(); }\n"
             );
             Thread.sleep(500);
-
             // 2. Click 'Clients RMS'
             js.executeScript(
                 "var subTabs = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
@@ -495,7 +466,6 @@ public class RMS {
         try {
             System.out.println("[RMS APPLICABLE SYMBOLS] Navigating to Netting -> Applicable Symbol...");
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             // 1. Ensure Netting top-level tab is clicked
             js.executeScript(
                 "var tabs = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
@@ -503,7 +473,6 @@ public class RMS {
                 "if (nt) { if (window.jQuery) window.jQuery(nt).trigger('click'); nt.click(); }\n"
             );
             Thread.sleep(500);
-
             // 2. Click 'Applicable Symbol'
             js.executeScript(
                 "var subTabs = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
@@ -528,7 +497,6 @@ public class RMS {
         try {
             System.out.println("[RMS UNAUTHORIZED BOARDS] Navigating to Netting -> Unauthorized Boards/Market...");
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             // 1. Ensure Netting top-level tab is clicked
             js.executeScript(
                 "var tabs = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
@@ -536,7 +504,6 @@ public class RMS {
                 "if (nt) { if (window.jQuery) window.jQuery(nt).trigger('click'); nt.click(); }\n"
             );
             Thread.sleep(500);
-
             // 2. Click 'Unauthorized Boards/Market'
             js.executeScript(
                 "var subTabs = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
@@ -562,7 +529,6 @@ public class RMS {
         try {
             System.out.println("[RMS] Returning to Trade Portal...");
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             js.executeScript(
                 "var l = document.querySelector('a[data-link=\"trade\"], a[href=\"/trade\"], a[href*=\"trade\"]');\n" +
                 "if (l) { if (window.jQuery) window.jQuery(l).trigger('click'); l.click(); return true; }\n" +
@@ -618,7 +584,6 @@ public class RMS {
                 "    }\n" +
                 "}\n" +
                 "return out;\n";
-
             Map<String, Object> res = (Map<String, Object>) js.executeScript(script);
             if (res != null) {
                 if (res.containsKey("DAY_NETTING_SETTINGS")) {
@@ -666,16 +631,13 @@ public class RMS {
         try {
             navigateToApplicationSettings(driver);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             String modeStr = (mode == NettingMode.NONE) ? "NONE" :
                              (mode == NettingMode.CROSS_EXCHANGE) ? "CROSS EXCHANGE" : "INDIVIDUAL EXCHANGE";
-
             System.out.printf("%n>>> [qRMS APPLICATION SETTINGS] Applying 4 Parameters...%n");
             System.out.printf("    * DAY_NETTING_SETTINGS       : %s%n", modeStr);
             System.out.printf("    * ALLOW_Z_AND_SPOT_NETTING   : %b%n", allowZSpot);
             System.out.printf("    * IS_DSE_DAY_NETTING_ENABLED : %b%n", dseEnabled);
             System.out.printf("    * IS_CSE_DAY_NETTING_ENABLED : %b%n", cseEnabled);
-
             String script =
                 "var targetMode = arguments[0].toUpperCase();\n" +
                 "var allowZSpot = arguments[1];\n" +
@@ -757,11 +719,9 @@ public class RMS {
                 "    }\n" +
                 "}\n" +
                 "return out;\n";
-
             Map<String, Object> domRes = (Map<String, Object>) js.executeScript(script, modeStr, allowZSpot, dseEnabled, cseEnabled);
             if (domRes != null) status.putAll(domRes);
             Thread.sleep(400);
-
             // Click 'Save Changes'
             Boolean saved = (Boolean) js.executeScript(
                 "var btns = Array.from(document.querySelectorAll('button, a.btn, input[type=\"submit\"]'));\n" +
@@ -769,14 +729,11 @@ public class RMS {
                 "if (sb) { if (window.jQuery) window.jQuery(sb).trigger('click'); sb.click(); return true; }\n" +
                 "return false;"
             );
-
             if (Boolean.TRUE.equals(saved)) {
                 System.out.println("  ✓ [SAVE CHANGES] Clicked successfully.");
             }
-
             submitPasswordAuthentication(driver, password);
             Thread.sleep(1200);
-
             displayApplicationSettingsTable(driver);
             return status;
         } catch (Exception e) {
@@ -810,7 +767,6 @@ public class RMS {
                 "return false;",
                 effectivePwd
             );
-
             if (Boolean.TRUE.equals(promptFound)) {
                 System.out.printf("[RMS: AUTH] Security password authenticated (%s).%n", effectivePwd.replaceAll(".", "*"));
                 Thread.sleep(600);
@@ -824,7 +780,6 @@ public class RMS {
     // =========================================================================
     // 3. CLIENTS RMS (CLIENT NETTING & RISK ELIGIBILITY)
     // =========================================================================
-
     private static final String CLIENTS_RMS_ROOT_JS =
         "var root = document.querySelector('#clients_rms, .tab-pane.active, main, body') || document.body;\n";
 
@@ -840,7 +795,6 @@ public class RMS {
             String target = allowed ? "allowed" : "disallowed";
             System.out.printf("[RMS CLIENTS] Switching list view to: %s...%n", target.toUpperCase());
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             Boolean switched = (Boolean) js.executeScript(
                 CLIENTS_RMS_ROOT_JS +
                 "var target = arguments[0];\n" +
@@ -890,7 +844,6 @@ public class RMS {
                 "    }\n" +
                 "}\n" +
                 "return res;\n";
-
             Object rawObj = js.executeScript(script);
             if (rawObj instanceof List<?> rawList) {
                 for (Object item : rawList) {
@@ -945,7 +898,6 @@ public class RMS {
             switchClientsList(driver, allowed);
             System.out.printf("[RMS CLIENTS] Adding Client '%s' to %s list...%n", cln, allowed ? "ALLOWED" : "DISALLOWED");
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             // 1. Click '+ Add'
             js.executeScript(
                 CLIENTS_RMS_ROOT_JS +
@@ -954,7 +906,6 @@ public class RMS {
                 "if (addBtn) { if (window.jQuery) window.jQuery(addBtn).trigger('click'); addBtn.click(); }\n"
             );
             Thread.sleep(500);
-
             // 2. Type client code
             js.executeScript(
                 "var cln = arguments[0];\n" +
@@ -973,9 +924,7 @@ public class RMS {
                 cln
             );
             Thread.sleep(600);
-
             submitPasswordAuthentication(driver, password);
-
             // Sync window registry
             js.executeScript(
                 "var cln = arguments[0]; var allowed = arguments[1];\n" +
@@ -983,7 +932,6 @@ public class RMS {
                 "window.RMS_CLIENT_NETTING[cln] = { status: allowed ? 'ALLOWED' : 'BLOCKED', allowed: allowed };\n",
                 cln, allowed
             );
-
             System.out.printf("  ✓ [RMS CLIENTS] Client '%s' successfully configured in %s list.%n", cln, allowed ? "ALLOWED" : "DISALLOWED");
             displayClientsRmsTable(driver, allowed);
             return true;
@@ -1004,7 +952,6 @@ public class RMS {
             navigateToClientsRmsTab(driver);
             switchClientsList(driver, allowed);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             Boolean deleted = (Boolean) js.executeScript(
                 CLIENTS_RMS_ROOT_JS +
                 "var cln = arguments[0];\n" +
@@ -1030,7 +977,6 @@ public class RMS {
                 "return false;",
                 cln
             );
-
             if (Boolean.TRUE.equals(deleted)) {
                 Thread.sleep(500);
                 js.executeScript(
@@ -1049,7 +995,6 @@ public class RMS {
             } else {
                 System.out.printf("  -> [RMS CLIENTS] Client '%s' not present in %s list (idempotent no-op).%n", cln, allowed ? "ALLOWED" : "DISALLOWED");
             }
-
             js.executeScript(
                 "var cln = arguments[0]; var removedFromAllowed = arguments[1];\n" +
                 "if (window.RMS_CLIENT_NETTING && window.RMS_CLIENT_NETTING[cln] && window.RMS_CLIENT_NETTING[cln].allowed === removedFromAllowed) {\n" +
@@ -1090,7 +1035,6 @@ public class RMS {
         if (!removedOpposite) {
             System.out.printf("  [RMS CLIENTS: WARN] Opposite list cleanup failed for '%s'.%n", cln);
         }
-
         boolean alreadyPresent = isClientPresentInList(driver, cln, allowed);
         boolean added = alreadyPresent || addClientToRiskList(driver, cln, allowed, password);
         try {
@@ -1101,7 +1045,6 @@ public class RMS {
                 cln, allowed
             );
         } catch (Exception ignored) {}
-
         boolean presentTarget = isClientPresentInList(driver, cln, allowed);
         boolean absentOpposite = !isClientPresentInList(driver, cln, !allowed);
         boolean verified = added && presentTarget && absentOpposite;
@@ -1117,7 +1060,6 @@ public class RMS {
         if (clientCode == null || clientCode.trim().isEmpty()) return true;
         if (driver == null) return isClientNettingAllowed(null, clientCode);
         String cln = clientCode.trim().toUpperCase();
-
         boolean inDisallowed = isClientPresentInList(driver, cln, false);
         boolean inAllowed = isClientPresentInList(driver, cln, true);
         boolean resolvedAllowed;
@@ -1131,7 +1073,6 @@ public class RMS {
         } else {
             return isClientNettingAllowed(driver, cln);
         }
-
         try {
             ((JavascriptExecutor) driver).executeScript(
                 "var cln = arguments[0]; var allowed = arguments[1];\n" +
@@ -1224,7 +1165,6 @@ public class RMS {
         ClientExclusivityResult eval = evaluateClientExclusivity(primaryClient, primaryAllowed, otherClients);
         assertClientExclusivityRule(eval);
         if (driver == null) return false;
-
         boolean ok = setClientNettingState(driver, eval.primaryClient, eval.primaryAllowed, password);
         for (String other : eval.otherClients) {
             ok &= setClientNettingState(driver, other, !eval.primaryAllowed, password);
@@ -1273,7 +1213,6 @@ public class RMS {
                 "    }\n" +
                 "}\n" +
                 "return res;\n";
-
             Object rawObj = js.executeScript(script, exchange);
             if (rawObj instanceof List<?> rawList) {
                 for (Object item : rawList) {
@@ -1319,7 +1258,6 @@ public class RMS {
             navigateToApplicableSymbolTab(driver);
             System.out.printf("[RMS APPLICABLE SYMBOLS] Adding Symbol '%s' for Exchange '%s'...%n", sym, ex);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             // 1. Click '+ Add Symbol'
             js.executeScript(
                 "var btns = Array.from(document.querySelectorAll('button, a.btn, a, .btn'));\n" +
@@ -1328,7 +1266,6 @@ public class RMS {
                 "return false;"
             );
             Thread.sleep(500);
-
             // 2. Select exchange, enter symbol, click confirm
             js.executeScript(
                 "var ex = arguments[0];\n" +
@@ -1360,7 +1297,6 @@ public class RMS {
                 ex, sym
             );
             Thread.sleep(800);
-
             // Maintain window in-memory registry
             js.executeScript(
                 "var ex = arguments[0]; var sym = arguments[1];\n" +
@@ -1369,7 +1305,6 @@ public class RMS {
                 "window.RMS_NETTING_SYMBOLS[ex][sym] = true;\n",
                 ex, sym
             );
-
             System.out.printf("  ✓ [RMS APPLICABLE SYMBOLS] Symbol '%s' added successfully for %s.%n", sym, ex);
             return true;
         } catch (Exception e) {
@@ -1389,7 +1324,6 @@ public class RMS {
             navigateToApplicableSymbolTab(driver);
             System.out.printf("[RMS APPLICABLE SYMBOLS] Deleting Symbol '%s' on %s...%n", sym, ex);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             js.executeScript(
                 "var ex = arguments[0];\n" +
                 "var sym = arguments[1];\n" +
@@ -1414,14 +1348,12 @@ public class RMS {
                 ex, sym
             );
             Thread.sleep(600);
-
             // Confirm popup
             js.executeScript(
                 "var cBtns = Array.from(document.querySelectorAll('.modal button, .swal2-confirm, .btn-primary, .btn-danger'));\n" +
                 "var yes = cBtns.find(function(b) { var t = (b.innerText||'').toLowerCase(); return t === 'yes' || t === 'confirm' || t === 'ok'; });\n" +
                 "if (yes) yes.click();\n"
             );
-
             // Remove from window registry
             js.executeScript(
                 "var ex = arguments[0]; var sym = arguments[1];\n" +
@@ -1430,7 +1362,6 @@ public class RMS {
                 "}\n",
                 ex, sym
             );
-
             System.out.printf("  ✓ [RMS APPLICABLE SYMBOLS] Symbol '%s' removed from %s.%n", sym, ex);
             return true;
         } catch (Exception e) {
@@ -1476,7 +1407,6 @@ public class RMS {
     // =========================================================================
     // 5. UNAUTHORIZED BOARDS & MARKET RESTRICTIONS
     // =========================================================================
-
     private static final String FIND_INNERMOST_CARD_JS =
         "function findCard(kw, otherKw) {\n" +
         "    var all = Array.from(document.querySelectorAll('.card, .panel, section, form, div'));\n" +
@@ -1529,7 +1459,6 @@ public class RMS {
                 "    spotBlocking: sInfo.blocked !== null ? sInfo.blocked : false,\n" +
                 "    spotExchange: sInfo.exchange\n" +
                 "};\n";
-
             Object rawObj = js.executeScript(script);
             if (rawObj instanceof Map<?, ?> res) {
                 boolean bBlock = Boolean.parseBoolean(String.valueOf(res.containsKey("boardBlocking") ? res.get("boardBlocking") : "true"));
@@ -1537,7 +1466,6 @@ public class RMS {
                 String bEx = res.get("boardExchange") != null ? String.valueOf(res.get("boardExchange")) : "CSE";
                 String bTag = res.get("boardTag") != null ? String.valueOf(res.get("boardTag")) : "BLOCK";
                 String sEx = res.get("spotExchange") != null ? String.valueOf(res.get("spotExchange")) : "CSE";
-
                 list.add(new BoardRestrictionRecord(bEx, bTag, "Board Wise Blocking", bBlock, bBlock ? "BLOCKED (ON)" : "UNBLOCKED (OFF)"));
                 list.add(new BoardRestrictionRecord(sEx, "SPOT", "Spot Market Blocking", sBlock, sBlock ? "BLOCKED (ON)" : "UNBLOCKED (OFF)"));
             }
@@ -1553,7 +1481,6 @@ public class RMS {
     public static boolean isBoardBlocked(WebDriver driver, String exchange, String board) {
         String ex = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "DSE";
         String brd = (board != null && !board.trim().isEmpty()) ? board.trim().toUpperCase() : "PUBLIC";
-
         if (driver != null) {
             try {
                 Object cached = ((JavascriptExecutor) driver).executeScript(
@@ -1571,7 +1498,6 @@ public class RMS {
                     return (Boolean) cached;
                 }
             } catch (Exception ignored) {}
-
             List<BoardRestrictionRecord> records = fetchUnauthorizedBoardsSettings(driver);
             for (BoardRestrictionRecord r : records) {
                 if (r != null && ex.equalsIgnoreCase(r.exchange) && brd.equalsIgnoreCase(r.boardTag)) {
@@ -1622,7 +1548,6 @@ public class RMS {
             System.out.printf("[RMS UNAUTHORIZED BOARDS] Configuring '%s' for %s -> Board '%s', Blocked: %b...%n",
                     kw, ex, tag, block);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             js.executeScript(
                 FIND_INNERMOST_CARD_JS +
                 "var kw = arguments[0]; var otherKw = arguments[1];\n" +
@@ -1682,7 +1607,6 @@ public class RMS {
                 kw, otherKw, ex, tag, block
             );
             Thread.sleep(400);
-
             submitPasswordAuthentication(driver, password);
             js.executeScript(
                 "var ex = arguments[0]; var tag = arguments[1]; var block = arguments[2];\n" +
@@ -1724,20 +1648,17 @@ public class RMS {
     public static PreTradeRmsAuditReport performPreTradeRmsAudit(
             WebDriver driver, String exchange, String symbol, String clientCode, String board,
             double price, int quantity, String side) {
-
         String ex = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "DSE";
         String sym = (symbol != null && !symbol.trim().isEmpty()) ? symbol.trim().toUpperCase() : "GP";
         String cln = (clientCode != null && !clientCode.trim().isEmpty()) ? clientCode.trim() : "23986";
         String brd = (board != null && !board.trim().isEmpty()) ? board.trim().toUpperCase() : "PUBLIC";
         String ordSide = (side != null && !side.trim().isEmpty()) ? side.trim().toUpperCase() : "BUY";
         String baseSym = cleanBaseSymbol(sym);
-
         double effectivePrice = price;
         if (driver != null && effectivePrice <= 0.0) {
             effectivePrice = resolveConnectedMarketPrice(driver, baseSym, ex, 0.0);
         }
         PreTradeRmsAuditReport report = new PreTradeRmsAuditReport(ex, sym, cln, brd, ordSide, quantity, effectivePrice);
-
         // 1. Validate qRMS Application Settings & Exchange Netting
         RMSApplicationSettings appSettings = fetchApplicationSettings(driver);
         if ("NONE".equalsIgnoreCase(appSettings.dayNettingSettings)) {
@@ -1750,7 +1671,6 @@ public class RMS {
             report.symbolApplicable = false;
             report.symbolReason = "DSE Day Netting is DISABLED in qRMS (IS_DSE_DAY_NETTING_ENABLED = false)";
         }
-
         // 2. Validate Spot / Z Group Restrictions
         if (("SPOT".equalsIgnoreCase(brd) || baseSym.startsWith("Z") || sym.endsWith(".SPOT")) && !appSettings.allowZAndSpotNetting) {
             if ("BUY".equalsIgnoreCase(ordSide)) {
@@ -1761,25 +1681,21 @@ public class RMS {
             report.symbolApplicable = false;
             report.symbolReason = "Symbol '" + baseSym + "' is NOT active in qRMS Applicable Symbols for " + ex + ".";
         }
-
         // 3. Validate Clients RMS Eligibility
         boolean clientAllowed = isClientNettingAllowed(driver, cln);
         if (!clientAllowed) {
             report.clientAllowed = false;
             report.clientReason = "Client " + cln + " is listed in Clients RMS DISALLOWED / BLOCKED list.";
         }
-
         // 4. Validate Trading Board
         if (isBoardBlocked(driver, ex, brd)) {
             report.boardAllowed = false;
             report.boardReason = String.format("%s %s board is prohibited under Unauthorized Boards & Market restrictions.", ex, brd);
         }
-
         // 5. Validate Account Limits / Cash (BUY) & Saleable Holdings (SELL) via connected modules
         if (driver != null) {
             evaluateConnectedLimitsAndHoldings(driver, report, ex, baseSym, cln, brd, ordSide, quantity);
         }
-
         // 6. Check Overall Approval
         if (!report.symbolApplicable || !report.clientAllowed || !report.boardAllowed || !report.limitApproved) {
             report.overallApproved = false;
@@ -1788,7 +1704,6 @@ public class RMS {
             report.overallApproved = true;
             report.verdict = "APPROVED FOR PLACEMENT";
         }
-
         report.printAuditSummary();
         return report;
     }
@@ -1806,7 +1721,6 @@ public class RMS {
         double resolved = 0.0;
         double lower = 0.0;
         double upper = 0.0;
-
         try {
             OMSweb_DBMarketData.PublicSymbolLtp quote = OMSweb_DBMarketData.getCachedSymbol(sym, ex);
             if (quote != null) {
@@ -1815,7 +1729,6 @@ public class RMS {
                 upper = quote.circuitUp;
             }
         } catch (Exception ignored) {}
-
         try {
             OMSweb_Trade.MarketPriceBand band = OMSweb_Trade.fetchMarketDbPriceBand(sym, ex, driver);
             if (band != null) {
@@ -1824,13 +1737,11 @@ public class RMS {
                 if (upper <= 0.0) upper = (band.sh > 0.0 ? band.sh : band.ch);
             }
         } catch (Exception ignored) {}
-
         if (driver != null && resolved <= 0.0) {
             try {
                 resolved = OMSweb_Trade.fetchPriceLtpOrYcp(driver, new WebDriverWait(driver, Duration.ofSeconds(5)), sym, ex);
             } catch (Exception ignored) {}
         }
-
         if (resolved <= 0.0 && driver != null) {
             try {
                 Map<String, String> depth = Market_Depth.getApiSnapshot(driver, sym, ex);
@@ -1838,7 +1749,6 @@ public class RMS {
                 if (ltp > 0.0) resolved = ltp;
             } catch (Exception ignored) {}
         }
-
         if (resolved <= 0.0) resolved = 270.0;
         return OMSweb_Trade.resolvePriceLimitSafe(resolved, lower, upper, resolved);
     }
@@ -1923,7 +1833,6 @@ public class RMS {
     public static RmsTradeVerificationResult verifyRmsCheckWithTrade(
             WebDriver driver, String exchange, String symbol, String clientCode, String board,
             int quantity, double explicitPrice, String side, boolean executeEvenIfBlocked) {
-
         String ex = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "DSE";
         String sym = (symbol != null && !symbol.trim().isEmpty()) ? symbol.trim().toUpperCase() : "GP";
         String baseSym = cleanBaseSymbol(sym);
@@ -1931,22 +1840,18 @@ public class RMS {
         String brd = (board != null && !board.trim().isEmpty()) ? board.trim().toUpperCase() : "PUBLIC";
         String ordSide = (side != null && !side.trim().isEmpty()) ? side.trim().toUpperCase() : "BUY";
         int qty = quantity > 0 ? quantity : 1;
-
         double resolvedPrice = resolveConnectedMarketPrice(driver, baseSym, ex, explicitPrice);
-
         if (driver != null) {
             returnToTradePortal(driver);
             try { OMSweb_Trade.ensureTradeSettingsRestored(driver); } catch (Exception ignored) {}
             try { Market_Watch.connectWidget(driver, baseSym, ex); } catch (Exception ignored) {}
         }
-
         // Capture pre-trade connected state (Account_Limits, ClientPortfolio/Position via Day_Netting, Order_Terminal, Order_Summary)
         double preCash = fetchConnectedAvailableCash(driver, cln, ex);
         Map<String, String> preLimits = Collections.emptyMap();
         Map<String, String> prePortfolio = Collections.emptyMap();
         Map<String, String> preTerminal = Collections.emptyMap();
         Day_Netting.SaleableProbeSnapshot preSaleable = null;
-
         if (driver != null) {
             String instrument = sym.contains(".") ? sym : (baseSym + "." + brd);
             try { OMSweb_Trade.propagateClientCodeToAllWidgets(driver, cln, instrument); } catch (Exception ignored) {}
@@ -1957,7 +1862,6 @@ public class RMS {
             try { Position.getUiSnapshot(driver, cln, baseSym, ex); } catch (Exception ignored) {}
             try { preSaleable = Day_Netting.captureSaleableBaseline(driver, "RMS_TRADE_PRE", cln, baseSym); } catch (Exception ignored) {}
         }
-
         // Run Pre-Trade qRMS Audit (checks settings, symbols, clients, boards, and connected limits)
         PreTradeRmsAuditReport audit = performPreTradeRmsAudit(driver, ex, sym, cln, brd, resolvedPrice, qty, ordSide);
         RmsTradeVerificationResult result = new RmsTradeVerificationResult(audit);
@@ -1966,7 +1870,6 @@ public class RMS {
         result.preAvailableCash = preCash;
         result.preSaleable = preSaleable;
         result.preOrderTerminal = preTerminal;
-
         // Offline / Dry-driver path
         if (driver == null) {
             result.orderStatus = audit.overallApproved ? "READY_TO_TRADE (OFFLINE)" : "GATED_BEFORE_TRADE (OFFLINE)";
@@ -1977,7 +1880,6 @@ public class RMS {
             result.printConnectedReport();
             return result;
         }
-
         if (!audit.overallApproved && !executeEvenIfBlocked) {
             result.orderStatus = "BLOCKED_BY_RMS_AUDIT";
             result.verificationPassed = true;
@@ -1985,21 +1887,17 @@ public class RMS {
             result.printConnectedReport();
             return result;
         }
-
         // Ensure Trade Portal active and place live trade via OMSweb_Trade
         returnToTradePortal(driver);
         try { OMSweb_Trade.ensureTradeSettingsRestored(driver); } catch (Exception ignored) {}
-
         String instrument = sym.contains(".") ? sym : (baseSym + "." + brd);
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
         result.orderAttempted = true;
-
         try {
             OMSweb_Trade.submitSingleOrderAttempt(driver, wait, ordSide, cln, instrument, qty, resolvedPrice, ex);
         } catch (Exception e) {
             result.rejectionReason = "Order submit exception: " + e.getMessage();
         }
-
         result.orderAcceptedInTerminal = OMSweb_Trade.hasLatestOrderInTerminal(driver, cln, baseSym);
         try {
             OMSweb_Trade.RejectionOrderPriceInfo rejInfo = OMSweb_Trade.extractRejectionOrderPriceInfo(driver, cln, baseSym);
@@ -2009,7 +1907,6 @@ public class RMS {
             }
             OMSweb_Trade.dismissRejectionAlert(driver);
         } catch (Exception ignored) {}
-
         // Post-trade connected audits across Order_Terminal, Account_Limits, ClientPortfolio, Position, Day_Netting
         try {
             result.postOrderTerminal = Order_Terminal.getUiSnapshot(driver, baseSym, cln);
@@ -2020,7 +1917,6 @@ public class RMS {
                 result.terminalVerified = true;
             }
         } catch (Exception ignored) {}
-
         try {
             result.postAvailableCash = fetchConnectedAvailableCash(driver, cln, ex);
             Map<String, String> postLimits = Account_Limits.getApiSnapshot(driver, cln, ex);
@@ -2029,7 +1925,6 @@ public class RMS {
                 result.limitsVerified = true;
             }
         } catch (Exception ignored) {}
-
         try {
             if (preSaleable != null) {
                 result.saleableDelta = Day_Netting.captureSaleableDelta(driver, preSaleable, "RMS_TRADE_POST");
@@ -2046,7 +1941,6 @@ public class RMS {
             Day_Netting.explainIneligibilityReason(elig);
             result.nettingVerified = true;
         } catch (Exception ignored) {}
-
         result.verificationPassed = audit.overallApproved
                 ? result.orderAttempted && result.orderAcceptedInTerminal
                 : (!result.orderAcceptedInTerminal);
@@ -2069,13 +1963,11 @@ public class RMS {
         System.out.println("|                 UFTFAST OMS - RISK MANAGEMENT SYSTEM (qRMS)                 |");
         System.out.println("|     Real-Time Risk Parameters, Netting Controls, Scrip Eligibility & Trade   |");
         System.out.println("+=============================================================================+");
-
         if (isCi) {
             System.out.println("[AUTOMATED CI MODE] Executing Automated Comprehensive RMS Health Check + Connected Trade...");
             runAutomatedRmsHealthCheck(driver);
             return;
         }
-
         boolean inMenu = true;
         while (inMenu) {
             System.out.println("\nSelect RMS Operation:");
@@ -2089,9 +1981,7 @@ public class RMS {
             System.out.println("  8. Run Connected Day Netting & Stock Upload 9-Scenario Matrix (Day_Netting)");
             System.out.println("  0. Return to Main Menu");
             System.out.print("Enter Choice (1-8, 0=Return, default=7 in 4s): ");
-
             String choice = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "7", 4);
-
             switch (choice) {
                 case "1":
                     navigateToRmsPortal(driver);
@@ -2100,7 +1990,6 @@ public class RMS {
                     displayApplicableSymbolsTable(driver, "DSE");
                     displayUnauthorizedBoardsTable(driver);
                     break;
-
                 case "2":
                     System.out.println("\n--- Configure Application Settings ---");
                     System.out.println("Select Netting Mode: 1=NONE, 2=INDIVIDUAL EXCHANGE [Default], 3=CROSS EXCHANGE");
@@ -2108,14 +1997,11 @@ public class RMS {
                     String mChoice = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "2", 4);
                     NettingMode mode = "1".equals(mChoice) ? NettingMode.NONE :
                                        "3".equals(mChoice) ? NettingMode.CROSS_EXCHANGE : NettingMode.INDIVIDUAL_EXCHANGE;
-
                     System.out.print("Allow Z and Spot Netting? (true/false, default=false in 4s): ");
                     String zChoice = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "false", 4);
                     boolean allowZ = "true".equalsIgnoreCase(zChoice);
-
                     configureAllApplicationSettings(driver, mode, true, true, allowZ, "12345");
                     break;
-
                 case "3":
                     System.out.println("\n--- Manage Clients RMS ---");
                     System.out.print("Enter Client Code (default 002 in 4s): ");
@@ -2126,7 +2012,6 @@ public class RMS {
                     boolean isAllowed = !"2".equals(cStat);
                     setClientNettingState(driver, cln, isAllowed, "12345");
                     break;
-
                 case "4":
                     System.out.println("\n--- Manage Applicable Symbols ---");
                     System.out.print("Enter Exchange (DSE [Default] / CSE): ");
@@ -2138,14 +2023,12 @@ public class RMS {
                     addApplicableSymbol(driver, ex, sym);
                     displayApplicableSymbolsTable(driver, ex);
                     break;
-
                 case "5":
                     System.out.println("\n--- Manage Unauthorized Boards ---");
                     System.out.print("Set CSE BLOCK Board Blocking (true [Default] / false): ");
                     String bBlock = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "true", 4);
                     configureBoardWiseBlocking(driver, "CSE", "BLOCK", !"false".equalsIgnoreCase(bBlock), "12345");
                     break;
-
                 case "6":
                     System.out.println("\n--- Pre-Trade Risk Audit & Connected Live Trade Verification ---");
                     System.out.print("Exchange (DSE [Default] / CSE): ");
@@ -2170,11 +2053,9 @@ public class RMS {
                         verifyRmsCheckWithTrade(driver, tEx, tSym, tCln, tBrd, tQty, 0.0, tSide, false);
                     }
                     break;
-
                 case "7":
                     runAutomatedRmsHealthCheck(driver);
                     break;
-
                 case "8":
                     System.out.println("\n--- Connected Day Netting & Stock Upload 9-Scenario Compliance ---");
                     Day_Netting.NettingScenarioConfig netCfg = new Day_Netting.NettingScenarioConfig();
@@ -2182,14 +2063,12 @@ public class RMS {
                     netCfg.stockFilePath = OMSweb_UploadData.resolveDefaultSampleFilePath(OMSweb_UploadData.UploadSubMenu.STOCK_FILE);
                     Day_Netting.runNetting9ScenarioMatrix(driver, netCfg);
                     break;
-
                 case "0":
                 case "exit":
                 case "quit":
                     inMenu = false;
                     returnToTradePortal(driver);
                     break;
-
                 default:
                     System.out.println("[INVALID] Please choose an option between 0 and 8.");
             }
@@ -2203,46 +2082,36 @@ public class RMS {
         System.out.println("\n=============================================================================");
         System.out.println("       [RMS AUDIT] INITIATING FULL AUTOMATED RMS HEALTH & TRADE CHECK        ");
         System.out.println("=============================================================================");
-
         // 1. Navigate to Portal & Settings
         navigateToRmsPortal(driver);
         navigateToApplicationSettings(driver);
         displayApplicationSettingsTable(driver);
-
         // 2. Clients RMS Check
         navigateToClientsRmsTab(driver);
         displayClientsRmsTable(driver, true);
-
         // 3. Applicable Symbols Check
         navigateToApplicableSymbolTab(driver);
         displayApplicableSymbolsTable(driver, "DSE");
-
         // 4. Unauthorized Boards Check
         navigateToUnauthorizedBoardsTab(driver);
         displayUnauthorizedBoardsTable(driver);
-
         // 5. Resolve live price & eligible client via connected OMSweb_DBMarketData / Account_Limits
         double liveRate = resolveConnectedMarketPrice(driver, "GP", "DSE", 0.0);
         String eligibleClient = "23986";
         try {
             eligibleClient = Account_Limits.findClientWithSufficientCashFromDb(liveRate, "23986");
         } catch (Exception ignored) {}
-
         // 6. Connected Pre-Trade & Live Trade Verification on Standard DSE Order
         System.out.printf(">>> Running Scenario 1 (Connected Trade): Standard DSE BUY (GP, Client=%s, Rate=%.2f)...%n",
                 eligibleClient, liveRate);
         verifyRmsCheckWithTrade(driver, "DSE", "GP", eligibleClient, "PUBLIC", 1, liveRate, "BUY", false);
-
         // 7. Negative Rule Checks (CSE Block Board & SPOT Board) — verifies RMS blocks before trade placement
         System.out.println(">>> Running Scenario 2: CSE Block Board Order (Restricted Board Gate)...");
         verifyRmsCheckWithTrade(driver, "CSE", "GP.BLOCK", eligibleClient, "BLOCK", 1, liveRate, "BUY", false);
-
         System.out.println(">>> Running Scenario 3: SPOT Board Purchase without Mature Balance (Gate)...");
         verifyRmsCheckWithTrade(driver, "DSE", "GP.SPOT", eligibleClient, "SPOT", 1, liveRate, "BUY", false);
-
         // 8. Return cleanly to Trade Portal
         returnToTradePortal(driver);
-
         System.out.println("\n=============================================================================");
         System.out.println("  ✓ [RMS AUDIT COMPLETE] Full Risk Management System & Connected Trade Verified ");
         System.out.println("=============================================================================\n");
@@ -2279,39 +2148,33 @@ public class RMS {
         System.out.println("|                RMS PRE-TRADE AUDIT UNIT TEST SUITE                          |");
         System.out.println("+=============================================================================+");
         boolean allPassed = true;
-
         // Scenario 1: Standard DSE order (GP, 23986, PUBLIC, BUY)
         PreTradeRmsAuditReport r1 = performPreTradeRmsAudit(null, "DSE", "GP", "23986", "PUBLIC", 270.50, 10, "BUY");
         boolean p1 = r1.overallApproved && "APPROVED FOR PLACEMENT".equals(r1.verdict);
         System.out.printf("Test 1 [Standard DSE Buy]: Verdict = %s -> %s%n", r1.verdict, p1 ? "PASS" : "FAIL");
         allPassed &= p1;
-
         // Scenario 2: CSE Block board order
         PreTradeRmsAuditReport r2 = performPreTradeRmsAudit(null, "CSE", "GP.BLOCK", "23986", "BLOCK", 270.50, 10, "BUY");
         boolean p2 = !r2.overallApproved && !r2.boardAllowed && "REJECTED BY RMS".equals(r2.verdict);
         System.out.printf("Test 2 [CSE Block Board Restriction]: Verdict = %s -> %s%n", r2.verdict, p2 ? "PASS" : "FAIL");
         allPassed &= p2;
-
         // Scenario 3: SPOT board order without mature balance
         PreTradeRmsAuditReport r3 = performPreTradeRmsAudit(null, "DSE", "GP.SPOT", "23986", "SPOT", 270.50, 10, "BUY");
         boolean p3 = !r3.overallApproved && !r3.symbolApplicable && "REJECTED BY RMS".equals(r3.verdict);
         System.out.printf("Test 3 [Spot Without Mature Balance]: Verdict = %s -> %s%n", r3.verdict, p3 ? "PASS" : "FAIL");
         allPassed &= p3;
-
         // Scenario 4: Client exclusivity (Client 1 Allowed vs Others Disallowed)
         ClientExclusivityResult ex1 = evaluateClientExclusivity("002", true, Arrays.asList("23986", "34601"));
         assertClientExclusivityRule(ex1);
         boolean p4 = ex1.valid && !ex1.hasOverlap && "002".equals(ex1.primaryClient) && ex1.otherClients.size() == 2;
         System.out.printf("Test 4 [Client Exclusivity Allowed vs Others]: %s -> %s%n", ex1.reason, p4 ? "PASS" : "FAIL");
         allPassed &= p4;
-
         // Scenario 5: Client exclusivity (Client 1 Disallowed vs Others Allowed)
         ClientExclusivityResult ex2 = evaluateClientExclusivity("002", false, Arrays.asList("23986"));
         assertClientExclusivityRule(ex2);
         boolean p5 = ex2.valid && !ex2.hasOverlap && !ex2.primaryAllowed && ex2.otherClients.contains("23986");
         System.out.printf("Test 5 [Client Exclusivity Disallowed vs Others]: %s -> %s%n", ex2.reason, p5 ? "PASS" : "FAIL");
         allPassed &= p5;
-
         // Scenario 6: Negative overlap check (same client in both sets must fail & throw)
         ClientExclusivityResult exOverlap = evaluateClientExclusivity("23986", true, Arrays.asList("34601", " 23986 "));
         boolean threwOnOverlap = false;
@@ -2323,12 +2186,10 @@ public class RMS {
         boolean p6 = !exOverlap.valid && exOverlap.hasOverlap && threwOnOverlap;
         System.out.printf("Test 6 [Negative Overlap Detection]: overlap=%b, threw=%b -> %s%n", exOverlap.hasOverlap, threwOnOverlap, p6 ? "PASS" : "FAIL");
         allPassed &= p6;
-
         // Scenario 7: Offline board block defaults
         boolean p7 = isBoardBlocked(null, "CSE", "BLOCK") && !isBoardBlocked(null, "DSE", "PUBLIC");
         System.out.printf("Test 7 [Board Blocking Defaults]: CSE.BLOCK=true, DSE.PUBLIC=false -> %s%n", p7 ? "PASS" : "FAIL");
         allPassed &= p7;
-
         // Scenario 8: Connected RMS + Trade Gate Flow (approved vs blocked pre-trade)
         RmsTradeVerificationResult tOk = verifyRmsCheckWithTrade(null, "DSE", "GP", "002", "PUBLIC", 1, 270.50, "BUY", false);
         RmsTradeVerificationResult tBlk = verifyRmsCheckWithTrade(null, "CSE", "GP.BLOCK", "002", "BLOCK", 1, 270.50, "BUY", false);
@@ -2337,7 +2198,6 @@ public class RMS {
         System.out.printf("Test 8 [Connected RMS + Trade Gate]: Approved=%b, BlockedGated=%b -> %s%n",
                 tOk.preTradeAudit.overallApproved, !tBlk.orderAttempted, p8 ? "PASS" : "FAIL");
         allPassed &= p8;
-
         System.out.println("+-----------------------------------------------------------------------------+");
         System.out.printf("| ALL PRE-TRADE RMS AUDIT TESTS: %-44s |%n", allPassed ? "ALL PASSED (8/8)" : "SOME FAILED");
         System.out.println("+-----------------------------------------------------------------------------+\n");

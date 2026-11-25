@@ -15,84 +15,70 @@ import java.util.function.BooleanSupplier;
  * ===============================================================================
  */
 public class OMSweb_TestRunner {
-
     public static void main(String[] args) {
         long startTime = System.currentTimeMillis();
         String mode = (args != null && args.length > 0 && args[0] != null)
                 ? args[0].trim().toLowerCase(Locale.ROOT)
                 : "all";
-
         System.out.println("==========================================================================================");
         System.out.println("                      OMS-WEB UNIFIED AUTOMATED TEST SUITE RUNNER                         ");
         System.out.println("==========================================================================================");
         System.out.printf("Execution Environment : Eclipse IDE / Java 21 | Filter Mode: %s%n", mode.toUpperCase(Locale.ROOT));
         System.out.println("Excluded from Merge   : RMS.java (Independent qRMS Engine)");
         System.out.println("------------------------------------------------------------------------------------------\n");
-
         boolean runAll = "all".equals(mode);
         boolean runLimits = runAll || "limits".equals(mode) || "core".equals(mode);
         boolean runWidget = runAll || "6widget".equals(mode) || "widget".equals(mode);
         boolean runQa = runAll || "qa".equals(mode) || "limits".equals(mode) || "core".equals(mode);
         boolean runNetting = runAll || "netting".equals(mode) || "qa".equals(mode);
         boolean runRms = runAll || "rms".equals(mode) || "limits".equals(mode) || "core".equals(mode);
-
         List<TestResult> results = new ArrayList<>();
-
         if (runLimits) {
             executeSuite(results, "Cash Limit 3-Tier Precedence",
                     "All 5 hierarchy tiers resolved (Explicit -> Default -> DB Fallback -> Exception)",
                     "Hierarchy tier resolution discrepancy detected",
                     Account_Limits::testResolveCashLimitScenarios);
-
             executeSuite(results, "Price Limit Breach & Clamping",
                     "Upper, Lower, In-Band, and Suggested Price Clamping accurately resolved",
                     "Price limit clamping failure",
                     OMSweb_Trade::testPriceLimitBreachClamping);
         }
-
         if (runRms) {
             executeSuite(results, "RMS Pre-Trade Audit & Trade Gate",
                     "Standard DSE, CSE Block, Spot restriction, Client Exclusivity & Connected Trade Gate verified",
                     "Pre-trade RMS approval rule mismatch",
                     RMS::testPreTradeRmsAuditScenarios);
         }
-
         if (runLimits) {
             executeSuite(results, "Order Terminal Reflection Audit",
                     "Pre/Post order state delta, filled status, and progress properly audited",
                     "Order terminal reflection discrepancy",
                     OMSweb_TestRunner::testOrderTerminalQuantitativeReflection);
-
             executeSuite(results, "Portfolio Extraction & Delta Audit",
                     "Buy delta, total/saleable quantity transitions correctly validated",
                     "Portfolio delta verification discrepancy",
                     OMSweb_TestRunner::testPortfolioReflectionAudit);
         }
-
         if (runWidget) {
             executeSuite(results, "6-Widget Audit & Layout Health",
                     "Accepted Trade, Rejected Trade comparison tables & UI layout health validated",
                     "6-Widget audit or layout health validation failed",
                     OMSweb_TestRunner::test6WidgetComparisonAudit);
         }
-
         if (runQa) {
             executeSuite(results, "QA Day Netting Multi-Exchange (1-4)",
                     "Individual Both Exchanges, Sell > Buy, NONE Mode & CROSS Mode (25/25 assertions) verified",
                     "QA Day Netting scenario verification mismatch",
                     Day_Netting::testQaDayNettingScenarios);
         }
-
         if (runNetting) {
             executeSuite(results, "Day Netting 9-Scenario Compliance",
                     "All 9 offline blocks (Exclusivity, Symbol/Client matrix, Retroactive, Upload x Netting) passed",
                     "Full Day Netting 9-scenario compliance check failed",
                     Day_Netting::runAllNettingTests);
         }
-
         long durationMs = System.currentTimeMillis() - startTime;
         printUnifiedScorecard(results, durationMs);
-
         boolean allPassed = !results.isEmpty() && results.stream().allMatch(r -> r.passed);
         if (!allPassed) {
             System.err.println("[TEST FAILURE] One or more unified OMS-WEB test suites failed!");
@@ -144,7 +130,6 @@ public class OMSweb_TestRunner {
         before.put("Qty", "0");
         before.put("Price", "0.0");
         before.put("DATA_SOURCE", "TEST_PRE");
-
         Map<String, String> after = new HashMap<>();
         after.put("Order_ID", "ORD-1002");
         after.put("Side", "BUY");
@@ -157,7 +142,6 @@ public class OMSweb_TestRunner {
         after.put("Avg_Price", "270.0");
         after.put("Progress", "100%");
         after.put("DATA_SOURCE", "TEST_POST");
-
         Order_Terminal.verify(before, after, "GP", "BUY", 100, 270.0, "DSE");
         return true;
     }
@@ -171,13 +155,11 @@ public class OMSweb_TestRunner {
         before.put("saleable_qty", "500");
         before.put("ledger_balance", "1000000");
         before.put("total_cost", "135000");
-
         Map<String, String> after = new HashMap<>();
         after.put("total_qty", "600");
         after.put("saleable_qty", "500");
         after.put("ledger_balance", "973000");
         after.put("total_cost", "162000");
-
         ClientPortfolio.verify(before, after, "GP", "BUY", 100, 270.0, "DSE");
         return true;
     }
@@ -186,7 +168,6 @@ public class OMSweb_TestRunner {
         System.out.println("\n===============================================================================");
         System.out.println("            6-WIDGET COMPARISON TABLE RENDERING AUDIT (PASS/FAIL/REMARKS)       ");
         System.out.println("===============================================================================");
-
         System.out.println("\n>>> [SCENARIO 1] NORMAL ACCEPTED TRADE AUDIT VERIFICATION");
         Day_Netting.Netting6WidgetsUiSnapshot pre1 = build6WidgetSnapshot(
                 "PRE-TRADE_BASELINE_INDIVIDUAL_DSE", "23986", "GP.PUBLIC", "INDIVIDUAL",
@@ -194,16 +175,13 @@ public class OMSweb_TestRunner {
                 "-", "-", "0", "0",
                 "0", "0", "0", "0", "0.00",
                 "500000.00", "0.00", "0.00", "270.00");
-
         Day_Netting.Netting6WidgetsUiSnapshot post1 = build6WidgetSnapshot(
                 "POST-TRADE_REALTIME_INDIVIDUAL_DSE", "23986", "GP.PUBLIC", "INDIVIDUAL",
                 "600", "500", "270.00", "162000.00",
                 "ORD-89211", "Accepted", "100", "0",
                 "1", "1", "100", "0", "27000.00",
                 "473000.00", "0.00", "27000.00", "270.00");
-
         Day_Netting.compareAndReportNettingWidgets(null, pre1, post1, "DAY NETTING UI AUDIT (INDIVIDUAL - DSE)");
-
         System.out.println("\n>>> [SCENARIO 2] REJECTED TRADE AUDIT VERIFICATION (FAIL / REMARKS TEST)");
         Day_Netting.Netting6WidgetsUiSnapshot post2 = new Day_Netting.Netting6WidgetsUiSnapshot();
         post2.stageName = "POST-TRADE_REJECTED";
@@ -212,14 +190,11 @@ public class OMSweb_TestRunner {
         post2.orderTerminalData.put("Order_ID", "ORD-89212");
         post2.orderTerminalData.put("Status", "Rejected");
         post2.marketDepthData.put("LTP", "-");
-
         Day_Netting.compareAndReportNettingWidgets(null, pre1, post2, "DAY NETTING UI AUDIT (REJECTED TRADE)");
-
         String healthStatus = Day_Netting.verifyUiLayoutHealth(null);
         System.out.printf("[HEALTH CHECK NULL-SAFE] Result: %s (PASS)%n", healthStatus);
         return healthStatus != null && !healthStatus.trim().isEmpty();
     }
-
     private static Day_Netting.Netting6WidgetsUiSnapshot build6WidgetSnapshot(
             String stage, String client, String symbol, String mode,
             String dseTotal, String dseSaleable, String dseAvgCost, String dseVal,
@@ -234,48 +209,39 @@ public class OMSweb_TestRunner {
         snap.allowZAndSpotNetting = false;
         snap.isDseDayNettingEnabled = true;
         snap.isCseDayNettingEnabled = true;
-
         snap.portfolioDataDSE.put("total_qty", dseTotal);
         snap.portfolioDataDSE.put("saleable_qty", dseSaleable);
         snap.portfolioDataDSE.put("avg_cost", dseAvgCost);
         snap.portfolioDataDSE.put("value", dseVal);
-
         snap.portfolioDataCSE.put("total_qty", "0");
         snap.portfolioDataCSE.put("saleable_qty", "0");
         snap.portfolioDataCSE.put("avg_cost", "0.00");
         snap.portfolioDataCSE.put("value", "0.00");
-
         snap.orderTerminalData.put("Order_ID", ordId);
         snap.orderTerminalData.put("Status", ordStatus);
         snap.orderTerminalData.put("Exec_Qty", execQty);
         snap.orderTerminalData.put("Due_Qty", dueQty);
-
         snap.orderSummaryData.put("Total_Orders", totalOrders);
         snap.orderSummaryData.put("Executed", executedOrders);
         snap.orderSummaryData.put("Buy_Qty", buyQty);
         snap.orderSummaryData.put("Sell_Qty", sellQty);
         snap.orderSummaryData.put("Buy_Turnover", buyTurnover);
-
         snap.accountLimitsData.put("Remaining_Cash", remCash);
         snap.accountLimitsData.put("Blocked_Day", blockedDay);
         snap.accountLimitsData.put("Total_Tx", totalTx);
-
         snap.marketDepthData.put("LTP", ltp);
         snap.marketDepthNettingBadge = true;
         snap.marketDepthData.put("BUY%", "65%");
         snap.marketDepthData.put("SELL%", "35%");
-
         snap.dedicatedNettingWatchlist = true;
         snap.watchlistNettingIcon = true;
         snap.watchlistSymbolCount = 14;
         return snap;
     }
-
     static class TestResult {
         final String suiteName;
         final boolean passed;
         final String remarks;
-
         TestResult(String suiteName, boolean passed, String remarks) {
             this.suiteName = suiteName;
             this.passed = passed;

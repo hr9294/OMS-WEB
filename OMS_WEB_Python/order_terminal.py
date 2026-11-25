@@ -11,7 +11,6 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-
 def navigate_to_order_terminal(driver: webdriver.Chrome) -> None:
     """Navigates to Order Terminal widget in GoldenLayout."""
     try:
@@ -28,7 +27,6 @@ def navigate_to_order_terminal(driver: webdriver.Chrome) -> None:
         time.sleep(0.5)
     except Exception:
         pass
-
 
 def clear_filter(driver: webdriver.Chrome) -> None:
     """Clears and resets search filters in Order Terminal (with DevOMS trigger support)."""
@@ -50,7 +48,6 @@ def clear_filter(driver: webdriver.Chrome) -> None:
         time.sleep(0.4)
     except Exception:
         pass
-
 
 def filter_order_terminal(driver: webdriver.Chrome, client_code: str = "", symbol: str = "") -> None:
     """Applies Order Terminal client/symbol filters using GP.PUBLIC format and recovers from 0-record filters."""
@@ -91,7 +88,6 @@ def filter_order_terminal(driver: webdriver.Chrome, client_code: str = "", symbo
     except Exception:
         pass
 
-
 def refresh(driver: webdriver.Chrome) -> None:
     """Clicks the refresh button inside the Order Terminal widget and invokes get_order_history."""
     try:
@@ -105,7 +101,6 @@ def refresh(driver: webdriver.Chrome) -> None:
         time.sleep(0.5)
     except Exception:
         pass
-
 
 def get_snapshot(
     driver: webdriver.Chrome,
@@ -152,7 +147,6 @@ def get_snapshot(
             "cancelled_count": "0",
         }
 
-
 def select_and_execute_at_market(
     driver: webdriver.Chrome,
     order_ids: Optional[List[str]] = None,
@@ -167,7 +161,6 @@ def select_and_execute_at_market(
     navigate_to_order_terminal(driver)
     refresh(driver)
     time.sleep(0.8)
-
     print(f"\n[TERMINAL] Locating target rows in Order Terminal for 'Execute at Market'...")
 
     # 1. Select checkboxes for target orders (optionally restricted to BUY or SELL side)
@@ -214,7 +207,6 @@ def select_and_execute_at_market(
     side_msg = f" {target_side_str}" if target_side_str else ""
     print(f"[TERMINAL] Selected {selected_count} pending{side_msg} order rows.")
     print(f"[TERMINAL] Selected {selected_count} pending order rows.")
-
     if not selected_count:
         print("[TERMINAL: WARN] No pending orders matched for selection.")
         return False
@@ -253,7 +245,6 @@ def select_and_execute_at_market(
         print("[TERMINAL] Dispatched right-click (contextmenu) event on selected order row.")
     except Exception as e:
         print(f"[TERMINAL: WARN] Action context click: {e}")
-
     time.sleep(0.6)
 
     # 3. Click 'Execute at Market' in context menu
@@ -272,7 +263,6 @@ def select_and_execute_at_market(
                 break
     except Exception:
         pass
-
     if not clicked:
         # Fallback to JavaScript search across DOM
         js_click_script = """
@@ -287,7 +277,6 @@ def select_and_execute_at_market(
         clicked = bool(driver.execute_script(js_click_script))
         if clicked:
             print("✔ [CONTEXT MENU: JS] Clicked 'Execute at Market' via DOM.")
-
     time.sleep(0.6)
 
     # 4. Handle confirmation modal dialog
@@ -303,23 +292,19 @@ def select_and_execute_at_market(
                 break
     except Exception:
         pass
-
     time.sleep(1.5)
     refresh(driver)
     return clicked
-
 
 def execute_buy_orders_at_market(driver: webdriver.Chrome, symbol: Optional[str] = None) -> bool:
     """Selects multiple BUY orders only and triggers 'Execute at Market'."""
     print("\n[ORDER TERMINAL] >>> SELECTING MULTIPLE BUY ORDERS ONLY <<<")
     return select_and_execute_at_market(driver, symbol=symbol, side="BUY", count=10)
 
-
 def execute_sell_orders_at_market(driver: webdriver.Chrome, symbol: Optional[str] = None) -> bool:
     """Selects multiple SELL orders only and triggers 'Execute at Market'."""
     print("\n[ORDER TERMINAL] >>> SELECTING MULTIPLE SELL ORDERS ONLY <<<")
     return select_and_execute_at_market(driver, symbol=symbol, side="SELL", count=10)
-
 
 def execute_separated_buy_and_sell_at_market(driver: webdriver.Chrome, symbol: Optional[str] = None) -> bool:
     """Executes multiple BUY orders only, waits 2 seconds, then executes multiple SELL orders only."""
@@ -327,17 +312,13 @@ def execute_separated_buy_and_sell_at_market(driver: webdriver.Chrome, symbol: O
     print(" BATCH 1: SELECT MULTIPLE BUY ORDERS ONLY -> RIGHT-CLICK 'EXECUTE AT MARKET'")
     print("===============================================================================")
     buy_ok = execute_buy_orders_at_market(driver, symbol=symbol)
-
     print("\n[INFO] Waiting 2 seconds for BUY order processing...")
     time.sleep(2.0)
-
     print("\n===============================================================================")
     print(" BATCH 2: SELECT MULTIPLE SELL ORDERS ONLY -> RIGHT-CLICK 'EXECUTE AT MARKET'")
     print("===============================================================================")
     sell_ok = execute_sell_orders_at_market(driver, symbol=symbol)
-
     return buy_ok or sell_ok
-
 
 def _trigger_context_menu_and_confirm(driver: webdriver.Chrome) -> bool:
     """Dispatches right-click contextmenu event on selected row, clicks 'Execute at Market', and confirms."""
@@ -379,9 +360,7 @@ def _trigger_context_menu_and_confirm(driver: webdriver.Chrome) -> bool:
         print("[TERMINAL] Dispatched right-click (contextmenu) event on selected order row.")
     except Exception as e:
         print(f"[TERMINAL: WARN] Action context click: {e}")
-
     time.sleep(0.6)
-
     clicked = False
     candidate_xpaths = [
         "//li[contains(., 'Execute at Market') and not(contains(., 'Cancel Order'))]",
@@ -391,7 +370,6 @@ def _trigger_context_menu_and_confirm(driver: webdriver.Chrome) -> bool:
         "//*[contains(@class,'context-menu') or contains(@class,'dropdown') or contains(@class,'menu')]//li[contains(., 'Execute at Market')]",
         "//*[(self::li or self::a or self::span or self::div) and contains(translate(normalize-space(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'execute at market') and not(contains(., 'Cancel Order'))]"
     ]
-
     for xp in candidate_xpaths:
         try:
             items = driver.find_elements(By.XPATH, xp)
@@ -403,7 +381,6 @@ def _trigger_context_menu_and_confirm(driver: webdriver.Chrome) -> bool:
                         time.sleep(0.1)
                     except Exception:
                         pass
-
                     try:
                         from selenium.webdriver.common.action_chains import ActionChains
                         ActionChains(driver).move_to_element(item).click().perform()
@@ -412,7 +389,6 @@ def _trigger_context_menu_and_confirm(driver: webdriver.Chrome) -> bool:
                         break
                     except Exception:
                         pass
-
                     try:
                         item.click()
                         clicked = True
@@ -420,7 +396,6 @@ def _trigger_context_menu_and_confirm(driver: webdriver.Chrome) -> bool:
                         break
                     except Exception:
                         pass
-
                     try:
                         driver.execute_script("arguments[0].click();", item)
                         clicked = True
@@ -432,7 +407,6 @@ def _trigger_context_menu_and_confirm(driver: webdriver.Chrome) -> bool:
                 break
         except Exception:
             pass
-
     if not clicked:
         js_click_script = """
         var allElements = Array.from(document.querySelectorAll('li, a, span, div, p'));
@@ -462,9 +436,7 @@ def _trigger_context_menu_and_confirm(driver: webdriver.Chrome) -> bool:
         clicked = bool(driver.execute_script(js_click_script))
         if clicked:
             print("[CONTEXT MENU: JS] Clicked 'Execute at Market' via DOM MouseEvents.")
-
     time.sleep(0.6)
-
     try:
         confirm_btn = driver.find_elements(
             By.XPATH,
@@ -477,11 +449,9 @@ def _trigger_context_menu_and_confirm(driver: webdriver.Chrome) -> bool:
                 break
     except Exception:
         pass
-
     time.sleep(1.5)
     refresh(driver)
     return clicked
-
 
 def select_multiple_buy_orders_only_at_market(driver: webdriver.Chrome, symbol: Optional[str] = None, client_codes: Optional[List[str]] = None) -> bool:
     """Selects MULTIPLE BUY orders only (Accepted & Partially Filled), leaving resting SELL order unselected, right-clicks, and executes at market."""
@@ -493,9 +463,7 @@ def select_multiple_buy_orders_only_at_market(driver: webdriver.Chrome, symbol: 
     navigate_to_order_terminal(driver)
     refresh(driver)
     time.sleep(0.8)
-
     print(f"\n[ORDER TERMINAL] >>> SELECTING MULTIPLE BUY ORDERS ONLY (Symbol: {symbol or 'ALL'}, Resting SELL unselected) <<<")
-
     select_script = """
     var targetSymbol = (arguments[0] || '').toLowerCase();
     var clientCodes = arguments[1] || [];
@@ -543,23 +511,18 @@ def select_multiple_buy_orders_only_at_market(driver: webdriver.Chrome, symbol: 
     res = driver.execute_script(select_script, symbol or "", client_codes or [])
     buys_cnt = res.get("buys", 0) if isinstance(res, dict) else 0
     total_cnt = res.get("total", 0) if isinstance(res, dict) else 0
-
     print(f"[ORDER TERMINAL] Selected {buys_cnt} BUY order(s) ONLY (Resting SELL unselected).")
     if not total_cnt:
         print("[TERMINAL: WARN] No matching BUY orders found to execute.")
         return False
-
     return _trigger_context_menu_and_confirm(driver)
-
 
 def select_multiple_sell_orders_only_at_market(driver: webdriver.Chrome, symbol: Optional[str] = None, client_codes: Optional[List[str]] = None) -> bool:
     """Selects MULTIPLE SELL orders only (Accepted & Partially Filled), leaving resting BUY order unselected, right-clicks, and executes at market."""
     navigate_to_order_terminal(driver)
     refresh(driver)
     time.sleep(0.8)
-
     print(f"\n[ORDER TERMINAL] >>> SELECTING MULTIPLE SELL ORDERS ONLY (Symbol: {symbol or 'ALL'}, Resting BUY unselected) <<<")
-
     select_script = """
     var targetSymbol = (arguments[0] || '').toLowerCase();
     var clientCodes = arguments[1] || [];
@@ -607,23 +570,18 @@ def select_multiple_sell_orders_only_at_market(driver: webdriver.Chrome, symbol:
     res = driver.execute_script(select_script, symbol or "", client_codes or [])
     sells_cnt = res.get("sells", 0) if isinstance(res, dict) else 0
     total_cnt = res.get("total", 0) if isinstance(res, dict) else 0
-
     print(f"[ORDER TERMINAL] Selected {sells_cnt} SELL order(s) ONLY (Resting BUY unselected).")
     if not total_cnt:
         print("[TERMINAL: WARN] No matching SELL orders found to execute.")
         return False
-
     return _trigger_context_menu_and_confirm(driver)
-
 
 def select_multiple_buy_and_one_sell_at_market(driver: webdriver.Chrome, symbol: Optional[str] = None, client_codes: Optional[List[str]] = None) -> bool:
     """Selects MULTIPLE BUY orders and its ONLY ONE corresponding SELL order, right-clicks, and executes at market."""
     navigate_to_order_terminal(driver)
     refresh(driver)
     time.sleep(0.8)
-
     print(f"\n[ORDER TERMINAL] >>> SELECTING MULTIPLE BUY ORDERS AND ONLY ONE SELL ORDER (Symbol: {symbol or 'ALL'}) <<<")
-
     select_script = """
     var targetSymbol = (arguments[0] || '').toLowerCase();
     var clientCodes = arguments[1] || [];
@@ -677,23 +635,18 @@ def select_multiple_buy_and_one_sell_at_market(driver: webdriver.Chrome, symbol:
     buys_cnt = res.get("buys", 0) if isinstance(res, dict) else 0
     sell_cnt = res.get("sell", 0) if isinstance(res, dict) else 0
     total_cnt = res.get("total", 0) if isinstance(res, dict) else 0
-
     print(f"[ORDER TERMINAL] Selected {buys_cnt} BUY order(s) + {sell_cnt} SELL order (Total: {total_cnt}).")
     if not total_cnt:
         print("[TERMINAL: WARN] No matching orders found to execute.")
         return False
-
     return _trigger_context_menu_and_confirm(driver)
-
 
 def select_multiple_sell_and_one_buy_at_market(driver: webdriver.Chrome, symbol: Optional[str] = None, client_codes: Optional[List[str]] = None) -> bool:
     """Selects MULTIPLE SELL orders and its ONLY ONE corresponding BUY order, right-clicks, and executes at market."""
     navigate_to_order_terminal(driver)
     refresh(driver)
     time.sleep(0.8)
-
     print(f"\n[ORDER TERMINAL] >>> SELECTING MULTIPLE SELL ORDERS AND ONLY ONE BUY ORDER (Symbol: {symbol or 'ALL'}) <<<")
-
     select_script = """
     var targetSymbol = (arguments[0] || '').toLowerCase();
     var clientCodes = arguments[1] || [];
@@ -747,15 +700,11 @@ def select_multiple_sell_and_one_buy_at_market(driver: webdriver.Chrome, symbol:
     sells_cnt = res.get("sells", 0) if isinstance(res, dict) else 0
     buy_cnt = res.get("buy", 0) if isinstance(res, dict) else 0
     total_cnt = res.get("total", 0) if isinstance(res, dict) else 0
-
     print(f"[ORDER TERMINAL] Selected {sells_cnt} SELL order(s) + {buy_cnt} BUY order (Total: {total_cnt}).")
     if not total_cnt:
         print("[TERMINAL: WARN] No matching orders found to execute.")
         return False
-
     return _trigger_context_menu_and_confirm(driver)
-
-
 
 def get_ui_snapshot(
     driver: webdriver.Chrome,
@@ -809,9 +758,7 @@ def get_ui_snapshot(
             break
     return {}
 
-
 get_api_snapshot = get_ui_snapshot
-
 
 def verify(
     before: Optional[Dict[str, str]],
@@ -826,16 +773,13 @@ def verify(
     before = before if before is not None else {}
     after = after if after is not None else {}
     before.setdefault("Progress", "0%")
-
     post_order_id = after.get("Order_ID", "-")
     pre_order_id = before.get("Order_ID", "-")
     post_status = after.get("Status", "-")
     post_side = after.get("Side", "-")
-
     side_pass = post_side.lower() == (side or "").lower()
     order_new_pass = post_order_id != "-" and post_order_id != pre_order_id
     status_pass = any(k in post_status.lower() for k in ("accept", "fill", "partial", "exec", "new"))
-
     print(
         f"[ORDER TERMINAL AUDIT] {side.upper()} {trade_qty} {symbol} @ {trade_rate:.2f} ({exchange}) | "
         f"ID: {pre_order_id}->{post_order_id} ({'PASS' if order_new_pass else 'FAIL'}) | "

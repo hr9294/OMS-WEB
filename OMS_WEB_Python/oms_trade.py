@@ -12,7 +12,6 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-
 from config import DEFAULT_SYMBOL, DEFAULT_EXCHANGE, DEFAULT_CLIENT_CODE
 import widget_color
 import oms_price
@@ -35,7 +34,6 @@ clean_symbol = oms_price.clean_symbol
 to_public_symbol = oms_price.to_public_symbol
 to_board_symbol = oms_price.to_board_symbol
 
-
 def is_already_on_trade_page(driver: webdriver.Chrome) -> bool:
     if not driver:
         return False
@@ -51,7 +49,6 @@ def is_already_on_trade_page(driver: webdriver.Chrome) -> bool:
         """))
     except Exception:
         return False
-
 
 def show_frontend_banner(driver: webdriver.Chrome, msg: str, border_color: str = "#10b981") -> None:
     if not driver or not msg:
@@ -71,7 +68,6 @@ def show_frontend_banner(driver: webdriver.Chrome, msg: str, border_color: str =
     except Exception:
         pass
 
-
 def maximize_widget(driver: webdriver.Chrome, title_kw: str) -> bool:
     if not driver or not title_kw:
         return False
@@ -89,7 +85,6 @@ def maximize_widget(driver: webdriver.Chrome, title_kw: str) -> bool:
     except Exception:
         return False
 
-
 def minimize_or_restore_widget(driver: webdriver.Chrome) -> bool:
     if not driver:
         return False
@@ -102,7 +97,6 @@ def minimize_or_restore_widget(driver: webdriver.Chrome) -> bool:
     except Exception:
         return False
 
-
 def save_screenshot(driver: webdriver.Chrome, filename: str) -> Optional[str]:
     if not driver or not filename:
         return None
@@ -114,7 +108,6 @@ def save_screenshot(driver: webdriver.Chrome, filename: str) -> Optional[str]:
         return path
     except Exception:
         return None
-
 
 def insert_global_symbol_and_select_public(driver: webdriver.Chrome, symbol: str) -> bool:
     if not driver or not symbol:
@@ -133,7 +126,6 @@ def insert_global_symbol_and_select_public(driver: webdriver.Chrome, symbol: str
     except Exception:
         return False
 
-
 def ensure_symbol_board_retained(driver: webdriver.Chrome, symbol: str) -> None:
     if not driver or not symbol:
         return
@@ -147,7 +139,6 @@ def ensure_symbol_board_retained(driver: webdriver.Chrome, symbol: str) -> None:
         """, to_public_symbol(symbol))
     except Exception:
         pass
-
 
 def fill_order_fields(driver: webdriver.Chrome, symbol: str, qty: Any, client_code: str) -> None:
     if not driver:
@@ -165,7 +156,6 @@ def fill_order_fields(driver: webdriver.Chrome, symbol: str, qty: Any, client_co
     except Exception:
         pass
 
-
 def auto_confirm_order_or_cancellation(driver: webdriver.Chrome, timeout: float = 3.0) -> bool:
     if not driver:
         return False
@@ -177,7 +167,6 @@ def auto_confirm_order_or_cancellation(driver: webdriver.Chrome, timeout: float 
         return True
     except Exception:
         return False
-
 
 def select_exchange_in_modal(driver: webdriver.Chrome, exchange: str = "DSE") -> None:
     """Selects DSE (xcg2) or CSE (xcg3) in the Order Entry modal."""
@@ -200,7 +189,6 @@ def select_exchange_in_modal(driver: webdriver.Chrome, exchange: str = "DSE") ->
         """, xcg_id)
     except Exception:
         pass
-
 
 def has_latest_order_in_terminal(driver: webdriver.Chrome, client_code: str = "", symbol: str = "") -> bool:
     """Checks whether the latest placed order exists in Order Terminal DOM table."""
@@ -234,7 +222,6 @@ def has_latest_order_in_terminal(driver: webdriver.Chrome, client_code: str = ""
     except Exception:
         return False
 
-
 def navigate_to_trade_page(driver: webdriver.Chrome, force: bool = False) -> None:
     """Navigates to the Trade page ONLY IF not already on it unless force=True. NEVER reloads if already on Trade!"""
     if not force:
@@ -257,7 +244,6 @@ def navigate_to_trade_page(driver: webdriver.Chrome, force: bool = False) -> Non
                 return
         except Exception:
             pass
-
     clicked = False
     try:
         clicked = bool(driver.execute_script("""
@@ -299,7 +285,6 @@ def navigate_to_trade_page(driver: webdriver.Chrome, force: bool = False) -> Non
         """))
     except Exception:
         clicked = False
-
     if not clicked:
         try:
             trade_nav = driver.find_elements(
@@ -317,10 +302,8 @@ def navigate_to_trade_page(driver: webdriver.Chrome, force: bool = False) -> Non
                     break
         except Exception:
             pass
-
     time.sleep(1.0)
     print("[NAV] Trade Portal loaded successfully.")
-
 
 def dismiss_lingering_autocomplete(driver: webdriver.Chrome) -> None:
     """Dismisses and removes any lingering jQuery UI autocomplete dropdowns from DOM."""
@@ -347,12 +330,10 @@ def dismiss_lingering_autocomplete(driver: webdriver.Chrome) -> None:
     except Exception:
         pass
 
-
 def enter_instrument(driver: webdriver.Chrome, symbol: str) -> None:
     """Populates symbol into searchSymbol and marketwatch inputs with autocomplete enter."""
     sym = oms_price.clean_symbol(symbol or DEFAULT_SYMBOL)
     print(f"[SETUP] Populating symbol '{sym}' into Trade & Marketwatch inputs...")
-
     try:
         search_sym = driver.find_element(By.ID, "instrument")
         search_sym.clear()
@@ -363,7 +344,6 @@ def enter_instrument(driver: webdriver.Chrome, symbol: str) -> None:
         time.sleep(0.4)
     except Exception:
         pass
-
     try:
         mw_inp = driver.find_element(By.ID, "marketwatch_symbol")
         mw_inp.clear()
@@ -374,7 +354,6 @@ def enter_instrument(driver: webdriver.Chrome, symbol: str) -> None:
         time.sleep(0.4)
     except Exception:
         pass
-
 
 def restore_trade_page_state(
     driver: webdriver.Chrome,
@@ -387,7 +366,6 @@ def restore_trade_page_state(
         active_symbol = oms_price.clean_symbol(symbol)
     if client_code:
         active_client_code = str(client_code).strip()
-
     navigate_to_trade_page(driver, force=False)
     if symbol:
         clean_sym = oms_price.clean_symbol(symbol)
@@ -403,7 +381,6 @@ def restore_trade_page_state(
             """, clean_sym)
         except Exception:
             pass
-
     if client_code:
         clean_cln = str(client_code).strip()
         try:
@@ -414,11 +391,7 @@ def restore_trade_page_state(
             """, clean_cln)
         except Exception:
             pass
-
     print(f"[TRADE PAGE RESTORED] Symbol: {symbol} | Client Code: {client_code}")
-
-
-
 
 def install_symbol_whitespace_sanitizer(driver: webdriver.Chrome) -> None:
     """Installs DOM event listeners and jQuery ajaxPrefilter to sanitize symbol whitespace and prevent checksaleable errors."""
@@ -467,7 +440,6 @@ def install_symbol_whitespace_sanitizer(driver: webdriver.Chrome) -> None:
         """)
     except Exception:
         pass
-
 
 def snapshot_current_ui_settings(driver: webdriver.Chrome) -> None:
     """Captures currently active symbol, client code, widget color, and exchange before reload."""
@@ -523,7 +495,6 @@ def snapshot_current_ui_settings(driver: webdriver.Chrome) -> None:
     except Exception:
         pass
 
-
 def propagate_client_code_to_all_widgets(
     driver: webdriver.Chrome,
     client_code: str,
@@ -546,7 +517,6 @@ def propagate_client_code_to_all_widgets(
     active_client_code = clean_client
     if symbol:
         active_symbol = clean_sym
-
     print(f"\n>>> [CLIENT REFLECTION] Reflecting Client Code '{clean_client}' across all widgets (Order Window, Portfolio, Limits, Terminal, Summary, Position)...")
 
     # 1. Order Window / Order Entry Form
@@ -623,9 +593,7 @@ def propagate_client_code_to_all_widgets(
         """, clean_client)
     except Exception:
         pass
-
     print(f"  ✓ [CLIENT REFLECTED] Target Client '{clean_client}' successfully propagated across all widgets.")
-
 
 def restore_all_previous_settings(driver: webdriver.Chrome) -> None:
     """
@@ -701,11 +669,9 @@ def restore_all_previous_settings(driver: webdriver.Chrome) -> None:
 
         # 7. Re-install anti-idle heartbeat
         install_anti_idle_heartbeat(driver)
-
         print("[IDLE RESTORATION] ✓ All previous settings successfully restored and visible.\n")
     except Exception as e:
         print(f"[WARN: restore_all_previous_settings] {e}")
-
 
 def handle_idle_popup_if_present(driver: webdriver.Chrome) -> bool:
     """
@@ -718,7 +684,6 @@ def handle_idle_popup_if_present(driver: webdriver.Chrome) -> bool:
     # Cooldown: Do not re-trigger within 20 seconds of last recovery
     if (time.time() - last_idle_recovery_time) < 20.0:
         return False
-
     try:
         candidates = driver.find_elements(By.XPATH, (
             "//button[contains(normalize-space(), 'Reload Manually') or contains(text(), 'Reload Manually')] | "
@@ -734,23 +699,19 @@ def handle_idle_popup_if_present(driver: webdriver.Chrome) -> bool:
                     break
             except Exception:
                 pass
-
         if not visible_btn:
             # No visible idle popup on screen! Absolutely do nothing.
             return False
-
         is_recovering_from_idle = True
         try:
             print("\n[IDLE DETECTED] 'You were idle!' popup appeared on screen.")
             print("[IDLE DETECTED] Snapshotting active settings before reload...")
             snapshot_current_ui_settings(driver)
-
             print("[IDLE DETECTED] Clicking 'Reload Manually'...")
             try:
                 visible_btn.click()
             except Exception:
                 driver.execute_script("arguments[0].click();", visible_btn)
-
             print("[IDLE RECOVERY] Reloading page and restoring session...")
             time.sleep(2.5)
             end_wait = time.time() + 15
@@ -772,7 +733,6 @@ def handle_idle_popup_if_present(driver: webdriver.Chrome) -> bool:
                     oms_login.login(driver)
             except Exception:
                 pass
-
             restore_all_previous_settings(driver)
             last_idle_recovery_time = time.time()
             print("[IDLE RECOVERY] ✓ Successfully restored all settings after reload. Resuming execution.\n")
@@ -783,7 +743,6 @@ def handle_idle_popup_if_present(driver: webdriver.Chrome) -> bool:
         pass
     return False
 
-
 def ensure_trade_settings_restored(driver: webdriver.Chrome) -> None:
     global is_recovering_from_idle, last_idle_recovery_time
     if not driver or is_recovering_from_idle:
@@ -791,10 +750,8 @@ def ensure_trade_settings_restored(driver: webdriver.Chrome) -> None:
     try:
         if handle_idle_popup_if_present(driver):
             return
-
         if (time.time() - last_idle_recovery_time) < 15.0:
             return
-
         if is_already_on_trade_page(driver):
             needs_restore = driver.execute_script("""
                 try {
@@ -812,7 +769,6 @@ def ensure_trade_settings_restored(driver: webdriver.Chrome) -> None:
                 last_idle_recovery_time = time.time()
     except Exception:
         pass
-
 
 def install_anti_idle_heartbeat(driver: webdriver.Chrome) -> None:
     """Injects client-side keep-alive event dispatcher."""
@@ -835,7 +791,6 @@ def install_anti_idle_heartbeat(driver: webdriver.Chrome) -> None:
         """)
     except Exception:
         pass
-
 
 def ensure_ui_unlocked(driver: webdriver.Chrome) -> bool:
     """
@@ -924,9 +879,7 @@ def ensure_ui_unlocked(driver: webdriver.Chrome) -> bool:
             print("[AUTO-UNBLOCK] Detected and unlocked blocked UI overlays/modals automatically.")
     except Exception:
         pass
-
     return unblocked
-
 
 def safe_click(driver: webdriver.Chrome, target) -> bool:
     """Clicks an element with auto-unblock and fallback JavaScript mouse events."""
@@ -945,10 +898,8 @@ def safe_click(driver: webdriver.Chrome, target) -> bool:
                 el = elements[0]
         else:
             el = target
-
         if not el:
             return False
-
         try:
             driver.execute_script("arguments[0].scrollIntoView({behavior: 'instant', block: 'center'});", el)
             el.click()
@@ -968,7 +919,6 @@ def safe_click(driver: webdriver.Chrome, target) -> bool:
     except Exception:
         return False
 
-
 def safe_type(driver: webdriver.Chrome, element, value: str) -> bool:
     """Sets input value with auto-unblock and native event dispatch."""
     if not driver or element is None:
@@ -986,7 +936,6 @@ def safe_type(driver: webdriver.Chrome, element, value: str) -> bool:
         return True
     except Exception:
         return False
-
 
 def place_order(
     driver: webdriver.Chrome,
@@ -1038,9 +987,7 @@ def place_order(
                     print(f"  [RATE CORRECTION] Taking safe price between (SH, SL) [{sl:.2f}, {sh:.2f}]: {rate:.2f} BDT")
     except Exception:
         pass
-
     print(f"\n[ORDER ENTRY] Placing {side_clean} order: Client={client_code} | {sym_clean} x {qty} @ {rate:.2f} ({exchange})")
-
     try:
         # 0. Open BUY or SELL Modal / activate window
         action_xpath = (
@@ -1081,7 +1028,6 @@ def place_order(
     except Exception as e:
         print(f"[ORDER ENTRY: ERROR] Client code input failed: {e}")
         return False
-
     try:
         # 2. Fill Instrument
         inst_input = driver.find_element(By.ID, "order_instrument")
@@ -1093,7 +1039,6 @@ def place_order(
         time.sleep(0.3)
     except Exception:
         pass
-
     try:
         # 3. Fill Quantity
         qty_input = driver.find_element(By.ID, "order_qty")
@@ -1103,7 +1048,6 @@ def place_order(
     except Exception as e:
         print(f"[ORDER ENTRY: ERROR] Quantity input failed: {e}")
         return False
-
     try:
         # 4. Fill Rate
         rate_input = driver.find_element(By.ID, "limit_order_rate")
@@ -1142,7 +1086,6 @@ def place_order(
         time.sleep(0.5)
         return True
 
-
 def run_trade_workflow(driver: webdriver.Chrome) -> None:
     """Standard Trade Workflow execution matching OMSweb_Trade.java."""
     wait = WebDriverWait(driver, 10)
@@ -1156,7 +1099,6 @@ def run_trade_workflow(driver: webdriver.Chrome) -> None:
     # STEP 2: Manual input of symbol
     sym_input = input(f"\nEnter Symbol (default {DEFAULT_SYMBOL}): ").strip()
     symbol = oms_price.clean_symbol(sym_input or DEFAULT_SYMBOL)
-
     enter_instrument(driver, symbol)
 
     # Prompt user for single trade or status test
@@ -1166,7 +1108,6 @@ def run_trade_workflow(driver: webdriver.Chrome) -> None:
     else:
         normal_trade_flow(driver, symbol)
 
-
 def normal_trade_flow(driver: webdriver.Chrome, instrument: str) -> None:
     """Executes interactive standard trading flow."""
     keep_trading = True
@@ -1175,12 +1116,9 @@ def normal_trade_flow(driver: webdriver.Chrome, instrument: str) -> None:
         print("For SELL, Please Enter: 2")
         side_in = input("Please Enter your choice: ").strip()
         side_text = "SELL" if side_in == "2" else "BUY"
-
         ex_in = input("\nSelect Exchange (1=DSE [default] / 2=CSE / 3=Priority): ").strip()
         exchange = "CSE" if ex_in == "2" else ("Priority" if ex_in == "3" else "DSE")
-
         client_code = input(f"Enter Client Code (default {DEFAULT_CLIENT_CODE}): ").strip() or DEFAULT_CLIENT_CODE
-
         if side_text == "BUY":
             audit_ch = input("\nDo you want to run 5-Stage BUY Lifecycle Audit across 6 widgets? (1=YES / 0=NO, default 0): ").strip()
             if audit_ch == "1":
@@ -1192,7 +1130,6 @@ def normal_trade_flow(driver: webdriver.Chrome, instrument: str) -> None:
                 continue
         qty_in = input("Enter Quantity (default 10): ").strip()
         qty = int(qty_in) if qty_in.isdigit() else 10
-
         ref_price = oms_price.fetch_price_ltp_or_ycp(driver, instrument, exchange)
         rate_in = input(f"Enter Rate (default ref price {ref_price:.2f}): ").strip()
         rate = float(rate_in) if rate_in else ref_price
@@ -1219,14 +1156,12 @@ def normal_trade_flow(driver: webdriver.Chrome, instrument: str) -> None:
 
             # Reconcile and compare
             compare_and_report_6widgets(pre_snap, post_snap, f"NORMAL TRADE REAL-TIME UI AUDIT ({side_text} {qty} {instrument})")
-
         again = input("\nDo you want to trade again? (1=YES / 0=NO, default 0): ").strip()
         if again != "1":
             keep_trading = False
             print("Exiting trade flow.")
         else:
             widget_color.run_widget_color_selection(driver)
-
 
 def select_order_status(driver: webdriver.Chrome, instrument: str) -> None:
     """Offers test orders designed to produce specific statuses."""
@@ -1238,7 +1173,6 @@ def select_order_status(driver: webdriver.Chrome, instrument: str) -> None:
     print("5. Sequential BUY Lifecycle Audit (Pre-Trade Baseline UI -> Accepted -> Partially Filled -> Filled -> Cancelled -> Rejected [vs First Data])")
     ch = input("Enter choice (1-5, default 1): ").strip()
     ref_price = oms_price.fetch_price_ltp_or_ycp(driver, instrument)
-
     if ch == "5":
         run_sequential_buy_lifecycle_audit(driver, instrument, "DSE", DEFAULT_CLIENT_CODE)
     elif ch == "4":
@@ -1253,7 +1187,6 @@ def select_order_status(driver: webdriver.Chrome, instrument: str) -> None:
         # Default accepted
         safe_price = ref_price * 0.85
         place_order(driver, "BUY", DEFAULT_CLIENT_CODE, instrument, 10, safe_price)
-
 
 # =========================================================================
 # SEQUENTIAL 5-STAGE BUY LIFECYCLE AUDIT (PURE REAL-TIME UI DOM - NO API)
@@ -1286,7 +1219,6 @@ def wait_for_terminal_dom_status(
         time.sleep(0.25)
     return False
 
-
 def refresh_and_sync_all_widgets(
     driver: webdriver.Chrome,
     symbol: str,
@@ -1295,7 +1227,6 @@ def refresh_and_sync_all_widgets(
 ) -> None:
     """Ensures real-time DOM is ready without reloading or switching pages."""
     time.sleep(0.15)
-
 
 def capture_6widgets_ui_snapshot(
     driver: webdriver.Chrome,
@@ -1310,7 +1241,6 @@ def capture_6widgets_ui_snapshot(
     """
     clean_sym = oms_price.clean_symbol(symbol)
     refresh_and_sync_all_widgets(driver, clean_sym, client_code, exchange)
-
     snap: Dict[str, Any] = {
         "stage_name": stage_name,
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3],
@@ -1384,7 +1314,6 @@ def capture_6widgets_ui_snapshot(
         port_data = driver.execute_script(port_script, clean_sym) or {}
         snap["portfolio"] = port_data.get("summary", {})
         snap["portfolio_rows"] = port_data.get("allRows", [])
-        
         print(f" [1/6] Client Portfolio (UI) -> Qty: {snap['portfolio'].get('total_qty', '0')} | Saleable: {snap['portfolio'].get('saleable_qty', '0')} | Selected Symbol Rows: {len(snap['portfolio_rows'])}")
     except Exception as e:
         print(f" [1/6] Client Portfolio (UI) -> {e}")
@@ -1441,7 +1370,6 @@ def capture_6widgets_ui_snapshot(
         depth_data = driver.execute_script(md_script) or {}
         snap["market_depth"] = depth_data.get("summary", {})
         snap["market_depth_book_rows"] = depth_data.get("bookRows", [])
-        
         print(f" [2/6] Market Depth (UI)     -> LTP: {snap['market_depth'].get('ltp', '-')} | High: {snap['market_depth'].get('high', '-')} | Book Levels: {len(snap['market_depth_book_rows'])}")
     except Exception as e:
         print(f" [2/6] Market Depth (UI)     -> {e}")
@@ -1698,9 +1626,7 @@ def capture_6widgets_ui_snapshot(
         print(f" [6/6] Position Widget (UI)  -> Client Qty: {snap['position'].get('total_qty', '0')} | Saleable: {snap['position'].get('saleable_qty', '0')} | Selected Symbol Holdings: {len(snap['position_ui_holdings'])}")
     except Exception as e:
         print(f" [6/6] Position Widget (UI)  -> {e}")
-
     return snap
-
 
 def display_exact_widget_row_data(snap: Dict[str, Any], title: str) -> None:
     """Renders all column data for the selected symbol across all 6 widgets."""
@@ -1708,7 +1634,6 @@ def display_exact_widget_row_data(snap: Dict[str, Any], title: str) -> None:
     client = snap.get("target_client", "-")
     stage = snap.get("stage_name", "-")
     ts = snap.get("timestamp", "-")
-
     print("\n+======================================================================================================================+")
     print(f"| SELECTED SYMBOL REAL-TIME UI DATA (ALL COLUMNS): {title:<65} |")
     print(f"| Target Symbol: {sym:<25} | Client: {client:<20} | Stage: {stage:<30} |")
@@ -1740,7 +1665,6 @@ def display_exact_widget_row_data(snap: Dict[str, Any], title: str) -> None:
         ex_type = str(r.get("Exec Type", "Normal"))
         prog = str(r.get("Progress", "-"))
         dlr = str(r.get("Dealer ID", "-"))
-
         print(f"    Most Recent Order All Columns for {s}:")
         print("      +----------------------------------------------------------------------------------------------------------------+")
         print(f"      | Order ID   : {oid:<22} | Order Time : {otime:<22} | Exec Time  : {etime:<22} |")
@@ -1858,7 +1782,6 @@ def compare_and_report_6widgets(prev: Dict[str, Any], curr: Dict[str, Any], titl
         c_str = str(c_val if c_val is not None else "-").strip()
         result = "PASS"
         remarks = "In Sync"
-
         if param.lower() in ("recent order id", "order_id", "latest order id"):
             if c_str == "-":
                 result = "FAIL"
@@ -1917,7 +1840,6 @@ def compare_and_report_6widgets(prev: Dict[str, Any], curr: Dict[str, Any], titl
             else:
                 result = "PASS"
                 remarks = f"In Sync ({c_str})"
-
         p_disp = (p_str[:13] + "...") if len(p_str) > 16 else p_str
         c_disp = (c_str[:13] + "...") if len(c_str) > 16 else c_str
         r_disp = (remarks[:31] + "...") if len(remarks) > 34 else remarks
@@ -1959,7 +1881,6 @@ def compare_and_report_6widgets(prev: Dict[str, Any], curr: Dict[str, Any], titl
     _row("Position", "Holdings Row Count", len(prev.get("position_ui_holdings", [])), len(curr.get("position_ui_holdings", [])))
     print("+--------------------+------------------------+------------------+------------------+--------+------------------------------------+")
 
-
 def _cancel_top_terminal_order(driver: webdriver.Chrome, client_code: str, symbol: str) -> bool:
     """Cancels top resting order in Order Terminal DOM."""
     try:
@@ -1978,7 +1899,6 @@ def _cancel_top_terminal_order(driver: webdriver.Chrome, client_code: str, symbo
         """
         driver.execute_script(script)
         time.sleep(0.5)
-
         cancel_script = """
         var items = document.querySelectorAll('.context-menu-item, ul.dropdown-menu li, .v-context li');
         for (var i = 0; i < items.length; i++) {
@@ -2005,7 +1925,6 @@ def _cancel_top_terminal_order(driver: webdriver.Chrome, client_code: str, symbo
         print(f"    [ORDER TERMINAL: CANCEL ERROR] {e}")
         return False
 
-
 def _confirm_cancel_modal(driver: webdriver.Chrome) -> None:
     """Confirms any confirmation modal/dialog following Cancel request."""
     try:
@@ -2023,7 +1942,6 @@ def _confirm_cancel_modal(driver: webdriver.Chrome) -> None:
     except Exception:
         pass
 
-
 def _dismiss_all_alerts_and_popups(driver: webdriver.Chrome) -> None:
     """Dismisses browser alerts and modal overlays if an order is rejected."""
     try:
@@ -2034,7 +1952,6 @@ def _dismiss_all_alerts_and_popups(driver: webdriver.Chrome) -> None:
         time.sleep(0.3)
     except Exception:
         pass
-
     try:
         driver.execute_script("""
             var closeBtns = document.querySelectorAll('.modal-header .close, .swal2-close, button[data-dismiss="modal"]');
@@ -2042,7 +1959,6 @@ def _dismiss_all_alerts_and_popups(driver: webdriver.Chrome) -> None:
         """)
     except Exception:
         pass
-
 
 def run_sequential_buy_lifecycle_audit(
     driver: webdriver.Chrome,
@@ -2060,7 +1976,6 @@ def run_sequential_buy_lifecycle_audit(
     clean_sym = oms_price.clean_symbol(instrument or DEFAULT_SYMBOL)
     buyer = buy_client or DEFAULT_CLIENT_CODE
     ex = exchange or "DSE"
-
     print("\n+========================================================================================+")
     print("|      SEQUENTIAL 5-STAGE BUY LIFECYCLE AUDIT (PURE REAL-TIME UI DOM DATA - NO API)       |")
     print("+========================================================================================+")
@@ -2068,7 +1983,6 @@ def run_sequential_buy_lifecycle_audit(
     print(f"| Instrument Symbol  : {clean_sym:<64} |")
     print(f"| Target Exchange    : {ex:<64} |")
     print("+========================================================================================+")
-
     navigate_to_trade_page(driver)
 
     # 1. Ensure widgets are linked to default Turquoise (#42EADDFF)
@@ -2077,7 +1991,6 @@ def run_sequential_buy_lifecycle_audit(
         widget_color.apply_color_to_all_widgets(driver, 1)
     except Exception as e:
         print(f"[WIDGET COLOR] Turquoise linking notice: {e}")
-
     ref_price = oms_price.fetch_price_ltp_or_ycp(driver, clean_sym, ex)
     if ref_price <= 0:
         ref_price = 100.0
@@ -2112,7 +2025,6 @@ def run_sequential_buy_lifecycle_audit(
     # Active DOM polling for Accepted status
     wait_for_terminal_dom_status(driver, "Accepted", 4.0)
     order_terminal.refresh(driver)
-
     stage1 = baseline
     if not has_latest_order_in_terminal(driver, buyer, clean_sym):
         print(f"\n[ORDER TERMINAL CHECK] No latest order found for {clean_sym} ({buyer}) in Order Terminal! Skipping Stage 1 snapshot capture and comparison.")
@@ -2132,7 +2044,6 @@ def run_sequential_buy_lifecycle_audit(
     # Active DOM polling for Partially Filled status
     wait_for_terminal_dom_status(driver, "Partially", 4.0)
     order_terminal.refresh(driver)
-
     stage2 = stage1
     if not has_latest_order_in_terminal(driver, buyer, clean_sym):
         print(f"\n[ORDER TERMINAL CHECK] No latest order found for {clean_sym} ({buyer}) in Order Terminal! Skipping Stage 2 snapshot capture and comparison.")
@@ -2152,7 +2063,6 @@ def run_sequential_buy_lifecycle_audit(
     # Active DOM polling for Filled status
     wait_for_terminal_dom_status(driver, "Filled", 4.0)
     order_terminal.refresh(driver)
-
     stage3 = stage2
     if not has_latest_order_in_terminal(driver, buyer, clean_sym):
         print(f"\n[ORDER TERMINAL CHECK] No latest order found for {clean_sym} ({buyer}) in Order Terminal! Skipping Stage 3 snapshot capture and comparison.")
@@ -2167,14 +2077,12 @@ def run_sequential_buy_lifecycle_audit(
     print(f"    Placing resting BUY Limit: 10 shares @ {cancel_rate:.2f} to cancel...")
     place_order(driver, "BUY", buyer, clean_sym, 10, cancel_rate, ex)
     wait_for_terminal_dom_status(driver, "Accepted", 3.0)
-
     print("    Executing cancellation via Order Terminal context menu...")
     order_terminal.navigate_to_order_terminal(driver)
     order_terminal.refresh(driver)
     time.sleep(0.5)
     _cancel_top_terminal_order(driver, buyer, clean_sym)
     wait_for_terminal_dom_status(driver, "Cancel", 4.0)
-
     stage4 = stage3
     if not has_latest_order_in_terminal(driver, buyer, clean_sym):
         print(f"\n[ORDER TERMINAL CHECK] No latest order found for {clean_sym} ({buyer}) in Order Terminal! Skipping Stage 4 snapshot capture and comparison.")
@@ -2193,7 +2101,6 @@ def run_sequential_buy_lifecycle_audit(
         print(f"    [REJECTION TRIGGERED] Browser prevented submission or alert raised: {e}")
     _dismiss_all_alerts_and_popups(driver)
     wait_for_terminal_dom_status(driver, "Reject", 3.0)
-
     order_terminal.refresh(driver)
     stage5 = first_data
     if not has_latest_order_in_terminal(driver, buyer, clean_sym):
@@ -2208,7 +2115,6 @@ def run_sequential_buy_lifecycle_audit(
         print("    Verifying Rejected order caused ZERO unauthorized leakage, cash debit, or position!")
         print("========================================================================================")
         compare_and_report_6widgets(first_data, stage5, "STAGE 5 [REJECTED] vs FIRST DATA [BASELINE] (ZERO-IMPACT AUDIT)")
-
     print("\n+========================================================================================+")
     print("|              SEQUENTIAL 5-STAGE BUY LIFECYCLE AUDIT COMPLETE (SCORECARD)                |")
     print("+========================================================================================+")
@@ -2221,8 +2127,6 @@ def run_sequential_buy_lifecycle_audit(
     print("| Widget All Rows Audit     : PASSED - Complete Pre & Post All Columns for selected symbol. |")
     print("| Default Color Channel     : PASSED - All 6 widgets synced to Turquoise (#42EADDFF).    |")
     print("+========================================================================================+\n")
-
-
 
 # =========================================================================
 # PRICE LIMIT BREACH CLAMPING, DB PRICE BAND & RESILIENT RETRY ENGINE
@@ -2253,7 +2157,6 @@ class MarketPriceBand:
             f"SH: {self.sh:.2f} | SL: {self.sl:.2f} | CH: {self.ch:.2f} | CL: {self.cl:.2f} -> Safe: {self.safe_rate:.2f}"
         )
 
-
 def fetch_market_db_price_band(instrument: str, exchange: str = "DSE", driver: Optional[webdriver.Chrome] = None) -> MarketPriceBand:
     clean_sym = clean_symbol(instrument)
     ex = (exchange or "DSE").strip().upper()
@@ -2278,7 +2181,6 @@ def fetch_market_db_price_band(instrument: str, exchange: str = "DSE", driver: O
                 conn.close()
     except Exception:
         pass
-
     if not sourced and driver is not None:
         try:
             import market_depth
@@ -2293,7 +2195,6 @@ def fetch_market_db_price_band(instrument: str, exchange: str = "DSE", driver: O
         except Exception:
             pass
     return MarketPriceBand(clean_sym, ex, ltp, ycp, sh, sl, ch, cl)
-
 
 class RejectionOrderPriceInfo:
     def __init__(self, suggested_price: float, upper_limit: float, lower_limit: float, raw_message: str):
@@ -2311,60 +2212,48 @@ class RejectionOrderPriceInfo:
     def has_lower_limit(self) -> bool:
         return self.lower_limit > 0.0
 
-
 def parse_rejection_text(raw_msg: str) -> RejectionOrderPriceInfo:
     if not raw_msg or not raw_msg.strip():
         return RejectionOrderPriceInfo(0.0, 0.0, 0.0, "")
-
     extracted_suggested = 0.0
     extracted_upper = 0.0
     extracted_lower = 0.0
-
     m_more = re.search(r"(?i)price cannot be (?:more|greater|higher|above)\s+than\s*([0-9]+(?:\.[0-9]+)?)", raw_msg)
     if m_more:
         extracted_upper = parse_num_safe(m_more.group(1))
         extracted_suggested = extracted_upper
-
     m_less = re.search(r"(?i)price cannot be (?:less|lower|below)\s+than\s*([0-9]+(?:\.[0-9]+)?)", raw_msg)
     if m_less:
         extracted_lower = parse_num_safe(m_less.group(1))
         if extracted_suggested <= 0.0:
             extracted_suggested = extracted_lower
-
     if extracted_suggested <= 0.0:
         m_sug = re.search(r"(?i)\b(?:suggested|suggest|recommended|acceptable)\b[^0-9]{1,20}?([0-9]+(?:\.[0-9]+)?)", raw_msg)
         if m_sug:
             extracted_suggested = parse_num_safe(m_sug.group(1))
-
     m_rng = re.search(r"(?i)(?:\[|between\s+)([0-9]+(?:\.[0-9]+)?)\s*(?:-|to|and)\s*([0-9]+(?:\.[0-9]+)?)\]?", raw_msg)
     if m_rng:
         if extracted_lower <= 0.0:
             extracted_lower = parse_num_safe(m_rng.group(1))
         if extracted_upper <= 0.0:
             extracted_upper = parse_num_safe(m_rng.group(2))
-
     if extracted_upper <= 0.0:
         m_up = re.search(r"(?i)\b(?:upper(?:\s+circuit)?(?:\s+limit)?|highest|circuit\s+high|circuit_up|ceiling|max(?:imum)?)\b[^0-9]{1,20}?([0-9]+(?:\.[0-9]+)?)", raw_msg)
         if m_up:
             extracted_upper = parse_num_safe(m_up.group(1))
-
     if extracted_lower <= 0.0:
         m_lo = re.search(r"(?i)\b(?:lower(?:\s+circuit)?(?:\s+limit)?|lowest|circuit\s+low|circuit_down|floor|min(?:imum)?)\b[^0-9]{1,20}?([0-9]+(?:\.[0-9]+)?)", raw_msg)
         if m_lo:
             extracted_lower = parse_num_safe(m_lo.group(1))
-
     if extracted_suggested <= 0.0:
         low_msg = raw_msg.lower()
         if extracted_upper > 0.0 and ("more than" in low_msg or "exceed" in low_msg):
             extracted_suggested = extracted_upper
         elif extracted_lower > 0.0 and any(k in low_msg for k in ("less than", "below", "lower than")):
             extracted_suggested = extracted_lower
-
     if extracted_lower > 0.0 and extracted_upper > 0.0 and extracted_lower > extracted_upper:
         extracted_lower = 0.0
-
     return RejectionOrderPriceInfo(extracted_suggested, extracted_upper, extracted_lower, raw_msg)
-
 
 def extract_rejection_order_price_info(driver: Optional[webdriver.Chrome], client_code: str = "", symbol: str = "") -> RejectionOrderPriceInfo:
     if not driver:
@@ -2387,7 +2276,6 @@ def extract_rejection_order_price_info(driver: Optional[webdriver.Chrome], clien
         return parse_rejection_text(raw_msg)
     except Exception:
         return parse_rejection_text(last_rejection_alert_text)
-
 
 def dismiss_rejection_alert(driver: Optional[webdriver.Chrome]) -> None:
     global last_rejection_alert_text
@@ -2417,7 +2305,6 @@ def dismiss_rejection_alert(driver: Optional[webdriver.Chrome]) -> None:
     except Exception:
         pass
 
-
 def resolve_price_limit_safe(candidate_price: float, lower_limit: float, upper_limit: float, suggested_price: float) -> float:
     if lower_limit > 0.0 and upper_limit > 0.0 and lower_limit > upper_limit:
         lower_limit = 0.0
@@ -2433,7 +2320,6 @@ def resolve_price_limit_safe(candidate_price: float, lower_limit: float, upper_l
     if lower_limit > 0.0 and base_sugg < lower_limit:
         return lower_limit
     return base_sugg
-
 
 def check_latest_terminal_order_status(driver: Optional[webdriver.Chrome], client_code: str = "", symbol: str = "", side: str = "") -> str:
     if not driver:
@@ -2458,7 +2344,6 @@ def check_latest_terminal_order_status(driver: Optional[webdriver.Chrome], clien
     except Exception:
         return "UNKNOWN"
 
-
 def collect_smart_market_prices(driver: Optional[webdriver.Chrome], symbol: str, exchange: str = "DSE", side: str = "BUY", initial_rate: float = 0.0) -> List[float]:
     band = fetch_market_db_price_band(symbol, exchange, driver)
     upper = band.sh if band.sh > 0 else band.ch
@@ -2478,7 +2363,6 @@ def collect_smart_market_prices(driver: Optional[webdriver.Chrome], symbol: str,
             if c > 0 and c not in valid:
                 valid.append(c)
     return valid or [round(resolve_price_limit_safe(sugg, lower, upper, 266.90), 2)]
-
 
 def submit_single_order_attempt(
     driver: webdriver.Chrome, side: str, client_code: str, symbol: str, qty: int, rate: float, exchange: str = "DSE"
@@ -2516,7 +2400,6 @@ def submit_single_order_attempt(
     time.sleep(1.0)
     dismiss_lingering_autocomplete(driver)
 
-
 class PriceLimitBreachException(Exception):
     def __init__(self, symbol: str, attempted_price: float, lower_limit: float, upper_limit: float, total_retries: int):
         self.symbol = symbol
@@ -2528,7 +2411,6 @@ class PriceLimitBreachException(Exception):
             f"Price Limit Breach for [{symbol}]: Target price {attempted_price:.2f} outside circuit limits "
             f"[{lower_limit:.2f} - {upper_limit:.2f}] after {total_retries} retries."
         )
-
 
 class BackoffConfig:
     def __init__(self, initial_delay_ms: int = 300, max_delay_ms: int = 3000, multiplier: float = 1.5, jitter: bool = True):
@@ -2544,7 +2426,6 @@ class BackoffConfig:
             delay *= 0.85 + (random.random() * 0.30)
         return delay / 1000.0
 
-
 def execute_trade_order_with_resilient_retry(
     driver: webdriver.Chrome, side: str, client_code: str, symbol: str, qty: int,
     initial_rate: float, exchange: str = "DSE", max_retries: int = 3, backoff: Optional[BackoffConfig] = None
@@ -2554,7 +2435,6 @@ def execute_trade_order_with_resilient_retry(
     attempts = max(max_retries, 3)
     last_lower = last_upper = 0.0
     last_attempted = initial_rate
-
     on_screen = extract_rejection_order_price_info(driver, client_code, symbol)
     upfront_suggested = 0.0
     if on_screen.has_suggested_price() or on_screen.has_upper_limit() or on_screen.has_lower_limit():
@@ -2564,7 +2444,6 @@ def execute_trade_order_with_resilient_retry(
         if on_screen.has_lower_limit():
             last_lower = on_screen.lower_limit
         dismiss_rejection_alert(driver)
-
     for i in range(attempts):
         candidates = collect_smart_market_prices(driver, symbol, exchange, side, initial_rate)
         if upfront_suggested > 0.0:
@@ -2573,7 +2452,6 @@ def execute_trade_order_with_resilient_retry(
             rate = initial_rate
         else:
             rate = candidates[i] if i < len(candidates) else candidates[0]
-
         rate = resolve_price_limit_safe(rate, last_lower, last_upper, upfront_suggested or rate)
         last_attempted = rate
         submit_single_order_attempt(driver, side, client_code, symbol, qty, rate, exchange)
@@ -2583,7 +2461,6 @@ def execute_trade_order_with_resilient_retry(
             last_accepted_price = rate
             last_rejection_alert_text = ""
             return True
-
         rej = extract_rejection_order_price_info(driver, client_code, symbol)
         if rej.has_upper_limit() and (last_upper <= 0.0 or rej.upper_limit <= last_upper):
             last_upper = rej.upper_limit
@@ -2594,11 +2471,9 @@ def execute_trade_order_with_resilient_retry(
             upfront_suggested = resolve_price_limit_safe(rej.suggested_price, last_lower, last_upper, rej.suggested_price)
             dismiss_rejection_alert(driver)
         time.sleep(backoff.calculate_delay_sec(i + 1))
-
     if 0 < last_lower <= last_upper and (last_attempted < last_lower or last_attempted > last_upper):
         raise PriceLimitBreachException(symbol, last_attempted, last_lower, last_upper, attempts)
     return False
-
 
 def test_price_limit_breach_clamping() -> bool:
     print("\n=== PRICE LIMIT BREACH & SUGGESTED PRICE RESOLUTION UNIT TESTS ===")
@@ -2622,7 +2497,6 @@ def test_price_limit_breach_clamping() -> bool:
     checks.append(("Trade Rule cannot be less than", abs(resolve_price_limit_safe(210.0, r5.lower_limit, r5.upper_limit, r5.suggested_price) - 218.40) < 0.001))
     r6 = parse_rejection_text("Reason: (299): Trade Rule - Price limit exceeded. Price cannot be more than 266.90")
     checks.append(("Terminal Tooltip 266.90", abs(resolve_price_limit_safe(12113.5, r6.lower_limit, r6.upper_limit, r6.suggested_price) - 266.90) < 0.001))
-
     for idx, (label, ok) in enumerate(checks, 1):
         print(f"Test {idx:2d} [{label}]: {'PASS' if ok else 'FAIL'}")
     all_ok = all(ok for _, ok in checks)

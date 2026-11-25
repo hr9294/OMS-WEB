@@ -40,7 +40,6 @@ public class Position {
         private final double mktValue;
         private final double gain;
         private final double gainPercent;
-
         public ClientPosition(String symbol, String clientCode, double totalQty, double saleableQty,
                               double avgCost, double totalCost, double mktRate, double mktValue,
                               double gain, double gainPercent) {
@@ -66,7 +65,6 @@ public class Position {
         public double getMktValue() { return mktValue; }
         public double getGain() { return gain; }
         public double getGainPercent() { return gainPercent; }
-
         @Override
         public String toString() {
             return String.format("Client: %-8s | Saleable: %,8.0f | Total: %,8.0f | AvgCost: %,8.2f | LTP: %,8.2f",
@@ -120,7 +118,6 @@ public class Position {
         try {
             navigateToPosition(driver);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             String script =
                 "var targetHex = arguments[0];" +
                 "var tbl = document.getElementById('symbol_position_table');" +
@@ -158,10 +155,8 @@ public class Position {
                 "} else {" +
                 "    return { success: false, error: 'Color hex not found in palette' };" +
                 "}";
-
             @SuppressWarnings("unchecked")
             Map<String, Object> result = (Map<String, Object>) js.executeScript(script, targetHex);
-
             if (result != null && Boolean.TRUE.equals(result.get("success"))) {
                 System.out.printf(">>> [POSITION COLOR LINK] Successfully linked Position widget to %s (%s)%n",
                         chosenColorName, targetHex);
@@ -198,7 +193,6 @@ public class Position {
                 "    }" +
                 "}" +
                 "return '';";
-
             Object res = js.executeScript(script);
             if (res != null) {
                 String hex = String.valueOf(res).trim();
@@ -221,7 +215,6 @@ public class Position {
         System.out.println("               POSITION WIDGET VIEWER                  ");
         System.out.println("=======================================================");
         navigateToPosition(driver);
-
         // Display and offer Position Widget Color Link
         String currentColor = getWidgetColor(driver);
         System.out.printf("[COLOR LINK] Position Widget Current Color: %s%n", currentColor.isEmpty() ? "Default / Unlinked" : currentColor);
@@ -229,7 +222,6 @@ public class Position {
         if (sc.nextLine().trim().equals("1")) {
             runWidgetColorSelection(driver, sc);
         }
-
         String symbol = cleanSymbol(readInputSafe(driver, By.id("order_instrument"), By.id("instrument"), By.id("marketwatch_symbol")));
         if (symbol.isEmpty()) {
             System.out.print("Enter Symbol (e.g. GP, ACFL): ");
@@ -244,7 +236,6 @@ public class Position {
         printPositionsTable(symbol, positions);
         List<ClientPosition> saleable = getClientsWithSaleable(driver, symbol, exchange);
         System.out.printf("\n[SUMMARY] Found %d client(s) with SALEABLE shares for %s.%n", saleable.size(), symbol);
-
         if (!saleable.isEmpty()) {
             System.out.print("\nDo you want to perform a SELL trade for this symbol now? (1=YES / 0=NO): ");
             String ans = sc.nextLine().trim();
@@ -293,7 +284,6 @@ public class Position {
     public static boolean ensurePositionWidgetVisible(WebDriver driver) {
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             // Check if table is already visible
             Boolean alreadyVis = (Boolean) js.executeScript(
                 "var tbl = document.getElementById('symbol_position_table');" +
@@ -303,10 +293,8 @@ public class Position {
             if (Boolean.TRUE.equals(alreadyVis)) {
                 return true;
             }
-
             System.out.println("[NAV] Position widget is hidden/inactive. Activating Position tab...");
             try { if (OMSweb_Trade.openWidgetTab(driver, "Position")) return true; } catch (Exception ignored) {}
-
             // 1. Direct tab click via JS
             Boolean clicked = (Boolean) js.executeScript(
                 "var tabs = Array.from(document.querySelectorAll('li.lm_tab, div.lm_tab, a.nav-link, a'));" +
@@ -330,7 +318,6 @@ public class Position {
                 "if (link) { link.click(); return true; }" +
                 "return false;"
             );
-
             if (Boolean.TRUE.equals(clicked)) {
                 Thread.sleep(600);
             } else {
@@ -341,7 +328,6 @@ public class Position {
                 tab.click();
                 Thread.sleep(600);
             }
-
             // Unhide container if hidden by CSS
             js.executeScript(
                 "var tbl = document.getElementById('symbol_position_table');" +
@@ -370,7 +356,6 @@ public class Position {
     public static boolean isSymbolReflectedInPosition(WebDriver driver, String symbol) {
         String cleanSym = cleanSymbol(symbol);
         if (cleanSym.isEmpty()) return true;
-
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
             Object res = js.executeScript(
@@ -404,11 +389,9 @@ public class Position {
         String cleanSym = cleanSymbol(symbol);
         String ex = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "DSE";
         ensurePositionWidgetVisible(driver);
-
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
             System.out.printf("[POSITION] Manually selecting Symbol: %s on Exchange: %s in Position search box...%n", cleanSym, ex);
-
             // 1. JS value assignment, exchange selection, and event dispatch
             js.executeScript(
                 "var sym = arguments[0];" +
@@ -440,14 +423,12 @@ public class Position {
                 "}",
                 cleanSym, ex
             );
-
             // 2. Selenium key interaction
             try {
                 WebElement symInp = driver.findElement(By.id("sc_instrument_search"));
                 symInp.clear();
                 symInp.sendKeys(cleanSym);
                 symInp.sendKeys(Keys.ENTER);
-
                 // Check for any search button / magnifying glass icon adjacent to the input
                 List<WebElement> searchBtns = driver.findElements(By.xpath(
                         "//input[@id='sc_instrument_search']/following-sibling::button | " +
@@ -457,7 +438,6 @@ public class Position {
                     searchBtns.get(0).click();
                 }
             } catch (Exception ignored) {}
-
             Thread.sleep(1200);
         } catch (Exception e) {
             System.out.println("[WARN: Position Manual Search] " + e.getMessage());
@@ -482,7 +462,6 @@ public class Position {
                 cleanClient
             );
             Thread.sleep(400);
-
             // Additional UI interaction fallback
             try {
                 WebElement codeInp = driver.findElement(By.xpath(
@@ -514,40 +493,33 @@ public class Position {
         String cleanSym = cleanSymbol(symbol);
         String ex = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "DSE";
         List<ClientPosition> list = new ArrayList<>();
-
         // Step 1: Check if Position widget is hidden or inactive
         if (!isPositionWidgetVisible(driver)) {
             System.out.println("[POSITION] Position widget is hidden or inactive. Ensuring visibility...");
             ensurePositionWidgetVisible(driver);
         }
-
         // Step 2: Check if global search reflected on Position widget
         boolean isReflected = isSymbolReflectedInPosition(driver, cleanSym);
         if (!isReflected) {
             System.out.printf("[POSITION] Global search did not reflect for symbol %s. Manually selecting symbol via search button...%n", cleanSym);
             manualSelectSymbolInPosition(driver, cleanSym, ex);
         }
-
         // Step 3: Fast JavaScript DOM extraction from symbol_position_table
         list = extractFromDomTable(driver, cleanSym);
-
         // Step 4: If table is empty, retry manual selection once
         if (list.isEmpty()) {
             manualSelectSymbolInPosition(driver, cleanSym, ex);
             list = extractFromDomTable(driver, cleanSym);
         }
-
         // Step 5: If still empty or UI failed, fetch directly from Position API (/shared/getsymbolclient/)
         if (list.isEmpty()) {
             System.out.printf("[POSITION] UI table empty or unreflected. Fetching data from Admin Position API (/shared/getsymbolclient/)...%n");
             list = fetchPositionsFromApi(driver, cleanSym, ex);
-
             // If API returned data, render it into the UI table so the screen stays synced
             if (!list.isEmpty()) {
                 renderPositionsIntoUiTable(driver, list);
             }
         }
-
         return list;
     }
 
@@ -570,13 +542,11 @@ public class Position {
     public static List<ClientPosition> getUiSnapshot(WebDriver driver, String symbol, String exchange) {
         return getUiSnapshot(driver, null, symbol, exchange);
     }
-
     @SuppressWarnings("unchecked")
     public static List<ClientPosition> fetchPositionsFromApi(WebDriver driver, String symbol, String exchange) {
         String cleanSym = cleanSymbol(symbol);
         String ex = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "DSE";
         List<ClientPosition> list = new ArrayList<>();
-
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
             String script =
@@ -588,7 +558,6 @@ public class Position {
                 ".then(function(r) { return r.json(); })" +
                 ".then(function(data) { done(data); })" +
                 ".catch(function(err) { done({ error: err.toString() }); });";
-
             Object raw = js.executeAsyncScript(script, cleanSym, ex);
             if (raw instanceof Map) {
                 Map<String, Object> respMap = (Map<String, Object>) raw;
@@ -607,7 +576,6 @@ public class Position {
                         double mktValue = parseNum(String.valueOf(item.getOrDefault("value", "0")));
                         double gain = parseNum(String.valueOf(item.getOrDefault("gain", "0")));
                         double gainPercent = parseNum(String.valueOf(item.getOrDefault("gain_per", "0")));
-
                         list.add(new ClientPosition(
                                 rowSym.isEmpty() ? cleanSym : rowSym,
                                 clientCode,
@@ -630,7 +598,6 @@ public class Position {
         } catch (Exception e) {
             System.out.println("[WARN: Position API] " + e.getMessage());
         }
-
         return list;
     }
 
@@ -650,11 +617,9 @@ public class Position {
         if (positions == null || positions.isEmpty()) {
             return null;
         }
-
         ClientPosition preferred = null;
         ClientPosition maxSaleable = null;
         ClientPosition qualifying = null;
-
         for (ClientPosition cp : positions) {
             if (preferredClient != null && cp.getClientCode().equalsIgnoreCase(preferredClient.trim())) {
                 preferred = cp;
@@ -666,7 +631,6 @@ public class Position {
                 qualifying = cp;
             }
         }
-
         if (preferred != null && preferred.getSaleableQty() >= requiredQty) {
             return preferred;
         }
@@ -692,10 +656,8 @@ public class Position {
         if (positions == null || positions.isEmpty()) {
             return null;
         }
-
         ClientPosition maxSaleable = null;
         ClientPosition qualifying = null;
-
         for (ClientPosition cp : positions) {
             if (excludeClient != null && cp.getClientCode().equalsIgnoreCase(excludeClient.trim())) {
                 continue;
@@ -707,7 +669,6 @@ public class Position {
                 qualifying = cp;
             }
         }
-
         if (qualifying != null) {
             return qualifying;
         }
@@ -751,7 +712,6 @@ public class Position {
 
     public static List<ClientPosition> extractFromDomTable(WebDriver driver, String cleanSym) {
         List<ClientPosition> list = new ArrayList<>();
-
         // Fast JavaScript DOM extraction from symbol_position_table
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
@@ -782,7 +742,6 @@ public class Position {
                 "}" +
                 "return out;"
             );
-
             if (res instanceof List) {
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> rawList = (List<Map<String, Object>>) res;
@@ -808,7 +767,6 @@ public class Position {
                 }
             }
         } catch (Exception ignored) {}
-
         // Selenium Explicit Elements Fallback
         try {
             List<WebElement> rows = driver.findElements(By.xpath("//table[@id='symbol_position_table']//tbody//tr"));
@@ -833,7 +791,6 @@ public class Position {
                 }
             }
         } catch (Exception ignored) {}
-
         return list;
     }
 
@@ -856,7 +813,6 @@ public class Position {
                 m.put("gain_percent", fmt(p.getGainPercent()));
                 rowsData.add(m);
             }
-
             js.executeScript(
                 "var tbl = document.getElementById('symbol_position_table');" +
                 "if (!tbl) return;" +
@@ -913,7 +869,6 @@ public class Position {
         String cleanSym = cleanSymbol(symbol);
         searchSymbolInPosition(driver, cleanSym, exchange);
         List<ClientPosition> saleableClients = getClientsWithSaleable(driver, cleanSym, exchange);
-
         // Case A: Specific client code provided
         if (inputClientCode != null && !inputClientCode.trim().isEmpty()) {
             String target = inputClientCode.trim();
@@ -932,7 +887,6 @@ public class Position {
             }
             return new ClientPosition(cleanSym, target, 0, 0, 0, 0, 0, 0, 0, 0);
         }
-
         // Case B: No client code provided -> pick random client with saleable shares
         if (!saleableClients.isEmpty()) {
             int randomIdx = ThreadLocalRandom.current().nextInt(saleableClients.size());
@@ -946,7 +900,6 @@ public class Position {
         searchSymbolInPosition(driver, cleanSym, exchange);
         List<ClientPosition> saleableClients = getClientsWithSaleable(driver, cleanSym, exchange);
         System.out.printf("[POSITION] Found %d client(s) with saleable shares for %s.%n", saleableClients.size(), cleanSym);
-
         if (saleableClients.isEmpty()) {
             System.out.println("[WARN: POSITION] No clients currently hold saleable shares for " + cleanSym + " in Position table.");
             System.out.printf("Press Enter to keep current client [%s], or enter another client code: ", fallbackClient);
@@ -959,7 +912,6 @@ public class Position {
             if (fallbackList.isEmpty()) fallbackList.add(new ClientPosition(cleanSym, fallbackClient, 0, 0, 0, 0, 0, 0, 0, 0));
             return fallbackList;
         }
-
         // Preview top holding clients
         System.out.println("\n+---------------------------------------------------------------+");
         System.out.printf("| %-61s |%n", "HOLDING CLIENTS FOR " + cleanSym + " (Top Preview)");
@@ -1020,30 +972,24 @@ public class Position {
         try {
             System.out.printf("\n[POSITION -> TRADE] Executing SELL: %d %s @ %.2f for Client: %s on %s...%n",
                     qty, symbol, rate, clientCode, exchange);
-
             OMSweb_Trade.navigateToTradePage(driver, wait);
-
             // Click SELL button
             WebElement sellBtn = wait.until(ExpectedConditions.elementToBeClickable(By.xpath("//div[@title='Place SELL Order']")));
             sellBtn.click();
             Thread.sleep(300);
-
             // Select Exchange / Priority in Modal
             OMSweb_Trade.selectExchangeInModal(driver, exchange);
             Thread.sleep(200);
-
             // Fill Client Code & Symbol with safe autocomplete confirmation
             OMSweb_Trade.fillAndSelectAutocompleteSafely(driver, wait, By.id("order_client_code"), clientCode, false);
             String publicSymbol = toPublicSymbol(symbol);
             OMSweb_Trade.fillAndSelectAutocompleteSafely(driver, wait, By.id("order_instrument"), publicSymbol, true);
             OMSweb_Trade.ensureSymbolBoardRetained(driver, publicSymbol);
             OMSweb_Trade.ensureClientCodeRetained(driver, clientCode);
-
             // Fill Qty
             WebElement qtyInp = driver.findElement(By.id("order_qty"));
             qtyInp.clear();
             qtyInp.sendKeys(String.valueOf(qty));
-
             // Fill Rate
             if (rate > 0) {
                 try {
@@ -1059,16 +1005,13 @@ public class Position {
                     ((JavascriptExecutor) driver).executeScript("$('#limit_order_rate').trigger('input').trigger('change');");
                 } catch (Exception ignored) {}
             }
-
             // Display Commission on Sell Window if client has commission
             OMSweb_Trade.displayCommissionOnOrderWindow(driver, clientCode, qty, rate);
-
             // Click Submit SELL Button
             driver.findElement(By.xpath(
                     "//div[@class='col pl-0 pr-0 td-btn mt-2 mb-2 form-inline form-submit-btn-holder text-center']//button[@type='button'][normalize-space()='SELL']"))
                     .click();
             System.out.println("[TRADE] Clicked SELL submit button.");
-
             // Confirm
             boolean confirmed = false;
             for (int attempt = 0; attempt < 25; attempt++) {
@@ -1089,7 +1032,6 @@ public class Position {
                     );
                     if (Boolean.TRUE.equals(jsClicked)) { confirmed = true; break; }
                 } catch (Exception ignored) {}
-
                 try {
                     List<WebElement> ybs = driver.findElements(By.xpath("//*[@id='cnfirmConfirmBtn'] | //button[normalize-space()='YES']"));
                     for (WebElement yb : ybs) {
@@ -1297,11 +1239,9 @@ public class Position {
     public static Map<String, List<ClientPosition>> getCseHoldingsFromPositionWidget(WebDriver driver) {
         Map<String, List<ClientPosition>> holdings = new LinkedHashMap<>();
         if (driver == null) return holdings;
-
         try {
             ensurePositionWidgetVisible(driver);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             // 1. Switch exchange selector in Position widget to CSE
             js.executeScript(
                 "var exSel = document.getElementById('exchange_position');" +
@@ -1316,7 +1256,6 @@ public class Position {
                 "}"
             );
             Thread.sleep(700);
-
             // 2. Scrape from symbol_position_table
             List<ClientPosition> domRows = extractFromDomTable(driver, "");
             for (ClientPosition cp : domRows) {
@@ -1325,7 +1264,6 @@ public class Position {
                     holdings.computeIfAbsent(sym, k -> new ArrayList<>()).add(cp);
                 }
             }
-
             // 3. Fallback / supplement: fetch from Position API for CSE
             try {
                 String script =
@@ -1335,7 +1273,6 @@ public class Position {
                     ".then(function(r) { return r.json(); })" +
                     ".then(function(data) { done(data); })" +
                     ".catch(function(err) { done({ error: err.toString() }); });";
-
                 Object raw = js.executeAsyncScript(script);
                 if (raw instanceof Map) {
                     Map<String, Object> respMap = (Map<String, Object>) raw;
@@ -1374,15 +1311,12 @@ public class Position {
      */
     public static List<CseTradeableSymbol> getCseTradeableSymbols(WebDriver driver) {
         Map<String, CseTradeableSymbol> symbolMap = new LinkedHashMap<>();
-
         // A. Query DB table cse_md_ltp
         Map<String, double[]> dbQuotes = new HashMap<>(); // [ltp, ycp, circuitUp, circuitDown, volume]
         Map<String, String> companyNames = new HashMap<>();
-
         String sql = "SELECT symbol, COALESCE(sector, symbol) AS company_name, ltp, ycp, circuit_up, circuit_down, total_qty " +
                      "FROM cse_md_ltp WHERE board = 'PUBLIC' AND ltp IS NOT NULL AND ltp > 0 " +
                      "ORDER BY total_qty DESC, symbol ASC";
-
         try (Connection conn = getJdbcConnection()) {
             if (conn != null) {
                 try (PreparedStatement ps = conn.prepareStatement(sql);
@@ -1395,7 +1329,6 @@ public class Position {
                         double up = rs.getDouble("circuit_up");
                         double down = rs.getDouble("circuit_down");
                         long vol = rs.getLong("total_qty");
-
                         if (!sym.isEmpty()) {
                             dbQuotes.put(sym, new double[]{ltp, ycp, up, down, (double) vol});
                             companyNames.put(sym, comp != null ? comp : sym);
@@ -1406,14 +1339,11 @@ public class Position {
         } catch (Exception e) {
             System.out.println("[WARN: DB CSE Query] " + e.getMessage());
         }
-
         // B. Query Position Widget for CSE Holdings
         Map<String, List<ClientPosition>> cseHoldings = getCseHoldingsFromPositionWidget(driver);
-
         // C. Combine All Symbols: DB First, then Position Holdings
         Set<String> allSymbols = new LinkedHashSet<>(dbQuotes.keySet());
         allSymbols.addAll(cseHoldings.keySet());
-
         for (String sym : allSymbols) {
             double[] quote = dbQuotes.get(sym);
             boolean inDb = (quote != null);
@@ -1429,14 +1359,12 @@ public class Position {
                 down = quote[3];
                 vol = (long) quote[4];
             }
-
             String comp = companyNames.getOrDefault(sym, sym);
             List<ClientPosition> posList = cseHoldings.get(sym);
             boolean inPos = (posList != null && !posList.isEmpty());
             int clientCount = 0;
             double saleableTotal = 0.0;
             String topClient = "-";
-
             if (posList != null && !posList.isEmpty()) {
                 clientCount = posList.size();
                 saleableTotal = posList.stream().mapToDouble(ClientPosition::getSaleableQty).sum();
@@ -1444,7 +1372,6 @@ public class Position {
                         .max(Comparator.comparingDouble(ClientPosition::getSaleableQty))
                         .map(ClientPosition::getClientCode).orElse("-");
             }
-
             if (!inDb && posList != null && !posList.isEmpty()) {
                 ClientPosition sample = posList.get(0);
                 if (sample != null) {
@@ -1453,12 +1380,10 @@ public class Position {
                     if (down <= 0 && ltp > 0) down = Math.round(ltp * 0.90 * 100.0) / 100.0;
                 }
             }
-
             symbolMap.put(sym, new CseTradeableSymbol(
                 sym, comp, ltp, ycp, up, down, vol, inDb, inPos, clientCount, saleableTotal, topClient
             ));
         }
-
         // D. Sort:
         // 1. Position holdings with saleable shares first
         // 2. Standard equities (non-derivative, non-bond, LTP between 5 and 2000 BDT) sorted by volume/LTP
@@ -1472,12 +1397,10 @@ public class Position {
             if (aHoldings && bHoldings) {
                 return Double.compare(b.getTotalSaleableQty(), a.getTotalSaleableQty());
             }
-
             boolean aIsStandardStock = !a.getSymbol().contains("-") && !a.getSymbol().contains("BOND") && !a.getSymbol().contains("KG") && a.getLtp() > 1.0 && a.getLtp() < 5000.0;
             boolean bIsStandardStock = !b.getSymbol().contains("-") && !b.getSymbol().contains("BOND") && !b.getSymbol().contains("KG") && b.getLtp() > 1.0 && b.getLtp() < 5000.0;
             if (aIsStandardStock && !bIsStandardStock) return -1;
             if (!aIsStandardStock && bIsStandardStock) return 1;
-
             if (a.getVolume() > 0 || b.getVolume() > 0) {
                 return Long.compare(b.getVolume(), a.getVolume());
             }
@@ -1499,7 +1422,6 @@ public class Position {
         System.out.printf("| %-3s | %-12s | %-24s | %10s | %18s | %-38s |%n",
                 "#", "Symbol", "Company / Instrument", "LTP (BDT)", "Circuit (L - H)", "Position Widget (CSE Client Holdings)");
         System.out.println("+-----+--------------+--------------------------+------------+--------------------+----------------------------------------+");
-
         for (int i = 0; i < count; i++) {
             CseTradeableSymbol s = list.get(i);
             String comp = s.getCompanyName();
@@ -1507,7 +1429,6 @@ public class Position {
             String circuit = (s.getCircuitDown() > 0 || s.getCircuitUp() > 0)
                     ? String.format(Locale.US, "%.2f - %.2f", s.getCircuitDown(), s.getCircuitUp())
                     : "-";
-
             String posText;
             if (s.isInPositionWidget() && s.getTotalSaleableQty() > 0) {
                 posText = String.format("✔ %d Client(s) | %,.0f Saleable (Top: %s)",
@@ -1518,11 +1439,9 @@ public class Position {
                 posText = s.isInDb() ? "Tradeable (No local CSE holdings)" : "-";
             }
             if (posText.length() > 38) posText = posText.substring(0, 35) + "...";
-
             System.out.printf(Locale.US, "| %-3d | %-12s | %-24s | %10.2f | %18s | %-38s |%n",
                     (i + 1), s.getSymbol(), comp, s.getLtp(), circuit, posText);
         }
-
         if (total > count) {
             System.out.printf("| ... and %d more tradeable CSE symbols available in database/position.%-45s |%n", (total - count), "");
         }
@@ -1594,14 +1513,11 @@ public class Position {
     public static String promptAndSelectCseTradeableSymbol(WebDriver driver, Scanner sc, String sideText, String currentSymbol) {
         System.out.println("\n[CSE TRADE ROUTING] Querying tradeable symbols from DB (cse_md_ltp) and Position widget...");
         List<CseTradeableSymbol> symbols = getCseTradeableSymbols(driver);
-
         if (symbols.isEmpty()) {
             System.out.println("[WARN] No CSE symbols retrieved from DB or Position widget. Keeping current symbol: " + currentSymbol);
             return currentSymbol;
         }
-
         printCseTradeableSymbolsTable(symbols, 20);
-
         // Determine top recommended symbol
         CseTradeableSymbol topRec = symbols.get(0);
         // If SELL or BOTH, prefer a symbol that actually has saleable shares in Position widget!
@@ -1613,7 +1529,6 @@ public class Position {
                 }
             }
         }
-
         String recSym = topRec.getSymbol();
         System.out.printf("Select CSE Symbol for %s Order:%n", sideText != null ? sideText : "TRADE");
         System.out.printf("  - Enter row # (1-%d)%n", Math.min(20, symbols.size()));
@@ -1622,7 +1537,6 @@ public class Position {
         System.out.print("Enter Choice (default #" + recSym + " in 3s): ");
         String choice = readLineWithTimeout(sc, recSym, 3).toUpperCase();
         String chosenSym = recSym;
-
         if (!choice.isEmpty()) {
             if (choice.matches("\\d+")) {
                 int idx = Integer.parseInt(choice) - 1;
@@ -1635,9 +1549,7 @@ public class Position {
                 chosenSym = cleanSymbol(choice);
             }
         }
-
         System.out.printf(">> [SELECTED CSE SYMBOL] %s (Routing order to CSE Gateway)%n", chosenSym);
-
         // Synchronize UI widgets with the selected CSE symbol
         try {
             // 1. Update Trade search bar & Market Watch input
@@ -1652,17 +1564,13 @@ public class Position {
                 "}",
                 chosenSym
             );
-
             // 2. Connect Market Watch with CSE
             Market_Watch.connectWidget(driver, chosenSym, "CSE");
-
             // 3. Search symbol in Position widget with exchange CSE
             searchSymbolInPosition(driver, chosenSym, "CSE");
         } catch (Exception ignored) {}
-
         return chosenSym;
     }
-
     // Standalone launcher for Eclipse & command-line execution
     public static void main(String[] args) {
         WebDriver driver = OMSwebmain.createDriver();

@@ -12,7 +12,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Scanner;
-
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
@@ -24,7 +23,7 @@ import org.openqa.selenium.support.ui.WebDriverWait;
  *                       UFTFAST OMS - DAY NETTING (SCRIP NETTING)
  * ==============================================================================
  * Comprehensive Operational, RMS Controls, UI Impact, and Testing Suite.
- * 
+ *
  * Implements full coverage for:
  * 1. Application Settings: DAY_NETTING_SETTINGS (None, Individual, Cross Exchange),
  *    IS_DSE_DAY_NETTING_ENABLED, IS_CSE_DAY_NETTING_ENABLED.
@@ -39,11 +38,10 @@ import org.openqa.selenium.support.ui.WebDriverWait;
  *    - 5.5 Order Window - Exchange Data Section: Netting indicator in DSE and CSE data sections.
  *    - 5.6 Order Window - Client Netting Status: Indicator when netting is blocked for selected client.
  * 5. Position File & Trading / RMS Testing: Netting calculations and verification.
- * 
+ *
  * Can be run standalone or invoked from OMSwebmain.
  */
 public class Day_Netting {
-
     public static final boolean isCi = "true".equalsIgnoreCase(System.getenv("CI"))
             || "true".equalsIgnoreCase(System.getenv("HEADLESS"))
             || "true".equalsIgnoreCase(System.getenv("DOCKER_MODE"))
@@ -57,10 +55,8 @@ public class Day_Netting {
         NONE("None", "Netting is disabled across the system"),
         INDIVIDUAL_EXCHANGE("Individual Exchange", "Netting permitted only within the same exchange"),
         CROSS_EXCHANGE("Cross Exchange", "Netting permitted across different exchanges (DSE & CSE)");
-
         private final String displayName;
         private final String description;
-
         NettingMode(String displayName, String description) {
             this.displayName = displayName;
             this.description = description;
@@ -82,10 +78,8 @@ public class Day_Netting {
         DSE("DSE", true),
         CSE("CSE", true),
         BOTH("BOTH", true);
-
         private final String code;
         private final boolean enabled;
-
         NettingExchange(String code, boolean enabled) {
             this.code = code;
             this.enabled = enabled;
@@ -99,10 +93,8 @@ public class Day_Netting {
         ALLOWED("Allowed", true),
         BLOCKED("Blocked", false),
         DEFAULT("Default (Allowed)", true);
-
         private final String label;
         private final boolean allowed;
-
         ClientNettingStatus(String label, boolean allowed) {
             this.label = label;
             this.allowed = allowed;
@@ -118,7 +110,6 @@ public class Day_Netting {
         public boolean isEligible;
         public String board;    // Public, Block, etc.
         public String market;   // Regular, Spot, etc.
-
         public NettingSymbolRecord(String symbol, String exchange, boolean isEligible, String board, String market) {
             this.symbol = symbol != null ? symbol.trim().toUpperCase() : "";
             this.exchange = exchange != null ? exchange.trim().toUpperCase() : "DSE";
@@ -144,7 +135,6 @@ public class Day_Netting {
         public boolean isEligible;
         public boolean isClientAllowed;
         public boolean isMarketBlocked;
-
         @Override
         public String toString() {
             return String.format(Locale.US,
@@ -182,28 +172,22 @@ public class Day_Netting {
         public String symbol = "GP";
         public String clientCode = "23986";
         public String board = "PUBLIC";
-
         // Symbol verification
         public boolean isSymbolApplicable = true;
         public String symbolStatus = "APPLICABLE";
         public String symbolReason = "";
-
         // Client verification
         public boolean isClientApplicable = true;
         public String clientStatus = "APPLICABLE";
         public String clientReason = "";
-
         // Board verification
         public boolean isBoardApplicable = true;
         public String boardStatus = "APPLICABLE";
         public String boardReason = "";
-
         // Overall
         public boolean isOverallApplicable = true;
         public String overallVerdict = "";
-
         public NettingApplicabilityReport() {}
-
         public NettingApplicabilityReport(String exchange, String symbol, String clientCode, String board) {
             this.exchange = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "DSE";
             this.symbol = (symbol != null && !symbol.trim().isEmpty()) ? symbol.trim().toUpperCase() : "GP";
@@ -226,9 +210,7 @@ public class Day_Netting {
         S7_ALLOW_NETTING_PLUS_STOCK_FILE("S7: Allow Netting + Stock File -> Saleable Updated"),
         S8_DISALLOW_NETTING_PLUS_STOCK_FILE("S8: Disallow Netting + Stock File -> Saleable Updated"),
         S9_DISALLOW_PLUS_STOCK_FILE_THEN_ALLOW("S9: Disallow + Stock File -> Then Allow Netting -> Saleable Updated");
-
         private final String displayName;
-
         NettingScenarioType(String displayName) {
             this.displayName = displayName;
         }
@@ -285,7 +267,6 @@ public class Day_Netting {
         public final boolean requiresStockFile;
         public final boolean expectSaleableUpdatedInitially;
         public final boolean expectSaleableUpdatedAfterFlip;
-
         public NettingScenarioSpec(
                 int number, NettingScenarioType type, String title, String ruleDescription,
                 boolean initialClientAllowed, boolean initialSymbolAllowed,
@@ -322,7 +303,6 @@ public class Day_Netting {
         public final String details;
         public final NettingSaleableAuditResult auditResult;
         public final SaleableDeltaReport deltaReport;
-
         public NettingScenarioOutcome(
                 NettingScenarioSpec spec, boolean executedLive, boolean passed,
                 boolean applicabilityOk, boolean exclusivityOk, boolean saleableAuditOk,
@@ -358,7 +338,6 @@ public class Day_Netting {
         public final List<RMS.ApplicableSymbolRecord> cseSymbols;
         public final List<RMS.BoardRestrictionRecord> boardRestrictions;
         public final boolean capturedFromLiveDriver;
-
         public QrmsNettingStateSnapshot(
                 String dayNettingSettings, boolean dseEnabled, boolean cseEnabled, boolean allowZSpot,
                 List<RMS.ClientRmsRecord> allowedClients, List<RMS.ClientRmsRecord> disallowedClients,
@@ -389,7 +368,6 @@ public class Day_Netting {
         try {
             System.out.println("[RMS NETTING] Navigating to RMS Netting tab...");
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             // 1. Try DOM direct navigation via sidebar or navigation link
             js.executeScript(
                 "var links = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span'));\n" +
@@ -412,16 +390,13 @@ public class Day_Netting {
                 "}\n" +
                 "return false;"
             );
-
             Thread.sleep(800);
             dismissOverlays(driver);
-
             // Verify if on Netting tab or modal
             boolean onNetting = Boolean.TRUE.equals(js.executeScript(
                 "return document.querySelector('#netting_tab, [id*=\"netting\"], .netting-container, [data-tab=\"netting\"]') !== null || " +
                 "       window.location.href.indexOf('netting') !== -1;"
             ));
-
             System.out.printf("[RMS NETTING] Navigation to Netting tab: %s%n", onNetting ? "CONFIRMED" : "SIMULATED / ACTIVE IN CONTEXT");
             return true;
         } catch (Exception e) {
@@ -439,7 +414,6 @@ public class Day_Netting {
         try {
             System.out.println("[qRMS SETTINGS] Navigating to Settings -> Application Settings...");
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             // 1. Click top-level 'Settings' tab in qRMS Administration nav
             js.executeScript(
                 "var links = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
@@ -448,7 +422,6 @@ public class Day_Netting {
                 "return false;"
             );
             Thread.sleep(600);
-
             // 2. Click sub-tab 'Application Settings'
             js.executeScript(
                 "var subTabs = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
@@ -457,7 +430,6 @@ public class Day_Netting {
                 "return false;"
             );
             Thread.sleep(600);
-
             // 3. Type 'nett' in search input box to display the 4 general_settings rows
             js.executeScript(
                 "var inps = Array.from(document.querySelectorAll('input[type=\"search\"], input[placeholder*=\"search\" i], input.form-control, .search-box input'));\n" +
@@ -494,16 +466,13 @@ public class Day_Netting {
         try {
             navigateToApplicationSettings(driver);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             String modeStr = (mode == NettingMode.NONE) ? "NONE" :
                              (mode == NettingMode.CROSS_EXCHANGE) ? "CROSS EXCHANGE" : "INDIVIDUAL EXCHANGE";
-
             System.out.printf("%n>>> [qRMS APPLICATION SETTINGS] Applying 4 Netting Settings...%n");
             System.out.printf("    * DAY_NETTING_SETTINGS       : %s%n", modeStr);
             System.out.printf("    * ALLOW_Z_AND_SPOT_NETTING   : %b%n", allowZSpot);
             System.out.printf("    * IS_DSE_DAY_NETTING_ENABLED : %b%n", dseEnabled);
             System.out.printf("    * IS_CSE_DAY_NETTING_ENABLED : %b%n", cseEnabled);
-
             String script =
                 "var targetMode = arguments[0].toUpperCase();\n" +
                 "var allowZSpot = arguments[1];\n" +
@@ -585,11 +554,9 @@ public class Day_Netting {
                 "    }\n" +
                 "}\n" +
                 "return out;\n";
-
             Map<String, Object> domRes = (Map<String, Object>) js.executeScript(script, modeStr, allowZSpot, dseEnabled, cseEnabled);
             if (domRes != null) status.putAll(domRes);
             Thread.sleep(400);
-
             // Click 'Save Changes' button
             Boolean saved = (Boolean) js.executeScript(
                 "var btns = Array.from(document.querySelectorAll('button, a.btn, input[type=\"submit\"]'));\n" +
@@ -597,24 +564,19 @@ public class Day_Netting {
                 "if (sb) { if (window.jQuery) window.jQuery(sb).trigger('click'); sb.click(); return true; }\n" +
                 "return false;"
             );
-
             if (Boolean.TRUE.equals(saved)) {
                 System.out.println("  ✓ [SAVE CHANGES] 'Save Changes' button clicked successfully.");
             }
-
             submitPasswordAuthentication(driver, password);
             Thread.sleep(1200);
-
             // Display live verification table from UI
             displayApplicationNettingSettingsTable(driver);
-
             return status;
         } catch (Exception e) {
             System.out.println("[qRMS APPLICATION SETTINGS: ERROR] " + e.getMessage());
             return status;
         }
     }
-
     @SuppressWarnings("unchecked")
     public static Map<String, String> fetchApplicationNettingSettings(WebDriver driver) {
         Map<String, String> settings = new LinkedHashMap<>();
@@ -675,7 +637,6 @@ public class Day_Netting {
             System.out.printf("\n[RMS NETTING] Setting ALLOW_Z_AND_SPOT_NETTING -> %b...%n", enabled);
             navigateToApplicationSettings(driver);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             js.executeScript(
                 "var enabled = arguments[0];\n" +
                 "var rows = Array.from(document.querySelectorAll('table tbody tr, tr'));\n" +
@@ -697,14 +658,12 @@ public class Day_Netting {
                 "return false;\n",
                 enabled
             );
-
             // Click Save Changes
             js.executeScript(
                 "var btns = Array.from(document.querySelectorAll('button, a.btn, input[type=\"submit\"]'));\n" +
                 "var sb = btns.find(function(b) { var t = (b.innerText||b.value||b.textContent||'').trim().toLowerCase(); return t.indexOf('save changes') !== -1; });\n" +
                 "if (sb) { if (window.jQuery) window.jQuery(sb).trigger('click'); sb.click(); }\n"
             );
-
             submitPasswordAuthentication(driver, password);
             Thread.sleep(800);
             System.out.printf("[RMS NETTING] ALLOW_Z_AND_SPOT_NETTING set to: %b%n", enabled);
@@ -714,7 +673,6 @@ public class Day_Netting {
             return false;
         }
     }
-
 
     /**
      * Configures the global DAY_NETTING_SETTINGS mode.
@@ -735,7 +693,6 @@ public class Day_Netting {
         try {
             System.out.printf("\n[RMS NETTING] Configuring DAY_NETTING_SETTINGS -> %s (%s)...%n", mode.getDisplayName(), mode.getDescription());
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             js.executeScript(
                 "var target = arguments[0].toLowerCase();\n" +
                 "var selects = Array.from(document.querySelectorAll('select#day_netting_settings, select[name*=\"netting\"], select[id*=\"netting\"]'));\n" +
@@ -765,12 +722,9 @@ public class Day_Netting {
                 "return false;",
                 mode.getDisplayName()
             );
-
             // Handle security password authentication if prompt appears
             submitPasswordAuthentication(driver, password);
-
             System.out.printf("[RMS NETTING] DAY_NETTING_SETTINGS configured to: %s%n", mode.getDisplayName());
-
             // Auto-execute exchange netting for those 2 (DSE & CSE):
             if (autoExecuteExchanges) {
                 if (mode == NettingMode.NONE) {
@@ -790,7 +744,6 @@ public class Day_Netting {
                     System.out.println("  -> [EXECUTED] IS_DSE_DAY_NETTING_ENABLED = true | IS_CSE_DAY_NETTING_ENABLED = true (Cross-Exchange Netting)");
                 }
             }
-
             return true;
         } catch (Exception e) {
             System.out.println("[RMS NETTING: ERROR] Configuring mode: " + e.getMessage());
@@ -807,7 +760,6 @@ public class Day_Netting {
         try {
             System.out.printf("[RMS NETTING] Setting IS_%s_DAY_NETTING_ENABLED -> %b...%n", ex, enabled);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             js.executeScript(
                 "var ex = arguments[0];\n" +
                 "var enabled = arguments[1];\n" +
@@ -846,16 +798,13 @@ public class Day_Netting {
                 "return false;",
                 ex, enabled
             );
-
             // Click Save Changes if present
             js.executeScript(
                 "var btns = Array.from(document.querySelectorAll('button, a.btn, input[type=\"submit\"]'));\n" +
                 "var sb = btns.find(function(b) { var t = (b.innerText||b.value||b.textContent||'').trim().toLowerCase(); return t.indexOf('save changes') !== -1; });\n" +
                 "if (sb) { if (window.jQuery) window.jQuery(sb).trigger('click'); sb.click(); }\n"
             );
-
             submitPasswordAuthentication(driver, password);
-
             System.out.printf("[RMS NETTING] Exchange %s Netting Enabled set to: %b%n", ex, enabled);
             return true;
         } catch (Exception e) {
@@ -901,7 +850,6 @@ public class Day_Netting {
                 "return false;",
                 effectivePwd
             );
-
             if (Boolean.TRUE.equals(promptFound)) {
                 System.out.printf("[SECURITY: AUTH] Password authentication prompt detected; submitted credentials (%s).%n", effectivePwd.replaceAll(".", "*"));
                 Thread.sleep(600);
@@ -928,7 +876,6 @@ public class Day_Netting {
         try {
             System.out.println("[RMS APPLICABLE SYMBOLS] Navigating to Netting -> Applicable Symbol...");
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             // 1. Ensure Netting top-level tab is clicked
             js.executeScript(
                 "var tabs = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
@@ -936,7 +883,6 @@ public class Day_Netting {
                 "if (nt) { if (window.jQuery) window.jQuery(nt).trigger('click'); nt.click(); }\n"
             );
             Thread.sleep(500);
-
             // 2. Click subtab 'Applicable Symbol'
             js.executeScript(
                 "var subTabs = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
@@ -964,7 +910,6 @@ public class Day_Netting {
             navigateToApplicableSymbolTab(driver);
             System.out.printf("[RMS APPLICABLE SYMBOLS] Adding Symbol: %s on Exchange: %s...%n", sym, ex);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             // 1. Click '+ Add Symbol' button to open modal
             js.executeScript(
                 "var btns = Array.from(document.querySelectorAll('button, a.btn, a, .btn'));\n" +
@@ -973,7 +918,6 @@ public class Day_Netting {
                 "return false;"
             );
             Thread.sleep(500);
-
             // 2. Inside modal, select Exchange dropdown, enter symbol, and click '✓ Add Symbol'
             js.executeScript(
                 "var ex = arguments[0];\n" +
@@ -1017,7 +961,6 @@ public class Day_Netting {
                 ex, sym
             );
             Thread.sleep(800);
-
             // Maintain window in-memory registry
             js.executeScript(
                 "var ex = arguments[0]; var sym = arguments[1];\n" +
@@ -1026,7 +969,6 @@ public class Day_Netting {
                 "window.RMS_NETTING_SYMBOLS[ex][sym] = true;\n",
                 ex, sym
             );
-
             System.out.printf("  ✓ [RMS APPLICABLE SYMBOLS] Symbol '%s' added successfully for %s.%n", sym, ex);
             return true;
         } catch (Exception e) {
@@ -1062,7 +1004,6 @@ public class Day_Netting {
             navigateToApplicableSymbolTab(driver);
             System.out.printf("[RMS APPLICABLE SYMBOLS] Deleting Symbol: %s on Exchange: %s...%n", sym, ex);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             js.executeScript(
                 "var ex = arguments[0];\n" +
                 "var sym = arguments[1];\n" +
@@ -1087,14 +1028,12 @@ public class Day_Netting {
                 ex, sym
             );
             Thread.sleep(600);
-
             // Handle any confirmation popup
             js.executeScript(
                 "var cBtns = Array.from(document.querySelectorAll('.modal button, .swal2-confirm, .btn-primary, .btn-danger'));\n" +
                 "var yes = cBtns.find(function(b) { var t = (b.innerText||'').toLowerCase(); return t === 'yes' || t === 'confirm' || t === 'ok'; });\n" +
                 "if (yes) yes.click();\n"
             );
-
             // Remove from window registry
             js.executeScript(
                 "var ex = arguments[0]; var sym = arguments[1];\n" +
@@ -1103,7 +1042,6 @@ public class Day_Netting {
                 "}\n",
                 ex, sym
             );
-
             System.out.printf("  ✓ [RMS APPLICABLE SYMBOLS] Symbol '%s' removed from %s.%n", sym, ex);
             return true;
         } catch (Exception e) {
@@ -1123,7 +1061,6 @@ public class Day_Netting {
             String q = (query != null) ? query.trim().toUpperCase() : "";
             System.out.printf("[RMS APPLICABLE SYMBOLS] Searching (Exchange: %s, Query: '%s')...%n", ex, q);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             js.executeScript(
                 "var ex = arguments[0];\n" +
                 "var q = arguments[1];\n" +
@@ -1176,7 +1113,6 @@ public class Day_Netting {
             navigateToApplicableSymbolTab(driver);
             System.out.printf("[RMS APPLICABLE SYMBOLS] Uploading Symbols File: %s...%n", f.getAbsolutePath());
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             List<WebElement> inputs = driver.findElements(By.cssSelector("input[type=\"file\"]"));
             if (inputs.isEmpty()) {
                 js.executeScript(
@@ -1190,12 +1126,10 @@ public class Day_Netting {
                 Thread.sleep(400);
                 inputs = driver.findElements(By.cssSelector("input[type=\"file\"]"));
             }
-
             if (inputs.isEmpty()) {
                 System.out.println("[RMS APPLICABLE SYMBOLS: WARN] No <input type=\"file\"> found on Applicable Symbol tab.");
                 return false;
             }
-
             WebElement fileEl = inputs.get(0);
             js.executeScript(
                 "arguments[0].style.display = 'block';" +
@@ -1224,7 +1158,6 @@ public class Day_Netting {
             return false;
         }
     }
-
     public static List<Map<String, String>> fetchApplicableSymbolsList(WebDriver driver) {
         List<Map<String, String>> out = new ArrayList<>();
         if (driver == null) return out;
@@ -1305,7 +1238,6 @@ public class Day_Netting {
             String cln = (clientCode != null) ? clientCode.trim().toUpperCase() : "";
             System.out.printf("[RMS CLIENTS] Searching for Client Code: '%s'...%n", cln);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             js.executeScript(
                 "var cln = arguments[0];\n" +
                 "var inp = document.querySelector('input[placeholder*=\"client code\" i], input[placeholder*=\"client\" i]');\n" +
@@ -1328,7 +1260,6 @@ public class Day_Netting {
             return false;
         }
     }
-
     public static List<Map<String, String>> fetchClientsRmsList(WebDriver driver) {
         List<Map<String, String>> out = new ArrayList<>();
         if (driver == null) return out;
@@ -1384,7 +1315,6 @@ public class Day_Netting {
     public static boolean configureSpotMarketBlocking(WebDriver driver, String exchange, boolean block, String password) {
         return RMS.configureSpotMarketBlocking(driver, exchange, block, password);
     }
-
     public static Map<String, Object> fetchUnauthorizedBoardsMarketSettings(WebDriver driver) {
         Map<String, Object> out = new LinkedHashMap<>();
         if (driver == null) return out;
@@ -1411,7 +1341,6 @@ public class Day_Netting {
         boolean sBlock = Boolean.parseBoolean(String.valueOf(s.getOrDefault("spotBlocking", "false")));
         String ex = String.valueOf(s.getOrDefault("exchange", "CSE"));
         String tag = String.valueOf(s.getOrDefault("boardTag", "BLOCK"));
-
         System.out.println("\n+========================================================================================+");
         System.out.println("|           qRMS ADMINISTRATION - UNAUTHORIZED MARKET & BOARDS SETTINGS                  |");
         System.out.println("+========================================================================================+");
@@ -1421,7 +1350,6 @@ public class Day_Netting {
         System.out.printf("| %-25s | %-8s | %-22s | %-24s |%n", "Spot Market Blocking", ex, "SPOT MARKET", sBlock ? "BLOCKED (Switch: ON)" : "UNBLOCKED (Switch: OFF)");
         System.out.println("+---------------------------+----------+------------------------+--------------------------+\n");
     }
-
 
     /**
      * Configures applicable symbols eligible for netting per exchange.
@@ -1522,7 +1450,6 @@ public class Day_Netting {
      */
     public static NettingApplicabilityReport checkSelectedApplicability(WebDriver driver, String exchange, String symbol, String clientCode, String board) {
         String ex = (exchange != null && !exchange.trim().isEmpty() && !"BOTH".equalsIgnoreCase(exchange.trim())) ? exchange.trim().toUpperCase() : "DSE";
-
         // Normalize symbol and board
         String rawSym = (symbol != null && !symbol.trim().isEmpty()) ? symbol.trim().toUpperCase() : "GP";
         rawSym = rawSym.replaceAll("\\[[A-Z0-9]+\\]", "");
@@ -1535,12 +1462,9 @@ public class Day_Netting {
             }
         }
         String sym = rawSym.isEmpty() ? "GP" : rawSym;
-
         String brd = (board != null && !board.trim().isEmpty()) ? board.trim().toUpperCase() : inferredBoard;
         String cln = (clientCode != null && !clientCode.trim().isEmpty()) ? clientCode.trim() : "23986";
-
         NettingApplicabilityReport rep = new NettingApplicabilityReport(ex, sym, cln, brd);
-
         System.out.println("\n-----------------------------------------------------------------------------");
         System.out.printf(">>> [APPLICABILITY AUDIT] Checking Netting Eligibility: Symbol=%s, Client=%s, Board=%s (%s)...%n",
                 sym, cln, brd, ex);
@@ -1575,21 +1499,18 @@ public class Day_Netting {
                         rep.symbolReason = "DSE Day Netting is DISABLED in qRMS (IS_DSE_DAY_NETTING_ENABLED = false)";
                     }
                 }
-
                 boolean allowZSpot = Boolean.parseBoolean(appSettings.getOrDefault("ALLOW_Z_AND_SPOT_NETTING", "false"));
                 if ("SPOT".equalsIgnoreCase(brd) && !allowZSpot) {
                     isZorSpotRestricted = true;
                 }
             }
         } catch (Exception ignored) {}
-
         if (exNettingEnabled) {
             // Check UI Market Depth or existing watchlist badge if on trade page
             boolean depthBadge = false;
             try {
                 depthBadge = verifyMarketDepthNettingIndicator(driver, sym);
             } catch (Exception ignored) {}
-
             // Check live qRMS Applicable Symbols list for target exchange
             List<RMS.ApplicableSymbolRecord> appSymbols = (driver != null)
                     ? RMS.fetchApplicableSymbolsList(driver, ex)
@@ -1606,7 +1527,6 @@ public class Day_Netting {
                     }
                 }
             }
-
             if (depthBadge) {
                 rep.isSymbolApplicable = true;
                 rep.symbolStatus = "APPLICABLE";
@@ -1637,10 +1557,8 @@ public class Day_Netting {
         try {
             clientBlockedInUi = verifyOrderWindowClientNettingBlocked(driver, cln);
         } catch (Exception ignored) {}
-
         boolean inAllowedList = driver != null && RMS.isClientPresentInList(driver, cln, true);
         boolean inDisallowedList = driver != null && RMS.isClientPresentInList(driver, cln, false);
-
         if (clientBlockedInUi) {
             rep.isClientApplicable = false;
             rep.clientStatus = "BLOCKED";
@@ -1725,7 +1643,6 @@ public class Day_Netting {
             if (!rep.isBoardApplicable) ineligibles.add(String.format("Board %s (%s)", rep.board, rep.boardReason));
             rep.overallVerdict = String.format("[INELIGIBLE] Cannot execute Day Netting due to: %s", String.join(" | ", ineligibles));
         }
-
         return rep;
     }
 
@@ -1885,7 +1802,6 @@ public class Day_Netting {
         result.put("DSE", false);
         result.put("CSE", false);
         if (driver == null) return result;
-
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
             Object res = js.executeScript(
@@ -1959,7 +1875,6 @@ public class Day_Netting {
         String hoverText = verifyExistingWatchlistNettingIconAndHover(driver, symbol);
         boolean existingIcon = !hoverText.isEmpty();
         boolean marketWatch = verifyMarketWatchNettingIndicator(driver, symbol);
-
         System.out.println("+----+-------------------------------------------+----------------------------------------+");
         System.out.println("| #  | UI AUDIT ITEM                             | STATUS / VALUE                         |");
         System.out.println("+----+-------------------------------------------+----------------------------------------+");
@@ -1982,7 +1897,6 @@ public class Day_Netting {
         boolean dse = owEx.getOrDefault("DSE", false);
         boolean cse = owEx.getOrDefault("CSE", false);
         boolean blocked = verifyOrderWindowClientNettingBlocked(driver, clientCode);
-
         System.out.println("+----+-------------------------------------------+----------------------------------------+");
         System.out.println("| #  | UI AUDIT ITEM                             | STATUS / VALUE                         |");
         System.out.println("+----+-------------------------------------------+----------------------------------------+");
@@ -2011,22 +1925,18 @@ public class Day_Netting {
         NettingUIReport report = new NettingUIReport();
         report.symbol = symbol;
         report.clientCode = clientCode;
-
         System.out.println("\n+-----------------------------------------------------------------------------------------+");
         System.out.println("|              DAY NETTING UI INDICATORS AUDIT (DOCUMENTATION SECTION 5)                  |");
         System.out.println("+-----------------------------------------------------------------------------------------+");
-
         report.marketDepthIndicator = verifyMarketDepthNettingIndicator(driver, symbol);
         report.defaultNettingWatchlist = verifyDefaultNettingWatchlist(driver, symbol);
         report.existingWatchlistHoverText = verifyExistingWatchlistNettingIconAndHover(driver, symbol);
         report.existingWatchlistIcon = !report.existingWatchlistHoverText.isEmpty();
         report.marketWatchIndicator = verifyMarketWatchNettingIndicator(driver, symbol);
-
         Map<String, Boolean> owEx = verifyOrderWindowExchangeNettingIndicators(driver, symbol);
         report.orderWindowDseIndicator = owEx.getOrDefault("DSE", false);
         report.orderWindowCseIndicator = owEx.getOrDefault("CSE", false);
         report.orderWindowClientBlockedIndicator = verifyOrderWindowClientNettingBlocked(driver, clientCode);
-
         System.out.println("+----+-------------------------------------------+----------------------------------------+");
         System.out.println("| #  | UI AUDIT ITEM                             | STATUS / VALUE                         |");
         System.out.println("+----+-------------------------------------------+----------------------------------------+");
@@ -2038,7 +1948,6 @@ public class Day_Netting {
         System.out.printf("| 6  | 5.5 Order Window CSE Indicator            | %-38s |%n", report.orderWindowCseIndicator ? "ENABLED" : "DISABLED");
         System.out.printf("| 7  | 5.6 Order Window Client Netting Blocked   | %-38s |%n", report.orderWindowClientBlockedIndicator ? "BLOCKED WARNING ACTIVE" : "CLIENT ALLOWED");
         System.out.println("+----+-------------------------------------------+----------------------------------------+\n");
-
         return report;
     }
 
@@ -2051,7 +1960,6 @@ public class Day_Netting {
         public String exchange = "DSE";
         public String targetSymbol = "GP";
         public String targetClient = "23986";
-
         // 0. Application Settings (qRMS)
         public String dayNettingMode = "INDIVIDUAL EXCHANGE";
         public boolean allowZAndSpotNetting = false;
@@ -2066,28 +1974,22 @@ public class Day_Netting {
         public String board = "PUBLIC";
         public String orderStatus = "ACCEPTED";
         public boolean stockFileUploaded = false;
-
         // 1. Netting Watchlist
         public boolean dedicatedNettingWatchlist = false;
         public boolean watchlistNettingIcon = false;
         public String watchlistHoverText = "";
         public int watchlistSymbolCount = 0;
-
         // 2. Market Depth
         public boolean marketDepthNettingBadge = false;
         public Map<String, String> marketDepthData = new LinkedHashMap<>();
-
         // 3. Portfolio (Individual DSE & CSE data)
         public Map<String, String> portfolioData = new LinkedHashMap<>();
         public Map<String, String> portfolioDataDSE = new LinkedHashMap<>();
         public Map<String, String> portfolioDataCSE = new LinkedHashMap<>();
-
         // 4. Order Terminal
         public Map<String, String> orderTerminalData = new LinkedHashMap<>();
-
         // 5. Order Summary
         public Map<String, String> orderSummaryData = new LinkedHashMap<>();
-
         // 6. Account Limits
         public Map<String, String> accountLimitsData = new LinkedHashMap<>();
     }
@@ -2175,11 +2077,9 @@ public class Day_Netting {
         String cln = (clientCode != null) ? clientCode.trim() : "";
         String cleanSym = OMSweb_Trade.cleanSymbol(symbol);
         if (cleanSym.isEmpty()) cleanSym = "GP";
-
         r.exchange = ex;
         r.clientCode = cln;
         r.symbol = cleanSym;
-
         if (driver != null && !cln.isEmpty()) {
             try {
                 Map<String, String> pSnap = ClientPortfolio.getUiSnapshot(driver, cln, cleanSym, ex);
@@ -2194,7 +2094,6 @@ public class Day_Netting {
                     r.portfolioSource = pSnap.getOrDefault("DATA_SOURCE", "PORTFOLIO");
                 }
             } catch (Exception ignored) {}
-
             try {
                 List<Position.ClientPosition> posList = Position.getApiSnapshot(driver, cleanSym, ex);
                 String posSource = "API (" + ex + ")";
@@ -2212,13 +2111,11 @@ public class Day_Netting {
                 }
             } catch (Exception ignored) {}
         }
-
         if (includeDbCrossCheck && !cln.isEmpty()) {
             populateDbHoldingsCrossCheck(r, cln, cleanSym);
         }
         return r;
     }
-
     private static Position.ClientPosition findMatchingClientPosition(
             List<Position.ClientPosition> list, String clientCode, String cleanSym) {
         if (list == null) return null;
@@ -2282,40 +2179,31 @@ public class Day_Netting {
             SaleableProbeSnapshot before, SaleableProbeSnapshot after) {
         SaleableDeltaReport rep = new SaleableDeltaReport();
         if (before == null || after == null) return rep;
-
         rep.clientCode = !after.clientCode.isEmpty() ? after.clientCode : before.clientCode;
         rep.symbol = !after.symbol.isEmpty() ? after.symbol : before.symbol;
         rep.baselineStage = before.stageName;
         rep.currentStage = after.stageName;
-
         rep.dseTotalBefore = before.dse.effectiveTotalQty();
         rep.dseTotalAfter = after.dse.effectiveTotalQty();
         rep.dseTotalDelta = rep.dseTotalAfter - rep.dseTotalBefore;
-
         rep.dseSaleableBefore = before.dse.effectiveSaleableQty();
         rep.dseSaleableAfter = after.dse.effectiveSaleableQty();
         rep.dseSaleableDelta = rep.dseSaleableAfter - rep.dseSaleableBefore;
-
         rep.cseTotalBefore = before.cse.effectiveTotalQty();
         rep.cseTotalAfter = after.cse.effectiveTotalQty();
         rep.cseTotalDelta = rep.cseTotalAfter - rep.cseTotalBefore;
-
         rep.cseSaleableBefore = before.cse.effectiveSaleableQty();
         rep.cseSaleableAfter = after.cse.effectiveSaleableQty();
         rep.cseSaleableDelta = rep.cseSaleableAfter - rep.cseSaleableBefore;
-
         rep.positionDseSaleableBefore = before.dse.positionSaleableQty;
         rep.positionDseSaleableAfter = after.dse.positionSaleableQty;
         rep.positionDseSaleableDelta = rep.positionDseSaleableAfter - rep.positionDseSaleableBefore;
-
         rep.positionCseSaleableBefore = before.cse.positionSaleableQty;
         rep.positionCseSaleableAfter = after.cse.positionSaleableQty;
         rep.positionCseSaleableDelta = rep.positionCseSaleableAfter - rep.positionCseSaleableBefore;
-
         rep.dseSaleableUpdated = Math.abs(rep.dseSaleableDelta) > 0.0001 || Math.abs(rep.positionDseSaleableDelta) > 0.0001;
         rep.cseSaleableUpdated = Math.abs(rep.cseSaleableDelta) > 0.0001 || Math.abs(rep.positionCseSaleableDelta) > 0.0001;
         rep.anySaleableUpdated = rep.dseSaleableUpdated || rep.cseSaleableUpdated;
-
         rep.portfolioMatchesPosition = isAligned(before.dse) && isAligned(after.dse)
                 && isAligned(before.cse) && isAligned(after.cse);
         return rep;
@@ -2369,7 +2257,6 @@ public class Day_Netting {
     public static String resolveSellerClient(WebDriver driver, String symbol, int requiredQty, String excludeClient, String exchange) {
         System.out.printf("%n>>> [RESOLVING SELLER CLIENT] Finding distinct client holding >= %d saleable shares of %s (excluding: %s)...%n",
                 requiredQty, symbol, excludeClient);
-
         // 1. Primary: Position Widget (API + live DOM table)
         try {
             Position.ClientPosition cp = Position.findClientWithSaleableExcluding(driver, symbol, requiredQty, excludeClient, exchange);
@@ -2381,7 +2268,6 @@ public class Day_Netting {
         } catch (Exception e) {
             System.out.println("  [WARN: Position Widget Resolution] " + e.getMessage());
         }
-
         // 2. Secondary: PostgreSQL DB query
         try {
             String dbClient = Position.findHolderWithSufficientSharesFromDb(symbol, requiredQty, excludeClient);
@@ -2392,7 +2278,6 @@ public class Day_Netting {
         } catch (Exception e) {
             System.out.println("  [WARN: DB Seller Resolution] " + e.getMessage());
         }
-
         // 3. Fallback: select another known active holding client distinct from excludeClient
         String[] fallbackPool = { "34601", "34649", "23986", "15740", "00224", "39187", "00516", "00916", "02417", "37854", "45971", "18051", "12001", "04474", "03246" };
         for (String fb : fallbackPool) {
@@ -2411,7 +2296,6 @@ public class Day_Netting {
     public static String resolveBuyerClient(String excludeClient, String fallbackDefault) {
         System.out.printf("%n>>> [RESOLVING BUYER CLIENT] Finding distinct client with Cash >= 500,000 BDT (excluding: %s)...%n",
                 excludeClient);
-
         try {
             Account_Limits.ResolvedCashLimit limit = Account_Limits.resolveCashLimit(
                     null,
@@ -2426,7 +2310,6 @@ public class Day_Netting {
         } catch (Account_Limits.InsufficientCashLimitException e) {
             System.out.printf("  [CASH WARNING] %s Fallback to default pool.%n", e.getMessage());
         }
-
         // Secondary fallback pool
         String def = (fallbackDefault != null && !fallbackDefault.trim().isEmpty() && !fallbackDefault.equalsIgnoreCase(excludeClient))
                 ? fallbackDefault.trim() : "23986";
@@ -2461,17 +2344,14 @@ public class Day_Netting {
         snap.exchange = (exchange != null && !exchange.isEmpty()) ? exchange : "DSE";
         snap.targetSymbol = (symbol != null && !symbol.isEmpty()) ? OMSweb_Trade.toPublicSymbol(symbol) : "GP.PUBLIC";
         snap.targetClient = (clientCode != null && !clientCode.isEmpty()) ? clientCode.trim() : "23986";
-
         System.out.println("\n+==================================================================================================+");
         System.out.println("|      CHECKING REAL-TIME UI DATA ACROSS 6 WIDGETS (MAXIMIZE -> SNAPSHOT -> MINIMIZE)              |");
         System.out.printf("| Stage: %-25s | Exchange: %-5s | Symbol: %-8s | Client: %-12s |%n", snap.stageName, snap.exchange, snap.targetSymbol, snap.targetClient);
         System.out.println("+==================================================================================================+");
-
         // Reflect selected client code across all UI widgets
         try {
             OMSweb_Trade.propagateClientCodeToAllWidgets(driver, snap.targetClient, snap.targetSymbol);
         } catch (Exception ignored) {}
-
         // 0. qRMS Application Netting Settings
         try {
             Map<String, String> appSettings = fetchApplicationNettingSettings(driver);
@@ -2482,22 +2362,18 @@ public class Day_Netting {
                 snap.isDseDayNettingEnabled = Boolean.parseBoolean(appSettings.getOrDefault("IS_DSE_DAY_NETTING_ENABLED", "true"));
             }
         } catch (Exception ignored) {}
-
         // Ensure GoldenLayout is restored to normal grid before starting widget audit
         OMSweb_Trade.minimizeOrRestoreWidget(driver);
         try { Thread.sleep(600); } catch (Exception ignored) {}
-
         // 1. NETTING WATCHLIST (Dedicated Netting Scrip Watchlist + Icons)
         try {
             System.out.println("\n[1/6] Maximizing 'Netting Watchlist' widget...");
             OMSweb_Trade.maximizeWidget(driver, "Watchlist");
             Thread.sleep(600);
             OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Netting_Watchlist.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
-
             snap.dedicatedNettingWatchlist = verifyDefaultNettingWatchlist(driver, snap.targetSymbol);
             snap.watchlistHoverText = verifyExistingWatchlistNettingIconAndHover(driver, snap.targetSymbol);
             snap.watchlistNettingIcon = !snap.watchlistHoverText.isEmpty();
-
             JavascriptExecutor js = (JavascriptExecutor) driver;
             Long count = (Long) js.executeScript("return document.querySelectorAll('#marketwatch_table tbody tr, .watchlist-table tbody tr').length;");
             snap.watchlistSymbolCount = count != null ? count.intValue() : 0;
@@ -2509,25 +2385,20 @@ public class Day_Netting {
             OMSweb_Trade.minimizeOrRestoreWidget(driver);
             try { Thread.sleep(600); } catch (Exception ignored) {}
         }
-
         // 2. MARKET DEPTH (Netting Badge, LTP, Buy/Sell Depth Book)
         try {
             System.out.println("\n[2/6] Maximizing 'Market Depth' widget...");
             OMSweb_Trade.maximizeWidget(driver, "Market Depth");
             Thread.sleep(600);
-
             // 1. Load target symbol and exchange into Market Depth to populate quote & 5-level book
             if (snap.targetSymbol != null && !snap.targetSymbol.isEmpty()) {
                 Market_Depth.searchSymbolInDepth(driver, snap.targetSymbol, snap.exchange);
                 Thread.sleep(800);
             }
-
             // 2. Capture screenshot with symbol, quotes, and depth book fully loaded
             OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Market_Depth.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
-
             // 3. Verify Netting Indicator on loaded Market Depth widget
             snap.marketDepthNettingBadge = verifyMarketDepthNettingIndicator(driver, snap.targetSymbol);
-
             // 4. Collect Market Depth Data (API + UI DOM combined)
             try {
                 snap.marketDepthData = Market_Depth.getSnapshot(driver, snap.targetSymbol, snap.exchange);
@@ -2536,7 +2407,6 @@ public class Day_Netting {
                 try { snap.marketDepthData = Market_Depth.getUiSnapshot(driver); } catch (Exception ignored) {}
             }
             if (snap.marketDepthData == null) snap.marketDepthData = new LinkedHashMap<>();
-
             System.out.printf("  ✓ [Market Depth Data] Symbol: %s | Netting Badge: %b | LTP: %s | High: %s | Low: %s | Buy%%: %s | Sell%%: %s%n",
                     snap.targetSymbol, snap.marketDepthNettingBadge,
                     snap.marketDepthData.getOrDefault("LTP", snap.marketDepthData.getOrDefault("ltp", "-")),
@@ -2550,13 +2420,11 @@ public class Day_Netting {
             OMSweb_Trade.minimizeOrRestoreWidget(driver);
             try { Thread.sleep(600); } catch (Exception ignored) {}
         }
-
         // 3. PORTFOLIO & POSITION (Client Holdings, Total Qty, Saleable Qty, Avg Cost, Value)
         try {
             System.out.println("\n[3/6] Maximizing 'Client Portfolio' widget...");
             OMSweb_Trade.maximizeWidget(driver, "Portfolio");
             Thread.sleep(600);
-
             if (snap.targetClient != null && !snap.targetClient.isEmpty()) {
                 ClientPortfolio.ensureClientLoadedInUi(driver, snap.targetClient);
                 Thread.sleep(400);
@@ -2585,13 +2453,11 @@ public class Day_Netting {
             OMSweb_Trade.minimizeOrRestoreWidget(driver);
             try { Thread.sleep(600); } catch (Exception ignored) {}
         }
-
         // 4. ORDER TERMINAL (Latest Orders, Status, Executed Qty, Due Qty, Rate)
         try {
             System.out.println("\n[4/6] Maximizing 'Order Terminal' widget...");
             OMSweb_Trade.maximizeWidget(driver, "Order Terminal");
             Thread.sleep(600);
-
             if (snap.targetClient != null && !snap.targetClient.isEmpty()) {
                 Order_Terminal.filterOrderTerminal(driver, snap.targetClient, snap.targetSymbol);
                 Thread.sleep(400);
@@ -2611,13 +2477,11 @@ public class Day_Netting {
             OMSweb_Trade.minimizeOrRestoreWidget(driver);
             try { Thread.sleep(600); } catch (Exception ignored) {}
         }
-
         // 5. ORDER SUMMARY (Total Orders, Executed, Buy/Sell Turnover)
         try {
             System.out.println("\n[5/6] Maximizing 'Order Summary' widget...");
             OMSweb_Trade.maximizeWidget(driver, "Order Summary");
             Thread.sleep(600);
-
             if (snap.targetClient != null && !snap.targetClient.isEmpty()) {
                 Order_Summary.filterOrderSummary(driver, snap.targetClient, snap.targetSymbol);
                 Thread.sleep(400);
@@ -2636,13 +2500,11 @@ public class Day_Netting {
             OMSweb_Trade.minimizeOrRestoreWidget(driver);
             try { Thread.sleep(600); } catch (Exception ignored) {}
         }
-
         // 6. ACCOUNT LIMITS (Remaining Cash, Blocked/Day, Total Transaction)
         try {
             System.out.println("\n[6/6] Maximizing 'Account Limits' widget...");
             OMSweb_Trade.maximizeWidget(driver, "Account Limits");
             Thread.sleep(600);
-
             if (snap.targetClient != null && !snap.targetClient.isEmpty()) {
                 Account_Limits.filterByClient(driver, snap.targetClient);
                 Thread.sleep(400);
@@ -2661,7 +2523,6 @@ public class Day_Netting {
             OMSweb_Trade.minimizeOrRestoreWidget(driver);
             try { Thread.sleep(600); } catch (Exception ignored) {}
         }
-
         // Render Consolidated 6-Widget Table
         print6WidgetsNettingAuditTable(snap);
         return snap;
@@ -2719,42 +2580,35 @@ public class Day_Netting {
         System.out.println("+=============================================================================================================================+");
         System.out.printf("| %-18s | %-22s | %-16s | %-16s | %-6s | %-32s |%n", "Widget", "Parameter / Metric", "Pre-Trade (UI)", "Post-Trade (UI)", "Result", "Remarks");
         System.out.println("+--------------------+------------------------+------------------+------------------+--------+------------------------------------+");
-
         // 0. qRMS Application Settings
         printNettingDiffRow("App Settings", "DAY_NETTING_SETTINGS", prev.dayNettingMode, curr.dayNettingMode, true);
         printNettingDiffRow("App Settings", "ALLOW_Z_AND_SPOT_NETTING", String.valueOf(prev.allowZAndSpotNetting), String.valueOf(curr.allowZAndSpotNetting), true);
         printNettingDiffRow("App Settings", "IS_DSE_DAY_NETTING_ENABLED", String.valueOf(prev.isDseDayNettingEnabled), String.valueOf(curr.isDseDayNettingEnabled), true);
         printNettingDiffRow("App Settings", "IS_CSE_DAY_NETTING_ENABLED", String.valueOf(prev.isCseDayNettingEnabled), String.valueOf(curr.isCseDayNettingEnabled), true);
-
         // 1A. Client Portfolio (DSE)
         printNettingDiffRow("Portfolio (DSE)", "Total Holding Qty", prev.portfolioDataDSE.getOrDefault("total_qty", "0"), curr.portfolioDataDSE.getOrDefault("total_qty", "0"), false);
         printNettingDiffRow("Portfolio (DSE)", "Saleable Qty", prev.portfolioDataDSE.getOrDefault("saleable_qty", "0"), curr.portfolioDataDSE.getOrDefault("saleable_qty", "0"), false);
         printNettingDiffRow("Portfolio (DSE)", "Avg Cost", prev.portfolioDataDSE.getOrDefault("avg_cost", "0"), curr.portfolioDataDSE.getOrDefault("avg_cost", "0"), false);
         printNettingDiffRow("Portfolio (DSE)", "Market Value", prev.portfolioDataDSE.getOrDefault("value", "0"), curr.portfolioDataDSE.getOrDefault("value", "0"), false);
-
         // 1B. Client Portfolio (CSE)
         printNettingDiffRow("Portfolio (CSE)", "Total Holding Qty", prev.portfolioDataCSE.getOrDefault("total_qty", "0"), curr.portfolioDataCSE.getOrDefault("total_qty", "0"), false);
         printNettingDiffRow("Portfolio (CSE)", "Saleable Qty", prev.portfolioDataCSE.getOrDefault("saleable_qty", "0"), curr.portfolioDataCSE.getOrDefault("saleable_qty", "0"), false);
         printNettingDiffRow("Portfolio (CSE)", "Avg Cost", prev.portfolioDataCSE.getOrDefault("avg_cost", "0"), curr.portfolioDataCSE.getOrDefault("avg_cost", "0"), false);
         printNettingDiffRow("Portfolio (CSE)", "Market Value", prev.portfolioDataCSE.getOrDefault("value", "0"), curr.portfolioDataCSE.getOrDefault("value", "0"), false);
-
         // 2. Order Terminal
         printNettingDiffRow("Order Terminal", "Recent Order ID", prev.orderTerminalData.getOrDefault("Order_ID", prev.orderTerminalData.getOrDefault("order_id", "-")), curr.orderTerminalData.getOrDefault("Order_ID", curr.orderTerminalData.getOrDefault("order_id", "-")), true);
         printNettingDiffRow("Order Terminal", "Order Status", prev.orderTerminalData.getOrDefault("Status", prev.orderTerminalData.getOrDefault("status", "-")), curr.orderTerminalData.getOrDefault("Status", curr.orderTerminalData.getOrDefault("status", "-")), true);
         printNettingDiffRow("Order Terminal", "Exec Qty", prev.orderTerminalData.getOrDefault("Exec_Qty", prev.orderTerminalData.getOrDefault("executed_qty", "0")), curr.orderTerminalData.getOrDefault("Exec_Qty", curr.orderTerminalData.getOrDefault("executed_qty", "0")), false);
         printNettingDiffRow("Order Terminal", "Due Qty", prev.orderTerminalData.getOrDefault("Due_Qty", prev.orderTerminalData.getOrDefault("due_qty", "0")), curr.orderTerminalData.getOrDefault("Due_Qty", curr.orderTerminalData.getOrDefault("due_qty", "0")), false);
-
         // 3. Order Summary
         printNettingDiffRow("Order Summary", "Total Orders", prev.orderSummaryData.getOrDefault("Total_Orders", prev.orderSummaryData.getOrDefault("total_orders", "0")), curr.orderSummaryData.getOrDefault("Total_Orders", curr.orderSummaryData.getOrDefault("total_orders", "0")), false);
         printNettingDiffRow("Order Summary", "Executed Orders", prev.orderSummaryData.getOrDefault("Executed", prev.orderSummaryData.getOrDefault("executed", "0")), curr.orderSummaryData.getOrDefault("Executed", curr.orderSummaryData.getOrDefault("executed", "0")), false);
         printNettingDiffRow("Order Summary", "Buy / Sell Qty", prev.orderSummaryData.getOrDefault("Buy_Qty", "0") + " / " + prev.orderSummaryData.getOrDefault("Sell_Qty", "0"), curr.orderSummaryData.getOrDefault("Buy_Qty", "0") + " / " + curr.orderSummaryData.getOrDefault("Sell_Qty", "0"), true);
         printNettingDiffRow("Order Summary", "Buy Turnover", prev.orderSummaryData.getOrDefault("Buy_Turnover", prev.orderSummaryData.getOrDefault("buy_turnover", "0")), curr.orderSummaryData.getOrDefault("Buy_Turnover", curr.orderSummaryData.getOrDefault("buy_turnover", "0")), false);
-
         // 4. Account Limits
         printNettingDiffRow("Account Limits", "Remaining Cash", prev.accountLimitsData.getOrDefault("Remaining_Cash", prev.accountLimitsData.getOrDefault("remaining_cash", "0")), curr.accountLimitsData.getOrDefault("Remaining_Cash", curr.accountLimitsData.getOrDefault("remaining_cash", "0")), false);
         printNettingDiffRow("Account Limits", "Day Order (Tx Value)", prev.accountLimitsData.getOrDefault("Cash_Day_Order", prev.accountLimitsData.getOrDefault("Day_Order", prev.accountLimitsData.getOrDefault("Buy_Day_Order", "0"))), curr.accountLimitsData.getOrDefault("Cash_Day_Order", curr.accountLimitsData.getOrDefault("Day_Order", curr.accountLimitsData.getOrDefault("Buy_Day_Order", "0"))), false);
         printNettingDiffRow("Account Limits", "Total Transaction", prev.accountLimitsData.getOrDefault("Total_Transaction", prev.accountLimitsData.getOrDefault("Net_Transaction", prev.accountLimitsData.getOrDefault("Buy_Exec_Value", "0"))), curr.accountLimitsData.getOrDefault("Total_Transaction", curr.accountLimitsData.getOrDefault("Net_Transaction", curr.accountLimitsData.getOrDefault("Buy_Exec_Value", "0"))), false);
-
         double pCashVal = OMSweb_Trade.parseNumSafe(prev.accountLimitsData.getOrDefault("Remaining_Cash", "0"));
         double cCashVal = OMSweb_Trade.parseNumSafe(curr.accountLimitsData.getOrDefault("Remaining_Cash", "0"));
         double currDayOrder = OMSweb_Trade.parseNumSafe(curr.accountLimitsData.getOrDefault("Cash_Day_Order", curr.accountLimitsData.getOrDefault("Day_Order", curr.accountLimitsData.getOrDefault("Buy_Day_Order", "0"))));
@@ -2766,17 +2620,14 @@ public class Day_Netting {
         String prevComm = prev.accountLimitsData.getOrDefault("Commission_Amount", "0.00");
         String currComm = curr.accountLimitsData.getOrDefault("Commission_Amount", derivedComm > 0 ? String.format(Locale.US, "%.2f", derivedComm) : "0.00");
         printNettingDiffRow("Account Limits", "Commission Amount", prevComm, currComm, false);
-
         // 5. Market Depth
         printNettingDiffRow("Market Depth", "LTP", prev.marketDepthData.getOrDefault("LTP", prev.marketDepthData.getOrDefault("ltp", "-")), curr.marketDepthData.getOrDefault("LTP", curr.marketDepthData.getOrDefault("ltp", "-")), false);
         printNettingDiffRow("Market Depth", "Netting Badge", String.valueOf(prev.marketDepthNettingBadge), String.valueOf(curr.marketDepthNettingBadge), true);
         printNettingDiffRow("Market Depth", "Buy / Sell Ratio", prev.marketDepthData.getOrDefault("BUY%", "-") + " / " + prev.marketDepthData.getOrDefault("SELL%", "-"), curr.marketDepthData.getOrDefault("BUY%", "-") + " / " + curr.marketDepthData.getOrDefault("SELL%", "-"), true);
-
         // 6. Netting Watchlist
         printNettingDiffRow("Netting Watchlist", "Dedicated Watchlist", String.valueOf(prev.dedicatedNettingWatchlist), String.valueOf(curr.dedicatedNettingWatchlist), true);
         printNettingDiffRow("Netting Watchlist", "Netting Icon", String.valueOf(prev.watchlistNettingIcon), String.valueOf(curr.watchlistNettingIcon), true);
         printNettingDiffRow("Netting Watchlist", "Symbol Rows", String.valueOf(prev.watchlistSymbolCount), String.valueOf(curr.watchlistSymbolCount), false);
-
         System.out.println("+--------------------+------------------------+------------------+------------------+--------+------------------------------------+");
         System.out.println(">>> WIDGET-WISE AUDIT VERDICT:");
         System.out.printf("  * Portfolio (DSE) : %s%n", getWidgetDiffVerdict(prev.portfolioDataDSE, curr.portfolioDataDSE));
@@ -2789,11 +2640,9 @@ public class Day_Netting {
         if (driver != null) {
             System.out.printf("  * Real-Time UI Health: %s%n", verifyUiLayoutHealth(driver));
         }
-
         // Dedicated Exchange-Wise Saleable & Cross-Exchange Compliance Audit
         NettingSaleableAuditResult saleableAudit = auditDayNettingSaleableCompliance(prev, curr);
         printNettingSaleableComplianceReport(saleableAudit);
-
         System.out.println("========================================================================================================================\n");
     }
 
@@ -2812,7 +2661,6 @@ public class Day_Netting {
         public final boolean allowZAndSpotNetting;
         public final String orderStatus;
         public final boolean stockFileUploaded;
-
         public NettingEligibilityContext(
                 NettingMode mode, boolean dseEnabled, boolean cseEnabled,
                 boolean symbolAllowed, boolean clientAllowed, boolean boardAllowed,
@@ -2903,7 +2751,6 @@ public class Day_Netting {
         public double tradeQty = 1;
         public String clientCode = "23986";
         public String symbol = "GP.PUBLIC";
-
         public boolean symbolAllowed = true;
         public boolean clientAllowed = true;
         public boolean boardAllowed = true;
@@ -2913,25 +2760,21 @@ public class Day_Netting {
         public String orderStatus = "ACCEPTED";
         public boolean nettingEffective = true;
         public String ineligibilityReason = "";
-
         public double prevDseTotal = 0;
         public double currDseTotal = 0;
         public double expectedDseTotal = 0;
         public boolean dseTotalRight = true;
         public String dseTotalRemark = "";
-
         public double prevCseTotal = 0;
         public double currCseTotal = 0;
         public double expectedCseTotal = 0;
         public boolean cseTotalRight = true;
         public String cseTotalRemark = "";
-
         public double prevDseSaleable = 0;
         public double currDseSaleable = 0;
         public double expectedDseSaleable = 0;
         public boolean dseSaleableRight = true;
         public String dseSaleableRemark = "";
-
         public double prevCseSaleable = 0;
         public double currCseSaleable = 0;
         public double expectedCseSaleable = 0;
@@ -2964,13 +2807,11 @@ public class Day_Netting {
         if (observedDelta == 0.0) {
             observedDelta = Math.abs(currCseTot - prevCseTot);
         }
-
         String ex = (ctx != null && ctx.tradedExchange != null && !ctx.tradedExchange.isEmpty())
                 ? ctx.tradedExchange.toUpperCase()
                 : (curr.tradedExchange != null ? curr.tradedExchange.toUpperCase() : "DSE");
         double fallbackQty = curr.tradeQty > 0 ? curr.tradeQty : 1.0;
         double effectiveQty = observedDelta > 0.0 ? observedDelta : fallbackQty;
-
         double dseQty = 0.0;
         double cseQty = 0.0;
         if ("BOTH".equals(ex)) {
@@ -2994,7 +2835,6 @@ public class Day_Netting {
             NettingEligibilityContext ctx, double dseTradeQty, double cseTradeQty) {
         NettingSaleableAuditResult res = new NettingSaleableAuditResult();
         if (prev == null || curr == null) return res;
-
         NettingEligibilityContext effCtx = ctx != null ? ctx : NettingEligibilityContext.fromSnapshot(curr);
         res.clientCode = curr.targetClient != null ? curr.targetClient : "23986";
         res.symbol = curr.targetSymbol != null ? curr.targetSymbol : "GP.PUBLIC";
@@ -3006,7 +2846,6 @@ public class Day_Netting {
         double cQty = Math.max(0.0, cseTradeQty);
         double totalQty = dQty + cQty;
         res.tradeQty = totalQty > 0.0 ? totalQty : (curr.tradeQty > 0 ? curr.tradeQty : 1);
-
         res.symbolAllowed = effCtx.symbolAllowed;
         res.clientAllowed = effCtx.clientAllowed;
         res.boardAllowed = effCtx.boardAllowed;
@@ -3016,18 +2855,15 @@ public class Day_Netting {
         res.orderStatus = effCtx.orderStatus;
         res.ineligibilityReason = explainIneligibilityReason(effCtx);
         res.nettingEffective = res.ineligibilityReason.isEmpty();
-
         // Parse previous and current values
         res.prevDseTotal = OMSweb_Trade.parseNumSafe(prev.portfolioDataDSE.getOrDefault("total_qty", "0"));
         res.currDseTotal = OMSweb_Trade.parseNumSafe(curr.portfolioDataDSE.getOrDefault("total_qty", "0"));
         res.prevDseSaleable = OMSweb_Trade.parseNumSafe(prev.portfolioDataDSE.getOrDefault("saleable_qty", "0"));
         res.currDseSaleable = OMSweb_Trade.parseNumSafe(curr.portfolioDataDSE.getOrDefault("saleable_qty", "0"));
-
         res.prevCseTotal = OMSweb_Trade.parseNumSafe(prev.portfolioDataCSE.getOrDefault("total_qty", "0"));
         res.currCseTotal = OMSweb_Trade.parseNumSafe(curr.portfolioDataCSE.getOrDefault("total_qty", "0"));
         res.prevCseSaleable = OMSweb_Trade.parseNumSafe(prev.portfolioDataCSE.getOrDefault("saleable_qty", "0"));
         res.currCseSaleable = OMSweb_Trade.parseNumSafe(curr.portfolioDataCSE.getOrDefault("saleable_qty", "0"));
-
         boolean isRejected = res.orderStatus.contains("REJECT") || res.orderStatus.contains("CANCEL") || res.orderStatus.contains("FAIL");
         boolean isBuy = res.tradeAction.contains("BUY");
         boolean isSell = res.tradeAction.contains("SELL") && !res.tradeAction.contains("BUY");
@@ -3038,7 +2874,6 @@ public class Day_Netting {
             isBuy = false;
             isSell = true;
         }
-
         // Case 0: Stock File upload updates mature/saleable stock regardless of client netting state
         if (res.stockFileUploaded) {
             if (totalQty > 0.0) {
@@ -3075,7 +2910,6 @@ public class Day_Netting {
                     : String.format(Locale.US, "WRONG: Expected CSE Saleable %,.0f, got %,.0f", res.expectedCseSaleable, res.currCseSaleable);
             return res;
         }
-
         // 1. Total Holding Quantity Calculation (Always consolidated across both exchanges when order not rejected)
         if (isRejected) {
             res.expectedDseTotal = res.prevDseTotal;
@@ -3090,7 +2924,6 @@ public class Day_Netting {
             res.expectedDseTotal = res.prevDseTotal;
             res.expectedCseTotal = res.prevCseTotal;
         }
-
         res.dseTotalRight = Math.abs(res.currDseTotal - res.expectedDseTotal) < 0.001;
         res.cseTotalRight = Math.abs(res.currCseTotal - res.expectedCseTotal) < 0.001;
         res.dseTotalRemark = res.dseTotalRight
@@ -3099,7 +2932,6 @@ public class Day_Netting {
         res.cseTotalRemark = res.cseTotalRight
                 ? String.format(Locale.US, "Consolidated Total Qty updated (%,.0f -> %,.0f)", res.prevCseTotal, res.currCseTotal)
                 : String.format(Locale.US, "Expected %,.0f, but UI showed %,.0f", res.expectedCseTotal, res.currCseTotal);
-
         // 2. Saleable Quantity Calculation:
         // Case A: Netting ineffective (NONE, client disallowed, symbol disallowed, board blocked, exchange disabled, or rejected)
         if (!res.nettingEffective) {
@@ -3159,7 +2991,6 @@ public class Day_Netting {
                 double remainingMature = Math.max(0.0, sharedMature - matureDeducted);
                 double remDseDay = effCtx.dseEnabled ? Math.max(0.0, dseDayBought - dQty) : dseDayBought;
                 double remCseDay = effCtx.cseEnabled ? Math.max(0.0, cseDayBought - cQty) : cseDayBought;
-
                 res.expectedDseSaleable = remainingMature + remDseDay;
                 res.expectedCseSaleable = remainingMature + remCseDay;
                 if (matureDeducted > 0.0) {
@@ -3180,10 +3011,8 @@ public class Day_Netting {
                 res.expectedCseSaleable = res.prevCseSaleable;
             }
         }
-
         res.dseSaleableRight = Math.abs(res.currDseSaleable - res.expectedDseSaleable) < 0.001;
         res.cseSaleableRight = Math.abs(res.currCseSaleable - res.expectedCseSaleable) < 0.001;
-
         if (!res.dseSaleableRight) {
             res.dseSaleableRemark = String.format(Locale.US, "WRONG: Expected DSE Saleable %,.0f, but UI showed %,.0f",
                     res.expectedDseSaleable, res.currDseSaleable);
@@ -3192,7 +3021,6 @@ public class Day_Netting {
             res.cseSaleableRemark = String.format(Locale.US, "WRONG: Expected CSE Saleable %,.0f, but UI showed %,.0f",
                     res.expectedCseSaleable, res.currCseSaleable);
         }
-
         return res;
     }
 
@@ -3207,12 +3035,10 @@ public class Day_Netting {
         System.out.printf("| %-20s | %-18s | %-9s | %-10s | %-13s | %-11s | %-20s | %-37s |%n",
                 "Exchange Scope", "Parameter / Metric", "Pre-Trade", "Traded Qty", "Expected Post", "Actual Post", "Result (RIGHT/WRONG)", "Day Netting Rule Audit Remarks");
         System.out.println("+----------------------+--------------------+-----------+------------+---------------+-------------+----------------------+---------------------------------------+");
-
         printSaleableRow("Portfolio (DSE)", "Total Holding Qty", a.prevDseTotal, a.tradeAction.contains("BUY") ? ("+" + (int)a.tradeQty) : ("-" + (int)a.tradeQty), a.expectedDseTotal, a.currDseTotal, a.dseTotalRight, a.dseTotalRemark);
         printSaleableRow("Portfolio (CSE)", "Total Holding Qty", a.prevCseTotal, a.tradeAction.contains("BUY") ? ("+" + (int)a.tradeQty) : ("-" + (int)a.tradeQty), a.expectedCseTotal, a.currCseTotal, a.cseTotalRight, a.cseTotalRemark);
         printSaleableRow("Portfolio (DSE)", "Saleable Qty", a.prevDseSaleable, (a.mode.contains("CROSS") || a.tradedExchange.contains("DSE") || "BOTH".equalsIgnoreCase(a.tradedExchange)) ? (a.tradeAction.contains("BUY") ? ("+" + (int)a.tradeQty) : ("-" + (int)a.tradeQty)) : "0 (No DSE)", a.expectedDseSaleable, a.currDseSaleable, a.dseSaleableRight, a.dseSaleableRemark);
         printSaleableRow("Portfolio (CSE)", "Saleable Qty", a.prevCseSaleable, (a.mode.contains("CROSS") || a.tradedExchange.contains("CSE")) ? (a.tradeAction.contains("BUY") ? ("+" + (int)a.tradeQty) : ("-" + (int)a.tradeQty)) : "0 (No CSE)", a.expectedCseSaleable, a.currCseSaleable, a.cseSaleableRight, a.cseSaleableRemark);
-
         System.out.println("+----------------------+--------------------+-----------+------------+---------------+-------------+----------------------+---------------------------------------+");
         System.out.println(">>> EXCHANGE-WISE SALEABLE AUDIT SUMMARY:");
         if (a.mode.contains("NONE")) {
@@ -3261,10 +3087,8 @@ public class Day_Netting {
         System.out.println("\n+=============================================================================================================================+");
         System.out.println("|                   COMPLETE DAY NETTING EXCHANGE-WISE SALEABLE & CROSS-EXCHANGE COMPLIANCE MATRIX            |");
         System.out.println("+=============================================================================================================================+");
-
         int passed = 0;
         int total = 0;
-
         // Scenario 1: Individual Exchange - BUY in DSE (Prev: DSE 100/40, CSE 100/20, Buy 10 DSE)
         total++;
         Netting6WidgetsUiSnapshot p1 = new Netting6WidgetsUiSnapshot();
@@ -3277,7 +3101,6 @@ public class Day_Netting {
         NettingSaleableAuditResult r1 = auditDayNettingSaleableCompliance(p1, c1);
         printNettingSaleableComplianceReport(r1);
         if (r1.isAllRight()) passed++;
-
         // Scenario 2: Individual Exchange - BUY in CSE (Prev: DSE 100/40, CSE 100/20, Buy 15 CSE)
         total++;
         Netting6WidgetsUiSnapshot p2 = new Netting6WidgetsUiSnapshot();
@@ -3290,7 +3113,6 @@ public class Day_Netting {
         NettingSaleableAuditResult r2 = auditDayNettingSaleableCompliance(p2, c2);
         printNettingSaleableComplianceReport(r2);
         if (r2.isAllRight()) passed++;
-
         // Scenario 3: Individual Exchange - SELL in DSE (Prev: DSE 100/50, CSE 100/20, Sell 10 DSE)
         total++;
         Netting6WidgetsUiSnapshot p3 = new Netting6WidgetsUiSnapshot();
@@ -3303,7 +3125,6 @@ public class Day_Netting {
         NettingSaleableAuditResult r3 = auditDayNettingSaleableCompliance(p3, c3);
         printNettingSaleableComplianceReport(r3);
         if (r3.isAllRight()) passed++;
-
         // Scenario 4: Individual Exchange - SELL in CSE (Prev: DSE 100/20, CSE 100/35, Sell 15 CSE)
         total++;
         Netting6WidgetsUiSnapshot p4 = new Netting6WidgetsUiSnapshot();
@@ -3316,7 +3137,6 @@ public class Day_Netting {
         NettingSaleableAuditResult r4 = auditDayNettingSaleableCompliance(p4, c4);
         printNettingSaleableComplianceReport(r4);
         if (r4.isAllRight()) passed++;
-
         // Scenario 5: Cross Exchange - BUY in DSE (Prev: DSE 100/40, CSE 100/20, Buy 25 in DSE)
         total++;
         Netting6WidgetsUiSnapshot p5 = new Netting6WidgetsUiSnapshot();
@@ -3329,7 +3149,6 @@ public class Day_Netting {
         NettingSaleableAuditResult r5 = auditDayNettingSaleableCompliance(p5, c5);
         printNettingSaleableComplianceReport(r5);
         if (r5.isAllRight()) passed++;
-
         // Scenario 6: Cross Exchange - BUY in CSE (Prev: DSE 125/65, CSE 125/45, Buy 10 in CSE)
         total++;
         Netting6WidgetsUiSnapshot p6 = new Netting6WidgetsUiSnapshot();
@@ -3342,7 +3161,6 @@ public class Day_Netting {
         NettingSaleableAuditResult r6 = auditDayNettingSaleableCompliance(p6, c6);
         printNettingSaleableComplianceReport(r6);
         if (r6.isAllRight()) passed++;
-
         // Scenario 7: Cross Exchange - SELL from any exchange (Prev: DSE 135/75, CSE 135/55, Sell 20 on CSE)
         total++;
         Netting6WidgetsUiSnapshot p7 = new Netting6WidgetsUiSnapshot();
@@ -3355,7 +3173,6 @@ public class Day_Netting {
         NettingSaleableAuditResult r7 = auditDayNettingSaleableCompliance(p7, c7);
         printNettingSaleableComplianceReport(r7);
         if (r7.isAllRight()) passed++;
-
         // Scenario 8: Live Run Verification (from Task 13300 actual OMS Web UI snapshots: 13 -> 20 on DSE)
         total++;
         Netting6WidgetsUiSnapshot pLive = new Netting6WidgetsUiSnapshot();
@@ -3368,11 +3185,9 @@ public class Day_Netting {
         NettingSaleableAuditResult rLive = auditDayNettingSaleableCompliance(pLive, cLive);
         printNettingSaleableComplianceReport(rLive);
         if (rLive.isAllRight()) passed++;
-
         System.out.printf("+-----------------------------------------------------------------------------+%n");
         System.out.printf("| ALL EXCHANGE-WISE SALEABLE AUDIT TESTS: %d/%d PASSED                        |%n", passed, total);
         System.out.printf("+-----------------------------------------------------------------------------+%n\n");
-
         return passed == total;
     }
 
@@ -3382,7 +3197,6 @@ public class Day_Netting {
         public double dseSaleableQty, cseSaleableQty, totalHoldingQty;
         public double dayNettedQty, matureDeductedQty;
         public String modeName;
-
         public DayNettingPortfolioState(double initialMatureHolding, double dseBuyQty, double dseSellQty,
                                         double cseBuyQty, double cseSellQty, double dseSaleableQty,
                                         double cseSaleableQty, double totalHoldingQty, double dayNettedQty,
@@ -3422,14 +3236,12 @@ public class Day_Netting {
             double initialMatureHolding,
             double dseBuyQty, double dseSellQty,
             double cseBuyQty, double cseSellQty) {
-
         double totalHolding = Math.max(0.0, initialMatureHolding + (dseBuyQty + cseBuyQty) - (dseSellQty + cseSellQty));
         double dseSaleable = 0.0;
         double cseSaleable = 0.0;
         double dayNetted = 0.0;
         double matureDeducted = 0.0;
         String modeName = (mode != null) ? mode.name() : "NONE";
-
         if (mode == null || mode == NettingMode.NONE || !clientAllowed || !symbolEligible || !boardAllowed) {
             matureDeducted = dseSellQty + cseSellQty;
             double remainingMature = Math.max(0.0, initialMatureHolding - matureDeducted);
@@ -3440,11 +3252,9 @@ public class Day_Netting {
             double dseDayNetted = dseEnabled ? Math.min(dseBuyQty, dseSellQty) : 0.0;
             double dseDayRem = dseEnabled ? Math.max(0.0, dseBuyQty - dseSellQty) : 0.0;
             double dseExcess = dseEnabled ? Math.max(0.0, dseSellQty - dseBuyQty) : dseSellQty;
-
             double cseDayNetted = cseEnabled ? Math.min(cseBuyQty, cseSellQty) : 0.0;
             double cseDayRem = cseEnabled ? Math.max(0.0, cseBuyQty - cseSellQty) : 0.0;
             double cseExcess = cseEnabled ? Math.max(0.0, cseSellQty - cseBuyQty) : cseSellQty;
-
             matureDeducted = dseExcess + cseExcess;
             double remainingMature = Math.max(0.0, initialMatureHolding - matureDeducted);
             dseSaleable = remainingMature + dseDayRem;
@@ -3463,7 +3273,6 @@ public class Day_Netting {
                 double crossNetted = Math.min(totalBuy, totalSell);
                 double crossRem = Math.max(0.0, totalBuy - totalSell);
                 double crossExcess = Math.max(0.0, totalSell - totalBuy);
-
                 matureDeducted = crossExcess;
                 double remainingMature = Math.max(0.0, initialMatureHolding - matureDeducted);
                 dseSaleable = remainingMature + crossRem;
@@ -3471,7 +3280,6 @@ public class Day_Netting {
                 dayNetted = crossNetted;
             }
         }
-
         return new DayNettingPortfolioState(initialMatureHolding, dseBuyQty, dseSellQty,
                 cseBuyQty, cseSellQty, dseSaleable, cseSaleable, totalHolding, dayNetted, matureDeducted, modeName);
     }
@@ -3488,7 +3296,6 @@ public class Day_Netting {
         System.out.println("\n>>> [SCENARIO 1] INDIVIDUAL EXCHANGE NETTING (BOTH EXCHANGES - ISOLATED DAY BUYS & SELLS)");
         System.out.println("---------------------------------------------------------------------------------------------");
         double s0_sc1 = 50.0; // Initial mature holding
-
         // Step 1: DSE BUY 25
         DayNettingPortfolioState s1_step1 = calculateDayNettingPortfolio(
                 NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, true,
@@ -3506,7 +3313,6 @@ public class Day_Netting {
         System.out.printf("  Step 1.4 [DSE BUY 25 -> Negative Assertion (CSE != 75)]: Verified CSE != 75.0 -> %s [WRONG prevented]%n",
                 p1_no_leak ? "PASS" : "FAIL");
         allPassed &= (p1_dse_sal && p1_cse_sal && p1_tot && p1_no_leak);
-
         // Step 2: Then CSE BUY 12
         DayNettingPortfolioState s1_step2 = calculateDayNettingPortfolio(
                 NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, true,
@@ -3521,7 +3327,6 @@ public class Day_Netting {
         System.out.printf("  Step 2.3 [CSE BUY 12 -> Consolidated Total (+37)]: Expected 87.0, Got %.0f -> %s [RIGHT]%n",
                 s1_step2.totalHoldingQty, p2_tot ? "PASS" : "FAIL");
         allPassed &= (p2_dse_sal && p2_cse_sal && p2_tot);
-
         // Step 3: SELL DSE 25 and SELL CSE 12 from respective day saleable
         DayNettingPortfolioState s1_step3 = calculateDayNettingPortfolio(
                 NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, true,
@@ -3546,7 +3351,6 @@ public class Day_Netting {
         System.out.println("\n>>> [SCENARIO 2] INDIVIDUAL EXCHANGE NETTING (SELL QTY > BUY QTY WITH PREVIOUS MATURE SALEABLE)");
         System.out.println("---------------------------------------------------------------------------------------------");
         double s0_sc2 = 50.0; // Previous mature holding
-
         // State T1: Buy 25 on DSE
         DayNettingPortfolioState s2_step1 = calculateDayNettingPortfolio(
                 NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, true,
@@ -3561,7 +3365,6 @@ public class Day_Netting {
         System.out.printf("  Step 1.3 [DSE BUY 25 -> Total Qty]: Expected 75.0, Got %.0f -> %s [RIGHT]%n",
                 s2_step1.totalHoldingQty, p2_1_tot ? "PASS" : "FAIL");
         allPassed &= (p2_1_dse && p2_1_cse && p2_1_tot);
-
         // State T2: Sell 35 on DSE (25 day-bought consumed + 10 mature consumed)
         DayNettingPortfolioState s2_step2 = calculateDayNettingPortfolio(
                 NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, true,
@@ -3573,7 +3376,6 @@ public class Day_Netting {
         boolean p2_2_mature_ded = (s2_step2.matureDeductedQty == 10.0);
         boolean p2_neg_cse = (s2_step2.cseSaleableQty != 50.0); // WRONG assertion: CSE must not retain 50
         boolean p2_neg_dse = (s2_step2.dseSaleableQty != 15.0); // WRONG assertion: DSE must not be 15 (without day buy priority)
-
         System.out.printf("  Step 2.1 [DSE SELL 35 -> DSE Saleable (40 mature, 0 day)]: Expected 40.0, Got %.0f -> %s [RIGHT]%n",
                 s2_step2.dseSaleableQty, p2_2_dse ? "PASS" : "FAIL");
         System.out.printf("  Step 2.2 [DSE SELL 35 -> CSE Saleable (Mature deducted on BOTH)]: Expected 40.0, Got %.0f -> %s [RIGHT]%n",
@@ -3596,7 +3398,6 @@ public class Day_Netting {
         System.out.println("\n>>> [SCENARIO 3] NONE EXCHANGE NETTING (SYSTEM NETTING MODE = NONE)");
         System.out.println("---------------------------------------------------------------------------------------------");
         double s0_sc3 = 50.0;
-
         // DSE BUY 25 with mode = NONE, clientAllowed = true, symbolEligible = true
         DayNettingPortfolioState s3_step1 = calculateDayNettingPortfolio(
                 NettingMode.NONE, true, true, true, true,
@@ -3607,7 +3408,6 @@ public class Day_Netting {
         boolean p3_netted_zero = (s3_step1.dayNettedQty == 0.0);
         boolean p3_neg_sal = (s3_step1.dseSaleableQty != 75.0); // WRONG assertion: Saleable must not be 75
         boolean p3_neg_tot = (s3_step1.totalHoldingQty != 50.0); // WRONG assertion: Total must not be 50
-
         System.out.printf("  Step 1.1 [NONE Mode -> Total Qty Increases (+25)]: Expected 75.0, Got %.0f -> %s [RIGHT]%n",
                 s3_step1.totalHoldingQty, p3_tot_inc ? "PASS" : "FAIL");
         System.out.printf("  Step 1.2 [NONE Mode -> DSE Saleable DOES NOT ADD (Unsettled)]: Expected 50.0, Got %.0f -> %s [RIGHT]%n",
@@ -3628,7 +3428,6 @@ public class Day_Netting {
         System.out.println("\n>>> [SCENARIO 4] CROSS EXCHANGE NETTING (SYSTEM NETTING MODE = CROSS_EXCHANGE)");
         System.out.println("---------------------------------------------------------------------------------------------");
         double s0_sc4 = 50.0;
-
         // Step 1: BUY 25 on DSE -> Reflected on Saleable in BOTH DSE & CSE
         DayNettingPortfolioState s4_step1 = calculateDayNettingPortfolio(
                 NettingMode.CROSS_EXCHANGE, true, true, true, true,
@@ -3637,7 +3436,6 @@ public class Day_Netting {
         boolean p4_1_cse = (s4_step1.cseSaleableQty == 75.0); // 50 + 25 (Reflected on BOTH!)
         boolean p4_1_tot = (s4_step1.totalHoldingQty == 75.0);
         boolean p4_1_neg = (s4_step1.cseSaleableQty != 50.0); // WRONG assertion: CSE must not remain at 50 in cross mode
-
         System.out.printf("  Step 1.1 [DSE BUY 25 -> DSE Saleable (+25)]: Expected 75.0, Got %.0f -> %s [RIGHT]%n",
                 s4_step1.dseSaleableQty, p4_1_dse ? "PASS" : "FAIL");
         System.out.printf("  Step 1.2 [DSE BUY 25 -> CSE Saleable (Cross Reflected on Both)]: Expected 75.0, Got %.0f -> %s [RIGHT]%n",
@@ -3646,7 +3444,6 @@ public class Day_Netting {
                 s4_step1.totalHoldingQty, p4_1_tot ? "PASS" : "FAIL");
         System.out.printf("  Step 1.4 [Negative Check: CSE != 50 (Cross Reflection Verified)]: Got %.0f -> %s [WRONG prevented]%n",
                 s4_step1.cseSaleableQty, p4_1_neg ? "PASS" : "FAIL");
-
         // Step 2: SELL 15 from CSE (Cross Liquidation from ANY exchange)
         DayNettingPortfolioState s4_step2 = calculateDayNettingPortfolio(
                 NettingMode.CROSS_EXCHANGE, true, true, true, true,
@@ -3655,7 +3452,6 @@ public class Day_Netting {
         boolean p4_2_cse = (s4_step2.cseSaleableQty == 60.0); // 50 mature + 10 remaining day bought
         boolean p4_2_tot = (s4_step2.totalHoldingQty == 60.0);
         boolean p4_2_netted = (s4_step2.dayNettedQty == 15.0);
-
         System.out.printf("  Step 2.1 [CSE SELL 15 -> DSE Saleable Debited (-15)]: Expected 60.0, Got %.0f -> %s [RIGHT]%n",
                 s4_step2.dseSaleableQty, p4_2_dse ? "PASS" : "FAIL");
         System.out.printf("  Step 2.2 [CSE SELL 15 -> CSE Saleable Debited (-15)]: Expected 60.0, Got %.0f -> %s [RIGHT]%n",
@@ -3665,11 +3461,9 @@ public class Day_Netting {
         System.out.printf("  Step 2.4 [CSE SELL 15 -> Day Netted Quantity]: Expected 15.0, Got %.0f -> %s [RIGHT]%n",
                 s4_step2.dayNettedQty, p4_2_netted ? "PASS" : "FAIL");
         allPassed &= (p4_1_dse && p4_1_cse && p4_1_tot && p4_1_neg && p4_2_dse && p4_2_cse && p4_2_tot && p4_2_netted);
-
         System.out.println("+-------------------------------------------------------------------------------------------------------------+");
         System.out.printf("| ALL QA DAY NETTING SCENARIOS: %-78s |%n", allPassed ? "ALL PASSED (4/4 SCENARIOS, 25/25 ASSERTIONS)" : "SOME FAILED");
         System.out.println("+=============================================================================================================+\n");
-
         return allPassed;
     }
 
@@ -3702,7 +3496,6 @@ public class Day_Netting {
         String c = (curr == null || curr.trim().isEmpty()) ? "-" : curr.trim();
         String result = "PASS";
         String remarks = "In Sync";
-
         if (param.equalsIgnoreCase("Recent Order ID") || param.equalsIgnoreCase("Order_ID")) {
             if (c.equals("-")) {
                 result = "FAIL";
@@ -3777,11 +3570,9 @@ public class Day_Netting {
                 remarks = "In Sync (" + c + ")";
             }
         }
-
         if (p.length() > 16) p = p.substring(0, 13) + "...";
         if (c.length() > 16) c = c.substring(0, 13) + "...";
         if (remarks.length() > 32) remarks = remarks.substring(0, 29) + "...";
-
         System.out.printf("| %-18s | %-22s | %-16s | %-16s | %-6s | %-32s |%n", widget, param, p, c, result, remarks);
     }
 
@@ -3843,7 +3634,6 @@ public class Day_Netting {
             NettingMode mode,
             boolean isDseEnabled, boolean isCseEnabled,
             boolean isSymbolEligible, boolean isClientAllowed, boolean isMarketBlocked) {
-
         NettingCalculationResult res = new NettingCalculationResult();
         res.symbol = symbol;
         res.clientCode = clientCode;
@@ -3857,7 +3647,6 @@ public class Day_Netting {
         res.isEligible = isSymbolEligible;
         res.isClientAllowed = isClientAllowed;
         res.isMarketBlocked = isMarketBlocked;
-
         // If netting disabled, symbol not eligible, client blocked, or market blocked: NO NETTING
         if (mode == NettingMode.NONE || !isSymbolEligible || !isClientAllowed || isMarketBlocked) {
             res.nettedQty = 0;
@@ -3865,7 +3654,6 @@ public class Day_Netting {
             res.remainingSellQty = res.totalSellQty;
             return res;
         }
-
         if (mode == NettingMode.INDIVIDUAL_EXCHANGE) {
             // Netting only within same exchange
             double dseNetted = isDseEnabled ? Math.min(dseBuy, dseSell) : 0;
@@ -3875,7 +3663,6 @@ public class Day_Netting {
             res.remainingSellQty = (dseSell - dseNetted) + (cseSell - cseNetted);
             return res;
         }
-
         if (mode == NettingMode.CROSS_EXCHANGE) {
             // Netting across exchanges (DSE & CSE combined)
             if (isDseEnabled || isCseEnabled) {
@@ -3889,7 +3676,6 @@ public class Day_Netting {
             }
             return res;
         }
-
         return res;
     }
 
@@ -3977,7 +3763,6 @@ public class Day_Netting {
             RMS.NettingMode origMode = RMS.NettingMode.fromString(initial.dayNettingSettings);
             RMS.configureAllApplicationSettings(
                     driver, origMode, initial.dseEnabled, initial.cseEnabled, initial.allowZSpot, password);
-
             restoreClientListDiff(driver, initial.allowedClients, initial.disallowedClients, password);
             restoreSymbolListDiff(driver, "DSE", initial.dseSymbols);
             restoreSymbolListDiff(driver, "CSE", initial.cseSymbols);
@@ -3998,7 +3783,6 @@ public class Day_Netting {
         for (RMS.ClientRmsRecord r : origDisallowed) {
             if (r.clientCode != null && !r.clientCode.trim().isEmpty()) origMap.put(r.clientCode.trim().toUpperCase(), false);
         }
-
         List<RMS.ClientRmsRecord> currAllowed = RMS.fetchClientsRmsList(driver, true);
         List<RMS.ClientRmsRecord> currDisallowed = RMS.fetchClientsRmsList(driver, false);
         for (RMS.ClientRmsRecord r : currAllowed) {
@@ -4099,7 +3883,6 @@ public class Day_Netting {
         NettingScenarioConfig cfg = config != null ? config : new NettingScenarioConfig();
         List<NettingScenarioSpec> specs = build9ScenarioSpecs();
         List<NettingScenarioOutcome> outcomes = new ArrayList<>();
-
         String primary = (cfg.primaryClient != null && !cfg.primaryClient.trim().isEmpty())
                 ? cfg.primaryClient.trim().toUpperCase() : "002";
         List<String> others = new ArrayList<>();
@@ -4114,7 +3897,6 @@ public class Day_Netting {
         String sym = OMSweb_Trade.cleanSymbol(cfg.symbol);
         if (sym.isEmpty()) sym = "GP";
         String ex = (cfg.exchange != null && !cfg.exchange.trim().isEmpty()) ? cfg.exchange.trim().toUpperCase() : "BOTH";
-
         if (driver == null) {
             for (NettingScenarioSpec spec : specs) {
                 if (!matchesScenarioFilter(spec, cfg.scenarioFilter)) continue;
@@ -4123,7 +3905,6 @@ public class Day_Netting {
             print9ScenarioScorecard(outcomes);
             return outcomes;
         }
-
         QrmsNettingStateSnapshot initial = captureInitialQrmsState(driver);
         double resolvedRate = resolveScenarioOrderRate(driver, sym, ex, cfg.orderRate);
         try {
@@ -4169,19 +3950,16 @@ public class Day_Netting {
                 exclOk = false;
             }
         }
-
         int qty = cfg.orderQty > 0 ? cfg.orderQty : 10;
         double baseMature = 50.0;
         double dseQty = "CSE".equalsIgnoreCase(ex) ? 0.0 : qty;
         double cseQty = "DSE".equalsIgnoreCase(ex) ? 0.0 : qty;
         double stockAdd = 50.0;
-
         Netting6WidgetsUiSnapshot pre = buildMatrixSnapshot(
                 "OFFLINE_PRE_S" + spec.number, primary, sym, ex, cfg.nettingMode,
                 cfg.dseEnabled, cfg.cseEnabled, spec.initialSymbolAllowed, spec.initialClientAllowed,
                 true, cfg.board, spec.requiresStockFile ? "STOCK_FILE" : "BUY", qty,
                 false, baseMature, baseMature, baseMature, baseMature);
-
         Netting6WidgetsUiSnapshot post;
         NettingEligibilityContext initCtx = new NettingEligibilityContext(
                 cfg.nettingMode, cfg.dseEnabled, cfg.cseEnabled,
@@ -4189,7 +3967,6 @@ public class Day_Netting {
                 ex, cfg.board, cfg.allowZSpot, "ACCEPTED", spec.requiresStockFile);
         double auditDseQty = spec.requiresStockFile ? stockAdd / 2.0 : dseQty;
         double auditCseQty = spec.requiresStockFile ? stockAdd / 2.0 : cseQty;
-
         if (spec.requiresStockFile) {
             OMSweb_UploadData.UploadExecutionResult guardRes =
                     OMSweb_UploadData.uploadStockFileWithGuard(null, cfg.stockFilePath, false);
@@ -4201,7 +3978,6 @@ public class Day_Netting {
                     true, newTot, newTot, newTot, newTot);
             NettingSaleableAuditResult audit = auditDayNettingSaleableCompliance(pre, post, initCtx, auditDseQty, auditCseQty);
             boolean phase1Ok = audit.isAllRight() && audit.saleableUpdatedAny() && guardRes.dryRun;
-
             boolean phase2Ok = true;
             String extra = "StockFile -> saleable +" + (int) stockAdd + " (guard dryRun=" + guardRes.dryRun + ")";
             if (spec.postOrderAllowClient) {
@@ -4226,7 +4002,6 @@ public class Day_Netting {
                     String.format(Locale.US, "DSE=%.0f/CSE=%.0f", newTot, newTot),
                     passed ? "PASS" : "FAIL", extra, audit, null);
         }
-
         DayNettingPortfolioState initCalc = calculateDayNettingPortfolio(
                 cfg.nettingMode, cfg.dseEnabled, cfg.cseEnabled,
                 spec.initialClientAllowed, spec.initialSymbolAllowed, true,
@@ -4237,10 +4012,8 @@ public class Day_Netting {
                 true, cfg.board, "BUY", qty,
                 false, initCalc.totalHoldingQty, initCalc.dseSaleableQty,
                 initCalc.totalHoldingQty, initCalc.cseSaleableQty);
-
         NettingSaleableAuditResult audit = auditDayNettingSaleableCompliance(pre, post, initCtx, dseQty, cseQty);
         boolean saleableOk = audit.isAllRight() && (audit.saleableUpdatedAny() == spec.expectSaleableUpdatedInitially);
-
         // For S1/S2 also assert opposite client group exhibits inverse saleable rule
         if (spec.number == 1 || spec.number == 2) {
             boolean otherAllowed = !spec.initialClientAllowed;
@@ -4263,7 +4036,6 @@ public class Day_Netting {
             NettingSaleableAuditResult otherAudit = auditDayNettingSaleableCompliance(otherPre, otherPost, otherCtx, dseQty, cseQty);
             saleableOk &= otherAudit.isAllRight() && (otherAudit.saleableUpdatedAny() == otherAllowed);
         }
-
         // For S5/S6 verify post-accepted-order flip restores netting eligibility & expected reflection
         String details = String.format(Locale.US, "Effective=%b, SaleableUpdated=%b", audit.nettingEffective, audit.saleableUpdatedAny());
         if (spec.postOrderAllowSymbol || spec.postOrderAllowClient) {
@@ -4284,7 +4056,6 @@ public class Day_Netting {
             details += String.format(Locale.US, " -> Post-Flip Effective=%b, Sal=%.0f/%.0f",
                     isNettingEffectiveForTrade(flippedCtx), flippedCalc.dseSaleableQty, flippedCalc.cseSaleableQty);
         }
-
         boolean passed = exclOk && saleableOk;
         return new NettingScenarioOutcome(
                 spec, false, passed, true, exclOk, saleableOk,
@@ -4305,22 +4076,17 @@ public class Day_Netting {
         } else {
             RMS.setClientNettingState(driver, primary, spec.initialClientAllowed, cfg.rmsPassword);
         }
-
         configureScenarioSymbolState(driver, sym, ex, cfg.dseEnabled, cfg.cseEnabled, spec.initialSymbolAllowed);
-
         String checkEx = "BOTH".equalsIgnoreCase(ex) ? (cfg.dseEnabled ? "DSE" : "CSE") : ex;
         NettingApplicabilityReport appRep = checkSelectedApplicability(driver, checkEx, sym, primary, cfg.board);
         boolean appOk = (appRep.isClientApplicable == spec.initialClientAllowed)
                 && (appRep.isSymbolApplicable == spec.initialSymbolAllowed);
-
         OMSweb_UploadData.UploadExecutionResult uploadRes = null;
         if (spec.requiresStockFile) {
             uploadRes = OMSweb_UploadData.uploadStockFileWithGuard(driver, cfg.stockFilePath, cfg.allowLiveStockUpload);
         }
-
         OMSweb_Trade.navigateToTradePage(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), false);
         SaleableProbeSnapshot baseline = captureSaleableBaseline(driver, "PRE_S" + spec.number, primary, sym);
-
         boolean orderPlaced = false;
         if (cfg.executeLiveOrders && !spec.requiresStockFile) {
             String instrument = sym.contains(".") ? sym : (sym + "." + cfg.board);
@@ -4337,10 +4103,8 @@ public class Day_Netting {
             }
             orderPlaced = OMSweb_Trade.hasLatestOrderInTerminal(driver, primary, sym);
         }
-
         SaleableDeltaReport delta = captureSaleableDelta(driver, baseline, "POST_S" + spec.number);
         printSaleableDeltaReport(delta);
-
         boolean saleableOk;
         String detailMsg;
         if (spec.requiresStockFile) {
@@ -4357,7 +4121,6 @@ public class Day_Netting {
             detailMsg = String.format("orderAccepted=%b, saleableUpdated=%b (expected=%b)",
                     orderPlaced, delta.anySaleableUpdated, spec.expectSaleableUpdatedInitially);
         }
-
         if (spec.postOrderAllowSymbol || spec.postOrderAllowClient) {
             if (spec.postOrderAllowSymbol) {
                 configureScenarioSymbolState(driver, sym, ex, cfg.dseEnabled, cfg.cseEnabled, true);
@@ -4377,7 +4140,6 @@ public class Day_Netting {
             saleableOk &= policyOk;
             detailMsg += String.format("; postFlipEligible=%b, postFlipSaleableUpdated=%b", flipAppOk, postFlipDelta.anySaleableUpdated);
         }
-
         boolean passed = exclOk && appOk && saleableOk;
         return new NettingScenarioOutcome(
                 spec, true, passed, appOk, exclOk, saleableOk,
@@ -4443,50 +4205,40 @@ public class Day_Netting {
         System.out.println("\n=============================================================================");
         System.out.println("        OFFLINE PURE-JAVA DAY NETTING REGRESSION & MATRIX TEST SUITE         ");
         System.out.println("=============================================================================");
-
         int passed = 0;
         int total = 0;
-
         // 1. RMS pre-trade & client exclusivity + negative overlap suite
         total++;
         boolean tRms = RMS.testPreTradeRmsAuditScenarios();
         if (tRms) passed++;
-
         // 2. Saleable rules matrix (8 scenarios)
         total++;
         boolean tSaleableMatrix = reportDayNettingSaleableRulesMatrix();
         if (tSaleableMatrix) passed++;
-
         // 3. QA multi-exchange & transition suite
         total++;
         boolean tQa = testQaDayNettingScenarios();
         if (tQa) passed++;
-
         // 4. NettingEligibilityContext truth table
         total++;
         boolean tElig = testEligibilityTruthTableOffline();
         if (tElig) passed++;
-
         // 5. 11-arg calculateDayNettingPortfolio & CROSS_EXCHANGE regressions
         total++;
         boolean tCalc = testPortfolio11ArgAndCrossExchangeOffline();
         if (tCalc) passed++;
-
         // 6. 3-arg & 5-arg auditDayNettingSaleableCompliance pass & fail assertions (incl. BOTH & stockFileUploaded)
         total++;
         boolean tAudit = testComplianceOverloadsOffline();
         if (tAudit) passed++;
-
         // 7. Portfolio / Position alignment probe delta unit test
         total++;
         boolean tAlign = testSaleableProbeAlignmentOffline();
         if (tAlign) passed++;
-
         // 8. Upload Stock File guard offline unit test
         total++;
         boolean tUploadGuard = testStockUploadGuardOffline();
         if (tUploadGuard) passed++;
-
         // 9. Full 9-Scenario Compliance Matrix (offline)
         total++;
         List<NettingScenarioOutcome> matrix = runNetting9ScenarioMatrix(null, new NettingScenarioConfig());
@@ -4495,7 +4247,6 @@ public class Day_Netting {
             if (!o.passed) { tMatrix = false; break; }
         }
         if (tMatrix) passed++;
-
         System.out.println("=============================================================================");
         System.out.printf("   [OFFLINE SUITE COMPLETE] Passed: %d / %d Test Blocks%n", passed, total);
         System.out.println("=============================================================================\n");
@@ -4524,7 +4275,6 @@ public class Day_Netting {
                 NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, true, true, "DSE", "PUBLIC", false, "REJECTED", false);
         NettingEligibilityContext crossAllOff = new NettingEligibilityContext(
                 NettingMode.CROSS_EXCHANGE, false, false, true, true, true, "DSE", "PUBLIC", false, "ACCEPTED", false);
-
         boolean okPass = isNettingEffectiveForTrade(ok)
                 && !isNettingEffectiveForTrade(noneMode) && !explainIneligibilityReason(noneMode).isEmpty()
                 && !isNettingEffectiveForTrade(dseOff)
@@ -4546,7 +4296,6 @@ public class Day_Netting {
                 NettingMode.CROSS_EXCHANGE, false, false, true, true, true, 50, 20, 0, 0, 10);
         DayNettingPortfolioState crossOneEnabled = calculateDayNettingPortfolio(
                 NettingMode.CROSS_EXCHANGE, true, false, true, true, true, 50, 20, 0, 0, 10);
-
         boolean pass = boardBlocked.dseSaleableQty == 50.0 && boardBlocked.dayNettedQty == 0.0
                 && crossBothDisabled.dseSaleableQty == 40.0 && crossBothDisabled.dayNettedQty == 0.0
                 && crossOneEnabled.dseSaleableQty == 60.0 && crossOneEnabled.cseSaleableQty == 60.0
@@ -4563,26 +4312,22 @@ public class Day_Netting {
                 "POST", "002", "GP", "BOTH", NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, true, true, "PUBLIC", "BUY", 37, false, 87, 75, 87, 62);
         NettingEligibilityContext bothCtx = NettingEligibilityContext.fromSnapshot(cBoth);
         NettingSaleableAuditResult rBoth = auditDayNettingSaleableCompliance(pBoth, cBoth, bothCtx, 25, 12);
-
         // 2. 3-arg BOTH symmetric (10 DSE + 10 CSE)
         Netting6WidgetsUiSnapshot pSym = buildMatrixSnapshot(
                 "PRE_SYM", "002", "GP", "BOTH", NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, true, true, "PUBLIC", "BUY", 10, false, 50, 50, 50, 50);
         Netting6WidgetsUiSnapshot cSym = buildMatrixSnapshot(
                 "POST_SYM", "002", "GP", "BOTH", NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, true, true, "PUBLIC", "BUY", 10, false, 70, 60, 70, 60);
         NettingSaleableAuditResult rSym = auditDayNettingSaleableCompliance(pSym, cSym, NettingEligibilityContext.fromSnapshot(cSym));
-
         // 3. Negative compliance assertion: client disallowed MUST FAIL if saleable illegally increased
         Netting6WidgetsUiSnapshot pBad = buildMatrixSnapshot(
                 "PRE_BAD", "002", "GP", "DSE", NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, false, true, "PUBLIC", "BUY", 10, false, 50, 50, 50, 50);
         Netting6WidgetsUiSnapshot cBad = buildMatrixSnapshot(
                 "POST_BAD", "002", "GP", "DSE", NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, false, true, "PUBLIC", "BUY", 10, false, 60, 60, 60, 50);
         NettingSaleableAuditResult rBad = auditDayNettingSaleableCompliance(pBad, cBad);
-
         // 4. Stock File uploaded while client disallowed MUST PASS when saleable updates
         Netting6WidgetsUiSnapshot cStock = buildMatrixSnapshot(
                 "POST_STK", "002", "GP", "DSE", NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, false, true, "PUBLIC", "STOCK_FILE", 50, true, 100, 100, 100, 100);
         NettingSaleableAuditResult rStock = auditDayNettingSaleableCompliance(pBad, cStock, NettingEligibilityContext.fromSnapshot(cStock), 25, 25);
-
         boolean pass = rBoth.isAllRight() && rSym.isAllRight()
                 && !rBad.isAllRight() && !rBad.dseSaleableRight
                 && rStock.isAllRight() && rStock.saleableUpdatedAny();
@@ -4599,7 +4344,6 @@ public class Day_Netting {
         pre.dse.hasPositionData = true; pre.dse.positionTotalQty = 50; pre.dse.positionSaleableQty = 50;
         pre.cse.hasPortfolioData = true; pre.cse.portfolioTotalQty = 50; pre.cse.portfolioSaleableQty = 50;
         pre.cse.hasPositionData = true; pre.cse.positionTotalQty = 50; pre.cse.positionSaleableQty = 50;
-
         SaleableProbeSnapshot postAligned = new SaleableProbeSnapshot();
         postAligned.stageName = "POST_OK";
         postAligned.clientCode = "002";
@@ -4608,18 +4352,14 @@ public class Day_Netting {
         postAligned.dse.hasPositionData = true; postAligned.dse.positionTotalQty = 60; postAligned.dse.positionSaleableQty = 60;
         postAligned.cse.hasPortfolioData = true; postAligned.cse.portfolioTotalQty = 60; postAligned.cse.portfolioSaleableQty = 50;
         postAligned.cse.hasPositionData = true; postAligned.cse.positionTotalQty = 60; postAligned.cse.positionSaleableQty = 50;
-
         SaleableDeltaReport okRep = computeSaleableDelta(pre, postAligned);
-
         SaleableProbeSnapshot postMismatch = new SaleableProbeSnapshot();
         postMismatch.stageName = "POST_MISMATCH";
         postMismatch.clientCode = "002";
         postMismatch.symbol = "GP";
         postMismatch.dse.hasPortfolioData = true; postMismatch.dse.portfolioTotalQty = 60; postMismatch.dse.portfolioSaleableQty = 60;
         postMismatch.dse.hasPositionData = true; postMismatch.dse.positionTotalQty = 60; postMismatch.dse.positionSaleableQty = 50;
-
         SaleableDeltaReport badRep = computeSaleableDelta(pre, postMismatch);
-
         boolean pass = okRep.dseSaleableUpdated && !okRep.cseSaleableUpdated
                 && okRep.anySaleableUpdated && okRep.portfolioMatchesPosition
                 && !badRep.portfolioMatchesPosition;
@@ -4648,7 +4388,6 @@ public class Day_Netting {
         System.out.println("\n=============================================================================");
         System.out.println("          RUNNING COMPLETE SCRIP NETTING AUTOMATION TEST SUITE               ");
         System.out.println("=============================================================================");
-
         int passed = 0;
         int total = 0;
 
@@ -4715,12 +4454,10 @@ public class Day_Netting {
         NettingCalculationResult rCross = calculatePositionNetting("GP", "23986", 100, 0, 0, 100, NettingMode.CROSS_EXCHANGE, true, true, true, true, false);
         // Scenario D: Blocked Client (Expected Netted = 0)
         NettingCalculationResult rBlocked = calculatePositionNetting("GP", "BLOCKED01", 100, 40, 50, 20, NettingMode.CROSS_EXCHANGE, true, true, true, false, false);
-
         boolean calcOk = (rNone.nettedQty == 0) &&
                          (rIndiv.nettedQty == 60) &&
                          (rCross.nettedQty == 100 && rCross.remainingBuyQty == 0 && rCross.remainingSellQty == 0) &&
                          (rBlocked.nettedQty == 0);
-
         if (calcOk) {
             System.out.println("  -> [TEST 4 PASSED] Math verification matches operational documentation exactly:");
             System.out.printf("     - None: Netted=%.0f, RemBuy=%.0f, RemSell=%.0f%n", rNone.nettedQty, rNone.remainingBuyQty, rNone.remainingSellQty);
@@ -4761,7 +4498,6 @@ public class Day_Netting {
         } else {
             System.out.println("  -> [TEST 7 FAILED] QA Day Netting Scenario Mismatch.");
         }
-
         System.out.println("\n=============================================================================");
         System.out.printf("   [TEST RUN COMPLETE] Passed: %d / %d Tests (100%% Operational Coverage)%n", passed, total);
         System.out.println("=============================================================================\n");
@@ -4800,7 +4536,6 @@ public class Day_Netting {
         }
         long timeoutMs = timeoutSeconds * 1000L;
         long start = System.currentTimeMillis();
-
         while (System.currentTimeMillis() - start < timeoutMs) {
             try {
                 if (System.in.available() > 0) {
@@ -4810,7 +4545,6 @@ public class Day_Netting {
                     }
                 }
             } catch (Exception ignored) {}
-
             try { Thread.sleep(150); } catch (Exception ignored) {}
         }
         System.out.println(" [Auto-selected default: " + defaultVal + "]");
@@ -4826,9 +4560,7 @@ public class Day_Netting {
         System.out.println("\n=======================================================");
         System.out.println("            DAY NETTING (SCRIP NETTING) ENGINE        ");
         System.out.println("=======================================================");
-
         navigateToRmsNettingTab(driver);
-
         boolean running = true;
         while (running) {
             System.out.println("\nSelect Action:");
@@ -4843,7 +4575,6 @@ public class Day_Netting {
             System.out.println("  9. Run QA Day Netting Suite (DSE 25 / CSE 12, Excess Sell Mature Deduct, NONE Mode) [Direct QA]");
             System.out.println("  10. Run 9-Scenario Compliance Matrix (Exclusivity, Post-Order Flips, Stock File)");
             System.out.println("  0. Return to Main Menu");
-
             String choice = "";
             if (isCi) {
                 choice = "1";
@@ -4853,7 +4584,6 @@ public class Day_Netting {
                 choice = readLineWithIdleWatchdog(driver, sc, "1", 4);
                 if (choice.isEmpty()) choice = "1";
             }
-
             if ("0".equals(choice) || "exit".equalsIgnoreCase(choice)) {
                 System.out.println("[DAY NETTING] Returning to main session.");
                 running = false;
@@ -4873,7 +4603,6 @@ public class Day_Netting {
                 NettingMode targetMode = "1".equals(mChoice) || "none".equalsIgnoreCase(mChoice) ? NettingMode.NONE :
                                          "3".equals(mChoice) || "cross".equalsIgnoreCase(mChoice) ? NettingMode.CROSS_EXCHANGE :
                                          NettingMode.INDIVIDUAL_EXCHANGE;
-
                 // Manually select exchange, with default DSE
                 System.out.println("\nSelect Exchange (Manually Select, Default DSE):");
                 System.out.println("  1. DSE (Dhaka Stock Exchange) [Default]");
@@ -4892,13 +4621,10 @@ public class Day_Netting {
                     targetExchange = "DSE";
                 }
                 System.out.printf("[EXCHANGE SELECTED] %s (Default: DSE)%n", targetExchange);
-
                 boolean allowZSpot = false;
-
                 System.out.print("Enter password authentication (default=12345 in 4s, or press ENTER): ");
                 String pwd = readLineWithTimeout(sc, "12345", 4);
                 if (pwd.isEmpty()) pwd = "12345";
-
                 boolean dseNetting = true;
                 boolean cseNetting = true;
                 if (targetMode == NettingMode.NONE) {
@@ -4914,10 +4640,8 @@ public class Day_Netting {
                     dseNetting = true;
                     cseNetting = true;
                 }
-
                 // 1. Configure all 4 Netting Settings under qRMS Settings -> Application Settings
                 configureAllApplicationNettingSettings(driver, targetMode, dseNetting, cseNetting, allowZSpot, pwd);
-
                 // 2. Also ensure Netting Tab controls match
                 configureNettingMode(driver, targetMode, pwd, false);
                 if (targetMode == NettingMode.NONE) {
@@ -4935,7 +4659,6 @@ public class Day_Netting {
                     setBothExchangesNettingEnabled(driver, true, pwd);
                     System.out.println("  -> [EXECUTED] IS_DSE_DAY_NETTING_ENABLED = true | IS_CSE_DAY_NETTING_ENABLED = true");
                 }
-
                 // 3. Real-Time UI Data Reflection, Pre-Trade Capture, Trade Execution & Post-Trade Comparison
                 System.out.println("\n>>> [REAL-TIME 6-WIDGET UI DATA AUDIT & TRADE VERIFICATION] <<<");
                 System.out.print("Enter Target Symbol to Audit (default=GP in 4s, press ENTER): ");
@@ -4944,34 +4667,27 @@ public class Day_Netting {
                 System.out.print("Enter Target Client Code to Audit (default=23986 in 4s, press ENTER): ");
                 String cln = readLineWithTimeout(sc, "23986", 4);
                 if (cln.isEmpty()) cln = "23986";
-
                 System.out.println("\nSelect Trading Board (1=PUBLIC [Default], 2=BLOCK, 3=SPOT): ");
                 System.out.print("Enter Choice (1-3, default=1 [PUBLIC] in 4s): ");
                 String brdChoice = readLineWithTimeout(sc, "1", 4);
                 String board = "2".equals(brdChoice) || "block".equalsIgnoreCase(brdChoice) ? "BLOCK" :
                                "3".equals(brdChoice) || "spot".equalsIgnoreCase(brdChoice) ? "SPOT" : "PUBLIC";
-
                 // Verify Applicability of selected Symbol, Client, and Board before trade execution!
                 NettingApplicabilityReport appRep = checkSelectedApplicability(driver, targetExchange, sym, cln, board);
                 printApplicabilityVerificationReport(appRep);
-
                 // Step 0: Insert global symbol and select Public symbol from dropdown list (e.g. GP.PUBLIC)
                 OMSweb_Trade.insertGlobalSymbolAndSelectPublic(driver, sym);
                 sym = OMSweb_Trade.toPublicSymbol(sym);
-
                 // Step 1: Reflect client code across all widgets
                 OMSweb_Trade.propagateClientCodeToAllWidgets(driver, cln, sym);
-
                 // Step 2: Capture Pre-Trade Baseline Snapshot across all 6 widgets
                 System.out.printf("%n>>> [STEP 1/3] CAPTURING PRE-TRADE REAL-TIME DATA ACROSS 6 WIDGETS FOR CLIENT: %s...%n", cln);
                 Netting6WidgetsUiSnapshot preTradeSnap = check6NettingWidgetsRealTimeUiData(driver, "PRE-TRADE_BASELINE_" + targetMode.name() + "_" + targetExchange, cln, sym, targetExchange);
-
                 // Step 3: Execute Live Trade to verify real-time widget updates
                 System.out.printf("%n=============================================================================%n");
                 System.out.printf(">>> [STEP 2/3] EXECUTE TRADE TO VERIFY LIVE REAL-TIME WIDGET UPDATES%n");
                 System.out.printf("    Client: %s | Symbol: %s | Board: %s | Mode: %s%n", cln, sym, board, targetMode.name());
                 System.out.printf("=============================================================================%n");
-
                 String defaultTradeOpt = "5";
                 if (targetMode == NettingMode.NONE) {
                     System.out.println("Mode: NONE -> Trade: DSE BUY 25 (Verify Total increases, Saleable DOES NOT ADD)");
@@ -4984,11 +4700,9 @@ public class Day_Netting {
                 System.out.print("Enter Choice (default=5 in 4s): ");
                 String tradeOpt = readLineWithTimeout(sc, defaultTradeOpt, 4);
                 if (tradeOpt.isEmpty()) tradeOpt = defaultTradeOpt;
-
                 String tradeAction = "0".equals(tradeOpt) || "skip".equalsIgnoreCase(tradeOpt) ? "SKIP" : "QA_FLOW";
                 int tradeQty = (targetMode == NettingMode.NONE) ? 25 :
                                (targetMode == NettingMode.INDIVIDUAL_EXCHANGE && "BOTH".equalsIgnoreCase(targetExchange)) ? 37 : 25;
-
                 double defaultRate = 0.0;
                 // First check on-screen error tooltip/toast: HIGHEST PRIORITY per user request!
                 try {
@@ -4998,7 +4712,6 @@ public class Day_Netting {
                         System.out.printf("  -> [INITIAL RATE RESOLUTION] Using suggested price from rejection error message: %.2f%n", defaultRate);
                     }
                 } catch (Exception ignored) {}
-
                 // Fallback to Market Depth LTP only if no on-screen error message
                 if (defaultRate <= 0.0) {
                     try {
@@ -5020,7 +4733,6 @@ public class Day_Netting {
                         }
                     } catch (Exception ignored) {}
                 }
-
                 if (defaultRate > 1000.0) {
                     System.out.printf("  [PRICE SANITY] Rate %.2f exceeds realistic scrip limits. Clamping to base acceptable rate 266.90 for %s.%n", defaultRate, sym);
                     defaultRate = 266.90;
@@ -5028,11 +4740,9 @@ public class Day_Netting {
                 if (defaultRate <= 0.0) {
                     defaultRate = 266.90;
                 }
-
                 double tradeRate = defaultRate;
                 String tradeInstrument = sym.contains(".") ? sym : ("PUBLIC".equalsIgnoreCase(board) ? (sym + ".PUBLIC") : (sym + "." + board));
                 String orderEx = "BOTH".equalsIgnoreCase(targetExchange) ? "DSE" : targetExchange;
-
                 if (!"SKIP".equals(tradeAction)) {
                     if (targetMode == NettingMode.NONE) {
                         System.out.println("\n>>> [EXECUTING NONE MODE NETTING TEST: BUY 25] <<<");
@@ -5067,7 +4777,6 @@ public class Day_Netting {
                         Thread.sleep(1500);
                     }
                 }
-
                 // User requirement: after trade happen check order terminal to any latest order exits or not if not no need to take snapshot and compare the data . for comparing data show result (pass ,fail, remarks)
                 boolean hasLatestOrder = OMSweb_Trade.hasLatestOrderInTerminal(driver, cln, sym);
                 Netting6WidgetsUiSnapshot postTradeSnap = null;
@@ -5085,10 +4794,8 @@ public class Day_Netting {
                     postTradeSnap.marketDepthData.putAll(preTradeSnap.marketDepthData);
                     postTradeSnap.orderTerminalData.putAll(preTradeSnap.orderTerminalData);
                     postTradeSnap.accountLimitsData.putAll(preTradeSnap.accountLimitsData);
-
                     double pDseSal = OMSweb_Trade.parseNumSafe(preTradeSnap.portfolioDataDSE.getOrDefault("saleable_qty", "50"));
                     if (pDseSal <= 0) pDseSal = 50.0;
-
                     double dBuy = 0, cBuy = 0, dSell = 0, cSell = 0;
                     if (targetMode == NettingMode.NONE) {
                         if ("CSE".equalsIgnoreCase(orderEx)) {
@@ -5105,30 +4812,24 @@ public class Day_Netting {
                         cBuy = 12;
                         dSell = 35; // Includes excess sell mature test
                     }
-
                     DayNettingPortfolioState pState = calculateDayNettingPortfolio(
                             targetMode, dseNetting, cseNetting, true, true,
                             pDseSal, dBuy, dSell, cBuy, cSell);
-
                     postTradeSnap.portfolioDataDSE.put("total_qty", String.format(Locale.US, "%.0f", pState.totalHoldingQty));
                     postTradeSnap.portfolioDataCSE.put("total_qty", String.format(Locale.US, "%.0f", pState.totalHoldingQty));
                     postTradeSnap.portfolioDataDSE.put("saleable_qty", String.format(Locale.US, "%.0f", pState.dseSaleableQty));
                     postTradeSnap.portfolioDataCSE.put("saleable_qty", String.format(Locale.US, "%.0f", pState.cseSaleableQty));
                 }
-
                 postTradeSnap.dayNettingMode = targetMode.name();
                 postTradeSnap.tradedExchange = targetExchange;
                 postTradeSnap.tradeAction = tradeAction;
                 postTradeSnap.tradeQty = tradeQty;
-
                 preTradeSnap.dayNettingMode = targetMode.name();
                 preTradeSnap.tradedExchange = targetExchange;
                 preTradeSnap.tradeAction = tradeAction;
                 preTradeSnap.tradeQty = tradeQty;
-
                 // Step 5: Compare Pre-Trade vs Post-Trade & Render Widget-Wise Results
                 compareAndReportNettingWidgets(driver, preTradeSnap, postTradeSnap, "DAY NETTING UI AUDIT (" + targetMode.name() + " - " + targetExchange + ")");
-
                 // Mode-Specific Compliance Verification Summary & Scorecard
                 System.out.println("\n+=============================================================================================================+");
                 System.out.printf("| QA DAY NETTING MODE-SPECIFIC COMPLIANCE VERIFICATION: %-44s |%n", targetMode.name());
@@ -5181,17 +4882,14 @@ public class Day_Netting {
                 System.out.print("Enter Choice (1-3, default=3): ");
                 String exChoice = sc.nextLine().trim();
                 if (exChoice.isEmpty()) exChoice = "3";
-
                 System.out.println("\nSelect Netting Status:");
                 System.out.println("  1. Enable Netting (True)");
                 System.out.println("  2. Disable Netting (False)");
                 System.out.print("Enter Choice (1-2, default=1): ");
                 String stChoice = sc.nextLine().trim();
                 boolean enable = !"2".equals(stChoice) && !"disable".equalsIgnoreCase(stChoice) && !"false".equalsIgnoreCase(stChoice);
-
                 System.out.print("Enter password authentication (default=12345, or press ENTER): ");
                 String pwd = sc.nextLine().trim();
-
                 if ("1".equals(exChoice) || "dse".equalsIgnoreCase(exChoice)) {
                     setExchangeNettingEnabled(driver, "DSE", enable, pwd);
                 } else if ("2".equals(exChoice) || "cse".equalsIgnoreCase(exChoice)) {
@@ -5364,24 +5062,19 @@ public class Day_Netting {
                 System.out.print("Enter Choice (1-4, default=4): ");
                 String auditChoice = sc.nextLine().trim();
                 if (auditChoice.isEmpty()) auditChoice = "4";
-
                 System.out.print("Enter Target Symbol to Audit (default=GP): ");
                 String sym = sc.nextLine().trim();
                 if (sym.isEmpty()) sym = "GP";
-
                 System.out.print("Enter Client Code to Audit (default=23986): ");
                 String cln = sc.nextLine().trim();
                 if (cln.isEmpty()) cln = "23986";
-
                 System.out.println("Select Trading Board to Audit (1=PUBLIC [Default], 2=BLOCK, 3=SPOT): ");
                 System.out.print("Enter Choice (1-3, default=1 [PUBLIC]): ");
                 String brdChoice = sc.nextLine().trim();
                 String board = "2".equals(brdChoice) || "block".equalsIgnoreCase(brdChoice) ? "BLOCK" :
                                "3".equals(brdChoice) || "spot".equalsIgnoreCase(brdChoice) ? "SPOT" : "PUBLIC";
-
                 NettingApplicabilityReport rep = checkSelectedApplicability(driver, "DSE", sym, cln, board);
                 printApplicabilityVerificationReport(rep);
-
                 if ("1".equals(auditChoice) || "depth".equalsIgnoreCase(auditChoice)) {
                     auditMarketDepthIndicator(driver, sym);
                 } else if ("2".equals(auditChoice) || "watchlist".equalsIgnoreCase(auditChoice)) {
@@ -5401,11 +5094,9 @@ public class Day_Netting {
                 System.out.print("Enter Target Symbol to Verify (default=GP): ");
                 String sym = sc.nextLine().trim();
                 if (sym.isEmpty()) sym = "GP";
-
                 System.out.print("Enter Client Code to Verify (default=23986): ");
                 String cln = sc.nextLine().trim();
                 if (cln.isEmpty()) cln = "23986";
-
                 System.out.println("Select Trading Board to Verify:");
                 System.out.println("  1. PUBLIC (Standard Trading Board) [Default]");
                 System.out.println("  2. BLOCK (Block Market Board)");
@@ -5414,7 +5105,6 @@ public class Day_Netting {
                 String brdChoice = sc.nextLine().trim();
                 String brd = "2".equals(brdChoice) || "block".equalsIgnoreCase(brdChoice) ? "BLOCK" :
                              "3".equals(brdChoice) || "spot".equalsIgnoreCase(brdChoice) ? "SPOT" : "PUBLIC";
-
                 System.out.println("Select Target Exchange:");
                 System.out.println("  1. DSE [Default]");
                 System.out.println("  2. CSE");
@@ -5423,7 +5113,6 @@ public class Day_Netting {
                 String exChoice = sc.nextLine().trim();
                 String ex = "2".equals(exChoice) || "cse".equalsIgnoreCase(exChoice) ? "CSE" :
                             "3".equals(exChoice) || "both".equalsIgnoreCase(exChoice) ? "BOTH" : "DSE";
-
                 NettingApplicabilityReport rep = checkSelectedApplicability(driver, ex, sym, cln, brd);
                 printApplicabilityVerificationReport(rep);
             } else if ("9".equals(choice) || "qa".equalsIgnoreCase(choice) || "test".equalsIgnoreCase(choice)) {
@@ -5459,12 +5148,10 @@ public class Day_Netting {
                 System.out.printf("[INVALID SELECTION] '%s' is not recognized. Please choose 0-10.%n", choice);
                 continue;
             }
-
             if (isCi) {
                 running = false;
                 break;
             }
-
             System.out.println("\n-----------------------------------------------------------------------------");
             System.out.println(" [ACTION COMPLETED] Action finished successfully.");
             System.out.println("-----------------------------------------------------------------------------");
@@ -5487,7 +5174,6 @@ public class Day_Netting {
             if (!passed) System.exit(1);
             return;
         }
-
         Scanner sc = new Scanner(System.in);
         System.out.println("===============================================================================");
         System.out.println("                  ECLIPSE DAY NETTING DIRECT EXECUTION ENGINE                 ");
@@ -5496,7 +5182,6 @@ public class Day_Netting {
         System.out.println("  1. Run Multi-Exchange Audit Suite (None, Individual, Cross - Fast) [Default in 4s]");
         System.out.println("  2. Launch Live Browser Automation (devoms.quantbd.com)");
         System.out.print("Enter Choice (1-2, default=1 in 4s): ");
-
         String choice = "1";
         try {
             long startWait = System.currentTimeMillis();
@@ -5508,14 +5193,12 @@ public class Day_Netting {
                 Thread.sleep(100);
             }
         } catch (Exception ignored) {}
-
         if ("1".equals(choice) || choice.isEmpty() || "qa".equalsIgnoreCase(choice)) {
             System.out.println("\n[ECLIPSE RUNNER] Executing Multi-Exchange Audit Suite (Instruction-Wise)...");
             boolean passed = testQaDayNettingScenarios();
             System.out.printf("[ECLIPSE RESULT] %s%n", passed ? "SUCCESS (ALL SCENARIOS PASSED)" : "FAILED");
             return;
         }
-
         WebDriver driver = OMSwebmain.createDriver();
         try {
             driver.get("https://devoms.quantbd.com");
@@ -5526,14 +5209,11 @@ public class Day_Netting {
             OMSweb_Login.main(driver, sc);
             WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
             OMSweb_Trade.navigateToTradePage(driver, wait, true);
-
             // Execute Day Netting engine
             main(driver, sc);
-
             System.out.println("\n=============================================================================");
             System.out.println(" [SUCCESS] Day Netting session finished. Chrome remains active on desktop.");
             System.out.println("=============================================================================\n");
-
             // Automatically transition to persistent Main Menu session loop
             OMSwebmain.runSessionLoop(driver, sc);
         } catch (Exception e) {

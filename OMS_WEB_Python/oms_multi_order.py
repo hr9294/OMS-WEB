@@ -9,7 +9,6 @@ import time
 from typing import List, Dict, Any, Optional
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
-
 from config import DEFAULT_SYMBOL, DEFAULT_EXCHANGE
 import widget_color
 import oms_price
@@ -20,7 +19,6 @@ import client_portfolio
 import market_depth
 import order_summary
 import order_terminal
-
 
 DEFAULT_BUY_CLIENTS = [
     "34601", "34649", "23986", "15740", "00224", "39187", "00516", "00916",
@@ -53,14 +51,12 @@ class OrderItem:
             f"{self.symbol} x {self.quantity:<4} @ {self.rate:8.2f} BDT"
         )
 
-
 def parse_client_list(user_in: str, defaults: List[str]) -> List[str]:
     """Parses a single client or comma-separated client list."""
     if not user_in or not user_in.strip():
         return list(defaults)
     clients = [c.strip() for c in re.split(r"[,;\s]+", user_in.strip()) if c.strip()]
     return clients if clients else list(defaults)
-
 
 def set_trade_page_client_code(driver: webdriver.Chrome, client_code: str) -> None:
     """Sets active client code directly in Trade Page without page switching."""
@@ -74,7 +70,6 @@ def set_trade_page_client_code(driver: webdriver.Chrome, client_code: str) -> No
         print(f"[TRADE PAGE] Active Client Code set to: {client_code.strip()}")
     except Exception:
         pass
-
 
 def get_position_holding_sell_clients(driver: webdriver.Chrome, symbol: str, exchange: str) -> List[str]:
     """Fetches real holding clients with saleable shares for SELL side directly from Position API (no page switching)."""
@@ -103,7 +98,6 @@ def get_position_holding_sell_clients(driver: webdriver.Chrome, symbol: str, exc
         sell_clients = ["00463", "00600", "00916", "01005", "01007", "01008", "01109", "11310"]
     return sell_clients
 
-
 def build_order_queue(
     driver: webdriver.Chrome,
     choice: int,
@@ -114,7 +108,6 @@ def build_order_queue(
 ) -> List[OrderItem]:
     """Builds order queue with manual BUY entry & SELL clients from Position (100% on Trade Page)."""
     queue: List[OrderItem] = []
-
     pos_holders = get_position_holding_sell_clients(driver, symbol, exchange)
     print(f"[POSITION] Found {len(pos_holders)} holding client(s) with saleable shares of {symbol} in Position: {pos_holders[:5]}")
 
@@ -127,23 +120,17 @@ def build_order_queue(
         spread_delta = 2.00
     else:
         spread_delta = max(2.0, round(ref_price * 0.005, 1))
-
     item_counter = 1
-
     if choice == 1:
         # Strategy 1: Multiple BUY orders (DOWN prices < P) + Opposite SELL order (UPPER price > P)
         buy_in = input(f"\nEnter BUY Client Code(s) (single or comma-separated, default={DEFAULT_BUY_CLIENTS[0]}): ").strip()
         buy_clients = parse_client_list(buy_in, DEFAULT_BUY_CLIENTS)
-
         default_sell = pos_holders[0]
         sell_in = input(f"Enter Opposite SELL Client Code (from Position) [default={default_sell}]: ").strip()
         sell_client = sell_in or default_sell
-
         set_trade_page_client_code(driver, buy_clients[0])
-
         buy_count = 3 if len(buy_clients) == 1 else min(3, len(buy_clients))
         total_buy_qty = 0
-
         for i in range(buy_count):
             buy_client = buy_clients[i % len(buy_clients)]
             qty = 10 + (i * 2)
@@ -168,22 +155,17 @@ def build_order_queue(
         # Opposite SELL order at UPPER price (> ref_price)
         sell_rate = round(ref_price + spread_delta, 2)
         queue.append(OrderItem(item_counter, "SELL", sell_client, symbol, total_buy_qty, sell_rate, True))
-
     elif choice == 2:
         # Strategy 2: Multiple SELL orders (UPPER prices > P) + Opposite BUY order (DOWN price < P)
         default_sells = pos_holders[:min(3, len(pos_holders))]
         def_sell_str = ", ".join(default_sells)
         sell_in = input(f"\nEnter SELL Client Code(s) (from Position, single or comma-separated) [default={def_sell_str}]: ").strip()
         sell_clients = parse_client_list(sell_in, default_sells)
-
         buy_in = input(f"Enter Opposite BUY Client Code [default={DEFAULT_BUY_CLIENTS[0]}]: ").strip()
         buy_client = buy_in or DEFAULT_BUY_CLIENTS[0]
-
         set_trade_page_client_code(driver, sell_clients[0])
-
         sell_count = 3 if len(sell_clients) == 1 else min(3, len(sell_clients))
         total_sell_qty = 0
-
         for i in range(sell_count):
             sell_client = sell_clients[i % len(sell_clients)]
             qty = 10
@@ -196,16 +178,13 @@ def build_order_queue(
         # Opposite BUY order at DOWN price (< ref_price)
         buy_rate = max(0.10, round(ref_price - spread_delta, 2))
         queue.append(OrderItem(item_counter, "BUY", buy_client, symbol, total_sell_qty, buy_rate, True))
-
     else:
         # Strategy 3: Custom Interactive Queue
         side_in = input("Enter Primary Order Side (BUY / SELL, default BUY): ").strip().upper()
         p_side = "SELL" if side_in == "SELL" else "BUY"
         opp_side = "SELL" if p_side == "BUY" else "BUY"
-
         cnt_str = input("How many primary orders to place? (default 2): ").strip()
         p_count = int(cnt_str) if cnt_str.isdigit() else 2
-
         total_qty = 0
         first_client = ""
         for i in range(p_count):
@@ -214,33 +193,24 @@ def build_order_queue(
             client = c_in or default_client
             if not first_client:
                 first_client = client
-
             q_in = input("  Quantity (default 10): ").strip()
             qty = int(q_in) if q_in.isdigit() else 10
             total_qty += qty
-
             step = (i * 0.50) if different_prices else 0.0
             default_rate = max(0.10, round(ref_price - spread_delta - step, 2)) if p_side == "BUY" else round(ref_price + spread_delta + step, 2)
             r_in = input(f"  Price Rate (default {default_rate:.2f}): ").strip()
             rate = float(r_in) if r_in else default_rate
-
             queue.append(OrderItem(item_counter, p_side, client, symbol, qty, rate, False))
             item_counter += 1
-
         default_opp = DEFAULT_BUY_CLIENTS[0] if opp_side == "BUY" else pos_holders[0]
         opp_in = input(f"Enter Opposite {opp_side} Client [{default_opp}]: ").strip()
         opp_client = opp_in or default_opp
-
         default_opp_rate = round(ref_price + spread_delta, 2) if opp_side == "SELL" else max(0.10, round(ref_price - spread_delta, 2))
         or_in = input(f"Enter Opposite {opp_side} Rate (default {default_opp_rate:.2f}): ").strip()
         opp_rate = float(or_in) if or_in else default_opp_rate
-
         queue.append(OrderItem(item_counter, opp_side, opp_client, symbol, total_qty, opp_rate, True))
-
         set_trade_page_client_code(driver, first_client)
-
     return queue
-
 
 def print_planned_queue(queue: List[OrderItem]) -> None:
     """Prints planned pipeline summary table."""
@@ -253,7 +223,6 @@ def print_planned_queue(queue: List[OrderItem]) -> None:
         tag = "OPPOSITE" if item.is_opposite else "PRIMARY"
         print(f"| {item.seq:<3} | {tag:<10} | {item.side:<4} | {item.client_code:<10} | {item.symbol:<10} | {item.quantity:<6} | {item.rate:12.2f} |")
     print("+=====================================================================================+")
-
 
 def run_multi_order_pipeline(driver: webdriver.Chrome) -> None:
     """Full Multi-Order Pipeline with 6-Widget Real-Time Audit."""
@@ -276,7 +245,6 @@ def run_multi_order_pipeline(driver: webdriver.Chrome) -> None:
         symbol = DEFAULT_SYMBOL
     else:
         symbol = sym_clean
-
     ex_input = input(f"Enter Exchange (DSE / CSE, default={DEFAULT_EXCHANGE}): ").strip().upper()
     exchange = "CSE" if ex_input == "CSE" else "DSE"
 
@@ -294,7 +262,6 @@ def run_multi_order_pipeline(driver: webdriver.Chrome) -> None:
     print("  3. Custom Interactive Order Queue")
     strat_in = input("Enter Choice (1, 2, or 3, default 1): ").strip()
     choice = int(strat_in) if strat_in in ("1", "2", "3") else 1
-
     price_var_in = input("\nPrice Variation for Orders: (1=Same Price / 2=Different Prices, default 2): ").strip()
     different_prices = (price_var_in != "1")
 
@@ -303,7 +270,6 @@ def run_multi_order_pipeline(driver: webdriver.Chrome) -> None:
     if not order_queue:
         print("[WARN] Order queue is empty. Aborting.")
         return
-
     print_planned_queue(order_queue)
     proceed = input("\nProceed to execute this pipeline? (1=YES / 0=NO, default=1): ").strip()
     if proceed.lower() in ("0", "n", "no"):
@@ -317,19 +283,16 @@ def run_multi_order_pipeline(driver: webdriver.Chrome) -> None:
     for item in order_queue:
         if item.client_code not in baseline_portfolio:
             baseline_portfolio[item.client_code] = client_portfolio.get_snapshot(driver, item.client_code)
-
     baseline_depth = market_depth.get_snapshot(driver, symbol, exchange)
     baseline_summary = order_summary.get_snapshot(driver, symbol=symbol)
     baseline_terminal = order_terminal.get_snapshot(driver, symbol=symbol, exchange=exchange)
     baseline_pos = position.get_snapshot(driver, symbol, exchange)
-
     print("✔ Baseline snapshots successfully recorded across 6 widgets.")
 
     # STEP 4: PLACE ORDERS SEQUENTIALLY
     print("\n>>> PLACING NON-CROSSING LIMIT ORDERS (Orders stay Accepted with 0% progress)... <<<")
     oms_trade.navigate_to_trade_page(driver)
     placed_count = 0
-
     placed_orders = []
     for idx, item in enumerate(order_queue, 1):
         print(f"\n--- Placed Order [{idx}/{len(order_queue)}] ---")
@@ -382,7 +345,6 @@ def run_multi_order_pipeline(driver: webdriver.Chrome) -> None:
             except Exception:
                 pass
         time.sleep(0.8)
-
     print(f"\n✔ Successfully submitted {placed_count}/{len(order_queue)} orders into the order book.")
 
     # STEP 5: ORDER TERMINAL SELECTION & 'EXECUTE AT MARKET' CONTEXT CLICK (Selective Strategy)
@@ -394,7 +356,6 @@ def run_multi_order_pipeline(driver: webdriver.Chrome) -> None:
     placed_clients = list(set(o["client_code"] for o in placed_orders))
     buy_orders_count = sum(1 for o in placed_orders if o["side"].upper() == "BUY")
     sell_orders_count = sum(1 for o in placed_orders if o["side"].upper() == "SELL")
-
     if choice == 1 or (buy_orders_count > 1 and sell_orders_count <= 1):
         print(f"\n[TERMINAL] Strategy 1: Selecting ONLY placed Multiple BUY Orders (Resting SELL order unselected)...")
         exec_success = order_terminal.select_multiple_buy_orders_only_at_market(driver, symbol=symbol, client_codes=placed_clients)
@@ -409,12 +370,10 @@ def run_multi_order_pipeline(driver: webdriver.Chrome) -> None:
             exec_success = order_terminal.select_multiple_sell_orders_only_at_market(driver, symbol=symbol, client_codes=None)
     else:
         exec_success = order_terminal.execute_separated_buy_and_sell_at_market(driver, symbol=symbol)
-
     if exec_success:
         print("✔ 'Execute at Market' context trigger completed successfully.")
     else:
         print("[INFO] Checking if matching engine auto-executed matching opposite orders...")
-
     time.sleep(2.0)
 
     # User requirement: after trade happen check order terminal to any latest order exits or not if not no need to take snapshot and compare the data
@@ -430,32 +389,25 @@ def run_multi_order_pipeline(driver: webdriver.Chrome) -> None:
         print("\n+=============================================================================+")
         print("| STEP 4: REAL-TIME 6-WIDGET POST-EXECUTION VERIFICATION & AUDIT REPORT       |")
         print("+=============================================================================+")
-
         final_depth = market_depth.get_snapshot(driver, symbol, exchange)
         final_summary = order_summary.get_snapshot(driver, symbol=symbol)
         final_terminal = order_terminal.get_snapshot(driver, symbol=symbol, exchange=exchange)
         final_pos = position.get_snapshot(driver, symbol, exchange)
-
         print("\n1. ORDER TERMINAL AUDIT:")
         print(f"   Baseline Accepted: {baseline_terminal.get('accepted_count')} | Filled: {baseline_terminal.get('filled_count')}")
         print(f"   Current  Accepted: {final_terminal.get('accepted_count')} | Filled: {final_terminal.get('filled_count')}")
-
         print("\n2. ORDER SUMMARY AUDIT:")
         print(f"   Total Orders: {final_summary.get('total_orders')} | Executed: {final_summary.get('executed_orders')}")
-
         print("\n3. POSITION WIDGET AUDIT:")
         print(f"   Baseline Total Shares: {baseline_pos.get('total_shares')} | Saleable: {baseline_pos.get('saleable_shares')}")
         print(f"   Current  Total Shares: {final_pos.get('total_shares')} | Saleable: {final_pos.get('saleable_shares')}")
-
         print("\n4. MARKET DEPTH AUDIT:")
         print(f"   Baseline LTP: {baseline_depth.get('ltp')} | Current LTP: {final_depth.get('ltp')}")
-
         print("\n5. CLIENT PORTFOLIO FINANCIAL AUDIT:")
         for code in baseline_portfolio:
             after_p = client_portfolio.get_snapshot(driver, code)
             before_cash = baseline_portfolio[code].get("cash_limit", "0.00")
             after_cash = after_p.get("cash_limit", "0.00")
             print(f"   Client {code:<8} -> Cash: {before_cash} -> {after_cash} BDT")
-
         print("\n>>> Multi-Order Execution and 6-Widget Real-Time Audit Session Complete. <<<\n")
     oms_trade.navigate_to_trade_page(driver)

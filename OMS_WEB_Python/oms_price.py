@@ -6,7 +6,6 @@ import re
 from typing import Any
 from selenium import webdriver
 
-
 def clean_symbol(sym: str) -> str:
     if not sym:
         return ""
@@ -15,7 +14,6 @@ def clean_symbol(sym: str) -> str:
         s = s.split(".")[0]
     return re.sub(r"[^A-Za-z0-9_-]", "", s).strip()
 
-
 def to_board_symbol(sym: str, board: str = "PUBLIC") -> str:
     base = clean_symbol(sym)
     if not base:
@@ -23,10 +21,8 @@ def to_board_symbol(sym: str, board: str = "PUBLIC") -> str:
     brd = (board or "PUBLIC").strip().upper() or "PUBLIC"
     return f"{base}.{brd}"
 
-
 def to_public_symbol(sym: str) -> str:
     return to_board_symbol(sym, "PUBLIC")
-
 
 def parse_float(val: Any, default: float = 0.0) -> float:
     if val is None:
@@ -39,9 +35,7 @@ def parse_float(val: Any, default: float = 0.0) -> float:
     except (ValueError, TypeError):
         return default
 
-
 parse_num_safe = parse_float
-
 
 def fetch_price_ltp_or_ycp(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> float:
     """
@@ -53,7 +47,6 @@ def fetch_price_ltp_or_ycp(driver: webdriver.Chrome, symbol: str, exchange: str 
     """
     sym = clean_symbol(symbol)
     ex = (exchange or "DSE").upper()
-
     if driver:
         # Tier 1: Market Depth API
         try:
@@ -116,7 +109,6 @@ def fetch_price_ltp_or_ycp(driver: webdriver.Chrome, symbol: str, exchange: str 
                 return float(dom_price)
         except Exception:
             pass
-
     fallback_map = {
         "GP": 266.90, "ROBI": 30.50, "BSCCL": 185.00, "BATBC": 518.70,
         "BEXIMCO": 115.60, "WALTONHIL": 680.00, "SQURPHARMA": 234.20,
@@ -124,7 +116,6 @@ def fetch_price_ltp_or_ycp(driver: webdriver.Chrome, symbol: str, exchange: str 
         "BRACBANK": 44.50, "EBL": 32.00, "CITYBANK": 23.50,
     }
     return fallback_map.get(sym, 100.0)
-
 
 def fetch_ltp(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> float:
     return fetch_price_ltp_or_ycp(driver, symbol, exchange)

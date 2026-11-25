@@ -21,17 +21,14 @@ public class Market_Depth {
     // =========================================================================
     private static final String API_URL_TEMPLATE = "https://omsapi.quantbd.com/market-data/depth%s?exchange=%s";
     private static final String[] EXCHANGES = {"DSE", "CSE"};
-
     // Navigation Tabs
     private static final By MARKET_DEPTH_TAB = By.xpath(
             "//div[contains(@class,'lm_tab') and contains(.,'Market Depth')] | " +
             "//li[contains(@class,'lm_tab') and (.//span[contains(text(),'Market Depth')] or contains(.,'Market Depth'))] | " +
             "//a[normalize-space()='Market Depth'] | //div[@title='Market Depth']");
-
     private static final By TRADE_TAB = By.xpath(
             "//div[contains(@class,'lm_tab') and (contains(.,'Trade') or @title='Trade')] | " +
             "//li[contains(@class,'lm_tab') and (.//span[contains(text(),'Trade')] or contains(.,'Trade') or @title='Trade')]");
-
     // Symbol Input in Market Depth Header
     private static final By INPUT_DEPTH_SYMBOL = By.xpath(
             "//div[contains(@class,'market-depth') or contains(.,'Market Depth')]//input[contains(@class,'symbol') or contains(@placeholder,'Symbol')] | " +
@@ -44,7 +41,6 @@ public class Market_Depth {
         System.out.println("\n=======================================================");
         System.out.println("             MARKET DEPTH & QUOTE VIEWER              ");
         System.out.println("=======================================================");
-
         // Auto-detect symbol from Trade page inputs
         String symbol = readInputSafe(driver, By.id("order_instrument"), By.id("instrument"), By.id("marketwatch_symbol"));
         if (symbol.isEmpty()) {
@@ -52,7 +48,6 @@ public class Market_Depth {
             symbol = sc.nextLine().trim().toUpperCase();
         }
         String exchange = "DSE";
-
         // Navigate and search
         navigateToMarketDepth(driver);
         searchSymbolInDepth(driver, symbol, exchange);
@@ -96,7 +91,6 @@ public class Market_Depth {
                 "return inst && inst.offsetParent !== null;"
             );
             if (Boolean.TRUE.equals(alreadyVisible)) return;
-
             Boolean clicked = (Boolean) js.executeScript(
                 "var tabs = Array.from(document.querySelectorAll('.lm_tab, li.lm_tab, div.lm_tab'));" +
                 "var tradeTab = tabs.find(function(t) {" +
@@ -163,7 +157,6 @@ public class Market_Depth {
                 "});\n",
                 publicSym, cleanSym, ex
             );
-
             // 3. Poll until DOM table has real values (not '-'), max 3.5 seconds
             long deadline = System.currentTimeMillis() + 3500L;
             while (System.currentTimeMillis() < deadline) {
@@ -198,9 +191,7 @@ public class Market_Depth {
     public static Map<String, String> getSnapshot(WebDriver driver, String symbol, String preferredExchange) {
         String cleanSymbol = cleanSymbol(symbol);
         String ex = (preferredExchange != null && !preferredExchange.isEmpty()) ? preferredExchange : "DSE";
-
         // User requested: Do NOT take LTP/Depth from DB directly during trading
-
         // Tier 1: Admin Shared Market Depth API (/shared/getmktdepth/)
         try {
             String adminUrl = String.format("/shared/getmktdepth/?mkt_group=PUBLIC&mkt_symbol=%s&exchange=%s", cleanSymbol, ex);
@@ -214,14 +205,12 @@ public class Market_Depth {
         } catch (Exception e) {
             System.out.printf("[WARN: Admin API] Market Depth query failed for %s: %s%n", ex, e.getMessage());
         }
-
         // Tier 2: Try QuantBD Token API
         List<String> exchangeOrder = new ArrayList<>();
         exchangeOrder.add(ex);
         for (String otherEx : EXCHANGES) {
             if (!exchangeOrder.contains(otherEx)) exchangeOrder.add(otherEx);
         }
-
         for (String targetEx : exchangeOrder) {
             String apiUrl = String.format(API_URL_TEMPLATE, cleanSymbol, targetEx);
             try {
@@ -233,7 +222,6 @@ public class Market_Depth {
                 }
             } catch (Exception ignored) {}
         }
-
         // Tier 3 Fallback: DOM Scraping
         System.out.println("[FALLBACK: UI] API unavailable. Extracting from Market Depth DOM...");
         Map<String, String> uiData = fetchFromUiDOM(driver);
@@ -258,13 +246,11 @@ public class Market_Depth {
         } catch (Exception ignored) {}
         return Collections.emptyMap();
     }
-
     public static Map<String, String> getUiSnapshot(WebDriver driver) {
         Map<String, String> uiData = fetchFromUiDOM(driver);
         uiData.put("DATA_SOURCE", "UI DOM");
         return uiData;
     }
-
     private static Map<String, String> fetchFromUiDOM(WebDriver driver) {
         Map<String, String> data = new LinkedHashMap<>();
         try {
@@ -367,7 +353,6 @@ public class Market_Depth {
         Map<String, String> result = new LinkedHashMap<>();
         if (json == null || json.trim().isEmpty() || !json.contains("symbol_data")) return result;
         boolean isCse = "CSE".equalsIgnoreCase(exchange);
-
         // 1. Extract symbol_data block
         int symStart = json.indexOf("\"symbol_data\"");
         String symBlock = "";
@@ -378,7 +363,6 @@ public class Market_Depth {
                 symBlock = json.substring(openBrace, closeBrace + 1);
             }
         }
-
         if (!symBlock.isEmpty()) {
             // Row 1 metrics
             result.put("Last", isCse ? getJsonVal(symBlock, "cse_ltp", "ltp") : getJsonVal(symBlock, "ltp"));
@@ -391,7 +375,6 @@ public class Market_Depth {
             result.put("Net", isCse ? getJsonVal(symBlock, "cse_ltp_change", "ltp_change") : getJsonVal(symBlock, "ltp_change"));
             result.put("D%", isCse ? getJsonVal(symBlock, "cse_ltp_changeper", "ltp_changeper") : getJsonVal(symBlock, "ltp_changeper"));
             result.put("Ctg", getJsonVal(symBlock, "symbol_category", "category"));
-
             // Row 2 metrics
             result.put("YCP", isCse ? getJsonVal(symBlock, "cse_ycp", "ycp") : getJsonVal(symBlock, "ycp"));
             result.put("Close", isCse ? getJsonVal(symBlock, "cse_close", "close") : getJsonVal(symBlock, "close"));
@@ -405,14 +388,12 @@ public class Market_Depth {
             result.put("52 wk", (h52.equals("-") && l52.equals("-")) ? "-" : h52 + " / " + l52);
             result.put("VWAP", isCse ? getJsonVal(symBlock, "cse_vwap", "vwap") : getJsonVal(symBlock, "vwap"));
             result.put("Mkt", getJsonVal(symBlock, "board", "market_type"));
-
             // Top of Book from symbol_data
             result.put("Best_Bid_Price", isCse ? getJsonVal(symBlock, "cse_bid_price", "bid_price") : getJsonVal(symBlock, "bid_price"));
             result.put("Best_Bid_Qty", isCse ? getJsonVal(symBlock, "cse_bid_qty", "bid_qty") : getJsonVal(symBlock, "bid_qty"));
             result.put("Best_Ask_Price", isCse ? getJsonVal(symBlock, "cse_ask_price", "ask_price") : getJsonVal(symBlock, "ask_price"));
             result.put("Best_Ask_Qty", isCse ? getJsonVal(symBlock, "cse_ask_qty", "ask_qty") : getJsonVal(symBlock, "ask_qty"));
         }
-
         // 2. Extract market_depth block
         int mdStart = json.indexOf("\"market_depth\"");
         String mdBlock = "";
@@ -423,11 +404,9 @@ public class Market_Depth {
                 mdBlock = json.substring(openBrace, closeBrace + 1);
             }
         }
-
         if (!mdBlock.isEmpty()) {
             result.put("Buy_Percent", getJsonVal(mdBlock, "buy_percent") + "%");
             result.put("Sell_Percent", getJsonVal(mdBlock, "sell_percent") + "%");
-
             // Parse bid levels (up to 5 levels)
             List<Map<String, String>> bidLevels = parseLevels(mdBlock, "bid_levels");
             long cumBid = 0;
@@ -448,7 +427,6 @@ public class Market_Depth {
                     result.put("Bid_L" + level + "_Price", "-");
                 }
             }
-
             // Parse ask levels (up to 5 levels)
             List<Map<String, String>> askLevels = parseLevels(mdBlock, "ask_levels");
             long cumAsk = 0;
@@ -469,7 +447,6 @@ public class Market_Depth {
                     result.put("Ask_L" + level + "_Ordr", "-");
                 }
             }
-
             if (!bidLevels.isEmpty()) {
                 result.put("Best_Bid_Ordr", bidLevels.get(0).getOrDefault("total_orders", "0"));
                 if (result.get("Best_Bid_Price").equals("-") || result.get("Best_Bid_Price").equals("0")) {
@@ -479,7 +456,6 @@ public class Market_Depth {
             } else {
                 result.put("Best_Bid_Ordr", "0");
             }
-
             if (!askLevels.isEmpty()) {
                 result.put("Best_Ask_Ordr", askLevels.get(0).getOrDefault("total_orders", "0"));
                 if (result.get("Best_Ask_Price").equals("-") || result.get("Best_Ask_Price").equals("0")) {
@@ -490,14 +466,11 @@ public class Market_Depth {
                 result.put("Best_Ask_Ordr", "0");
             }
         }
-
         return result;
     }
-
     public static Map<String, String> parseMarketDepthJson(String json, String cleanSymbol) {
         return parseMarketDepthJson(json, cleanSymbol, "DSE");
     }
-
     private static List<Map<String, String>> parseLevels(String json, String arrayKey) {
         List<Map<String, String>> list = new ArrayList<>();
         int arrIdx = json.indexOf("\"" + arrayKey + "\"");
@@ -565,7 +538,6 @@ public class Market_Depth {
         }
         return null;
     }
-
     private static Map<String, String> fetchFromApi(WebDriver driver, String urlStr, String symbol, String exchange) {
         try {
             URL url = new URI(urlStr).toURL();
@@ -580,7 +552,6 @@ public class Market_Depth {
                 String cookieHeader = cookies.stream().map(c -> c.getName() + "=" + c.getValue()).collect(Collectors.joining("; "));
                 conn.setRequestProperty("Cookie", cookieHeader);
             }
-
             try {
                 JavascriptExecutor js = (JavascriptExecutor) driver;
                 String token = (String) js.executeScript("return window.localStorage.getItem('token') || window.localStorage.getItem('access_token');");
@@ -588,7 +559,6 @@ public class Market_Depth {
                     conn.setRequestProperty("Authorization", token.startsWith("Bearer ") ? token : "Bearer " + token);
                 }
             } catch (Exception ignored) {}
-
             int responseCode = conn.getResponseCode();
             if (responseCode != 200) return Collections.emptyMap();
             StringBuilder jsonBuilder = new StringBuilder();
@@ -636,13 +606,11 @@ public class Market_Depth {
         System.out.printf("| Best Ask (Price/Qty) | %-16s | %-18s | %-18s | %-7s%n", before.getOrDefault("Best_Ask_Price", "-") + " (" + before.getOrDefault("Best_Ask_Qty", "-") + ")", after.getOrDefault("Best_Ask_Price", "-") + " (" + after.getOrDefault("Best_Ask_Qty", "-") + ")", "~Live Book", "INFO");
         System.out.printf("| Order Flow (Buy/Sell)| %-16s | %-18s | %-18s | %-7s%n", before.getOrDefault("Buy_Percent", "-") + " / " + before.getOrDefault("Sell_Percent", "-"), after.getOrDefault("Buy_Percent", "-") + " / " + after.getOrDefault("Sell_Percent", "-"), "~Flow Ratio", "INFO");
         System.out.println("+================================================================================================================+");
-
         if (volPass || tradePass || ltpMatch) {
             System.out.println(">>> [MARKET DEPTH AUDIT PASSED] Market Depth quote and book reflect trading activity!");
         } else {
             System.out.println(">>> [MARKET DEPTH AUDIT COMPLETED] Verified Market Depth metrics.");
         }
-
         // Print the full post-trade Market Depth Quote & 5-level Order Book table
         printDepthReport(symbol, after);
     }
@@ -673,7 +641,6 @@ public class Market_Depth {
         System.out.printf("| %-6s | %-12s | %-12s | %-17s <---> %-17s | %-12s | %-12s | %-6s |%n",
                 "Ordr", "CUM Q", "BID Q", "BID PRICE", "ASK PRICE", "ASK Q", "CUM Q", "Ordr");
         System.out.println("+--------+--------------+--------------+-------------------+<--->+-------------------+--------------+--------------+--------+");
-
         for (int i = 1; i <= 5; i++) {
             String bOrdr = d.getOrDefault("Bid_L" + i + "_Ordr", "-");
             String bCum  = d.getOrDefault("Bid_L" + i + "_CumQ", "-");
@@ -683,7 +650,6 @@ public class Market_Depth {
             String aQty  = d.getOrDefault("Ask_L" + i + "_Qty", "-");
             String aCum  = d.getOrDefault("Ask_L" + i + "_CumQ", "-");
             String aOrdr = d.getOrDefault("Ask_L" + i + "_Ordr", "-");
-
             System.out.printf("| %-6s | %-12s | %-12s | %-17s <---> %-17s | %-12s | %-12s | %-6s |%n",
                     bOrdr, bCum, bQty, bPx, aPx, aQty, aCum, aOrdr);
         }
@@ -737,7 +703,6 @@ public class Market_Depth {
             return 0.0;
         }
     }
-
     // Standalone launcher for Eclipse & command-line execution
     public static void main(String[] args) {
         WebDriver driver = OMSwebmain.createDriver();

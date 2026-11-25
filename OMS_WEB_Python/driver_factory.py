@@ -7,13 +7,11 @@ import sys
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
-
 from config import (
     PAGE_LOAD_TIMEOUT,
     IMPLICIT_WAIT,
     LOCAL_CHROMEDRIVER_PATH,
 )
-
 
 def get_chromedriver_service() -> Service:
     """Resolves ChromeDriver using webdriver-manager with local fallback."""
@@ -40,7 +38,6 @@ def get_chromedriver_service() -> Service:
     # Let Selenium Manager automatically resolve driver
     print("[BROWSER] Falling back to Selenium built-in Selenium Manager...")
     return Service()
-
 
 def create_driver(headless: bool = False) -> webdriver.Chrome:
     """Creates a configured Chrome WebDriver session with anti-detection tweaks."""
@@ -69,11 +66,9 @@ def create_driver(headless: bool = False) -> webdriver.Chrome:
         "--disable-features=PasswordLeakDetection,PasswordCheck,PasswordLeakToggleMove,SafeBrowsing"
     )
     options.set_capability("acceptInsecureCerts", True)
-
     if headless:
         options.add_argument("--headless=new")
         options.add_argument("--window-size=1920,1080")
-
     service = get_chromedriver_service()
     driver = webdriver.Chrome(service=service, options=options)
 
@@ -83,7 +78,6 @@ def create_driver(headless: bool = False) -> webdriver.Chrome:
         driver.delete_all_cookies()
     except Exception:
         pass
-
     driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT)
     driver.implicitly_wait(IMPLICIT_WAIT)
 
@@ -94,5 +88,4 @@ def create_driver(headless: bool = False) -> webdriver.Chrome:
         )
     except Exception:
         pass
-
     return driver

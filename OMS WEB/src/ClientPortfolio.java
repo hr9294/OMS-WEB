@@ -21,11 +21,9 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 public class ClientPortfolio {
     private static final String API_URL_TEMPLATE = "https://omsapi.quantbd.com/portfolio/%s?exchange=%s";
     private static final String[] EXCHANGES = {"DSE", "CSE"};
-
     // Navigation locators
     //private static final By PORTFOLIO_NAV = By.xpath("//li[contains(@class,'lm_tab') and (.//span[normalize-space()='Portfolio'] or normalize-space()='Portfolio')] | //div[@title='Portfolio' or contains(@class,'portfolio-tab')] | //a[normalize-space()='Portfolio']");
    // private static final By TRADE_NAV     = By.xpath("//a[@data-link='live_orders/trade_portal'] | //div[@title='Trade' or contains(@class,'trade-tab')] | //a[normalize-space()='Trade'] | //i[contains(@class,'fa-exchange')]");
-
     // Portfolio Table locators
     private static final By PORTFOLIO_TABLE = By.xpath(
             "//table[@id='symbol_position_table'] | " +
@@ -51,9 +49,7 @@ public class ClientPortfolio {
             System.out.print("No symbol found on page. Enter Symbol: ");
             symbol = sc.nextLine().trim().toUpperCase();
         }
-
         System.out.printf("[PORTFOLIO] Using Symbol: %s | Client Code: %s | Exchange: %s%n", symbol, clientCode, exchange);
-
         // Fetch client financial details through API
         Map<String, String> clientInfo = getClientDetails(driver, clientCode);
         if (!clientInfo.isEmpty()) {
@@ -63,7 +59,6 @@ public class ClientPortfolio {
                     clientInfo.getOrDefault("mature_balance", "-"),
                     clientInfo.getOrDefault("commission", "-"));
         }
-
         // Navigate, refresh and show snapshot
         navigateToPortfolio(driver);
         refresh(driver);
@@ -81,7 +76,6 @@ public class ClientPortfolio {
         for (String ex : EXCHANGES) {
             if (!exchangeOrder.contains(ex)) exchangeOrder.add(ex);
         }
-
         for (String ex : exchangeOrder) {
             try {
                 // Tier 1: Admin Shared API (/shared/getsaleable/) using active browser session
@@ -94,7 +88,6 @@ public class ClientPortfolio {
             } catch (Exception e) {
                 System.out.printf("[WARN: Admin API] Admin API query failed for %s: %s%n", ex, e.getMessage());
             }
-
             try {
                 // Tier 2: Token Microservice API (if JWT client token exists)
                 String apiUrl = String.format(API_URL_TEMPLATE, clientCode, ex);
@@ -108,7 +101,6 @@ public class ClientPortfolio {
                 System.out.printf("[WARN: Token API] Token API query failed for %s: %s%n", ex, e.getMessage());
             }
         }
-
         // 3. Fallback: UI Dynamic XPath Table
         System.out.println("[FALLBACK: UI] API unavailable. Extracting from DOM table via XPath...");
         ensureClientLoadedInUi(driver, clientCode);
@@ -132,12 +124,10 @@ public class ClientPortfolio {
         } catch (Exception ignored) {}
         return Collections.emptyMap();
     }
-
     public static Map<String, String> getUiSnapshot(WebDriver driver, String clientCode, String symbol, String exchange) {
         String cleanSymbol = cleanSymbol(symbol);
         String ex = (exchange != null && !exchange.isEmpty()) ? exchange.toUpperCase() : "DSE";
         ensureClientLoadedInUi(driver, clientCode);
-
         // Try API first for specific exchange
         try {
             Map<String, String> adminData = fetchFromAdminSharedApi(driver, clientCode, cleanSymbol, ex);
@@ -146,13 +136,11 @@ public class ClientPortfolio {
                 return adminData;
             }
         } catch (Exception ignored) {}
-
         // Fallback to UI Table DOM
         Map<String, String> uiData = fetchFromUiTable(driver, cleanSymbol);
         uiData.put("DATA_SOURCE", "UI Table DOM (" + ex + ")");
         return uiData;
     }
-
     public static Map<String, String> getUiSnapshot(WebDriver driver, String clientCode, String symbol) {
         return getUiSnapshot(driver, clientCode, symbol, "DSE");
     }
@@ -242,11 +230,9 @@ public class ClientPortfolio {
     private static Map<String, String> fetchFromAdminSharedApi(WebDriver driver, String clientCode, String targetSymbol, String exchange) {
         String endpoint = String.format("/shared/getsaleable/?clientcode=%s&exchange=%s", clientCode, exchange);
         String json = executeBrowserFetch(driver, endpoint);
-
         if (json == null || json.trim().isEmpty() || json.equals("[]")) {
             return Collections.emptyMap();
         }
-
         Pattern objectPattern = Pattern.compile("\\{[^{}]*\"symbol\"\\s*:\\s*\"" + targetSymbol + "\"[^{}]*\\}", Pattern.CASE_INSENSITIVE);
         Matcher matcher = objectPattern.matcher(json);
         Map<String, String> result = new LinkedHashMap<>();
@@ -268,7 +254,6 @@ public class ClientPortfolio {
         }
         return Collections.emptyMap();
     }
-
     public static Map<String, String> getClientDetails(WebDriver driver, String clientCode) {
         Map<String, String> details = new LinkedHashMap<>();
         try {
@@ -312,7 +297,6 @@ public class ClientPortfolio {
         } catch (Exception ignored) {}
         return null;
     }
-
     private static Map<String, String> fetchFromQuantBDApi(WebDriver driver, String urlStr, String targetSymbol) throws Exception {
         Map<String, String> result = new LinkedHashMap<>();
         // 1. Setup HttpURLConnection (Core Java - No JaCoCo conflicts)
@@ -388,7 +372,6 @@ public class ClientPortfolio {
         }
         return s.trim();
     }
-
     public static Map<String, String> defaultZeroPortfolio(String symbol) {
         Map<String, String> result = new LinkedHashMap<>();
         result.put("symbol", symbol);
@@ -417,10 +400,8 @@ public class ClientPortfolio {
             data.put("gain_percent", data.getOrDefault("%_gain", data.getOrDefault("gain_%", data.get("gain_percentage"))));
         }
     }
-
     private static Map<String, String> fetchFromUiTable(WebDriver driver, String symbol) {
         Map<String, String> data = new LinkedHashMap<>();
-
         // Tier 1: Direct fast JavaScript extraction from symbol_position_table DOM
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
@@ -436,7 +417,6 @@ public class ClientPortfolio {
                 "    }" +
                 "}" +
                 "if (!tbl) { tbl = document.querySelector('div[id*=\"portfolio\"] table, #account-portfolio table, table.portfolio_table, table[id*=\"portfolio\"], div[class*=\"portfolio\"] table') || document.getElementById('symbol_position_table'); }" +
-
                 "if (!tbl) return null;" +
                 "var headers = Array.from(tbl.querySelectorAll('thead th, tr:first-child th')).map(function(h) { return h.innerText.trim(); });" +
                 "var rows = tbl.querySelectorAll('tbody tr');" +
@@ -464,7 +444,6 @@ public class ClientPortfolio {
                 "return { _not_found: true };",
                 symbol
             );
-
             if (res instanceof Map) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> map = (Map<String, Object>) res;
@@ -480,7 +459,6 @@ public class ClientPortfolio {
                 return data;
             }
         } catch (Exception ignored) {}
-
         // Tier 2: Selenium Explicit wait on table locator
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(4));
         for (int attempt = 1; attempt <= 2; attempt++) {
@@ -492,7 +470,6 @@ public class ClientPortfolio {
                 if (rows.isEmpty()) {
                     return defaultZeroPortfolio(symbol);
                 }
-
                 List<WebElement> cells = rows.get(0).findElements(By.xpath("./td"));
                 for (Map.Entry<String, Integer> entry : headerMap.entrySet()) {
                     if (entry.getValue() < cells.size()) {
@@ -509,10 +486,8 @@ public class ClientPortfolio {
                 }
             }
         }
-
         return defaultZeroPortfolio(symbol);
     }
-
     private static Map<String, Integer> getHeaderMap(WebElement table) {
         Map<String, Integer> map = new LinkedHashMap<>();
         List<WebElement> headers = table.findElements(TABLE_HEADERS);
@@ -549,11 +524,9 @@ public class ClientPortfolio {
         double newTotalQty = getNum(after, "total_qty", "totalqty");
         double oldSaleableQty = getNum(before, "saleable_qty", "qty", "saleable");
         double newSaleableQty = getNum(after, "saleable_qty", "qty", "saleable");
-
         // Detect or apply executedQty and dueQty
         int effectiveExecutedQty = executedQty;
         int effectiveDueQty = dueQty;
-
         // If executedQty wasn't explicitly provided, infer from portfolio delta
         if (effectiveExecutedQty <= 0) {
             double actualDelta = Math.abs(newTotalQty - oldTotalQty);
@@ -571,16 +544,13 @@ public class ClientPortfolio {
         if (effectiveDueQty <= 0 && effectiveExecutedQty < tradeQty) {
             effectiveDueQty = tradeQty - effectiveExecutedQty;
         }
-
         boolean isPartiallyFilled = effectiveDueQty > 0 && effectiveExecutedQty > 0;
         if (isPartiallyFilled && (orderStatus == null || orderStatus.isEmpty())) {
             orderStatus = "Partially Filled";
         }
-
         double executedTradeValue = effectiveExecutedQty * tradeRate;
         double dueTradeValue = effectiveDueQty * tradeRate;
         double totalOrderValue = tradeQty * tradeRate;
-
         // Portfolio Total Qty expectation is based on how many shares were actually executed!
         double expectedTotalQty = isBuy ? (oldTotalQty + effectiveExecutedQty) : (oldTotalQty - effectiveExecutedQty);
         boolean qtyPass = Double.compare(newTotalQty, expectedTotalQty) == 0;
@@ -592,7 +562,6 @@ public class ClientPortfolio {
         } else {
             qtyNote = isBuy ? String.format("+%d shares", effectiveExecutedQty) : String.format("-%d shares", effectiveExecutedQty);
         }
-
         double expectedSaleableQty = isBuy ? oldSaleableQty : (oldSaleableQty - effectiveExecutedQty);
         boolean saleablePass = isBuy ?
                 (Double.compare(newSaleableQty, oldSaleableQty) == 0 || Double.compare(newSaleableQty, oldSaleableQty + effectiveExecutedQty) == 0) :
@@ -617,7 +586,6 @@ public class ClientPortfolio {
         double expectedAvgCost = isBuy ?
                 (expectedTotalQty > 0 ? expectedTotalCost / expectedTotalQty : tradeRate) :
                 oldAvgCost;
-
         boolean costPass = isBuy ? (newTotalCost >= oldTotalCost || effectiveExecutedQty == 0) : (newTotalCost <= oldTotalCost || effectiveExecutedQty == 0);
         String costNote = isBuy ? String.format("+%,.2f cost", (newTotalCost - oldTotalCost)) : String.format("-%,.2f cost", (oldTotalCost - newTotalCost));
         String avgNote = isBuy ? "Weighted Average" : "Unchanged on SELL";
@@ -675,7 +643,6 @@ public class ClientPortfolio {
         String matureStatus = "INFO";
         String matureVerdict = "Unsettled (Settles on T+2)";
         String matureChangeText = "-";
-
         if (hasCashData) {
             if (isZeroCommission) {
                 commCharges = 0.0;
@@ -684,24 +651,19 @@ public class ClientPortfolio {
                 commCharges = executedTradeValue * (commRate / 100.0);
                 commPercent = commRate;
             }
-
             if (isBuy) {
                 // BUY: Cash deduction reflects Executed Value + Due Quantity Value (Blocked) + Commission on Executed
                 cashNetDiff = preCash - postCash;
-
                 // Total expected cash reduction on BUY
                 double expectedCashDrop = executedTradeValue + dueTradeValue + commCharges;
-
                 if (!isZeroCommission && commRate == 0.0 && cashNetDiff > (executedTradeValue + dueTradeValue)) {
                     // Calculate residual commission if not zero-commission client
                     commCharges = Math.max(0.0, cashNetDiff - (executedTradeValue + dueTradeValue));
                     commPercent = (executedTradeValue > 0) ? (commCharges / executedTradeValue) * 100.0 : 0.0;
                     expectedCashDrop = executedTradeValue + dueTradeValue + commCharges;
                 }
-
                 boolean isDeducted = (postCash < preCash);
                 boolean amountRight = isDeducted && Math.abs(cashNetDiff - expectedCashDrop) <= Math.max(2.0, expectedCashDrop * 0.05);
-
                 if (isDeducted && amountRight) {
                     cashPass = true;
                     cashStatus = "PASS";
@@ -736,16 +698,13 @@ public class ClientPortfolio {
                 // SELL: Cash added from executed shares (due shares remain active on book)
                 cashNetDiff = postCash - preCash;
                 double expectedCashGain = Math.max(0.0, executedTradeValue - commCharges);
-
                 if (!isZeroCommission && commRate == 0.0 && cashNetDiff < executedTradeValue) {
                     commCharges = Math.max(0.0, executedTradeValue - cashNetDiff);
                     commPercent = (executedTradeValue > 0) ? (commCharges / executedTradeValue) * 100.0 : 0.0;
                     expectedCashGain = Math.max(0.0, executedTradeValue - commCharges);
                 }
-
                 boolean isAdded = (postCash > preCash);
                 boolean amountRight = isAdded && Math.abs(cashNetDiff - expectedCashGain) <= Math.max(2.0, expectedCashGain * 0.05);
-
                 if (isAdded && amountRight) {
                     cashPass = true;
                     cashStatus = "PASS";
@@ -846,7 +805,6 @@ public class ClientPortfolio {
         } else {
             System.err.println(">>> [PORTFOLIO AUDIT FAILURE] Quantity or Cost mismatch detected!");
         }
-
         if (hasCashData) {
             if (cashPass) {
                 System.out.printf(">>> [CASH AUDIT SUCCESS] Client Cash was RIGHTLY %s by %,.2f BDT!%n",
@@ -941,7 +899,6 @@ public class ClientPortfolio {
         System.out.printf("| %-22s : %-36s |%n", "Gain Percentage", fmt(getNum(snap, "gain_percent", "gain_per")) + "%");
         System.out.println("+---------------------------------------------------------------+");
     }
-
     // Standalone launcher for Eclipse & command-line execution
     public static void main(String[] args) {
         WebDriver driver = OMSwebmain.createDriver();

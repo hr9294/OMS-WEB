@@ -105,7 +105,6 @@ public class OMSweb_DBMarketData {
         if (isDbCircuitOpen()) {
             return null;
         }
-
         // 1. Try Primary Database (192.168.155.22:5445)
         if (isHostReachable(PRIMARY_DB_HOST, PRIMARY_DB_PORT, 150)) {
             try {
@@ -130,7 +129,6 @@ public class OMSweb_DBMarketData {
                         PRIMARY_DB_HOST, PRIMARY_DB_PORT, t1.getMessage(), SECONDARY_DB_HOST, SECONDARY_DB_PORT);
             }
         }
-
         // 2. Fallback to Secondary Database (10.20.8.29:5445)
         if (isHostReachable(SECONDARY_DB_HOST, SECONDARY_DB_PORT, 150)) {
             try {
@@ -157,7 +155,6 @@ public class OMSweb_DBMarketData {
                         SECONDARY_DB_HOST, SECONDARY_DB_PORT, t2.getMessage());
             }
         }
-
         recordDbFailure();
         return null;
     }
@@ -172,7 +169,6 @@ public class OMSweb_DBMarketData {
         if (cleanSym.contains(".")) {
             cleanSym = cleanSym.substring(0, cleanSym.indexOf('.'));
         }
-
         if (isDbCircuitOpen()) {
             PublicSymbolLtp cached = getCachedSymbol(cleanSym, exchange);
             if (cached != null && cached.ltp > 0) {
@@ -180,10 +176,8 @@ public class OMSweb_DBMarketData {
             }
             return 0.0;
         }
-
         String table = (exchange != null && exchange.equalsIgnoreCase("CSE")) ? "cse_md_ltp" : "dse_md_ltp";
         String sql = String.format("SELECT ltp FROM %s WHERE symbol = ? AND board = 'PUBLIC' LIMIT 1;", table);
-
         String[][] dbs = {
             { PRIMARY_DB_HOST, String.valueOf(PRIMARY_DB_PORT), "Primary (" + PRIMARY_DB_HOST + ")" },
             { SECONDARY_DB_HOST, String.valueOf(SECONDARY_DB_PORT), "Secondary (" + SECONDARY_DB_HOST + ")" }
@@ -193,12 +187,10 @@ public class OMSweb_DBMarketData {
             String host = db[0];
             int port = Integer.parseInt(db[1]);
             String label = db[2];
-
             if (!isHostReachable(host, port, 150)) {
                 continue;
             }
             anyReachable = true;
-
             try {
                 Class.forName("org.postgresql.Driver");
                 String url = String.format(Locale.US, "jdbc:postgresql://%s:%d/%s?connectTimeout=2&socketTimeout=3", host, port, DB_NAME);
@@ -226,17 +218,14 @@ public class OMSweb_DBMarketData {
                 System.err.printf("[WARN: DB LTP] Failed to query %s on %s: %s. Trying next...%n", cleanSym, label, t.getMessage());
             }
         }
-
         if (!anyReachable) {
             recordDbFailure();
         }
-
         // Fall back to local JSON cache
         PublicSymbolLtp cached = getCachedSymbol(cleanSym, exchange);
         if (cached != null && cached.ltp > 0) {
             return cached.ltp;
         }
-
         return 0.0;
     }
 
@@ -278,7 +267,6 @@ public class OMSweb_DBMarketData {
         public double close;
         public long   totalQty;
         public String lastUpdate;
-
         public PublicSymbolLtp(String symbol, String companyName, double ltp, double ycp,
                                double circuitUp, double circuitDown, double floorPrice,
                                double open, double high, double low, double close,
@@ -298,7 +286,6 @@ public class OMSweb_DBMarketData {
             this.totalQty = totalQty;
             this.lastUpdate = lastUpdate;
         }
-
         @Override
         public String toString() {
             return String.format("%s [LTP: %.2f | YCP: %.2f | SH: %.2f | SL: %.2f | Qty: %d]",
@@ -314,7 +301,6 @@ public class OMSweb_DBMarketData {
         public long   askQty;
         public int    priceDecimals;
         public String lastUpdate;
-
         public BboRecord(String symbol, double bidPrice, long bidQty, double askPrice, long askQty, int priceDecimals, String lastUpdate) {
             this.symbol = symbol;
             this.bidPrice = bidPrice;
@@ -331,7 +317,6 @@ public class OMSweb_DBMarketData {
         public double price;
         public long   qty;
         public int    orders;
-
         public DepthLevel(int level, double price, long qty, int orders) {
             this.level = level;
             this.price = price;
@@ -346,14 +331,12 @@ public class OMSweb_DBMarketData {
         public List<DepthLevel> askLevels = new ArrayList<>();
         public int priceDecimals = 2;
         public String lastUpdate = "";
-
         public DepthRecord(String symbol, int priceDecimals, String lastUpdate) {
             this.symbol = symbol;
             this.priceDecimals = priceDecimals;
             this.lastUpdate = lastUpdate;
         }
     }
-
     // In-memory caches
     private static final Map<String, PublicSymbolLtp> DSE_LTP_CACHE = new LinkedHashMap<>();
     private static final Map<String, PublicSymbolLtp> CSE_LTP_CACHE = new LinkedHashMap<>();
@@ -368,11 +351,9 @@ public class OMSweb_DBMarketData {
     public static boolean isStrictlyPublicEquity(String symbol, String companyName, String sector, String symbolInstr) {
         if (symbol == null || symbol.trim().isEmpty()) return false;
         String sUpper = symbol.trim().toUpperCase();
-
         if (sUpper.endsWith("-CE") || sUpper.endsWith("-PE") || sUpper.endsWith("-XX") || sUpper.endsWith("-SPD")) {
             return false;
         }
-
         if (sUpper.startsWith("TB") && sUpper.length() >= 6) {
             boolean hasDigit = false;
             for (char c : sUpper.toCharArray()) {
@@ -383,12 +364,10 @@ public class OMSweb_DBMarketData {
         if (sUpper.contains("BOND") || sUpper.contains("SUKUK")) {
             return false;
         }
-
         String secUpper = (sector == null) ? "" : sector.toUpperCase();
         if (secUpper.contains("BOND") || secUpper.contains("DEBT") || secUpper.contains("DEBENTURE")) {
             return false;
         }
-
         String instrUpper = (symbolInstr == null) ? "" : symbolInstr.toUpperCase();
         if (instrUpper.equals("OPT") || instrUpper.equals("FUT") || instrUpper.equals("MLEG") ||
             instrUpper.equals("TBILL") || instrUpper.equals("TBOND") || instrUpper.equals("CORP") ||
@@ -396,7 +375,6 @@ public class OMSweb_DBMarketData {
             instrUpper.equals("CB") || instrUpper.equals("DB")) {
             return false;
         }
-
         return true;
     }
 
@@ -409,15 +387,12 @@ public class OMSweb_DBMarketData {
         if (!targetCache.isEmpty()) {
             return Collections.unmodifiableMap(targetCache);
         }
-
         if (isDbCircuitOpen()) {
             loadFromJsonCache(targetCache);
             return Collections.unmodifiableMap(targetCache);
         }
-
         String tableLtp = exClean.equals("CSE") ? "cse_md_ltp" : "dse_md_ltp";
         String tableSym = exClean.equals("CSE") ? "cse_md_symbols" : "dse_md_symbols";
-
         String query = String.format(
                 "SELECT l.symbol, COALESCE(s.company_name, l.symbol), l.ltp, l.ycp, " +
                 "l.circuit_up, l.circuit_down, l.floor_price, l.open, l.high, l.low, l.close, l.total_qty, l.last_update, " +
@@ -438,7 +413,6 @@ public class OMSweb_DBMarketData {
                 "  AND l.ltp IS NOT NULL AND l.ltp > 0 " +
                 "ORDER BY l.symbol ASC;",
                 tableLtp, tableSym);
-
         // Tier 1: Try Native PostgreSQL JDBC Connection
         try (Connection conn = getJdbcConnection()) {
             if (conn != null) {
@@ -472,7 +446,6 @@ public class OMSweb_DBMarketData {
                 }
             }
         } catch (Exception ignored) {}
-
         // Tier 2: Try Python psycopg2 collector
         if (targetCache.isEmpty()) {
             runPythonDbCollector(exClean);
@@ -481,7 +454,6 @@ public class OMSweb_DBMarketData {
                 return Collections.unmodifiableMap(targetCache);
             }
         }
-
         try {
             String psqlExe = findPsqlExecutable();
             if (psqlExe != null) {
@@ -497,7 +469,6 @@ public class OMSweb_DBMarketData {
                 pb.environment().put("PGPASSWORD", DB_PASSWORD);
                 pb.redirectErrorStream(true);
                 Process proc = pb.start();
-
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
@@ -508,7 +479,6 @@ public class OMSweb_DBMarketData {
                             String sec = p.length > 13 ? p[13].trim() : "";
                             String sinstr = p.length > 14 ? p[14].trim() : "";
                             if (!isStrictlyPublicEquity(sym, name, sec, sinstr)) continue;
-
                             if (!sym.isEmpty()) {
                                 double ltp = parseDouble(p[2]);
                                 double ycp = p.length > 3 ? parseDouble(p[3]) : ltp;
@@ -534,14 +504,11 @@ public class OMSweb_DBMarketData {
         } catch (Exception e) {
             System.err.println("[WARN: OMSweb_DBMarketData LTP psql] " + e.getMessage());
         }
-
         if (targetCache.isEmpty()) {
             loadFromJsonCache(targetCache);
         }
-
         return Collections.unmodifiableMap(targetCache);
     }
-
     public static synchronized Map<String, PublicSymbolLtp> collectLtp(String exchange) {
         String exClean = (exchange == null || exchange.trim().isEmpty()) ? "DSE" : exchange.trim().toUpperCase();
         if (exClean.equals("CSE")) {
@@ -564,14 +531,11 @@ public class OMSweb_DBMarketData {
         if (!targetCache.isEmpty()) {
             return Collections.unmodifiableMap(targetCache);
         }
-
         if (isDbCircuitOpen()) {
             return Collections.unmodifiableMap(targetCache);
         }
-
         String tableBbo = exClean.equals("CSE") ? "cse_md_bbo" : "dse_md_bbo";
         String tableSym = exClean.equals("CSE") ? "cse_md_symbols" : "dse_md_symbols";
-
         try {
             String psqlExe = findPsqlExecutable();
             if (psqlExe != null) {
@@ -594,7 +558,6 @@ public class OMSweb_DBMarketData {
                         "  AND b.symbol NOT LIKE '%%SUKUK%%' " +
                         "ORDER BY b.symbol ASC;",
                         tableBbo, tableSym);
-
                 ProcessBuilder pb = new ProcessBuilder(
                         psqlExe,
                         "-h", DB_HOST,
@@ -607,7 +570,6 @@ public class OMSweb_DBMarketData {
                 pb.environment().put("PGPASSWORD", DB_PASSWORD);
                 pb.redirectErrorStream(true);
                 Process proc = pb.start();
-
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
                     String line;
                     while ((line = reader.readLine()) != null) {
@@ -633,7 +595,6 @@ public class OMSweb_DBMarketData {
         } catch (Exception e) {
             System.err.println("[WARN: OMSweb_DBMarketData BBO psql] " + e.getMessage());
         }
-
         return Collections.unmodifiableMap(targetCache);
     }
 
@@ -648,14 +609,11 @@ public class OMSweb_DBMarketData {
         if (targetCache.containsKey(symClean)) {
             return targetCache.get(symClean);
         }
-
         if (isDbCircuitOpen()) {
             return null;
         }
-
         String tableDepth = exClean.equals("CSE") ? "cse_md_mktdepth" : "dse_md_mktdepth";
         String tableSym = exClean.equals("CSE") ? "cse_md_symbols" : "dse_md_symbols";
-
         try {
             String psqlExe = findPsqlExecutable();
             if (psqlExe != null) {
@@ -664,7 +622,6 @@ public class OMSweb_DBMarketData {
                         "FROM %s m LEFT JOIN %s s ON m.symbol = s.symbol AND m.board = s.board " +
                         "WHERE m.board = 'PUBLIC' AND m.symbol = '%s' LIMIT 1;",
                         tableDepth, tableSym, symClean);
-
                 ProcessBuilder pb = new ProcessBuilder(
                         psqlExe,
                         "-h", DB_HOST,
@@ -677,7 +634,6 @@ public class OMSweb_DBMarketData {
                 pb.environment().put("PGPASSWORD", DB_PASSWORD);
                 pb.redirectErrorStream(true);
                 Process proc = pb.start();
-
                 try (BufferedReader reader = new BufferedReader(new InputStreamReader(proc.getInputStream()))) {
                     String line = reader.readLine();
                     if (line != null) {
@@ -728,7 +684,6 @@ public class OMSweb_DBMarketData {
         data.put("Symbol", symClean);
         data.put("Exchange", exClean);
         data.put("DATA_SOURCE", String.format("DB Tables (%s PUBLIC: ltp, bbo, mktdepth)", exClean));
-
         // 1. LTP & Limits from dse_md_ltp / cse_md_ltp
         Map<String, PublicSymbolLtp> ltpMap = fetchPublicBoardLtp(exClean);
         PublicSymbolLtp ltpRec = ltpMap.get(symClean);
@@ -745,7 +700,6 @@ public class OMSweb_DBMarketData {
             data.put("CH", String.format(Locale.US, "%.2f", ltpRec.circuitUp));
             data.put("CL", String.format(Locale.US, "%.2f", ltpRec.circuitDown));
         }
-
         // 2. Bid/Ask Price (BBO) from dse_md_bbo / cse_md_bbo
         Map<String, BboRecord> bboMap = fetchPublicBoardBbo(exClean);
         BboRecord bboRec = bboMap.get(symClean);
@@ -755,7 +709,6 @@ public class OMSweb_DBMarketData {
             data.put("Best_Ask_Price", String.format(Locale.US, "%.2f", bboRec.askPrice));
             data.put("Best_Ask_Qty", String.valueOf(bboRec.askQty));
         }
-
         // 3. Multi-level Market Depth from dse_md_mktdepth / cse_md_mktdepth
         DepthRecord depthRec = fetchSymbolDepth(exClean, symClean);
         if (depthRec != null) {
@@ -770,7 +723,6 @@ public class OMSweb_DBMarketData {
                     data.put("Bid_L" + i + "_Qty", "-");
                     data.put("Bid_L" + i + "_Ordr", "-");
                 }
-
                 if (i <= depthRec.askLevels.size()) {
                     DepthLevel al = depthRec.askLevels.get(i - 1);
                     data.put("Ask_L" + i + "_Price", String.format(Locale.US, "%.2f", al.price));
@@ -783,7 +735,6 @@ public class OMSweb_DBMarketData {
                 }
             }
         }
-
         return data;
     }
 
@@ -829,15 +780,12 @@ public class OMSweb_DBMarketData {
             String sym = keys.get(i);
             PublicSymbolLtp r = ltpMap.get(sym);
             BboRecord b = bboMap.get(sym);
-
             String name = (r.companyName != null && r.companyName.length() > 26)
                     ? r.companyName.substring(0, 23) + "..."
                     : (r.companyName != null ? r.companyName : r.symbol);
-
             String bidStr = (b != null && b.bidPrice > 0) ? String.format(Locale.US, "%.2f (%d)", b.bidPrice, b.bidQty) : "-";
             String askStr = (b != null && b.askPrice > 0) ? String.format(Locale.US, "%.2f (%d)", b.askPrice, b.askQty) : "-";
             String boundsStr = String.format(Locale.US, "%.1f / %.1f", r.circuitUp, r.circuitDown);
-
             System.out.printf("%-4d | %-12s | %-26s | %10.2f | %18s | %18s | %15s%n",
                     (i + 1), r.symbol, name, r.ltp, bidStr, askStr, boundsStr);
         }
@@ -959,7 +907,6 @@ public class OMSweb_DBMarketData {
                 String lastUp = extractJsonField(block, "last_update");
                 String sec = extractJsonField(block, "sector");
                 String sinstr = extractJsonField(block, "symbol_instr");
-
                 if (!sym.isEmpty() && ltp > 0 && isStrictlyPublicEquity(sym, name, sec, sinstr)) {
                     cache.put(sym, new PublicSymbolLtp(sym, name, ltp, ycp, up, down, floor, open, high, low, close, qty, lastUp));
                 }

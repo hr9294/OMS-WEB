@@ -7,10 +7,8 @@ import json
 import time
 from typing import List, Dict, Any, Optional
 from selenium import webdriver
-
 import oms_price
 from config import get_qtrader_db_connection
-
 
 class ClientPosition:
     def __init__(
@@ -41,9 +39,7 @@ class ClientPosition:
             f"Total: {self.total_qty:,.0f} | Saleable: {self.saleable_qty:,.0f} | AvgRate: {self.avg_rate:.2f}"
         )
 
-
 parse_float = oms_price.parse_float
-
 
 def navigate_to_position(driver: webdriver.Chrome) -> None:
     if not driver:
@@ -57,7 +53,6 @@ def navigate_to_position(driver: webdriver.Chrome) -> None:
         time.sleep(0.4)
     except Exception:
         pass
-
 
 def search_symbol_in_position(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> None:
     if not driver:
@@ -74,7 +69,6 @@ def search_symbol_in_position(driver: webdriver.Chrome, symbol: str, exchange: s
         time.sleep(0.5)
     except Exception:
         pass
-
 
 def fetch_positions_from_api(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> List[ClientPosition]:
     if not driver or not symbol:
@@ -115,7 +109,6 @@ def fetch_positions_from_api(driver: webdriver.Chrome, symbol: str, exchange: st
         pass
     return out
 
-
 def extract_from_dom_table(driver: webdriver.Chrome, clean_sym: str, exchange: str = "DSE") -> List[ClientPosition]:
     if not driver:
         return []
@@ -143,7 +136,6 @@ def extract_from_dom_table(driver: webdriver.Chrome, clean_sym: str, exchange: s
         ))
     return positions
 
-
 def get_positions(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> List[ClientPosition]:
     clean_sym = oms_price.clean_symbol(symbol)
     api = fetch_positions_from_api(driver, clean_sym, exchange)
@@ -153,10 +145,8 @@ def get_positions(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") 
     search_symbol_in_position(driver, clean_sym, exchange)
     return extract_from_dom_table(driver, clean_sym, exchange)
 
-
 def get_api_snapshot(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> List[ClientPosition]:
     return fetch_positions_from_api(driver, symbol, exchange)
-
 
 def get_ui_snapshot(driver: webdriver.Chrome, client_code: str, symbol: str, exchange: str = "DSE") -> List[ClientPosition]:
     res = get_positions(driver, symbol, exchange)
@@ -165,10 +155,8 @@ def get_ui_snapshot(driver: webdriver.Chrome, client_code: str, symbol: str, exc
         return filtered or res
     return res
 
-
 def get_clients_with_saleable(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> List[ClientPosition]:
     return [p for p in get_positions(driver, symbol, exchange) if p.saleable_qty > 0]
-
 
 def prompt_or_select_clients_for_sell(
     driver: webdriver.Chrome, symbol: str, exchange: str = "DSE", default_client: str = "23986"
@@ -182,7 +170,6 @@ def prompt_or_select_clients_for_sell(
     print(f"[POSITION] No saleable holders for {symbol}. Fallback: {default_client}.")
     return []
 
-
 def get_snapshot(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> Dict[str, str]:
     positions = get_positions(driver, symbol, exchange)
     return {
@@ -192,7 +179,6 @@ def get_snapshot(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -
         "total_shares": f"{sum(p.total_qty for p in positions):,.0f}",
         "saleable_shares": f"{sum(p.saleable_qty for p in positions):,.0f}",
     }
-
 
 def _select_best_holder(
     positions: List[ClientPosition], required_qty: float, preferred_client: Optional[str] = None, exclude_client: Optional[str] = None
@@ -210,18 +196,15 @@ def _select_best_holder(
             return cp
     return max(candidates, key=lambda c: c.saleable_qty)
 
-
 def find_client_with_saleable(
     driver: webdriver.Chrome, symbol: str, required_qty: float, preferred_client: Optional[str] = None, exchange: str = "DSE"
 ) -> Optional[ClientPosition]:
     return _select_best_holder(get_positions(driver, symbol, exchange), required_qty, preferred_client=preferred_client)
 
-
 def find_client_with_saleable_excluding(
     driver: webdriver.Chrome, symbol: str, required_qty: float, exclude_client: Optional[str], exchange: str = "DSE"
 ) -> Optional[ClientPosition]:
     return _select_best_holder(get_positions(driver, symbol, exchange), required_qty, exclude_client=exclude_client)
-
 
 def find_holder_with_sufficient_shares_from_db(symbol: str, required_qty: float, exclude_client: Optional[str] = None) -> Optional[str]:
     clean_sym = oms_price.clean_symbol(symbol)

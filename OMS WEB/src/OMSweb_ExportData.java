@@ -40,20 +40,17 @@ import org.openqa.selenium.support.ui.WebDriverWait;
  * ============================================================================
  */
 public class OMSweb_ExportData {
-
     // =========================================================================
     // 0. CONFIGURATION & SAFETY CONSTRAINTS
     // =========================================================================
     /** By default, NO file export is triggered. Safe inspection mode only. */
     public static final boolean DEFAULT_NO_EXPORT = true;
-
     // Green "Export Files" Button Selector (tray with arrow down icon)
     public static final By BTN_EXPORT_FILES = By.xpath(
             "//button[contains(normalize-space(),'Export Files')] | " +
             "//a[contains(normalize-space(),'Export Files')] | " +
             "//*[contains(@class,'btn') and (contains(.,'Export Files') or .//i[contains(@class,'download')])] | " +
             "//button[@id='export_files' or contains(@id,'export_files') or contains(@class,'btn-export')]");
-
     // Sidebar 8th Icon (Archive / Zipper / Export Reports) or 7th Folder Icon fallback
     public static final By SIDEBAR_EXPORT_ICON = By.xpath(
             "//a[contains(@data-link,'export') or contains(@data-link,'report') or contains(@href,'export')] | " +
@@ -61,7 +58,6 @@ public class OMSweb_ExportData {
             "//ul[contains(@class,'sidebar') or contains(@class,'nav')]//li[8]//a | " +
             "//ul[contains(@class,'sidebar') or contains(@class,'nav')]//li[8] | " +
             "//div[contains(@class,'sidebar')]//a[8]");
-
     // All 13 Sub-menu names in exact UI order from screenshot
     public static final String[] EXPORT_SUB_MENU_NAMES = {
         "XML Trade File (All)",
@@ -96,12 +92,10 @@ public class OMSweb_ExportData {
         CLIENT_RATING_FILE(11, "Client Rating File", "client_rating_file", "XML/CSV"),
         DEALER_TERMINAL_FILE(12, "Dealer Terminal File", "dealer_terminal_file", "XML/CSV"),
         ALL_REPORTS_FILES_ZIP(13, "All Reports & Files Zip", "all_reports_files_zip", "ZIP");
-
         private final int index;
         private final String displayName;
         private final String identifierKey;
         private final String fileType;
-
         ExportSubMenu(int index, String displayName, String identifierKey, String fileType) {
             this.index = index;
             this.displayName = displayName;
@@ -146,7 +140,6 @@ public class OMSweb_ExportData {
         public String href = "";
         public boolean isDisplayed = false;
         public boolean isEnabled = true;
-
         public ExportSubMenuItemData(int index, String name, String fileType) {
             this.index = index;
             this.name = name;
@@ -161,7 +154,6 @@ public class OMSweb_ExportData {
         public String pageTimestamp = "";
         public List<ExportSubMenuItemData> subMenus = new ArrayList<>();
         public long captureTimestamp = System.currentTimeMillis();
-
         public ExportMenuData() {
             // Seed default 13 submenus
             for (int i = 0; i < EXPORT_SUB_MENU_NAMES.length; i++) {
@@ -180,15 +172,12 @@ public class OMSweb_ExportData {
         System.out.println("|                     EXPORT FILES: MENU & SUB-MENU DATA VIEWER                          |");
         System.out.println("|             [MANDATORY SAFEGUARD: BY DEFAULT NO FILE EXPORT WILL OCCUR]                |");
         System.out.println("+========================================================================================+");
-
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
-
         // 1. Ensure Navigation to Export Files View
         boolean navOk = navigateToExportFilesPage(driver, wait);
         if (!navOk) {
             System.out.println("[WARN] Export Files button not immediately verified. Attempting DOM discovery...");
         }
-
         // 2. Interactive Menu
         boolean keepRunning = true;
         while (keepRunning) {
@@ -200,30 +189,25 @@ public class OMSweb_ExportData {
             System.out.println("  4. Capture Page Timestamp & Full UI Audit");
             System.out.println("  5. Return to Main Application");
             System.out.print("Enter Choice (1-5, default=1): ");
-
             String input = sc.nextLine().trim();
             if (input.isEmpty() || "1".equals(input)) {
                 // Option 1: User Choice File Export (Sub-Menus 1-13)
                 handleManualFileExport(driver, sc);
-
             } else if ("2".equals(input)) {
                 // Option 2: Trade Files
                 System.out.println("\n>>> Exporting XML and CSV Trade Files...");
                 exportXmlTradeAll(driver, false);
                 exportCsvTradeAll(driver, false);
-
             } else if ("3".equals(input)) {
                 // Option 3: Inspect
                 System.out.println("\n>>> [INSPECT] Inspecting Export Files Menu & 13 Sub-Menus (No file export)...");
                 ExportMenuData data = captureExportMenuAndSubMenuData(driver);
                 printExportSubMenusTable(data);
-
             } else if ("4".equals(input)) {
                 // Option 4: Full Audit
                 System.out.println("\n>>> Running Full Export Files UI Audit (Menu, 13 Sub-Menus & Timestamps)...");
                 ExportMenuData data = captureExportMenuAndSubMenuData(driver);
                 printFullReport(data);
-
             } else if ("5".equals(input) || "6".equals(input) || "7".equals(input)) {
                 System.out.println("[EXPORT FILES] Returning to main session.");
                 keepRunning = false;
@@ -263,16 +247,13 @@ public class OMSweb_ExportData {
     public static boolean navigateToExportFilesPage(WebDriver driver, WebDriverWait wait) {
         if (driver == null) return false;
         System.out.println("[NAV] Navigating / Locating 'Export Files' button in UI...");
-
         try {
             dismissOverlays(driver);
-
             // 1. If Export Files button is already visible on the current page, we are ready!
             if (isExportFilesButtonVisible(driver)) {
                 System.out.println("[NAV] 'Export Files' button found on current active view.");
                 return true;
             }
-
             // 2. Try clicking 8th sidebar icon (archive / reports) or 7th folder icon
             JavascriptExecutor js = (JavascriptExecutor) driver;
             Object navClickRes = js.executeScript(
@@ -303,7 +284,6 @@ public class OMSweb_ExportData {
                 "}\n" +
                 "return false;"
             );
-
             if (Boolean.TRUE.equals(navClickRes)) {
                 System.out.println("[NAV] Clicked Export navigation link via JavaScript DOM trigger.");
             } else {
@@ -318,15 +298,12 @@ public class OMSweb_ExportData {
                     }
                 }
             }
-
             Thread.sleep(600);
             dismissOverlays(driver);
-
             if (isExportFilesButtonVisible(driver)) {
                 System.out.println("[NAV] Arrived at Export Files view ('Export Files' button ready).");
                 return true;
             }
-
         } catch (Exception e) {
             System.out.println("[NAV: WARN] Encountered: " + e.getMessage());
         }
@@ -343,7 +320,6 @@ public class OMSweb_ExportData {
         if (driver == null) return false;
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             // Check if dropdown is already visible
             Boolean alreadyOpen = (Boolean) js.executeScript(
                 "var items = Array.from(document.querySelectorAll('ul.dropdown-menu, .dropdown-content, li, a'));" +
@@ -354,7 +330,6 @@ public class OMSweb_ExportData {
             if (Boolean.TRUE.equals(alreadyOpen)) {
                 return true;
             }
-
             // Click or trigger the green "Export Files" button
             Object clickRes = js.executeScript(
                 "var btn = Array.from(document.querySelectorAll('button, a, .btn, [id*=\"export\"]')).find(function(b) {" +
@@ -368,12 +343,10 @@ public class OMSweb_ExportData {
                 "}" +
                 "return false;"
             );
-
             if (Boolean.TRUE.equals(clickRes)) {
                 Thread.sleep(300);
                 return true;
             }
-
             // Fallback via Selenium Actions
             List<WebElement> btns = driver.findElements(BTN_EXPORT_FILES);
             for (WebElement b : btns) {
@@ -383,7 +356,6 @@ public class OMSweb_ExportData {
                     return true;
                 }
             }
-
         } catch (Exception e) {
             System.out.println("[WARN: openExportFilesMenu] " + e.getMessage());
         }
@@ -397,14 +369,11 @@ public class OMSweb_ExportData {
     public static ExportMenuData captureExportMenuAndSubMenuData(WebDriver driver) {
         ExportMenuData result = new ExportMenuData();
         if (driver == null) return result;
-
         try {
             // Step 1: Open the menu to populate DOM sub-items
             boolean opened = openExportFilesMenu(driver);
             result.dropdownOpened = opened;
-
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             // Step 2: Comprehensive DOM Script to scrape 13 Sub-Menus & Page Timestamp
             Map<String, Object> domData = (Map<String, Object>) js.executeScript(
                 "var out = {};\n" +
@@ -460,7 +429,6 @@ public class OMSweb_ExportData {
                 "\n" +
                 "return out;"
             );
-
             if (domData != null) {
                 result.menuButtonFound = Boolean.TRUE.equals(domData.get("menuButtonFound"));
                 if (domData.get("menuButtonText") != null) {
@@ -469,7 +437,6 @@ public class OMSweb_ExportData {
                 if (domData.get("pageTimestamp") != null) {
                     result.pageTimestamp = String.valueOf(domData.get("pageTimestamp"));
                 }
-
                 // Parse Sub-menus
                 Object subListObj = domData.get("subMenus");
                 if (subListObj instanceof List) {
@@ -482,7 +449,6 @@ public class OMSweb_ExportData {
                             String name = String.valueOf(m.get("name"));
                             ExportSubMenu esm = ExportSubMenu.fromIndex(idx);
                             String ft = esm != null ? esm.getFileType() : "FILE";
-
                             ExportSubMenuItemData sm = new ExportSubMenuItemData(idx, name, ft);
                             sm.domId = String.valueOf(m.get("domId"));
                             sm.domClass = String.valueOf(m.get("domClass"));
@@ -497,11 +463,9 @@ public class OMSweb_ExportData {
                     }
                 }
             }
-
         } catch (Exception e) {
             System.out.println("[WARN: captureExportMenuAndSubMenuData] " + e.getMessage());
         }
-
         return result;
     }
 
@@ -515,12 +479,10 @@ public class OMSweb_ExportData {
         System.out.println("\n+----+-----------------------------+--------+----------------------+-------------+------------+");
         System.out.println("| #  | EXPORT SUB-MENU ITEM NAME   | FORMAT | DOM IDENTIFIER / ID  | DISPLAYED   | STATUS     |");
         System.out.println("+----+-----------------------------+--------+----------------------+-------------+------------+");
-
         for (ExportSubMenuItemData item : data.subMenus) {
             String idDisplay = item.domId.isEmpty() ? (item.domClass.isEmpty() ? "-" : "." + truncate(item.domClass, 18)) : "#" + truncate(item.domId, 18);
             String dispStr = item.isDisplayed ? "YES (Active)" : "NO (Hidden)";
             String enabledStr = item.isEnabled ? "Enabled" : "Disabled";
-
             System.out.printf("| %-2d | %-27s | %-6s | %-20s | %-11s | %-10s |%n",
                     item.index, item.name, item.fileType, idDisplay, dispStr, enabledStr);
         }
@@ -554,7 +516,6 @@ public class OMSweb_ExportData {
         System.out.printf("| Export Sub-Menus  : %-66s |%n", data.subMenus.size() + " items mapped");
         System.out.printf("| Page Timestamp    : %-66s |%n", data.pageTimestamp.isEmpty() ? "None detected" : data.pageTimestamp);
         System.out.println("+========================================================================================+");
-
         printExportSubMenusTable(data);
         printExportTimestamp(data);
     }
@@ -573,10 +534,8 @@ public class OMSweb_ExportData {
             System.out.println("[EXPORT: ERROR] Invalid driver or sub-menu specified.");
             return false;
         }
-
         System.out.printf("\n[EXPORT HANDLER] Sub-Menu: #%d - %s [%s] | DryRun: %s%n",
                 subMenu.getIndex(), subMenu.getDisplayName(), subMenu.getFileType(), dryRun);
-
         // 1. Dry-Run / Safe Inspection Protection
         if (dryRun) {
             System.out.println("[SAFE GUARD] DRY-RUN ACTIVE: No file will be exported or downloaded.");
@@ -585,12 +544,10 @@ public class OMSweb_ExportData {
             System.out.printf("             Sub-menu element presence: %s%n", targetAvailable ? "CONFIRMED" : "NOT VISIBLE");
             return targetAvailable;
         }
-
         // 2. Real Export Execution (Requires explicit confirmation)
         try {
             openExportFilesMenu(driver);
             Thread.sleep(200);
-
             JavascriptExecutor js = (JavascriptExecutor) driver;
             Object subClickRes = js.executeScript(
                 "var target = arguments[0].toLowerCase();\n" +
@@ -607,7 +564,6 @@ public class OMSweb_ExportData {
                 "return false;",
                 subMenu.getDisplayName()
             );
-
             if (Boolean.TRUE.equals(subClickRes)) {
                 System.out.printf("[EXPORT SUCCESS] Triggered export for '%s' [%s].%n", subMenu.getDisplayName(), subMenu.getFileType());
                 Thread.sleep(500);
@@ -616,13 +572,11 @@ public class OMSweb_ExportData {
             } else {
                 System.out.printf("[EXPORT: WARN] Could not trigger click on '%s'.%n", subMenu.getDisplayName());
             }
-
         } catch (Exception e) {
             System.out.println("[EXPORT: ERROR] Encountered exception: " + e.getMessage());
         }
         return false;
     }
-
     // Convenience Wrappers for all 13 Sub-menus (Safe by default):
     public static boolean exportXmlTradeAll(WebDriver driver, boolean dryRun) {
         return exportFileSafely(driver, ExportSubMenu.XML_TRADE_ALL, dryRun);
@@ -712,12 +666,10 @@ public class OMSweb_ExportData {
             int idx = Integer.parseInt(subChoice);
             selectedMenu = ExportSubMenu.fromIndex(idx);
         } catch (Exception ignored) {}
-
         if (selectedMenu == null) {
             System.out.println("[CANCELLED] Invalid sub-menu selected.");
             return;
         }
-
         System.out.printf("\n[CONFIRMATION REQUIRED] Are you sure you want to export '%s' [%s]? (1=YES, 0=NO, default=0): ",
                 selectedMenu.getDisplayName(), selectedMenu.getFileType());
         String confirm = sc.nextLine().trim();
@@ -725,7 +677,6 @@ public class OMSweb_ExportData {
             System.out.println("[CANCELLED] Export aborted by user.");
             return;
         }
-
         exportFileSafely(driver, selectedMenu, false);
     }
 
@@ -734,7 +685,6 @@ public class OMSweb_ExportData {
         if (s.length() <= maxLen) return s;
         return s.substring(0, maxLen - 3) + "...";
     }
-
     // Standalone launcher for Eclipse & command-line execution
     public static void main(String[] args) {
         WebDriver driver = OMSwebmain.createDriver();

@@ -6,9 +6,7 @@ Accepted, Executed, Cancelled, and Rejected order totals.
 import time
 from typing import Dict, Optional
 from selenium import webdriver
-
 import oms_price
-
 
 def navigate_to_order_summary(driver: webdriver.Chrome) -> None:
     if not driver:
@@ -22,7 +20,6 @@ def navigate_to_order_summary(driver: webdriver.Chrome) -> None:
         time.sleep(0.4)
     except Exception:
         pass
-
 
 def filter_order_summary(driver: webdriver.Chrome, client_code: str = "", symbol: str = "") -> None:
     if not driver:
@@ -38,7 +35,6 @@ def filter_order_summary(driver: webdriver.Chrome, client_code: str = "", symbol
         time.sleep(0.3)
     except Exception:
         pass
-
 
 def get_snapshot(
     driver: webdriver.Chrome, client_code: Optional[str] = None, symbol: Optional[str] = None, preferred_exchange: str = "DSE"
@@ -83,7 +79,6 @@ def get_snapshot(
     except Exception:
         pass
     return snapshot
-
 
 get_api_snapshot = get_snapshot
 get_ui_snapshot = get_snapshot

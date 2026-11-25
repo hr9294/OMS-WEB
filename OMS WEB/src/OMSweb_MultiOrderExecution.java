@@ -64,7 +64,6 @@ public class OMSweb_MultiOrderExecution {
         private String postStatus = "UNKNOWN";
         private int execQty = 0;
         private int dueQty = 0;
-
         public OrderItem(int id, OrderSide side, String clientCode, String symbol, int quantity, double rate, boolean isOpposite) {
             this.id = id;
             this.side = side;
@@ -92,7 +91,6 @@ public class OMSweb_MultiOrderExecution {
         public void setDueQty(int dueQty) { this.dueQty = dueQty; }
         public void setClientCode(String clientCode) { this.clientCode = clientCode; }
         public void setQuantity(int quantity) { this.quantity = quantity; }
-
         @Override
         public String toString() {
             return String.format("#%d [%s%s] Client: %-8s | %s x %-4d @ %-7.2f | OrderID: %s",
@@ -109,7 +107,6 @@ public class OMSweb_MultiOrderExecution {
         Map<String, String> marketDepth = new HashMap<>();
         Map<String, String> orderTerminal = new HashMap<>();
         List<Position.ClientPosition> positionHoldings = new ArrayList<>();
-
         // Pre-Trade UI Snapshots (Visible Frontend DOM Elements)
         Map<String, Map<String, String>> portfolioUiSnapshots = new HashMap<>();
         Map<String, Map<String, String>> accountLimitsUiSnapshots = new HashMap<>();
@@ -180,17 +177,14 @@ public class OMSweb_MultiOrderExecution {
         prefs.put("safebrowsing.enhanced", false);
         prefs.put("profile.default_content_setting_values.notifications", 2);
         options.setExperimentalOption("prefs", prefs);
-
         WebDriver driver = new ChromeDriver(options);
         driver.manage().window().maximize();
         driver.manage().timeouts().implicitlyWait(Duration.ofSeconds(10));
-
         boolean isCse = true; // Default to CSE per user focus
         for (String arg : args) {
             if ("DSE".equalsIgnoreCase(arg)) isCse = false;
             if ("CSE".equalsIgnoreCase(arg)) isCse = true;
         }
-
         Scanner sc = new Scanner(System.in);
         try {
             driver.get("https://devoms.quantbd.com");
@@ -213,7 +207,6 @@ public class OMSweb_MultiOrderExecution {
         System.out.println("+=============================================================================+");
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(6));
         JavascriptExecutor js = (JavascriptExecutor) driver;
-
         if (!OMSweb_Trade.isAlreadyOnTradePage(driver)) {
             OMSweb_Trade.navigateToTradePage(driver, wait, false);
         }
@@ -221,18 +214,14 @@ public class OMSweb_MultiOrderExecution {
             OMSweb_Trade.applyColorToAllWidgets(driver, "Turquoise", "#42EADDFF");
             OMSweb_Trade.isWidgetColorConfigured = true;
         }
-
         String exchange = "CSE";
         String symbol = Position.promptAndSelectCseTradeableSymbol(driver, sc, "BOTH", "BBS");
-
         Market_Watch.connectWidget(driver, symbol, exchange);
         System.out.printf("[SETUP] Target Symbol: %s on Exchange: %s%n", symbol, exchange);
-
         // Fetch DB LTP price band directly
         OMSweb_Trade.MarketPriceBand band = OMSweb_Trade.fetchMarketDbPriceBand(symbol, "CSE", driver);
         double refPrice = band.safeRate > 0 ? band.safeRate : 200.00;
         System.out.printf("[MARKET] Reference Price (DB LTP) for %s on CSE is %.2f BDT%n", symbol, refPrice);
-
         // Default strategy 1: Multiple BUY + Opposite SELL
         System.out.println("\nSelect Multi-Order Execution Strategy for CSE:");
         System.out.println("  1. Multiple BUY orders + Opposite SELL order (Matched Trading) [Default]");
@@ -240,23 +229,18 @@ public class OMSweb_MultiOrderExecution {
         System.out.print("Enter Choice (1 or 2, default=1 in 3s): ");
         String choiceStr = readLineWithTimeout(sc, "1", 3).trim();
         int choice = choiceStr.isEmpty() ? 1 : Integer.parseInt(choiceStr);
-
         boolean differentPrices = false; // On CSE, maintaining valid rate within session bounds
-
         List<OrderItem> orderQueue = buildOrderQueue(driver, sc, choice, symbol, exchange, refPrice, differentPrices);
         if (orderQueue.isEmpty()) {
             System.out.println("[WARN] Order queue is empty. Aborting execution.");
             return;
         }
-
         printPlannedQueue(orderQueue);
-
         // Step 1: Capture Baseline Snapshots
         System.out.println("\n===============================================================================");
         System.out.println(" STEP 1: CAPTURING PRE-EXECUTION BASELINES ACROSS ALL 6 WIDGETS");
         System.out.println("===============================================================================");
         BaselineStore baseline = captureBaselineStore(driver, wait, orderQueue, symbol, exchange);
-
         // Step 2: Place Multiple Orders on Trade Page
         System.out.println("\n===============================================================================");
         System.out.println(" STEP 2: PLACING MULTIPLE ORDERS & OPPOSITE ORDER(S) ON CSE GATEWAY (#xcg3)");
@@ -266,14 +250,12 @@ public class OMSweb_MultiOrderExecution {
             System.err.println("[ERROR] No orders were placed successfully on CSE.");
             return;
         }
-
         // Step 3: Order Terminal Selection & Market Execution / Verification
         System.out.println("\n===============================================================================");
         System.out.println(" STEP 3: ORDER TERMINAL SELECTION & 'EXECUTE AT MARKET' CONTEXT CLICK (CSE)");
         System.out.println("===============================================================================");
         selectAndExecuteAtMarket(driver, wait, js, placedOrders, symbol, choice);
         Thread.sleep(3000);
-
         // Step 4: 6-Widget Verification Audit
         boolean hasAnyOrder = false;
         for (OrderItem oi : placedOrders) {
@@ -290,11 +272,9 @@ public class OMSweb_MultiOrderExecution {
             System.out.println("===============================================================================");
             runComprehensiveMultiWidgetAudit(driver, wait, baseline, placedOrders, symbol, exchange);
         }
-
         try {
             OMSweb_Trade.navigateToTradePage(driver, wait, false);
         } catch (Exception ignored) {}
-
         System.out.println("\n>>> CSE Multi-Order Execution and 6-Widget Real-Time Audit Session Complete. <<<\n");
     }
 
@@ -304,7 +284,6 @@ public class OMSweb_MultiOrderExecution {
         System.out.println("+=============================================================================+");
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(6));
         JavascriptExecutor js = (JavascriptExecutor) driver;
-
         // Ensure Trade Page is active & color-linked if not already done by master runner
         if (!OMSweb_Trade.isAlreadyOnTradePage(driver)) {
             OMSweb_Trade.navigateToTradePage(driver, wait);
@@ -312,11 +291,9 @@ public class OMSweb_MultiOrderExecution {
         if (!OMSweb_Trade.isWidgetColorConfigured) {
             OMSweb_Trade.runWidgetColorSelection(driver, sc);
         }
-
         System.out.print("Enter Exchange (DSE / CSE, default=CSE in 3s): ");
         String exInput = readLineWithTimeout(sc, "CSE", 3).trim().toUpperCase();
         String exchange = (exInput.equalsIgnoreCase("CSE") || exInput.equals("2")) ? "CSE" : "DSE";
-
         // Manual input of target symbol (with numeric guardrail)
         String defaultSym = "CSE".equalsIgnoreCase(exchange) ? "BBS" : "GP";
         System.out.print("\nEnter Target Symbol (default=" + defaultSym + " in 3s): ");
@@ -328,11 +305,9 @@ public class OMSweb_MultiOrderExecution {
             }
             symbol = defaultSym;
         }
-
         if ("CSE".equalsIgnoreCase(exchange)) {
             symbol = Position.promptAndSelectCseTradeableSymbol(driver, sc, "BOTH", symbol);
         }
-
         // Auto-populate manually input symbol into Trade search and Marketwatch
         try {
             WebElement searchSym = driver.findElement(By.id("instrument"));
@@ -342,11 +317,9 @@ public class OMSweb_MultiOrderExecution {
             searchSym.sendKeys(Keys.ENTER);
             Thread.sleep(400);
         } catch (Exception ignored) {}
-
         // Connect Market Watch widget
         Market_Watch.connectWidget(driver, symbol, exchange);
         System.out.printf("[SETUP] Target Symbol: %s on Exchange: %s%n", symbol, exchange);
-
         // Fetch current Market reference price (LTP) from Market Depth / Watch / DB per user request
         double refPrice;
         if ("CSE".equalsIgnoreCase(exchange)) {
@@ -356,7 +329,6 @@ public class OMSweb_MultiOrderExecution {
             refPrice = OMSweb_Trade.fetchPriceLtpOrYcp(driver, wait, symbol, exchange);
         }
         System.out.printf("[MARKET] Reference Price (LTP) for %s on %s is %.2f BDT (Base for Limit Pricing)%n", symbol, exchange, refPrice);
-
         // Configure Strategy
         System.out.println("\nSelect Multi-Order Execution Strategy:");
         System.out.println("  1. Multiple BUY orders (Down Prices) + Opposite SELL order (Upper Price) [Default]");
@@ -368,15 +340,12 @@ public class OMSweb_MultiOrderExecution {
         System.out.print("\nPrice Variation for Orders: (1=Same Price / 2=Different Prices, default=1 in 3s): ");
         String priceVarStr = readLineWithTimeout(sc, "1", 3).trim();
         boolean differentPrices = priceVarStr.equals("2");
-
         // Build the Order Queue
         List<OrderItem> orderQueue = buildOrderQueue(driver, sc, choice, symbol, exchange, refPrice, differentPrices);
-
         if (orderQueue.isEmpty()) {
             System.out.println("[WARN] Order queue is empty. Aborting execution.");
             return;
         }
-
         // Display Planned Order Pipeline
         printPlannedQueue(orderQueue);
         System.out.print("\nProceed to execute this pipeline? (1=YES / 0=NO, default=1 in 3s): ");
@@ -402,7 +371,6 @@ public class OMSweb_MultiOrderExecution {
         System.out.println(" STEP 2: PLACING MULTIPLE ORDERS & OPPOSITE ORDER(S) ON TRADE PAGE");
         System.out.println("===============================================================================");
         List<OrderItem> placedOrders = placeOrdersOnTradePage(driver, wait, js, orderQueue, exchange);
-
         if (placedOrders.isEmpty()) {
             System.err.println("[ERROR] No orders were placed successfully. Cannot proceed to market execution.");
             return;
@@ -415,11 +383,9 @@ public class OMSweb_MultiOrderExecution {
         System.out.println(" STEP 3: ORDER TERMINAL SELECTION & 'EXECUTE AT MARKET' CONTEXT CLICK");
         System.out.println("===============================================================================");
         boolean executedAtMarket = selectAndExecuteAtMarket(driver, wait, js, placedOrders, symbol, choice);
-
         if (!executedAtMarket) {
             System.out.println("[INFO] Context menu 'Execute at Market' fallback: Checking if matching engine auto-executed matching opposite orders...");
         }
-
         // Allow matching engine / settlement to process
         System.out.println("[INFO] Waiting 3 seconds for real-time settlement and order flow propagation...");
         Thread.sleep(3000);
@@ -442,12 +408,10 @@ public class OMSweb_MultiOrderExecution {
             System.out.println("===============================================================================");
             runComprehensiveMultiWidgetAudit(driver, wait, baseline, placedOrders, symbol, exchange);
         }
-
         // Return to Trade page cleanly
         try {
             OMSweb_Trade.navigateToTradePage(driver, wait);
         } catch (Exception ignored) {}
-
         System.out.println("\n>>> Multi-Order Execution and 6-Widget Real-Time Audit Session Complete. <<<\n");
     }
 
@@ -474,12 +438,10 @@ public class OMSweb_MultiOrderExecution {
 
     private static List<OrderItem> buildOrderQueue(WebDriver driver, Scanner sc, int choice, String symbol, String exchange, double refPrice, boolean differentPrices) {
         List<OrderItem> queue = new ArrayList<>();
-
         // Fetch holding clients with saleable shares for SELL side directly from Position API (no page switching)
         List<String> posHolders = getPositionHoldingSellClients(driver, symbol, exchange);
         System.out.printf("[POSITION] Found %d holding client(s) with saleable shares of %s in Position: %s%n",
                 posHolders.size(), symbol, posHolders.subList(0, Math.min(5, posHolders.size())));
-
         // Sourcing Price Band for CSE from DB first
         OMSweb_Trade.MarketPriceBand band = null;
         if ("CSE".equalsIgnoreCase(exchange)) {
@@ -488,7 +450,6 @@ public class OMSweb_MultiOrderExecution {
                 refPrice = band.safeRate;
             }
         }
-
         // Calculate safe spread delta to prevent orders from executing on first placement
         double spreadDelta;
         if ("CSE".equalsIgnoreCase(exchange)) {
@@ -504,9 +465,7 @@ public class OMSweb_MultiOrderExecution {
         } else {
             spreadDelta = Math.max(2.0, Math.round(refPrice * 0.005 * 10.0) / 10.0);
         }
-
         int itemCounter = 1;
-
         if (choice == 1) {
             // Strategy 1: Multiple BUY orders (DOWN prices) + Opposite SELL order (UPPER price)
             System.out.printf("\nEnter BUY Client Code(s) (single or comma-separated, default=%s in 3s): ", DEFAULT_BUY_CLIENTS.get(0));
@@ -519,7 +478,6 @@ public class OMSweb_MultiOrderExecution {
             setTradePageClientCode(driver, buyClients.get(0));
             int buyCount = (buyClients.size() == 1) ? 2 : Math.min(2, buyClients.size());
             int totalBuyQty = 0;
-
             for (int i = 0; i < buyCount; i++) {
                 String buyClient = buyClients.get(i % buyClients.size());
                 int qty = 10;
@@ -527,7 +485,6 @@ public class OMSweb_MultiOrderExecution {
                 // Multiple BUY orders at DOWN prices (< refPrice)
                 double step = differentPrices ? (i * 0.50) : 0.0;
                 double rate = Math.max(0.10, Math.round((refPrice - spreadDelta - step) * 100.0) / 100.0);
-
                 if ("CSE".equalsIgnoreCase(exchange) && band != null && band.safeRate > 0) {
                     if (band.sh > 0 && band.sl > 0 && band.sh == band.sl) {
                         rate = band.safeRate;
@@ -539,7 +496,6 @@ public class OMSweb_MultiOrderExecution {
                 }
                 queue.add(new OrderItem(itemCounter++, OrderSide.BUY, buyClient, symbol, qty, rate, false));
             }
-
             // Verify if chosen sell client has sufficient saleable shares; if not, shift to another client!
             Position.ClientPosition bestSeller = Position.findClientWithSaleable(driver, symbol, totalBuyQty, sellClient, exchange);
             if (bestSeller != null) {
@@ -557,7 +513,6 @@ public class OMSweb_MultiOrderExecution {
                     totalBuyQty = safeQty;
                 }
             }
-
             // Opposite SELL order at UPPER price (> refPrice and well above the BUY orders)
             double sellRate = Math.round((refPrice + spreadDelta) * 100.0) / 100.0;
             if ("CSE".equalsIgnoreCase(exchange) && band != null && band.safeRate > 0) {
@@ -583,7 +538,6 @@ public class OMSweb_MultiOrderExecution {
             setTradePageClientCode(driver, sellClients.get(0));
             int sellCount = (sellClients.size() == 1) ? 3 : Math.min(3, sellClients.size());
             int totalSellQty = 0;
-
             for (int i = 0; i < sellCount; i++) {
                 String sellClient = sellClients.get(i % sellClients.size());
                 int qty = 10;
@@ -593,7 +547,6 @@ public class OMSweb_MultiOrderExecution {
                 double rate = Math.round((refPrice + spreadDelta + step) * 100.0) / 100.0;
                 queue.add(new OrderItem(itemCounter++, OrderSide.SELL, sellClient, symbol, qty, rate, false));
             }
-
             // Opposite BUY order at DOWN price (< refPrice and well below the SELL orders)
             double buyRate = Math.max(0.10, Math.round((refPrice - spreadDelta) * 100.0) / 100.0);
             queue.add(new OrderItem(itemCounter++, OrderSide.BUY, buyClient, symbol, totalSellQty, buyRate, true));
@@ -626,13 +579,11 @@ public class OMSweb_MultiOrderExecution {
                     double step = differentPrices ? (i * 0.50) : 0.0;
                     defaultRate = Math.round((refPrice + spreadDelta + step) * 100.0) / 100.0;
                 }
-
                 System.out.printf("  Price Rate (default %.2f %s): ", defaultRate, (primarySide == OrderSide.BUY ? "DOWN" : "UPPER"));
                 String rInput = sc.nextLine().trim();
                 double r = rInput.isEmpty() ? defaultRate : Double.parseDouble(rInput);
                 queue.add(new OrderItem(itemCounter++, primarySide, client, symbol, q, r, false));
             }
-
             // Opposite order
             String defaultOppClient = (oppSide == OrderSide.BUY) ? DEFAULT_BUY_CLIENTS.get(0) : posHolders.get(0);
             System.out.printf("Enter Opposite %s Client [%s]: ", oppSide, defaultOppClient);
@@ -650,7 +601,6 @@ public class OMSweb_MultiOrderExecution {
             queue.add(new OrderItem(itemCounter++, oppSide, oppClient, symbol, totalPrimaryQty, oppRate, true));
             setTradePageClientCode(driver, firstClient);
         }
-
         return queue;
     }
 
@@ -685,7 +635,6 @@ public class OMSweb_MultiOrderExecution {
     // =========================================================================
     private static BaselineStore captureBaselineStore(WebDriver driver, WebDriverWait wait, List<OrderItem> queue, String symbol, String exchange) {
         BaselineStore b = new BaselineStore();
-
         // 1. Gather all unique client codes involved
         List<String> clients = new ArrayList<>();
         for (OrderItem item : queue) {
@@ -693,7 +642,6 @@ public class OMSweb_MultiOrderExecution {
                 clients.add(item.getClientCode());
             }
         }
-
         // A. Client Portfolio Baselines (API & UI)
         System.out.println("[1/6] Capturing Client Portfolio baselines (API & UI)...");
         try {
@@ -713,7 +661,6 @@ public class OMSweb_MultiOrderExecution {
         } catch (Exception e) {
             System.out.println("[WARN: Baseline Portfolio] " + e.getMessage());
         }
-
         // B. Market Depth Baseline (API & UI)
         System.out.println("[2/6] Capturing Market Depth baseline (API & UI)...");
         try {
@@ -728,7 +675,6 @@ public class OMSweb_MultiOrderExecution {
         } catch (Exception e) {
             System.out.println("[WARN: Baseline Depth] " + e.getMessage());
         }
-
         // C. Order Terminal Baseline (API & UI)
         System.out.println("[3/6] Capturing Order Terminal baseline (API & UI)...");
         try {
@@ -742,7 +688,6 @@ public class OMSweb_MultiOrderExecution {
         } catch (Exception e) {
             System.out.println("[WARN: Baseline Order Terminal] " + e.getMessage());
         }
-
         // D. Order Summary Baseline (API & UI)
         System.out.println("[4/6] Capturing Order Summary baseline (API & UI)...");
         try {
@@ -756,7 +701,6 @@ public class OMSweb_MultiOrderExecution {
         } catch (Exception e) {
             System.out.println("[WARN: Baseline Order Summary] " + e.getMessage());
         }
-
         // E. Account Limits Baseline (API & UI)
         System.out.println("[5/6] Capturing Account Limits baseline (API & UI)...");
         try {
@@ -775,7 +719,6 @@ public class OMSweb_MultiOrderExecution {
         } catch (Exception e) {
             System.out.println("[WARN: Baseline Account Limits] " + e.getMessage());
         }
-
         // F. Position Widget Baseline (API & UI)
         System.out.println("[6/6] Capturing Position holdings baseline (API & UI)...");
         try {
@@ -787,7 +730,6 @@ public class OMSweb_MultiOrderExecution {
         } catch (Exception e) {
             System.out.println("[WARN: Baseline Position] " + e.getMessage());
         }
-
         System.out.println("[SUCCESS] Pre-execution baselines (API & UI) captured across all 6 widgets.\n");
         return b;
     }
@@ -798,12 +740,10 @@ public class OMSweb_MultiOrderExecution {
     private static List<OrderItem> placeOrdersOnTradePage(WebDriver driver, WebDriverWait wait, JavascriptExecutor js, List<OrderItem> queue, String exchange) {
         List<OrderItem> placed = new ArrayList<>();
         OMSweb_Trade.navigateToTradePage(driver, wait);
-
         for (int i = 0; i < queue.size(); i++) {
             OrderItem item = queue.get(i);
             Instant start = Instant.now();
             OMSweb_Trade.ensureUIUnlocked(driver);
-
             // If this is a SELL order, proactively check and auto-shift client if saleable balance is insufficient
             if (item.getSide() == OrderSide.SELL) {
                 Position.ClientPosition saleableCheck = Position.findClientWithSaleable(driver, item.getSymbol(), item.getQuantity(), item.getClientCode(), exchange);
@@ -818,13 +758,11 @@ public class OMSweb_MultiOrderExecution {
                 }
             }
             System.out.printf("%n>>> Placing Order [%d/%d]: %s...%n", (i + 1), queue.size(), item);
-
             try {
                 // Ensure on Trade Page
                 if (!OMSweb_Trade.isAlreadyOnTradePage(driver)) {
                     OMSweb_Trade.navigateToTradePage(driver, wait);
                 }
-
                 // 1. Open BUY or SELL Modal (Fast JS Click, bypassing WinBox title interception)
                 By actionBtn = (item.getSide() == OrderSide.BUY)
                         ? By.xpath("//div[@title='Place BUY Order'] | //button[normalize-space()='BUY'] | //div[contains(@class,'new_buy_order')]")
@@ -834,23 +772,18 @@ public class OMSweb_MultiOrderExecution {
                     js.executeScript("arguments[0].click();", actionBtns.get(0));
                 }
                 Thread.sleep(300);
-
                 // 2. Select Exchange in Modal
                 OMSweb_Trade.selectExchangeInModal(driver, exchange);
                 Thread.sleep(150);
-
                 // 3. Form Population (Safe autocomplete for CSE, fast JS for DSE)
                 String rateStr = (item.getRate() > 0) ? String.format(java.util.Locale.US, "%.2f", item.getRate()) : "";
                 if ("CSE".equalsIgnoreCase(exchange)) {
                     OMSweb_Trade.fillAndSelectAutocompleteSafely(driver, wait, By.id("order_client_code"), item.getClientCode(), false);
                     OMSweb_Trade.ensureClientCodeRetained(driver, item.getClientCode());
-
                     String publicInst = Position.toPublicSymbol(item.getSymbol());
                     OMSweb_Trade.fillAndSelectAutocompleteSafely(driver, wait, By.id("order_instrument"), publicInst, true);
                     OMSweb_Trade.ensureSymbolBoardRetained(driver, publicInst);
-
                     OMSweb_Trade.selectExchangeInModal(driver, "CSE");
-
                     try {
                         WebElement qtyEl = wait.until(ExpectedConditions.elementToBeClickable(By.id("order_qty")));
                         qtyEl.clear();
@@ -858,7 +791,6 @@ public class OMSweb_MultiOrderExecution {
                     } catch (Exception e) {
                         js.executeScript("var el = document.getElementById('order_qty'); if(el){ el.value = arguments[0]; $(el).trigger('input').trigger('change'); }", String.valueOf(item.getQuantity()));
                     }
-
                     if (!rateStr.isEmpty()) {
                         try {
                             WebElement rateEl = wait.until(ExpectedConditions.elementToBeClickable(By.id("limit_order_rate")));
@@ -880,17 +812,14 @@ public class OMSweb_MultiOrderExecution {
                     );
                     OMSweb_Trade.dismissLingeringAutocomplete(driver);
                 }
-
                 // 4. Commission Display trigger
                 try {
                     OMSweb_Trade.displayCommissionOnOrderWindow(driver, item.getClientCode(), item.getQuantity(), item.getRate());
                 } catch (Exception ignored) {}
-
                 // 5. Submit BUY or SELL Button
                 By submitBtnBy = (item.getSide() == OrderSide.BUY)
                         ? By.xpath("//div[contains(@class, 'form-submit-btn-holder')]//button[normalize-space()='BUY'] | //button[contains(@class,'activebuy') and normalize-space()='BUY']")
                         : By.xpath("//div[contains(@class, 'form-submit-btn-holder')]//button[normalize-space()='SELL'] | //button[contains(@class,'activesell') and normalize-space()='SELL']");
-
                 // Rapid verification & click (up to 800ms)
                 boolean clicked = false;
                 for (int a = 0; a < 8; a++) {
@@ -908,7 +837,6 @@ public class OMSweb_MultiOrderExecution {
                 if (!clicked) {
                     js.executeScript("var btn = document.querySelector('.order_submit_btn, div.form-submit-btn-holder button'); if (btn) { $(btn).prop('disabled', false).removeAttr('disabled'); btn.click(); }");
                 }
-
                 // 6. Fast-Path Confirmation YES (Direct Native JS & DOM in 40ms intervals, up to 1.0s)
                 boolean confirmed = false;
                 for (int attempt = 0; attempt < 25; attempt++) {
@@ -931,7 +859,6 @@ public class OMSweb_MultiOrderExecution {
                         );
                         if (Boolean.TRUE.equals(jsClicked)) { confirmed = true; break; }
                     } catch (Exception ignored) {}
-
                     try {
                         List<WebElement> confirmBtns = driver.findElements(
                                 By.xpath("//*[@id='cnfirmConfirmBtn'] | //button[normalize-space()='YES'] | //a[normalize-space()='YES'] | //*[contains(@class,'btn-success') and (normalize-space()='YES' or normalize-space()='Yes')]"));
@@ -949,7 +876,6 @@ public class OMSweb_MultiOrderExecution {
                         item.getId(), elapsed, item.getSide(), item.getClientCode(), item.getQuantity(), item.getRate());
                 placed.add(item);
                 OMSweb_Trade.dismissLingeringAutocomplete(driver);
-
                 // Cleanly close modal before next order
                 try {
                     js.executeScript(

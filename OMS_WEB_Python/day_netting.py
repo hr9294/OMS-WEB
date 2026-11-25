@@ -8,13 +8,11 @@ import sys
 import time
 from typing import List, Dict, Optional
 from selenium import webdriver
-
 import config
 import oms_price
 import rms
 
 NettingMode = rms.NettingMode
-
 
 class ClientNettingStatus(Enum):
     ALLOWED = ("Allowed", True)
@@ -24,7 +22,6 @@ class ClientNettingStatus(Enum):
     def __init__(self, label: str, allowed: bool):
         self.label = label
         self.allowed = allowed
-
 
 class NettingScenarioType(Enum):
     S1_CLIENT1_ALLOWED_OTHERS_DISALLOWED = "S1: Client 1 Allowed vs Others Disallowed"
@@ -37,12 +34,10 @@ class NettingScenarioType(Enum):
     S8_DISALLOW_NETTING_PLUS_STOCK_FILE = "S8: Disallow Netting + Stock File -> Saleable Updated"
     S9_DISALLOW_PLUS_STOCK_FILE_THEN_ALLOW = "S9: Disallow + Stock File -> Then Allow Netting -> Saleable Updated"
 
-
 class RetroactivePolicy(Enum):
     RETROACTIVE_APPLY = "RETROACTIVE_APPLY"
     PROSPECTIVE_ONLY = "PROSPECTIVE_ONLY"
     OBSERVE_AND_REPORT = "OBSERVE_AND_REPORT"
-
 
 class NettingCalculationResult:
     def __init__(self):
@@ -54,7 +49,6 @@ class NettingCalculationResult:
         self.remaining_buy_qty = self.remaining_sell_qty = 0.0
         self.is_eligible = self.is_client_allowed = True
         self.is_market_blocked = False
-
 
 class NettingUIReport:
     def __init__(self, symbol: str = "GP", client_code: str = "23986"):
@@ -68,7 +62,6 @@ class NettingUIReport:
         self.order_window_dse_indicator = False
         self.order_window_cse_indicator = False
         self.order_window_client_blocked_indicator = False
-
 
 class NettingApplicabilityReport:
     def __init__(self, exchange: str = "DSE", symbol: str = "GP", client_code: str = "23986", board: str = "PUBLIC"):
@@ -87,7 +80,6 @@ class NettingApplicabilityReport:
         self.board_reason = ""
         self.is_overall_applicable = True
         self.overall_verdict = ""
-
 
 class NettingScenarioConfig:
     def __init__(self):
@@ -109,7 +101,6 @@ class NettingScenarioConfig:
         self.retroactive_policy = RetroactivePolicy.OBSERVE_AND_REPORT
         self.scenario_filter = "ALL"
 
-
 class NettingScenarioSpec:
     def __init__(
         self, number: int, stype: NettingScenarioType, title: str, rule_description: str,
@@ -128,7 +119,6 @@ class NettingScenarioSpec:
         self.requires_stock_file = requires_stock_file
         self.expect_saleable_initially = expect_saleable_initially
         self.expect_saleable_after_flip = expect_saleable_after_flip
-
 
 class NettingScenarioOutcome:
     def __init__(
@@ -149,7 +139,6 @@ class NettingScenarioOutcome:
         self.audit_result = audit_result
         self.delta_report = delta_report
 
-
 class QrmsNettingStateSnapshot:
     def __init__(
         self, day_netting_settings: str, dse_enabled: bool, cse_enabled: bool, allow_z_spot: bool,
@@ -166,7 +155,6 @@ class QrmsNettingStateSnapshot:
         self.cse_symbols = list(cse_symbols or [])
         self.board_restrictions = list(board_restrictions or [])
         self.captured_from_live = captured_from_live
-
 
 class Netting6WidgetsUiSnapshot:
     def __init__(self):
@@ -200,7 +188,6 @@ class Netting6WidgetsUiSnapshot:
         self.order_summary_data: Dict[str, str] = {}
         self.account_limits_data: Dict[str, str] = {}
 
-
 class ExchangeSaleableReading:
     def __init__(self, exchange: str = "DSE", client_code: str = "", symbol: str = ""):
         self.exchange = exchange
@@ -233,7 +220,6 @@ class ExchangeSaleableReading:
             return self.position_saleable_qty
         return self.db_saleable_qty if self.has_db_data else 0.0
 
-
 class SaleableProbeSnapshot:
     def __init__(self, stage_name: str = "", client_code: str = "", symbol: str = ""):
         self.stage_name = stage_name
@@ -242,7 +228,6 @@ class SaleableProbeSnapshot:
         self.captured_at_ms = int(time.time() * 1000)
         self.dse = ExchangeSaleableReading("DSE", client_code, symbol)
         self.cse = ExchangeSaleableReading("CSE", client_code, symbol)
-
 
 class SaleableDeltaReport:
     def __init__(self):
@@ -258,7 +243,6 @@ class SaleableDeltaReport:
         self.position_cse_saleable_before = self.position_cse_saleable_after = self.position_cse_saleable_delta = 0.0
         self.dse_saleable_updated = self.cse_saleable_updated = self.any_saleable_updated = False
         self.portfolio_matches_position = True
-
 
 class NettingEligibilityContext:
     def __init__(
@@ -288,7 +272,6 @@ class NettingEligibilityContext:
             curr.traded_exchange, curr.board, curr.allow_z_and_spot_netting, curr.order_status, curr.stock_file_uploaded,
         )
 
-
 class NettingSaleableAuditResult:
     def __init__(self):
         self.mode = "INDIVIDUAL_EXCHANGE"
@@ -316,7 +299,6 @@ class NettingSaleableAuditResult:
     def is_all_right(self) -> bool:
         return self.dse_total_right and self.cse_total_right and self.dse_saleable_right and self.cse_saleable_right
 
-
 class DayNettingPortfolioState:
     def __init__(
         self, initial_mature_holding: float, dse_buy_qty: float, dse_sell_qty: float,
@@ -335,7 +317,6 @@ class DayNettingPortfolioState:
         self.mature_deducted_qty = mature_deducted_qty
         self.mode_name = mode_name
 
-
 # =========================================================================
 # DELEGATED RMS NAVIGATION & UI INDICATORS
 # =========================================================================
@@ -352,7 +333,6 @@ def verify_market_depth_netting_indicator(driver: Optional[webdriver.Chrome], sy
     except Exception:
         return False
 
-
 def verify_default_netting_watchlist(driver: Optional[webdriver.Chrome], symbol: str) -> bool:
     if not driver:
         return False
@@ -363,7 +343,6 @@ def verify_default_netting_watchlist(driver: Optional[webdriver.Chrome], symbol:
         """))
     except Exception:
         return False
-
 
 def verify_existing_watchlist_netting_icon_and_hover(driver: Optional[webdriver.Chrome], symbol: str) -> str:
     if not driver:
@@ -383,7 +362,6 @@ def verify_existing_watchlist_netting_icon_and_hover(driver: Optional[webdriver.
     except Exception:
         return ""
 
-
 def verify_order_window_client_netting_blocked(driver: Optional[webdriver.Chrome], client_code: str) -> bool:
     if not driver:
         return False
@@ -397,7 +375,6 @@ def verify_order_window_client_netting_blocked(driver: Optional[webdriver.Chrome
     except Exception:
         return False
 
-
 def check_selected_applicability(
     driver: Optional[webdriver.Chrome], exchange: str, symbol: str, client_code: str, board: str = "PUBLIC"
 ) -> NettingApplicabilityReport:
@@ -406,7 +383,6 @@ def check_selected_applicability(
     brd = (board or "PUBLIC").strip().upper()
     cln = (client_code or "23986").strip()
     rep = NettingApplicabilityReport(ex, sym, cln, brd)
-
     settings = rms.fetch_application_settings(driver)
     ex_enabled = True
     if settings.day_netting_settings.upper() == "NONE":
@@ -418,7 +394,6 @@ def check_selected_applicability(
     elif ex == "DSE" and not settings.is_dse_day_netting_enabled:
         ex_enabled = rep.is_symbol_applicable = False
         rep.symbol_status, rep.symbol_reason = "DISABLED (DSE)", "IS_DSE_DAY_NETTING_ENABLED = false"
-
     if ex_enabled:
         app_syms = rms.fetch_applicable_symbols_list(driver, ex) if driver else []
         in_list = any((r.ticker or "").strip().upper() == sym for r in app_syms)
@@ -427,7 +402,6 @@ def check_selected_applicability(
         else:
             rep.is_symbol_applicable = False
             rep.symbol_status = "NOT APPLICABLE"
-
     if verify_order_window_client_netting_blocked(driver, cln):
         rep.is_client_applicable, rep.client_status = False, "BLOCKED"
     elif driver:
@@ -441,17 +415,14 @@ def check_selected_applicability(
             rep.is_client_applicable, rep.client_status = False, "DISALLOWED"
     elif not rms.is_client_netting_allowed(None, cln):
         rep.is_client_applicable, rep.client_status = False, "DISALLOWED"
-
     brd_blocked = rms.is_board_blocked(driver, ex, brd)
     if brd == "SPOT" and (brd_blocked or not settings.allow_z_and_spot_netting):
         rep.is_board_applicable, rep.board_status = False, "UNAUTHORIZED / BLOCKED"
     elif brd_blocked or brd not in ("PUBLIC", "BLOCK", "SPOT"):
         rep.is_board_applicable, rep.board_status = False, "UNAUTHORIZED / BLOCKED"
-
     rep.is_overall_applicable = rep.is_symbol_applicable and rep.is_client_applicable and rep.is_board_applicable
     rep.overall_verdict = f"{'APPLICABLE' if rep.is_overall_applicable else 'INELIGIBLE'}: {sym} | {cln} | {brd} ({ex})"
     return rep
-
 
 # =========================================================================
 # SALEABLE PROBE & PORTFOLIO COMPLIANCE ENGINE
@@ -467,7 +438,6 @@ def probe_exchange_saleable(
     cln = (client_code or "").strip()
     clean_sym = oms_price.clean_symbol(symbol) or "GP"
     r = ExchangeSaleableReading(ex, cln, clean_sym)
-
     if driver and cln:
         try:
             psnap = client_portfolio.get_ui_snapshot(driver, cln, clean_sym, ex)
@@ -491,7 +461,6 @@ def probe_exchange_saleable(
                 r.position_source = f"POSITION ({ex})"
         except Exception:
             pass
-
     if include_db and cln:
         conn = config.get_qtrader_db_connection()
         if conn:
@@ -513,14 +482,12 @@ def probe_exchange_saleable(
                     pass
     return r
 
-
 def capture_saleable_baseline(driver: Optional[webdriver.Chrome], stage_name: str, client_code: str, symbol: str) -> SaleableProbeSnapshot:
     clean_sym = oms_price.clean_symbol(symbol) or "GP"
     snap = SaleableProbeSnapshot(stage_name or "PROBE", (client_code or "").strip(), clean_sym)
     snap.dse = probe_exchange_saleable(driver, snap.client_code, clean_sym, "DSE")
     snap.cse = probe_exchange_saleable(driver, snap.client_code, clean_sym, "CSE")
     return snap
-
 
 def compute_saleable_delta(before: Optional[SaleableProbeSnapshot], after: Optional[SaleableProbeSnapshot]) -> SaleableDeltaReport:
     rep = SaleableDeltaReport()
@@ -529,22 +496,18 @@ def compute_saleable_delta(before: Optional[SaleableProbeSnapshot], after: Optio
     rep.client_code = after.client_code or before.client_code
     rep.symbol = after.symbol or before.symbol
     rep.baseline_stage, rep.current_stage = before.stage_name, after.stage_name
-
     rep.dse_total_before, rep.dse_total_after = before.dse.effective_total_qty(), after.dse.effective_total_qty()
     rep.dse_total_delta = rep.dse_total_after - rep.dse_total_before
     rep.dse_saleable_before, rep.dse_saleable_after = before.dse.effective_saleable_qty(), after.dse.effective_saleable_qty()
     rep.dse_saleable_delta = rep.dse_saleable_after - rep.dse_saleable_before
-
     rep.cse_total_before, rep.cse_total_after = before.cse.effective_total_qty(), after.cse.effective_total_qty()
     rep.cse_total_delta = rep.cse_total_after - rep.cse_total_before
     rep.cse_saleable_before, rep.cse_saleable_after = before.cse.effective_saleable_qty(), after.cse.effective_saleable_qty()
     rep.cse_saleable_delta = rep.cse_saleable_after - rep.cse_saleable_before
-
     rep.position_dse_saleable_before, rep.position_dse_saleable_after = before.dse.position_saleable_qty, after.dse.position_saleable_qty
     rep.position_dse_saleable_delta = rep.position_dse_saleable_after - rep.position_dse_saleable_before
     rep.position_cse_saleable_before, rep.position_cse_saleable_after = before.cse.position_saleable_qty, after.cse.position_saleable_qty
     rep.position_cse_saleable_delta = rep.position_cse_saleable_after - rep.position_cse_saleable_before
-
     rep.dse_saleable_updated = abs(rep.dse_saleable_delta) > 0.0001 or abs(rep.position_dse_saleable_delta) > 0.0001
     rep.cse_saleable_updated = abs(rep.cse_saleable_delta) > 0.0001 or abs(rep.position_cse_saleable_delta) > 0.0001
     rep.any_saleable_updated = rep.dse_saleable_updated or rep.cse_saleable_updated
@@ -553,16 +516,13 @@ def compute_saleable_delta(before: Optional[SaleableProbeSnapshot], after: Optio
         if not r.has_portfolio_data or not r.has_position_data:
             return True
         return abs(r.portfolio_saleable_qty - r.position_saleable_qty) < 0.001 and abs(r.portfolio_total_qty - r.position_total_qty) < 0.001
-
     rep.portfolio_matches_position = _aligned(before.dse) and _aligned(after.dse) and _aligned(before.cse) and _aligned(after.cse)
     return rep
-
 
 def capture_saleable_delta(driver: Optional[webdriver.Chrome], baseline: Optional[SaleableProbeSnapshot], post_stage_name: str) -> SaleableDeltaReport:
     if baseline is None:
         return SaleableDeltaReport()
     return compute_saleable_delta(baseline, capture_saleable_baseline(driver, post_stage_name, baseline.client_code, baseline.symbol))
-
 
 def print_saleable_delta_report(r: Optional[SaleableDeltaReport]) -> None:
     if not r:
@@ -571,7 +531,6 @@ def print_saleable_delta_report(r: Optional[SaleableDeltaReport]) -> None:
           f"DSE Sal: {r.dse_saleable_before:.0f}->{r.dse_saleable_after:.0f} ({r.dse_saleable_delta:+.0f}) | "
           f"CSE Sal: {r.cse_saleable_before:.0f}->{r.cse_saleable_after:.0f} ({r.cse_saleable_delta:+.0f}) | "
           f"Aligned={r.portfolio_matches_position}")
-
 
 def explain_ineligibility_reason(ctx: Optional[NettingEligibilityContext]) -> str:
     if ctx is None:
@@ -600,10 +559,8 @@ def explain_ineligibility_reason(ctx: Optional[NettingEligibilityContext]) -> st
             return "Both DSE and CSE Day Netting are disabled"
     return ""
 
-
 def is_netting_effective_for_trade(ctx: Optional[NettingEligibilityContext]) -> bool:
     return explain_ineligibility_reason(ctx) == ""
-
 
 def audit_day_netting_saleable_compliance(
     prev: Optional[Netting6WidgetsUiSnapshot], curr: Optional[Netting6WidgetsUiSnapshot],
@@ -613,7 +570,6 @@ def audit_day_netting_saleable_compliance(
     res = NettingSaleableAuditResult()
     if prev is None or curr is None:
         return res
-
     eff_ctx = ctx or NettingEligibilityContext.from_snapshot(curr)
     if dse_trade_qty is None or cse_trade_qty is None:
         p_dse = oms_price.parse_float(prev.portfolio_data_dse.get("total_qty", "0"))
@@ -635,7 +591,6 @@ def audit_day_netting_saleable_compliance(
             d_qty, c_qty = eff_qty, 0.0
     else:
         d_qty, c_qty = max(0.0, dse_trade_qty), max(0.0, cse_trade_qty)
-
     tot_qty = d_qty + c_qty
     res.client_code = curr.target_client or "23986"
     res.symbol = curr.target_symbol or "GP.PUBLIC"
@@ -648,21 +603,17 @@ def audit_day_netting_saleable_compliance(
     res.order_status = eff_ctx.order_status
     res.ineligibility_reason = explain_ineligibility_reason(eff_ctx)
     res.netting_effective = res.ineligibility_reason == ""
-
     res.prev_dse_total = oms_price.parse_float(prev.portfolio_data_dse.get("total_qty", "0"))
     res.curr_dse_total = oms_price.parse_float(curr.portfolio_data_dse.get("total_qty", "0"))
     res.prev_dse_saleable = oms_price.parse_float(prev.portfolio_data_dse.get("saleable_qty", "0"))
     res.curr_dse_saleable = oms_price.parse_float(curr.portfolio_data_dse.get("saleable_qty", "0"))
-
     res.prev_cse_total = oms_price.parse_float(prev.portfolio_data_cse.get("total_qty", "0"))
     res.curr_cse_total = oms_price.parse_float(curr.portfolio_data_cse.get("total_qty", "0"))
     res.prev_cse_saleable = oms_price.parse_float(prev.portfolio_data_cse.get("saleable_qty", "0"))
     res.curr_cse_saleable = oms_price.parse_float(curr.portfolio_data_cse.get("saleable_qty", "0"))
-
     is_rejected = any(k in res.order_status for k in ("REJECT", "CANCEL", "FAIL"))
     is_buy = "BUY" in res.trade_action and "BOTH_SELL_BUY" not in res.trade_action
     is_sell = ("SELL" in res.trade_action and "BUY" not in res.trade_action) or "BOTH_SELL_BUY" in res.trade_action
-
     if res.stock_file_uploaded:
         if tot_qty > 0:
             res.expected_dse_total = res.prev_dse_total + tot_qty
@@ -677,7 +628,6 @@ def audit_day_netting_saleable_compliance(
         res.dse_saleable_right = abs(res.curr_dse_saleable - res.expected_dse_saleable) < 0.001
         res.cse_saleable_right = abs(res.curr_cse_saleable - res.expected_cse_saleable) < 0.001
         return res
-
     if is_rejected:
         res.expected_dse_total, res.expected_cse_total = res.prev_dse_total, res.prev_cse_total
     elif is_buy:
@@ -687,10 +637,8 @@ def audit_day_netting_saleable_compliance(
         res.expected_cse_total = max(0.0, res.prev_cse_total - tot_qty)
     else:
         res.expected_dse_total, res.expected_cse_total = res.prev_dse_total, res.prev_cse_total
-
     res.dse_total_right = abs(res.curr_dse_total - res.expected_dse_total) < 0.001
     res.cse_total_right = abs(res.curr_cse_total - res.expected_cse_total) < 0.001
-
     if not res.netting_effective:
         if not is_rejected and is_sell:
             res.expected_dse_saleable = max(0.0, res.prev_dse_saleable - tot_qty)
@@ -716,11 +664,9 @@ def audit_day_netting_saleable_compliance(
             res.expected_cse_saleable = rem_mature + (max(0.0, cse_day - c_qty) if eff_ctx.cse_enabled else cse_day)
         else:
             res.expected_dse_saleable, res.expected_cse_saleable = res.prev_dse_saleable, res.prev_cse_saleable
-
     res.dse_saleable_right = abs(res.curr_dse_saleable - res.expected_dse_saleable) < 0.001
     res.cse_saleable_right = abs(res.curr_cse_saleable - res.expected_cse_saleable) < 0.001
     return res
-
 
 def calculate_day_netting_portfolio(
     mode: Optional[NettingMode], dse_enabled: bool, cse_enabled: bool,
@@ -736,15 +682,12 @@ def calculate_day_netting_portfolio(
         initial_mature, dse_buy, dse_sell, cse_buy, cse_sell = (float(x) for x in args)
     else:
         raise TypeError("Expected 10 or 11 positional arguments to calculate_day_netting_portfolio")
-
     total_holding = max(0.0, initial_mature + (dse_buy + cse_buy) - (dse_sell + cse_sell))
     mode_name = mode.name if mode else "NONE"
-
     if mode is None or mode == NettingMode.NONE or not client_allowed or not symbol_eligible or not board_allowed:
         mat_ded = dse_sell + cse_sell
         rem_mat = max(0.0, initial_mature - mat_ded)
         return DayNettingPortfolioState(initial_mature, dse_buy, dse_sell, cse_buy, cse_sell, rem_mat, rem_mat, total_holding, 0.0, mat_ded, mode_name)
-
     if mode == NettingMode.INDIVIDUAL_EXCHANGE:
         d_net = min(dse_buy, dse_sell) if dse_enabled else 0.0
         d_rem = max(0.0, dse_buy - dse_sell) if dse_enabled else 0.0
@@ -764,7 +707,6 @@ def calculate_day_netting_portfolio(
         mat_ded = dse_sell + cse_sell
         rem_mat = max(0.0, initial_mature - mat_ded)
         return DayNettingPortfolioState(initial_mature, dse_buy, dse_sell, cse_buy, cse_sell, rem_mat, rem_mat, total_holding, 0.0, mat_ded, mode_name)
-
     t_buy, t_sell = dse_buy + cse_buy, dse_sell + cse_sell
     c_net = min(t_buy, t_sell)
     c_rem = max(0.0, t_buy - t_sell)
@@ -774,7 +716,6 @@ def calculate_day_netting_portfolio(
         initial_mature, dse_buy, dse_sell, cse_buy, cse_sell,
         rem_mat + c_rem, rem_mat + c_rem, total_holding, c_net, mat_ded, mode_name
     )
-
 
 def calculate_position_netting(
     symbol: str, client_code: str, dse_buy: float, dse_sell: float, cse_buy: float, cse_sell: float,
@@ -786,7 +727,6 @@ def calculate_position_netting(
     res.dse_buy_qty, res.dse_sell_qty, res.cse_buy_qty, res.cse_sell_qty = dse_buy, dse_sell, cse_buy, cse_sell
     res.total_buy_qty, res.total_sell_qty = dse_buy + cse_buy, dse_sell + cse_sell
     res.is_eligible, res.is_client_allowed, res.is_market_blocked = is_symbol_eligible, is_client_allowed, is_market_blocked
-
     if mode == NettingMode.NONE or not is_symbol_eligible or not is_client_allowed or is_market_blocked:
         res.remaining_buy_qty, res.remaining_sell_qty = res.total_buy_qty, res.total_sell_qty
         return res
@@ -803,7 +743,6 @@ def calculate_position_netting(
     res.remaining_sell_qty = res.total_sell_qty - res.netted_qty
     return res
 
-
 def compare_and_report_netting_widgets(
     prev: Optional[Netting6WidgetsUiSnapshot], curr: Optional[Netting6WidgetsUiSnapshot],
     title: str = "DAY NETTING UI AUDIT", driver: Optional[webdriver.Chrome] = None
@@ -819,7 +758,6 @@ def compare_and_report_netting_widgets(
     print(f"  Account Limits      : RemCash={curr.account_limits_data.get('Remaining_Cash','-')} TotalTx={curr.account_limits_data.get('Total_Tx','-')}")
     print(f"  Market Depth        : LTP={curr.market_depth_data.get('LTP','-')} Badge={curr.market_depth_netting_badge}")
 
-
 def verify_ui_layout_health(driver: Optional[webdriver.Chrome]) -> str:
     if driver is None:
         return "Driver Offline"
@@ -832,7 +770,6 @@ def verify_ui_layout_health(driver: Optional[webdriver.Chrome]) -> str:
         return str(res or "HEALTHY")
     except Exception:
         return "OK (Grid Restored)"
-
 
 # =========================================================================
 # 9-SCENARIO DAY NETTING & STOCK FILE COMPLIANCE MATRIX
@@ -856,7 +793,6 @@ def _mk_snap(
     s.portfolio_data = s.portfolio_data_dse
     return s
 
-
 def build_9_scenario_specs() -> List[NettingScenarioSpec]:
     return [
         NettingScenarioSpec(1, NettingScenarioType.S1_CLIENT1_ALLOWED_OTHERS_DISALLOWED, "Client 1 Allowed vs Others Disallowed", "Primary allowed & others disallowed", True, True, False, False, False, True, True),
@@ -870,7 +806,6 @@ def build_9_scenario_specs() -> List[NettingScenarioSpec]:
         NettingScenarioSpec(9, NettingScenarioType.S9_DISALLOW_PLUS_STOCK_FILE_THEN_ALLOW, "Disallow + Stock File -> Then Allow Netting", "Stock File while disallowed -> allow netting", False, True, False, True, True, True, True),
     ]
 
-
 def capture_initial_qrms_state(driver: Optional[webdriver.Chrome]) -> QrmsNettingStateSnapshot:
     if not driver:
         return QrmsNettingStateSnapshot("INDIVIDUAL EXCHANGE", True, True, False, [], [], [], [], [], False)
@@ -882,7 +817,6 @@ def capture_initial_qrms_state(driver: Optional[webdriver.Chrome]) -> QrmsNettin
         rms.fetch_clients_rms_list(driver, False), rms.fetch_applicable_symbols_list(driver, "DSE"),
         rms.fetch_applicable_symbols_list(driver, "CSE"), rms.fetch_unauthorized_boards_settings(driver), True
     )
-
 
 def restore_qrms_state_safely(driver: Optional[webdriver.Chrome], initial: Optional[QrmsNettingStateSnapshot], password: str = "12345") -> None:
     if not driver or not initial or not initial.captured_from_live:
@@ -915,7 +849,6 @@ def restore_qrms_state_safely(driver: Optional[webdriver.Chrome], initial: Optio
     except Exception as e:
         print(f"[QRMS RESTORE: WARN] {e}")
 
-
 def _matches_filter(spec: NettingScenarioSpec, flt: str) -> bool:
     if not flt or flt.strip().upper() == "ALL":
         return True
@@ -924,7 +857,6 @@ def _matches_filter(spec: NettingScenarioSpec, flt: str) -> bool:
         if p in (str(spec.number), f"S{spec.number}"):
             return True
     return False
-
 
 def _evaluate_scenario_offline(
     spec: NettingScenarioSpec, cfg: NettingScenarioConfig, primary: str, others: List[str], sym: str, ex: str
@@ -937,7 +869,6 @@ def _evaluate_scenario_offline(
             rms.assert_client_exclusivity_rule(excl)
         except ValueError:
             excl_ok = False
-
     qty = cfg.order_qty if cfg.order_qty > 0 else 10
     base = 50.0
     d_qty = 0.0 if ex == "CSE" else float(qty)
@@ -948,7 +879,6 @@ def _evaluate_scenario_offline(
     init_ctx = NettingEligibilityContext(cfg.netting_mode, cfg.dse_enabled, cfg.cse_enabled,
                                          spec.initial_symbol_allowed, spec.initial_client_allowed, True,
                                          ex, cfg.board, cfg.allow_z_spot, "ACCEPTED", spec.requires_stock_file)
-
     if spec.requires_stock_file:
         stock_add = 50.0
         guard = oms_upload_data.upload_stock_file_with_guard(None, cfg.stock_file_path, False)
@@ -968,7 +898,6 @@ def _evaluate_scenario_offline(
         passed = excl_ok and ok
         return NettingScenarioOutcome(spec, False, passed, True, excl_ok, ok, f"DSE={base:.0f}/CSE={base:.0f}",
                                       f"DSE={new_tot:.0f}/CSE={new_tot:.0f}", "PASS" if passed else "FAIL", f"guard dryRun={guard.dry_run}", audit)
-
     calc = calculate_day_netting_portfolio(cfg.netting_mode, cfg.dse_enabled, cfg.cse_enabled,
                                          spec.initial_client_allowed, spec.initial_symbol_allowed, True, base, d_qty, 0, c_qty, 0)
     post = _mk_snap(f"OFFLINE_POST_S{spec.number}", primary, sym, ex, cfg.netting_mode, cfg.dse_enabled, cfg.cse_enabled,
@@ -976,7 +905,6 @@ def _evaluate_scenario_offline(
                     calc.total_holding_qty, calc.dse_saleable_qty, calc.total_holding_qty, calc.cse_saleable_qty)
     audit = audit_day_netting_saleable_compliance(pre, post, init_ctx, d_qty, c_qty)
     sal_ok = audit.is_all_right() and (audit.saleable_updated_any() == spec.expect_saleable_initially)
-
     if spec.number in (1, 2):
         o_alw = not spec.initial_client_allowed
         o_calc = calculate_day_netting_portfolio(cfg.netting_mode, cfg.dse_enabled, cfg.cse_enabled, o_alw, True, True, base, d_qty, 0, c_qty, 0)
@@ -985,7 +913,6 @@ def _evaluate_scenario_offline(
         o_post = _mk_snap("OTHER_POST", others[0], sym, ex, cfg.netting_mode, cfg.dse_enabled, cfg.cse_enabled, True, o_alw, True, cfg.board, "BUY", qty, False, o_calc.total_holding_qty, o_calc.dse_saleable_qty, o_calc.total_holding_qty, o_calc.cse_saleable_qty)
         o_audit = audit_day_netting_saleable_compliance(o_pre, o_post, o_ctx, d_qty, c_qty)
         sal_ok = sal_ok and o_audit.is_all_right() and (o_audit.saleable_updated_any() == o_alw)
-
     if spec.post_order_allow_symbol or spec.post_order_allow_client:
         f_ctx = NettingEligibilityContext(cfg.netting_mode, cfg.dse_enabled, cfg.cse_enabled, True, True, True, ex, cfg.board, cfg.allow_z_spot, "ACCEPTED", False)
         f_calc = calculate_day_netting_portfolio(cfg.netting_mode, cfg.dse_enabled, cfg.cse_enabled, True, True, True, base, d_qty, 0, c_qty, 0)
@@ -993,12 +920,10 @@ def _evaluate_scenario_offline(
                           f_calc.total_holding_qty, f_calc.dse_saleable_qty, f_calc.total_holding_qty, f_calc.cse_saleable_qty)
         f_audit = audit_day_netting_saleable_compliance(pre, f_post, f_ctx, d_qty, c_qty)
         sal_ok = sal_ok and is_netting_effective_for_trade(f_ctx) and f_audit.is_all_right() and f_audit.saleable_updated_any()
-
     passed = excl_ok and sal_ok
     return NettingScenarioOutcome(spec, False, passed, True, excl_ok, sal_ok, f"DSE={base:.0f}/CSE={base:.0f}",
                                   f"DSE={calc.dse_saleable_qty:.0f}/CSE={calc.cse_saleable_qty:.0f}",
                                   "PASS" if passed else "FAIL", f"Eff={audit.netting_effective}, Upd={audit.saleable_updated_any()}", audit)
-
 
 def _configure_symbol_state(driver: webdriver.Chrome, sym: str, ex: str, dse_en: bool, cse_en: bool, allow: bool) -> None:
     exchanges = ([e for e, en in (("DSE", dse_en), ("CSE", cse_en)) if en] if ex == "BOTH" else [ex])
@@ -1007,7 +932,6 @@ def _configure_symbol_state(driver: webdriver.Chrome, sym: str, ex: str, dse_en:
             rms.add_applicable_symbol(driver, target_ex, sym)
         else:
             rms.delete_applicable_symbol(driver, target_ex, sym)
-
 
 def _evaluate_scenario_live(
     driver: webdriver.Chrome, spec: NettingScenarioSpec, cfg: NettingScenarioConfig,
@@ -1020,16 +944,13 @@ def _evaluate_scenario_live(
         excl_ok = rms.apply_client_exclusivity_rule(driver, primary, spec.initial_client_allowed, others, cfg.rms_password)
     else:
         rms.set_client_netting_state(driver, primary, spec.initial_client_allowed, cfg.rms_password)
-
     _configure_symbol_state(driver, sym, ex, cfg.dse_enabled, cfg.cse_enabled, spec.initial_symbol_allowed)
     check_ex = ("DSE" if cfg.dse_enabled else "CSE") if ex == "BOTH" else ex
     app_rep = check_selected_applicability(driver, check_ex, sym, primary, cfg.board)
     app_ok = (app_rep.is_client_applicable == spec.initial_client_allowed) and (app_rep.is_symbol_applicable == spec.initial_symbol_allowed)
-
     upload_res = oms_upload_data.upload_stock_file_with_guard(driver, cfg.stock_file_path, cfg.allow_live_stock_upload) if spec.requires_stock_file else None
     oms_trade.navigate_to_trade_page(driver, force=False)
     baseline = capture_saleable_baseline(driver, f"PRE_S{spec.number}", primary, sym)
-
     order_placed = False
     if cfg.execute_live_orders and not spec.requires_stock_file:
         inst = sym if "." in sym else f"{sym}.{cfg.board}"
@@ -1040,7 +961,6 @@ def _evaluate_scenario_live(
             except Exception:
                 pass
         order_placed = oms_trade.has_latest_order_in_terminal(driver, primary, sym)
-
     delta = capture_saleable_delta(driver, baseline, f"POST_S{spec.number}")
     if spec.requires_stock_file:
         sal_ok = delta.any_saleable_updated if (upload_res and upload_res.uploaded) else bool(upload_res and upload_res.dry_run)
@@ -1048,7 +968,6 @@ def _evaluate_scenario_live(
     else:
         sal_ok = (not order_placed) or (delta.any_saleable_updated == spec.expect_saleable_initially)
         details = f"placed={order_placed}, updated={delta.any_saleable_updated}"
-
     if spec.post_order_allow_symbol or spec.post_order_allow_client:
         if spec.post_order_allow_symbol:
             _configure_symbol_state(driver, sym, ex, cfg.dse_enabled, cfg.cse_enabled, True)
@@ -1062,7 +981,6 @@ def _evaluate_scenario_live(
             sal_ok = sal_ok and flip_delta.any_saleable_updated
         elif cfg.retroactive_policy == RetroactivePolicy.PROSPECTIVE_ONLY:
             sal_ok = sal_ok and (not flip_delta.any_saleable_updated)
-
     passed = excl_ok and app_ok and sal_ok
     return NettingScenarioOutcome(
         spec, True, passed, app_ok, excl_ok, sal_ok,
@@ -1070,7 +988,6 @@ def _evaluate_scenario_live(
         f"DSE={delta.dse_saleable_after:.0f}/CSE={delta.cse_saleable_after:.0f}",
         "PASS" if passed else "FAIL", details, delta_report=delta
     )
-
 
 def print_9_scenario_scorecard(outcomes: List[NettingScenarioOutcome]) -> None:
     print("\n+----+----------------------------------------------+--------+--------------------+--------------------+")
@@ -1081,7 +998,6 @@ def print_9_scenario_scorecard(outcomes: List[NettingScenarioOutcome]) -> None:
     passed = sum(1 for o in outcomes if o.passed)
     print(f"+----+----------------------------------------------+--------+--------------------+--------------------+\n  MATRIX SUMMARY: {passed}/{len(outcomes)} SCENARIOS PASSED\n")
 
-
 def run_netting_9_scenario_matrix(driver: Optional[webdriver.Chrome], cfg: Optional[NettingScenarioConfig] = None) -> List[NettingScenarioOutcome]:
     cfg = cfg or NettingScenarioConfig()
     primary = (cfg.primary_client or "002").strip().upper()
@@ -1089,12 +1005,10 @@ def run_netting_9_scenario_matrix(driver: Optional[webdriver.Chrome], cfg: Optio
     sym = oms_price.clean_symbol(cfg.symbol) or "GP"
     ex = (cfg.exchange or "BOTH").strip().upper()
     specs = [s for s in build_9_scenario_specs() if _matches_filter(s, cfg.scenario_filter)]
-
     if driver is None:
         outcomes = [_evaluate_scenario_offline(s, cfg, primary, others, sym, ex) for s in specs]
         print_9_scenario_scorecard(outcomes)
         return outcomes
-
     initial = capture_initial_qrms_state(driver)
     rate = oms_price.fetch_price_ltp_or_ycp(driver, sym, "DSE" if ex == "BOTH" else ex) or cfg.order_rate or 266.90
     outcomes = []
@@ -1110,7 +1024,6 @@ def run_netting_9_scenario_matrix(driver: Optional[webdriver.Chrome], cfg: Optio
             pass
     print_9_scenario_scorecard(outcomes)
     return outcomes
-
 
 # =========================================================================
 # OFFLINE COMPLIANCE, QA & REGRESSION SUITES
@@ -1137,7 +1050,6 @@ def report_day_netting_saleable_rules_matrix() -> bool:
     print(f"[SALEABLE RULES MATRIX] {passed}/{len(cases)} PASSED")
     return passed == len(cases)
 
-
 def test_qa_day_netting_scenarios() -> bool:
     """4 Scenarios, 25 Assertions matching Day_Netting.java QA Suite."""
     s1_1 = calculate_day_netting_portfolio(NettingMode.INDIVIDUAL_EXCHANGE, True, True, True, True, 50, 25, 0, 0, 0)
@@ -1148,7 +1060,6 @@ def test_qa_day_netting_scenarios() -> bool:
     s3_1 = calculate_day_netting_portfolio(NettingMode.NONE, True, True, True, True, 50, 25, 0, 0, 0)
     s4_1 = calculate_day_netting_portfolio(NettingMode.CROSS_EXCHANGE, True, True, True, True, 50, 25, 0, 0, 0)
     s4_2 = calculate_day_netting_portfolio(NettingMode.CROSS_EXCHANGE, True, True, True, True, 50, 25, 0, 0, 15)
-
     assertions = [
         s1_1.dse_saleable_qty == 75, s1_1.cse_saleable_qty == 50, s1_1.total_holding_qty == 75, s1_1.cse_saleable_qty != 75,
         s1_2.dse_saleable_qty == 75, s1_2.cse_saleable_qty == 62, s1_2.total_holding_qty == 87,
@@ -1163,7 +1074,6 @@ def test_qa_day_netting_scenarios() -> bool:
     passed = all(assertions)
     print(f"[QA DAY NETTING SUITE] {'ALL PASSED (4/4 SCENARIOS, 25/25+ ASSERTIONS)' if passed else 'SOME FAILED'}")
     return passed
-
 
 def run_all_netting_tests(driver: Optional[webdriver.Chrome] = None) -> bool:
     import oms_upload_data
@@ -1230,13 +1140,11 @@ def run_all_netting_tests(driver: Optional[webdriver.Chrome] = None) -> bool:
     # 9. Full 9-Scenario Compliance Matrix (offline)
     matrix = run_netting_9_scenario_matrix(None, NettingScenarioConfig())
     results.append(len(matrix) == 9 and all(o.passed for o in matrix))
-
     passed = sum(1 for r in results if r)
     print(f"[OFFLINE DAY NETTING SUITE] Passed: {passed}/{len(results)} Test Blocks")
     if driver is not None:
         run_netting_9_scenario_matrix(driver, NettingScenarioConfig())
     return passed == len(results)
-
 
 def run_day_netting_console(driver: webdriver.Chrome) -> None:
     if not driver:
@@ -1319,7 +1227,6 @@ def run_day_netting_console(driver: webdriver.Chrome) -> None:
             run_netting_9_scenario_matrix(driver, cfg)
         if config.IS_CI:
             break
-
 
 if __name__ == "__main__":
     arg = sys.argv[1].strip().lower() if len(sys.argv) > 1 else "qa"

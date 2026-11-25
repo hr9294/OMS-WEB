@@ -3,18 +3,15 @@
 Ports OMSweb_ExportData.java cleanly in compact form with zero live-export risk by default.
 """
 from __future__ import annotations
-
 from dataclasses import dataclass, field
 from enum import Enum
 import time
 from typing import List, Optional
 from selenium import webdriver
-
 import config
 from oms_upload_data import dismiss_overlays
 
 DEFAULT_NO_EXPORT: bool = True
-
 
 class ExportSubMenu(Enum):
     XML_TRADE_ALL = (1, "XML Trade File (All)", "xml_trade_all", "XML")
@@ -46,14 +43,12 @@ class ExportSubMenu(Enum):
         clean = "".join(ch for ch in (name or "").lower() if ch.isalnum())
         return next((m for m in cls if clean and clean in "".join(c for c in m.display_name.lower() if c.isalnum())), None)
 
-
 @dataclass
 class ExportMenuData:
     menu_button_found: bool = False
     dropdown_opened: bool = False
     sub_menus: List[str] = field(default_factory=list)
     page_timestamp: str = ""
-
 
 def is_export_files_button_visible(driver: Optional[webdriver.Chrome]) -> bool:
     if not driver:
@@ -67,7 +62,6 @@ def is_export_files_button_visible(driver: Optional[webdriver.Chrome]) -> bool:
         ))
     except Exception:
         return False
-
 
 def navigate_to_export_files_page(driver: Optional[webdriver.Chrome], timeout: float = 5.0) -> bool:
     if not driver:
@@ -96,7 +90,6 @@ def navigate_to_export_files_page(driver: Optional[webdriver.Chrome], timeout: f
         pass
     return is_export_files_button_visible(driver)
 
-
 def open_export_files_menu(driver: Optional[webdriver.Chrome]) -> bool:
     if not driver:
         return False
@@ -116,7 +109,6 @@ def open_export_files_menu(driver: Optional[webdriver.Chrome]) -> bool:
     except Exception:
         return False
 
-
 def verify_sub_menu_present(driver: Optional[webdriver.Chrome], sub_menu: Optional[ExportSubMenu]) -> bool:
     if not driver or not sub_menu:
         return False
@@ -131,7 +123,6 @@ def verify_sub_menu_present(driver: Optional[webdriver.Chrome], sub_menu: Option
     except Exception:
         return False
 
-
 def capture_export_menu_and_submenu_data(driver: Optional[webdriver.Chrome]) -> ExportMenuData:
     data = ExportMenuData()
     if not driver:
@@ -140,7 +131,6 @@ def capture_export_menu_and_submenu_data(driver: Optional[webdriver.Chrome]) -> 
     data.menu_button_found = is_export_files_button_visible(driver)
     data.sub_menus = [m.display_name for m in ExportSubMenu if verify_sub_menu_present(driver, m)]
     return data
-
 
 def export_file_safely(
     driver: Optional[webdriver.Chrome],
@@ -168,7 +158,6 @@ def export_file_safely(
         return bool(clicked)
     except Exception:
         return False
-
 
 def run_export_console(driver: webdriver.Chrome) -> None:
     navigate_to_export_files_page(driver)

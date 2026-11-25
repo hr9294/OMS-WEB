@@ -7,7 +7,6 @@ import re
 from typing import Dict, Any, List, Optional
 from selenium import webdriver
 
-
 def parse_num_safe(val: Any) -> float:
     if val is None:
         return 0.0
@@ -16,7 +15,6 @@ def parse_num_safe(val: Any) -> float:
         return float(clean)
     except Exception:
         return 0.0
-
 
 def navigate_to_dashboard(driver: webdriver.Chrome) -> bool:
     if not driver:
@@ -36,7 +34,6 @@ def navigate_to_dashboard(driver: webdriver.Chrome) -> bool:
         return bool(res)
     except Exception:
         return False
-
 
 def wait_for_dashboard_ready(driver: webdriver.Chrome, timeout_seconds: int = 10) -> bool:
     if not driver:
@@ -63,7 +60,6 @@ def wait_for_dashboard_ready(driver: webdriver.Chrome, timeout_seconds: int = 10
         time.sleep(0.3)
     return False
 
-
 def capture_snapshot(driver: webdriver.Chrome, label: str = "SNAPSHOT") -> Dict[str, Any]:
     snap: Dict[str, Any] = {
         "label": label,
@@ -71,10 +67,8 @@ def capture_snapshot(driver: webdriver.Chrome, label: str = "SNAPSHOT") -> Dict[
     }
     if not driver:
         return snap
-
     navigate_to_dashboard(driver)
     wait_for_dashboard_ready(driver, 10)
-
     try:
         raw = driver.execute_script("""
             var res = {};
@@ -141,19 +135,15 @@ def capture_snapshot(driver: webdriver.Chrome, label: str = "SNAPSHOT") -> Dict[
             """)
         except Exception:
             pass
-
         snap["raw"] = raw
     except Exception as e:
         print(f"[WARN: capture_snapshot] {e}")
-
     return snap
-
 
 def display_model_wise_dashboard(snap: Dict[str, Any]) -> None:
     raw = snap.get("raw", {})
     label = snap.get("label", "DASHBOARD")
     ts = snap.get("timestamp", "")
-
     print("\n" + "=" * 120)
     print(f"                    OMS-WEB DASHBOARD 12-MODEL AUDIT REPORT: {label} ({ts})")
     print("=" * 120)
@@ -240,9 +230,7 @@ def display_model_wise_dashboard(snap: Dict[str, Any]) -> None:
     mc = raw.get("mostTradedClients", {})
     print(f"\n[MODEL 12: MOST TRADED CLIENTS]")
     print_table(mc.get("table", []))
-
     print("=" * 120 + "\n")
-
 
 def print_table(table: List[List[str]]) -> None:
     if not table:
@@ -256,7 +244,6 @@ def print_table(table: List[List[str]]) -> None:
             else:
                 col_widths[idx] = max(col_widths[idx], len(col))
     col_widths = [max(w, 18) for w in col_widths]
-
     sep = "  +" + "+".join(["-" * (w + 2) for w in col_widths]) + "+"
     print(sep)
     for r_idx, row in enumerate(table):
@@ -266,13 +253,11 @@ def print_table(table: List[List[str]]) -> None:
             print(sep)
     print(sep)
 
-
 def print_diff_row(param: str, prev: Any, curr: Any, is_text: bool = False) -> None:
     p = str(prev if prev is not None else "-").strip()
     c = str(curr if curr is not None else "-").strip()
     result = "PASS"
     remarks = "In Sync"
-
     if not is_text and p != "-" and c != "-":
         dP = parse_num_safe(p)
         dC = parse_num_safe(c)
@@ -293,23 +278,19 @@ def print_diff_row(param: str, prev: Any, curr: Any, is_text: bool = False) -> N
         else:
             result = "PASS"
             remarks = f"Updated: {p} -> {c}"
-
     p_disp = (p[:15] + "...") if len(p) > 18 else p
     c_disp = (c[:15] + "...") if len(c) > 18 else c
     r_disp = (remarks[:31] + "...") if len(remarks) > 34 else remarks
     print(f"| {param:<31} | {p_disp:<18} | {c_disp:<18} | {result:<6} | {r_disp:<34} |")
-
 
 def compare_and_report_snapshots(pre: Dict[str, Any], post: Dict[str, Any], title: str = "12-MODEL LIVE DASHBOARD VERIFICATION") -> None:
     print("\n========================================================================================================================")
     print(f"          DASHBOARD REFLECTION COMPARISON AUDIT: {title}")
     print(f"          [PRE: {pre.get('label', '')} ({pre.get('timestamp', '')})]  ==>  [POST: {post.get('label', '')} ({post.get('timestamp', '')})]")
     print("========================================================================================================================")
-
     print("+---------------------------------+--------------------+--------------------+--------+------------------------------------+")
     print(f"| {'MODEL & PARAMETER':<31} | {'PRE-ACTION (UI)':<18} | {'POST-ACTION (UI)':<18} | {'Result':<6} | {'Remarks':<34} |")
     print("+---------------------------------+--------------------+--------------------+--------+------------------------------------+")
-
     pre_raw = pre.get("raw", {})
     post_raw = post.get("raw", {})
 
@@ -329,7 +310,6 @@ def compare_and_report_snapshots(pre: Dict[str, Any], post: Dict[str, Any], titl
     print_diff_row("6. Buy Trades Count", get_big_val("buyTrades", pre_raw), get_big_val("buyTrades", post_raw))
     # 7. Sell Trades
     print_diff_row("7. Sell Trades Count", get_big_val("sellTrades", pre_raw), get_big_val("sellTrades", post_raw))
-
     print("+---------------------------------+--------------------+--------------------+--------+------------------------------------+")
 
     # Mathematical Consistency Check
@@ -339,14 +319,12 @@ def compare_and_report_snapshots(pre: Dict[str, Any], post: Dict[str, Any], titl
     sv_val = parse_num_safe(get_big_val("sellValue", post_raw))
     math_val_ok = abs(to_val - (bv_val + sv_val)) < 0.01 if to_val > 0 else True
     print(f"  [CHECK 1] Turnover == Buy Value + Sell Value: {'PASS' if math_val_ok else 'MISMATCH'} (Turnover: {to_val:,.2f}, Buy+Sell: {bv_val+sv_val:,.2f})")
-
     tr_cnt = parse_num_safe(get_big_val("trades", post_raw))
     bt_cnt = parse_num_safe(get_big_val("buyTrades", post_raw))
     st_cnt = parse_num_safe(get_big_val("sellTrades", post_raw))
     math_tr_ok = abs(tr_cnt - (bt_cnt + st_cnt)) < 0.01 if tr_cnt > 0 else True
     print(f"  [CHECK 2] Total Trades == Buy Trades + Sell Trades: {'PASS' if math_tr_ok else 'MISMATCH'} (Total: {tr_cnt:,.0f}, Buy+Sell: {bt_cnt+st_cnt:,.0f})")
     print("========================================================================================================================\n")
-
 
 def run_live_reflection_audit(driver: webdriver.Chrome) -> None:
     print("\n==========================================================================================")
@@ -367,7 +345,6 @@ def run_live_reflection_audit(driver: webdriver.Chrome) -> None:
             do_trade = False
     except Exception:
         do_trade = True
-
     if do_trade:
         print("\n[PHASE 2/4] Executing Live Order on Trade Portal...")
         target_symbol = getattr(oms_trade, "active_symbol", "GP")

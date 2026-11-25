@@ -39,13 +39,11 @@ import org.openqa.selenium.support.ui.WebDriverWait;
  * ============================================================================
  */
 public class OMSweb_UploadData {
-
     // =========================================================================
     // 0. CONFIGURATION & SAFETY CONSTRAINTS
     // =========================================================================
     /** By default, NO file upload is executed. Safe inspection mode only. */
     public static final boolean DEFAULT_NO_UPLOAD = true;
-
     // Sidebar Folder Selector (7th icon down)
     public static final By SIDEBAR_FOLDER_ICON = By.xpath(
             "//i[contains(@class,'fa-folder')] | " +
@@ -53,14 +51,12 @@ public class OMSweb_UploadData {
             "//ul[contains(@class,'sidebar') or contains(@class,'nav')]//li[7]//a | " +
             "//ul[contains(@class,'sidebar') or contains(@class,'nav')]//li[7] | " +
             "//div[contains(@class,'sidebar')]//a[7]");
-
     // Green "Upload Data" Button in Main Area
     public static final By BTN_UPLOAD_DATA = By.xpath(
             "//button[contains(normalize-space(),'Upload Data')] | " +
             "//a[contains(normalize-space(),'Upload Data')] | " +
             "//*[contains(@class,'btn') and (contains(.,'Upload Data') or .//i[contains(@class,'upload')])] | " +
             "//button[@id='upload_data' or contains(@id,'upload_data') or contains(@class,'btn-upload')]");
-
     // All 9 Sub-menu names in exact UI order
     public static final String[] SUB_MENU_NAMES = {
         "Client File",
@@ -87,11 +83,9 @@ public class OMSweb_UploadData {
         USER_ACTIVE_INACTIVE_FILE(7, "User Active / Inactive File", "user_active_inactive_file"),
         DEALER_TERMINAL_FILE(8, "Dealer Terminal File", "dealer_terminal_file"),
         CSE_CIRCUIT_BREAKER_FILE(9, "CSE Circuit Breaker File", "cse_circuit_breaker_file");
-
         private final int index;
         private final String displayName;
         private final String identifierKey;
-
         UploadSubMenu(int index, String displayName, String identifierKey) {
             this.index = index;
             this.displayName = displayName;
@@ -135,7 +129,6 @@ public class OMSweb_UploadData {
         public boolean isDisplayed = false;
         public boolean isEnabled = true;
         public String actionType = "File Upload";
-
         public SubMenuItemData(int index, String name) {
             this.index = index;
             this.name = name;
@@ -149,7 +142,6 @@ public class OMSweb_UploadData {
         public String fileType = "";
         public String status = "Uploaded";
         public Map<String, String> rawAttributes = new LinkedHashMap<>();
-
         public UploadedFileRecord(int index, String fileName) {
             this.index = index;
             this.fileName = fileName;
@@ -172,7 +164,6 @@ public class OMSweb_UploadData {
         public List<UploadedFileRecord> uploadedFiles = new ArrayList<>();
         public ZipReportInfo zipReportInfo = new ZipReportInfo();
         public long captureTimestamp = System.currentTimeMillis();
-
         public MenuData() {
             // Seed default 9 submenus
             for (int i = 0; i < SUB_MENU_NAMES.length; i++) {
@@ -191,7 +182,6 @@ public class OMSweb_UploadData {
         public final String resolvedPath;
         public final String status;
         public final String message;
-
         public UploadExecutionResult(boolean attempted, boolean uploaded, boolean dryRun,
                                      String resolvedPath, String status, String message) {
             this.attempted = attempted;
@@ -201,7 +191,6 @@ public class OMSweb_UploadData {
             this.status = status != null ? status : "";
             this.message = message != null ? message : "";
         }
-
         @Override
         public String toString() {
             return String.format(
@@ -218,15 +207,12 @@ public class OMSweb_UploadData {
         System.out.println("|                     UPLOAD DATA: MENU & SUB-MENU DATA VIEWER                           |");
         System.out.println("|             [MANDATORY SAFEGUARD: BY DEFAULT NO FILE UPLOAD WILL OCCUR]                |");
         System.out.println("+========================================================================================+");
-
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
-
         // 1. Ensure Navigation to Upload Data Page
         boolean navOk = navigateToUploadDataPage(driver, wait);
         if (!navOk) {
             System.out.println("[WARN] Upload Data page could not be verified automatically. Attempting DOM inspection...");
         }
-
         // 2. Interactive Menu
         boolean keepRunning = true;
         while (keepRunning) {
@@ -238,31 +224,26 @@ public class OMSweb_UploadData {
             System.out.println("  4. Full UI Audit (Menu, 9 Sub-Menus, Uploaded Files & Zip Reports)");
             System.out.println("  5. Return to Main Application");
             System.out.print("Enter Choice (1-5, default=1): ");
-
             String input = sc.nextLine().trim();
             if (input.isEmpty() || "1".equals(input)) {
                 // Option 1: User Choice File Upload (Client, Stock, Cash, etc.)
                 handleManualFileUpload(driver, sc);
-
             } else if ("2".equals(input)) {
                 // Option 2: Safe Inspection
                 System.out.println("\n>>> Inspecting Menu & 9 Sub-Menus DOM Data (No file upload)...");
                 MenuData data = captureMenuAndSubMenuData(driver);
                 printSubMenusTable(data);
-
             } else if ("3".equals(input)) {
                 // Option 3: Uploaded XML Files Table & Zip
                 System.out.println("\n>>> Inspecting Uploaded XML Files Table & Zip Controls...");
                 MenuData data = captureMenuAndSubMenuData(driver);
                 printUploadedFilesTable(data);
                 printZipReportControls(data);
-
             } else if ("4".equals(input)) {
                 // Option 4: Full Audit
                 System.out.println("\n>>> Running Full Upload Data UI Audit (Menu, 9 Sub-Menus, Table, Zip)...");
                 MenuData data = captureMenuAndSubMenuData(driver);
                 printFullReport(data);
-
             } else if ("5".equals(input) || "6".equals(input) || "7".equals(input)) {
                 System.out.println("[UPLOAD DATA] Returning to main session.");
                 keepRunning = false;
@@ -302,11 +283,9 @@ public class OMSweb_UploadData {
     public static boolean navigateToUploadDataPage(WebDriver driver, WebDriverWait wait) {
         if (driver == null) return false;
         System.out.println("[NAV] Navigating to 'Upload Data' page via 7th sidebar folder icon...");
-
         try {
             dismissOverlays(driver);
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             // 1. Primary Attempt via DOM Javascript search targeting Folder Icon (7th icon down)
             Object navClickRes = js.executeScript(
                 "// Try finding folder icon\n" +
@@ -338,7 +317,6 @@ public class OMSweb_UploadData {
                 "}\n" +
                 "return false;"
             );
-
             if (Boolean.TRUE.equals(navClickRes)) {
                 System.out.println("[NAV] Clicked 7th sidebar folder icon via JavaScript DOM trigger.");
             } else {
@@ -359,17 +337,14 @@ public class OMSweb_UploadData {
                     js.executeScript("arguments[0].click();", folderElements.get(0));
                 }
             }
-
             Thread.sleep(600);
             dismissOverlays(driver);
-
             // Verify Presence of Upload Data Button or Header
             boolean ready = waitForUploadDataButton(driver, 5);
             if (ready) {
                 System.out.println("[NAV] Successfully arrived at Upload Data Page ('Upload Data' button verified).");
                 return true;
             }
-
         } catch (Exception e) {
             System.out.println("[NAV: WARN] Navigation encounter: " + e.getMessage());
         }
@@ -408,7 +383,6 @@ public class OMSweb_UploadData {
         if (driver == null) return false;
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             // Check if dropdown is already visible
             Boolean alreadyOpen = (Boolean) js.executeScript(
                 "var items = Array.from(document.querySelectorAll('ul.dropdown-menu, .dropdown-content, .dropdown-menu, li, a'));" +
@@ -419,7 +393,6 @@ public class OMSweb_UploadData {
             if (Boolean.TRUE.equals(alreadyOpen)) {
                 return true;
             }
-
             // Click or trigger the green "Upload Data" button
             Object clickRes = js.executeScript(
                 "var btn = Array.from(document.querySelectorAll('button, a, .btn, [id*=\"upload\"]')).find(function(b) {" +
@@ -433,12 +406,10 @@ public class OMSweb_UploadData {
                 "}" +
                 "return false;"
             );
-
             if (Boolean.TRUE.equals(clickRes)) {
                 Thread.sleep(300);
                 return true;
             }
-
             // Fallback via Selenium Actions hover/click
             List<WebElement> btns = driver.findElements(BTN_UPLOAD_DATA);
             for (WebElement b : btns) {
@@ -448,7 +419,6 @@ public class OMSweb_UploadData {
                     return true;
                 }
             }
-
         } catch (Exception e) {
             System.out.println("[WARN: openUploadDataMenu] " + e.getMessage());
         }
@@ -463,14 +433,11 @@ public class OMSweb_UploadData {
     public static MenuData captureMenuAndSubMenuData(WebDriver driver) {
         MenuData result = new MenuData();
         if (driver == null) return result;
-
         try {
             // Step 1: Open the menu to populate DOM sub-items
             boolean opened = openUploadDataMenu(driver);
             result.dropdownOpened = opened;
-
             JavascriptExecutor js = (JavascriptExecutor) driver;
-
             // Step 2: Comprehensive DOM Script to scrape Sub-Menus, Files Table, and Zip controls
             Map<String, Object> domData = (Map<String, Object>) js.executeScript(
                 "var out = {};\n" +
@@ -549,13 +516,11 @@ public class OMSweb_UploadData {
                 "\n" +
                 "return out;"
             );
-
             if (domData != null) {
                 result.menuButtonFound = Boolean.TRUE.equals(domData.get("menuButtonFound"));
                 if (domData.get("menuButtonText") != null) {
                     result.menuButtonText = String.valueOf(domData.get("menuButtonText"));
                 }
-
                 // Parse Sub-menus
                 Object subListObj = domData.get("subMenus");
                 if (subListObj instanceof List) {
@@ -580,7 +545,6 @@ public class OMSweb_UploadData {
                         result.subMenus = parsedSub;
                     }
                 }
-
                 // Parse Uploaded Files
                 Object fileListObj = domData.get("uploadedFiles");
                 if (fileListObj instanceof List) {
@@ -602,7 +566,6 @@ public class OMSweb_UploadData {
                         }
                     }
                 }
-
                 // Parse Zip Controls
                 Object zipObj = domData.get("zipInfo");
                 if (zipObj instanceof Map) {
@@ -613,11 +576,9 @@ public class OMSweb_UploadData {
                     result.zipReportInfo.deleteBtnClass = String.valueOf(zm.get("deleteBtnClass"));
                 }
             }
-
         } catch (Exception e) {
             System.out.println("[WARN: captureMenuAndSubMenuData] " + e.getMessage());
         }
-
         return result;
     }
 
@@ -631,12 +592,10 @@ public class OMSweb_UploadData {
         System.out.println("\n+----+-----------------------------+----------------------+-------------+------------+");
         System.out.println("| #  | SUB-MENU ITEM NAME          | DOM IDENTIFIER / ID  | DISPLAYED   | STATUS     |");
         System.out.println("+----+-----------------------------+----------------------+-------------+------------+");
-
         for (SubMenuItemData item : data.subMenus) {
             String idDisplay = item.domId.isEmpty() ? (item.domClass.isEmpty() ? "-" : "." + truncate(item.domClass, 18)) : "#" + truncate(item.domId, 18);
             String dispStr = item.isDisplayed ? "YES (Active)" : "NO (Hidden)";
             String enabledStr = item.isEnabled ? "Enabled" : "Disabled";
-
             System.out.printf("| %-2d | %-27s | %-20s | %-11s | %-10s |%n",
                     item.index, item.name, idDisplay, dispStr, enabledStr);
         }
@@ -651,17 +610,14 @@ public class OMSweb_UploadData {
         System.out.println("\n+========================================================================================+");
         System.out.println("|                     UPLOADED FILES HISTORY TABLE (REAL-TIME DOM)                       |");
         System.out.println("+========================================================================================+");
-
         if (data.uploadedFiles.isEmpty()) {
             System.out.println("|  [INFO] No uploaded files currently listed in table (or table clean).                  |");
             System.out.println("+========================================================================================+");
             return;
         }
-
         System.out.println("+----+-----------------------------------------------------+-----------------------------+");
         System.out.println("| #  | UPLOADED FILE NAME                                  | STATUS                      |");
         System.out.println("+----+-----------------------------------------------------+-----------------------------+");
-
         for (UploadedFileRecord f : data.uploadedFiles) {
             System.out.printf("| %-2d | %-51s | %-27s |%n",
                     f.index, truncate(f.fileName, 51), f.status);
@@ -696,7 +652,6 @@ public class OMSweb_UploadData {
         System.out.printf("| Sub-Menus Total   : %-66s |%n", data.subMenus.size() + " items mapped");
         System.out.printf("| Uploaded Files    : %-66s |%n", data.uploadedFiles.size() + " files found in history");
         System.out.println("+========================================================================================+");
-
         printSubMenusTable(data);
         printUploadedFilesTable(data);
         printZipReportControls(data);
@@ -717,10 +672,8 @@ public class OMSweb_UploadData {
             System.out.println("[UPLOAD: ERROR] Invalid driver or sub-menu specified.");
             return false;
         }
-
         System.out.printf("\n[UPLOAD HANDLER] Sub-Menu: #%d - %s | File: %s | DryRun: %s%n",
                 subMenu.getIndex(), subMenu.getDisplayName(), filePath, dryRun);
-
         // 1. Dry-Run / Safe Inspection Protection
         if (dryRun) {
             System.out.println("[SAFE GUARD] DRY-RUN ACTIVE: No file will be uploaded to server.");
@@ -729,7 +682,6 @@ public class OMSweb_UploadData {
             System.out.printf("             Sub-menu element presence: %s%n", targetAvailable ? "CONFIRMED" : "NOT VISIBLE");
             return targetAvailable;
         }
-
         // 2. Local File Existence Verification
         if (filePath == null || filePath.trim().isEmpty()) {
             System.out.println("[UPLOAD: ERROR] File path is empty. Aborting upload.");
@@ -740,30 +692,25 @@ public class OMSweb_UploadData {
             System.out.printf("[UPLOAD: ERROR] Local file does not exist: %s%n", filePath);
             return false;
         }
-
         try {
             // 3. Open Upload Data Menu
             openUploadDataMenu(driver);
             Thread.sleep(200);
-
             // 4. Click the target Sub-Menu item
             boolean subClicked = clickSubMenuItem(driver, subMenu);
             if (!subClicked) {
                 System.out.printf("[UPLOAD: WARN] Could not trigger click on '%s'.%n", subMenu.getDisplayName());
             }
             Thread.sleep(500);
-
             // Optional: Automatically download sample template if provided by application modal
             boolean sampleDownloaded = downloadSampleFileIfAvailable(driver);
             if (sampleDownloaded) {
                 System.out.printf("[SAMPLE DOWNLOAD] Successfully triggered 'Download Sample' for %s.%n", subMenu.getDisplayName());
                 Thread.sleep(400);
             }
-
             // 5. Look for file input (<input type="file">) in DOM or Modal
             JavascriptExecutor js = (JavascriptExecutor) driver;
             WebElement fileInput = findFileInputElement(driver);
-
             if (fileInput != null) {
                 // Ensure file input is interactable
                 js.executeScript(
@@ -775,7 +722,6 @@ public class OMSweb_UploadData {
                 );
                 fileInput.sendKeys(f.getAbsolutePath());
                 System.out.printf("[UPLOAD] File path sent to <input type='file'>: %s%n", f.getAbsolutePath());
-
                 // Trigger change & input events
                 js.executeScript(
                     "if (window.jQuery) { $(arguments[0]).trigger('input').trigger('change'); }" +
@@ -783,33 +729,27 @@ public class OMSweb_UploadData {
                     "arguments[0].dispatchEvent(new Event('change', { bubbles: true }));",
                     fileInput
                 );
-
                 // 6. Look for Upload Confirmation / Submit Button if present
                 Thread.sleep(600);
                 confirmUploadModalIfPresent(driver);
-
                 // 7. Wait for server-side processing & DOM table refresh
                 System.out.println("[UPLOAD] Waiting for server processing & File Manager table update...");
                 Thread.sleep(2500);
                 dismissOverlays(driver);
-
                 // 8. Verify & Display in Web Application File Manager Table
                 MenuData refreshed = captureMenuAndSubMenuData(driver);
                 System.out.printf("[UPLOAD SUCCESS] Successfully inserted and processed '%s' for %s.%n", f.getName(), subMenu.getDisplayName());
                 System.out.println("\n[FILE MANAGER VERIFICATION] Real-Time Table in Web Application:");
                 printUploadedFilesTable(refreshed);
                 return true;
-
             } else {
                 System.out.println("[UPLOAD: WARN] No <input type='file'> found in DOM for this sub-menu.");
             }
-
         } catch (Exception e) {
             System.out.println("[UPLOAD: ERROR] Encountered exception: " + e.getMessage());
         }
         return false;
     }
-
     // Convenience Wrappers for all 9 Sub-menu types (Safe by default):
     public static boolean uploadClientFile(WebDriver driver, String filePath, boolean dryRun) {
         return uploadFileSafely(driver, UploadSubMenu.CLIENT_FILE, filePath, dryRun);
@@ -878,16 +818,13 @@ public class OMSweb_UploadData {
         if (resolvedPath.isEmpty()) {
             resolvedPath = resolveDefaultSampleFilePath(UploadSubMenu.STOCK_FILE);
         }
-
         File file = new File(resolvedPath);
         boolean fileExists = !resolvedPath.isEmpty() && file.exists() && file.isFile();
         String finalPath = fileExists ? file.getAbsolutePath() : resolvedPath;
-
         boolean isCiEnv = "true".equalsIgnoreCase(System.getenv("CI"))
                 || "true".equalsIgnoreCase(System.getenv("HEADLESS"))
                 || "true".equalsIgnoreCase(System.getenv("DOCKER_MODE"))
                 || "true".equalsIgnoreCase(System.getenv("AUTOMATE_MODE"));
-
         if ((DEFAULT_NO_UPLOAD && !allowLiveUpload) || (isCiEnv && !allowLiveUpload)) {
             if (driver != null) {
                 uploadStockFile(driver, finalPath, true);
@@ -897,19 +834,16 @@ public class OMSweb_UploadData {
             return new UploadExecutionResult(false, false, true, finalPath, "DRY_RUN_GUARD",
                     "Stock file upload skipped because dry-run guard is active.");
         }
-
         if (!fileExists) {
             System.out.printf("[UPLOAD GUARD] Stock file not found on disk: %s%n", finalPath);
             return new UploadExecutionResult(false, false, true, finalPath, "FILE_NOT_FOUND",
                     "Stock file does not exist: " + finalPath);
         }
-
         if (driver == null) {
             System.out.printf("[UPLOAD GUARD] WebDriver is null (offline); skipping live upload of %s%n", finalPath);
             return new UploadExecutionResult(false, false, true, finalPath, "OFFLINE_NO_DRIVER",
                     "WebDriver is null; live Stock File upload skipped.");
         }
-
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
         navigateToUploadDataPage(driver, wait);
         boolean uploaded = uploadStockFile(driver, finalPath, false);
@@ -1050,37 +984,30 @@ public class OMSweb_UploadData {
             int idx = Integer.parseInt(subChoice);
             selectedMenu = UploadSubMenu.fromIndex(idx);
         } catch (Exception ignored) {}
-
         if (selectedMenu == null) {
             System.out.println("[CANCELLED] Invalid sub-menu selected.");
             return;
         }
-
         String defaultPath = resolveDefaultSampleFilePath(selectedMenu);
-
         if (!defaultPath.isEmpty() && new File(defaultPath).exists()) {
             System.out.printf("Enter Absolute Local Path for '%s' (press ENTER for default: %s): ", selectedMenu.getDisplayName(), defaultPath);
         } else {
             System.out.printf("Enter Absolute Local Path for '%s' (e.g. C:\\data\\clients.xml): ", selectedMenu.getDisplayName());
         }
-
         String path = sc.nextLine().trim();
         if (path.isEmpty() && !defaultPath.isEmpty() && new File(defaultPath).exists()) {
             path = new File(defaultPath).getAbsolutePath();
             System.out.println("Using default sample file: " + path);
         }
-
         if (path.isEmpty()) {
             System.out.println("[CANCELLED] No path provided. Aborting upload.");
             return;
         }
-
         File f = new File(path);
         if (!f.exists()) {
             System.out.printf("[ERROR] File does not exist on disk: %s%n", path);
             return;
         }
-
         System.out.printf("\n[CONFIRMATION REQUIRED] Are you sure you want to upload '%s' to '%s'? (1=YES, 0=NO, default=0): ",
                 f.getName(), selectedMenu.getDisplayName());
         String confirm = sc.nextLine().trim();
@@ -1088,7 +1015,6 @@ public class OMSweb_UploadData {
             System.out.println("[CANCELLED] Upload aborted by user.");
             return;
         }
-
         uploadFileSafely(driver, selectedMenu, path, false);
     }
 
@@ -1097,7 +1023,6 @@ public class OMSweb_UploadData {
         if (s.length() <= maxLen) return s;
         return s.substring(0, maxLen - 3) + "...";
     }
-
     // Standalone launcher for Eclipse & command-line execution
     public static void main(String[] args) {
         WebDriver driver = OMSwebmain.createDriver();

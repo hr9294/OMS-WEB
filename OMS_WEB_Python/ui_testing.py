@@ -7,7 +7,6 @@ Target Modules: Admin Dashboard, RMS, File Manager, Account, Trade Logs, Setting
 Run `python ui_testing.py --test` for offline verification or `python ui_testing.py` for live Chrome/Firefox audit.
 """
 from __future__ import annotations
-
 from dataclasses import dataclass
 from datetime import datetime
 import json
@@ -20,7 +19,6 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-
 import config
 import day_netting
 from driver_factory import create_driver
@@ -81,14 +79,12 @@ if (!window.__uiTesterHooked) {
 }
 """
 
-
 @dataclass(frozen=True)
 class TargetPage:
     key: str
     label: str
     link_keywords: tuple[str, ...]
     text_keywords: tuple[str, ...]
-
 
 TARGET_PAGES: tuple[TargetPage, ...] = (
     TargetPage("admin_dashboard", "Admin Dashboard", ("home",), ("home", "admin dashboard", "dashboard")),
@@ -99,7 +95,6 @@ TARGET_PAGES: tuple[TargetPage, ...] = (
     TargetPage("setting", "Setting", ("settings/edit", "settings"), ("settings", "setting")),
 )
 
-
 def _save_shot(driver: Any, out_dir: str, browser_name: str, step_name: str) -> None:
     try:
         shots_dir = os.path.join(out_dir, "ui_shots")
@@ -107,7 +102,6 @@ def _save_shot(driver: Any, out_dir: str, browser_name: str, step_name: str) -> 
         driver.save_screenshot(os.path.join(shots_dir, f"{browser_name.lower()}_{step_name}.png"))
     except Exception:
         pass
-
 
 def _navigate_to_page(driver: Any, tp: TargetPage) -> str:
     try:
@@ -117,12 +111,10 @@ def _navigate_to_page(driver: Any, tp: TargetPage) -> str:
             oms_upload_data.dismiss_overlays(driver)
     except Exception:
         pass
-
     if tp.key == "admin_dashboard" and oms_dashboard.navigate_to_dashboard(driver):
         return "CONNECTED:oms_dashboard"
     if tp.key == "file_manager" and oms_upload_data.navigate_to_upload_data_page(driver, timeout=10.0):
         return "CONNECTED:oms_upload_data"
-
     clicked = driver.execute_script(
         """
         var linkKws = arguments[0], textKws = arguments[1];
@@ -149,7 +141,6 @@ def _navigate_to_page(driver: Any, tp: TargetPage) -> str:
         list(tp.text_keywords),
     )
     return str(clicked)
-
 
 def _test_admin_dashboard(driver: Any, browser_name: str) -> Dict[str, Any]:
     oms_dashboard.wait_for_dashboard_ready(driver, timeout_seconds=8)
@@ -181,7 +172,6 @@ def _test_admin_dashboard(driver: Any, browser_name: str) -> Dict[str, Any]:
         "mostTradedClientsRows": len(snap["most_traded_clients"]),
         "tabSwitchTest": str(tab_test),
     }
-
 
 def _test_rms_module(driver: Any, _browser_name: str) -> Dict[str, Any]:
     settings = rms.fetch_application_settings(driver)
@@ -226,7 +216,6 @@ def _test_rms_module(driver: Any, _browser_name: str) -> Dict[str, Any]:
         "appSettingsTabNav": app_nav,
     }
 
-
 def _test_file_manager_module(driver: Any, _browser_name: str) -> Dict[str, Any]:
     upload_open = oms_upload_data.open_upload_data_menu(driver)
     missing_upload = [m.name for m in oms_upload_data.UploadSubMenu if not oms_upload_data.verify_sub_menu_present(driver, m)]
@@ -257,7 +246,6 @@ def _test_file_manager_module(driver: Any, _browser_name: str) -> Dict[str, Any]
         "historyTableAudit": history,
     }
 
-
 def _test_account_module(driver: Any, _browser_name: str) -> Dict[str, Any]:
     profile = driver.execute_script(
         "var txt = (document.body ? document.body.innerText : '');"
@@ -284,7 +272,6 @@ def _test_account_module(driver: Any, _browser_name: str) -> Dict[str, Any]:
         "emptySubmitTest": f"{submit_res}|stayedOnPage={before_url == driver.current_url}",
         "passwordVisibilityToggle": str(eye_res),
     }
-
 
 def _test_trade_logs_module(driver: Any, _browser_name: str) -> Dict[str, Any]:
     overview = driver.execute_script(
@@ -314,7 +301,6 @@ def _test_trade_logs_module(driver: Any, _browser_name: str) -> Dict[str, Any]:
     )
     time.sleep(0.6)
     return {"logsOverview": overview, "filterSearchAndClearTest": f"{flt}|afterFilterRows={after_rows}"}
-
 
 def _test_setting_module(driver: Any, _browser_name: str) -> Dict[str, Any]:
     meta = driver.execute_script(
@@ -350,7 +336,6 @@ def _test_setting_module(driver: Any, _browser_name: str) -> Dict[str, Any]:
         pass
     return {"settingsMetadata": meta, "saveSettingsAt1366": save_1366, "activityLogsTabTest": f"{act_switch}|{act_content}"}
 
-
 _MODULE_HANDLERS: Dict[str, Callable[[Any, str], Dict[str, Any]]] = {
     "admin_dashboard": _test_admin_dashboard,
     "rms": _test_rms_module,
@@ -359,7 +344,6 @@ _MODULE_HANDLERS: Dict[str, Callable[[Any, str], Dict[str, Any]]] = {
     "trade_logs": _test_trade_logs_module,
     "setting": _test_setting_module,
 }
-
 
 def _test_target_page(driver: Any, browser_name: str, tp: TargetPage, out_dir: str) -> Dict[str, Any]:
     out: Dict[str, Any] = {"key": tp.key, "label": tp.label}
@@ -375,7 +359,6 @@ def _test_target_page(driver: Any, browser_name: str, tp: TargetPage, out_dir: s
         driver.execute_script(HOOK_JS)
     except Exception:
         pass
-
     out.update({
         "navMethod": nav_method,
         "finalUrl": driver.current_url,
@@ -383,7 +366,6 @@ def _test_target_page(driver: Any, browser_name: str, tp: TargetPage, out_dir: s
         "loadMs": int((time.perf_counter() - t0) * 1000),
     })
     _save_shot(driver, out_dir, browser_name, f"{tp.key}_1920")
-
     dom_audit = driver.execute_script("""
         var res = {}, bodyText = (document.body ? document.body.innerText : '').trim();
         res.bodyTextLength = bodyText.length;
@@ -413,19 +395,16 @@ def _test_target_page(driver: Any, browser_name: str, tp: TargetPage, out_dir: s
     """)
     if isinstance(dom_audit, dict):
         out.update(dom_audit)
-
     try:
         health = day_netting.verify_ui_layout_health(driver)
         out["dayNettingUiHealth"] = re.sub(r"\s+", " ", str(health)).strip()
     except Exception as exc:
         out["dayNettingUiHealth"] = f"ERR: {exc}"
-
     handler = _MODULE_HANDLERS.get(tp.key)
     try:
         out["functionalTests"] = handler(driver, browser_name) if handler else {}
     except Exception as exc:
         out["functionalTests"] = {"moduleError": str(exc)}
-
     try:
         driver.set_window_size(1366, 768)
         time.sleep(0.45)
@@ -440,7 +419,6 @@ def _test_target_page(driver: Any, browser_name: str, tp: TargetPage, out_dir: s
         time.sleep(0.25)
     except Exception:
         out["overflowAt1366"] = "ERR"
-
     js_errs = driver.execute_script("return window.__uiErrs || [];") or []
     con_errs = driver.execute_script("return window.__uiConsoleErrs || [];") or []
     http_fails = driver.execute_script("return window.__uiHttpFails || [];") or []
@@ -450,7 +428,6 @@ def _test_target_page(driver: Any, browser_name: str, tp: TargetPage, out_dir: s
         "httpFailures": http_fails, "httpFailureCount": len(http_fails),
     })
     return out
-
 
 def execute_suite_on_driver(driver: Any, browser_name: str, out_dir: str = OUT_DIR, perform_login: bool = True) -> Dict[str, Any]:
     res: Dict[str, Any] = {"status": "EXECUTED"}
@@ -483,11 +460,9 @@ def execute_suite_on_driver(driver: Any, browser_name: str, out_dir: str = OUT_D
         res["loginSuccess"] = logged_in
     else:
         res["loginSuccess"] = True
-
     res["loginMs"] = int((time.perf_counter() - t0) * 1000)
     res["postLoginUrl"] = driver.current_url
     _save_shot(driver, out_dir, browser_name, "00_post_login")
-
     try:
         driver.execute_script(HOOK_JS)
     except Exception:
@@ -517,7 +492,6 @@ def execute_suite_on_driver(driver: Any, browser_name: str, out_dir: str = OUT_D
     res["pages"] = pages
     return res
 
-
 def probe_safari_availability() -> Dict[str, Any]:
     if platform.system().lower() != "darwin":
         return {"status": "BLOCKED_ON_WINDOWS" if platform.system().lower() == "windows" else "BLOCKED_NON_MAC", "reason": f"Safari requires macOS (current OS: {platform.system()})"}
@@ -533,7 +507,6 @@ def probe_safari_availability() -> Dict[str, Any]:
                 drv.quit()
             except Exception:
                 pass
-
 
 def run_browser_suite(browser_name: str, headless: bool = False, out_dir: str = OUT_DIR) -> Dict[str, Any]:
     print(f"\n>>> Starting Browser Suite: {browser_name}")
@@ -565,7 +538,6 @@ def run_browser_suite(browser_name: str, headless: bool = False, out_dir: str = 
             except Exception:
                 pass
 
-
 def run_ui_testing(browsers: Optional[List[str]] = None, headless: bool = False, out_dir: str = OUT_DIR, existing_driver: Any = None) -> Dict[str, Any]:
     print("=========================================================================")
     print("  ui_testing | Full Cross-Browser Suite (Connected to OMS_WEB_Python)  ")
@@ -583,14 +555,12 @@ def run_ui_testing(browsers: Optional[List[str]] = None, headless: bool = False,
         for b in (browsers or ["Chrome", "Firefox"]):
             report["browsers"][b] = run_browser_suite(b, headless=headless or config.IS_HEADLESS, out_dir=out_dir)
         report["browsers"]["Safari"] = probe_safari_availability()
-
     os.makedirs(os.path.join(out_dir, "ui_shots"), exist_ok=True)
     json_path = os.path.join(out_dir, "ui_testing_report_data.json")
     with open(json_path, "w", encoding="utf-8") as fh:
         json.dump(report, fh, indent=2)
     print(f"\n[ui_testing] Report JSON saved -> {json_path}")
     return report
-
 
 def test_ui_testing_offline_suite() -> bool:
     """Offline self-test verifying JS hook, 6 target pages, 9+13 menu enums, Safari guard & JSON write."""
@@ -609,7 +579,6 @@ def test_ui_testing_offline_suite() -> bool:
         assert len(loaded["pages"]) == 6
     print("[UI_TESTING OFFLINE PASS] 6/6 target modules, 9 Upload + 13 Export enums, HOOK_JS & Safari guard OK.")
     return True
-
 
 if __name__ == "__main__":
     if "--test" in sys.argv:

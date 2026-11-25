@@ -30,13 +30,11 @@ import day_netting
 import ui_testing
 import oms_test_runner
 
-
 def print_banner() -> None:
     print("+=============================================================================+")
     print("|          WELCOME TO THE UFTFAST ORDER MANAGEMENT SYSTEM (OMS-WEB)           |")
     print("|                    PYTHON AUTOMATION & LOAD TEST SUITE                      |")
     print("+=============================================================================+")
-
 
 def _dispatch_mode(driver, mode: str) -> None:
     if mode == "db-ltp":
@@ -74,7 +72,6 @@ def _dispatch_mode(driver, mode: str) -> None:
     else:
         oms_trade.run_trade_workflow(driver)
 
-
 def run_session_loop(driver, initial_mode: str = "") -> None:
     mode_map = {
         "1": "trade", "2": "multi-order", "3": "load-test", "4": "upload",
@@ -90,7 +87,6 @@ def run_session_loop(driver, initial_mode: str = "") -> None:
             if config.IS_CI:
                 break
             continue
-
         print("\n=== [UFTFAST OMS ACTIVE SESSION] Select Action ===")
         print("  1. Standard Trade & 6-Widget Verification")
         print("  2. Multi-Order Execution & Real-time 6-Widget Audit")
@@ -114,7 +110,6 @@ def run_session_loop(driver, initial_mode: str = "") -> None:
         if config.IS_CI:
             break
 
-
 def main() -> None:
     parser = argparse.ArgumentParser(description="OMS-WEB Python Automation Suite")
     parser.add_argument(
@@ -130,11 +125,9 @@ def main() -> None:
     parser.add_argument("--username", help="OMS username override")
     parser.add_argument("--password", help="OMS password override")
     args = parser.parse_args()
-
     print_banner()
     if args.mode == "test-runner":
         sys.exit(0 if oms_test_runner.run_unified_tests("all") else 1)
-
     driver = create_driver(headless=args.headless or config.IS_HEADLESS)
     try:
         if not oms_login.login(driver=driver, username=args.username, password=args.password):
@@ -153,7 +146,6 @@ def main() -> None:
                 driver.quit()
             except Exception:
                 pass
-
 
 if __name__ == "__main__":
     main()

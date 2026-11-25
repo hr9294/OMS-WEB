@@ -7,9 +7,7 @@ MUST BE EXECUTED FIRST UPON LOADING TRADE PAGE!
 import time
 from typing import List, Dict, Any, Union
 from selenium import webdriver
-
 from config import COLOR_NAMES, COLOR_HEXES, COLOR_MAP
-
 
 def apply_color_to_all_widgets(
     driver: webdriver.Chrome,
@@ -21,7 +19,6 @@ def apply_color_to_all_widgets(
     """
     chosen_color_name = "Turquoise"
     target_hex = "#42EADDFF"
-
     if isinstance(color_choice, int):
         if 1 <= color_choice <= len(COLOR_NAMES):
             chosen_color_name = COLOR_NAMES[color_choice - 1]
@@ -35,9 +32,7 @@ def apply_color_to_all_widgets(
                 break
         else:
             target_hex = val
-
     print(f"\n[WIDGET COLOR] Applying {chosen_color_name} ({target_hex}) to all widgets...")
-
     script = """
     var targetHex = arguments[0];
     var chooseColors = Array.from(document.querySelectorAll('.chooseColor'));
@@ -89,7 +84,6 @@ def apply_color_to_all_widgets(
         print(f"[WIDGET COLOR: ERROR] {e}")
         return False
 
-
 def run_widget_color_selection(driver: webdriver.Chrome) -> None:
     """Interactive prompt to select widget color link (1-6, default 1 [Turquoise])."""
     print("\n=== Widget Color Link ===")
@@ -98,7 +92,6 @@ def run_widget_color_selection(driver: webdriver.Chrome) -> None:
     user_inp = input("Enter choice (1-6, default 1 [Turquoise]): ").strip()
     if not user_inp:
         user_inp = "1"
-
     try:
         choice = int(user_inp)
         if 1 <= choice <= 6:

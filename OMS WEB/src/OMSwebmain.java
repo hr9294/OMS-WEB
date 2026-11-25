@@ -1,26 +1,16 @@
 import java.io.File;
-
 import java.io.IOException;
-
 import java.time.Duration;
-
 import java.util.HashMap;
-
 import java.util.Map;
-
 import java.util.Scanner;
-
 import org.openqa.selenium.WebDriver;
-
 import org.openqa.selenium.support.ui.WebDriverWait;
-
 import org.openqa.selenium.chrome.ChromeDriver;
-
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.JavascriptExecutor;
 
 public class OMSwebmain {
-
     static WebDriver driver;
     public static final boolean isCi = "true".equalsIgnoreCase(System.getenv("CI"))
             || "true".equalsIgnoreCase(System.getenv("HEADLESS"))
@@ -34,12 +24,10 @@ public class OMSwebmain {
         options.addArguments("--remote-allow-origins=*");
         options.addArguments("--log-level=3");
         options.addArguments("--silent");
-
         options.setExperimentalOption("excludeSwitches", new String[]{"enable-automation"});
         options.setExperimentalOption("useAutomationExtension", false);
         options.addArguments("--disable-blink-features=AutomationControlled");
         options.addArguments("--disable-infobars");
-
         Map<String, Object> prefs = new HashMap<>();
         prefs.put("credentials_enable_service", false);
         prefs.put("profile.password_manager_enabled", false);
@@ -56,7 +44,6 @@ public class OMSwebmain {
         prefs.put("download.prompt_for_download", false);
         prefs.put("download.directory_upgrade", true);
         options.setExperimentalOption("prefs", prefs);
-
         options.addArguments("--disable-features=PasswordLeakDetection,PasswordCheck,PasswordLeakToggleMove,SafeBrowsing,ProfileCustomization,CustomizeChromeSidePanel,ChromeRefresh2023,DownloadBubble,DownloadBubbleV2,InsecureDownloadWarnings");
         options.addArguments("--safebrowsing-disable-download-protection");
         options.addArguments("--safebrowsing-disable-extension-blacklist");
@@ -66,7 +53,6 @@ public class OMSwebmain {
         options.addArguments("--window-size=1920,1080");
         options.setExperimentalOption("detach", true);
         options.setAcceptInsecureCerts(true);
-
         boolean isHeadless = "true".equalsIgnoreCase(System.getenv("CI")) || "true".equalsIgnoreCase(System.getenv("HEADLESS"));
         if (isHeadless) {
             options.addArguments("--headless=new");
@@ -74,7 +60,6 @@ public class OMSwebmain {
             options.addArguments("--no-sandbox");
             options.addArguments("--disable-dev-shm-usage");
         }
-
         WebDriver drv = new ChromeDriver(options);
         try {
             Map<String, Object> cdpParams = new HashMap<>();
@@ -137,37 +122,21 @@ public class OMSwebmain {
         public static void main(String[] args) throws InterruptedException, IOException {
         driver = createDriver();
         driver.get("https://devoms.quantbd.com");
-
         Thread.sleep(1000);
-
         ((org.openqa.selenium.JavascriptExecutor) driver).executeScript(
-
             "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
-
         );
-
         System.out.println("Welcome to The UFTFAST Order Management System Application");
-
         Scanner sc = new Scanner(System.in);
-
         // Login
-
         OMSweb_Login.main(driver, sc);
-
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
-
         // 1. FIRST OPEN THE TRADE PAGE (Force navigation to guarantee Trade Portal opens)
-
         System.out.println("\n[UFTFAST OMS] 1. Opening Trade Page...");
-
         OMSweb_Trade.navigateToTradePage(driver, wait, true);
-
         // 2. THEN SELECT WIDGET COLOR LINK
-
         System.out.println("[UFTFAST OMS] 2. Configuring Widget Color Link...");
-
         OMSweb_Trade.runWidgetColorSelection(driver, sc);
-
         // 3. CONTINUOUS ACTIVE SESSION LOOP (NEVER TERMINATE, AUTO-CLOSE ALL POPUPS & MODALS)
         runSessionLoop(driver, sc);
     }
@@ -191,14 +160,10 @@ public class OMSwebmain {
 
     public static void runSessionLoop(WebDriver driver, Scanner sc) throws InterruptedException, IOException {
         boolean keepSessionAlive = true;
-
         while (keepSessionAlive) {
             closeAllBrowserPopupsAndModals(driver);
-
             displayMainMenu();
-
             String engChoice = "";
-
             if (isCi) {
                 // AUTOMATED DOCKER MODE: Automatically select and run action without waiting
                 String envAction = System.getenv("ACTION_CHOICE");
@@ -217,13 +182,11 @@ public class OMSwebmain {
                 System.out.printf("Enter Choice (1-8 to execute, 0=Exit, default=%s in 5s): ", defAction);
                 engChoice = readLineWithIdleWatchdog(driver, sc, defAction, 5);
             }
-
             if (!"0".equals(engChoice) && !"exit".equalsIgnoreCase(engChoice) && !"quit".equalsIgnoreCase(engChoice)) {
                 try {
                     OMSweb_Trade.ensureTradeSettingsRestored(driver);
                 } catch (Exception ignored) {}
             }
-
             if ("0".equals(engChoice) || "exit".equalsIgnoreCase(engChoice) || "quit".equalsIgnoreCase(engChoice)) {
                 System.out.println("\n[UFTFAST OMS] User requested exit. Browser detached. Goodbye!");
                 keepSessionAlive = false;
@@ -260,16 +223,13 @@ public class OMSwebmain {
                 System.out.printf("\n[INVALID SELECTION] '%s' is not recognized. Only your chosen action (1-8, or 0) will execute.%n", engChoice);
                 continue;
             }
-
             // Immediately close all modals/popups after execution to keep browser clean
             closeAllBrowserPopupsAndModals(driver);
-
             if (isCi) {
                 System.out.println("\n[AUTOMATION: DONE] Automated container/CI execution finished successfully. Exiting cleanly.");
                 keepSessionAlive = false;
                 break;
             }
-
             System.out.println("\n=============================================================================");
             System.out.println(" [ACTION FINISHED] Completed successfully. Session is ACTIVE in browser.");
             System.out.println(" Selection menu will now reappear below for your further action.");
@@ -300,7 +260,6 @@ public class OMSwebmain {
         if (sc == null) return "";
         long timeoutMs = idleSeconds * 1000L;
         long idleStart = System.currentTimeMillis();
-
         // Ensure watchdog is installed in browser
         try {
             if (driver != null) {
@@ -338,7 +297,6 @@ public class OMSwebmain {
                 );
             }
         } catch (Exception ignored) {}
-
         while (true) {
             try {
                 if (System.in.available() > 0) {
@@ -348,7 +306,6 @@ public class OMSwebmain {
                     }
                 }
             } catch (Exception ignored) {}
-
             // 1. Check if browser idle modal appeared
             try {
                 if (driver != null) {
@@ -379,7 +336,6 @@ public class OMSwebmain {
                     }
                 }
             } catch (Exception ignored) {}
-
             // 2. Check if idle timeout reached (e.g. 5 minutes)
             if (driver != null && System.currentTimeMillis() - idleStart >= timeoutMs) {
                 System.out.printf("%n[IDLE %d-MIN WATCHDOG] %d minutes (%ds) idle without input. Reloading page and restoring session...%n", (idleSeconds / 60), (idleSeconds / 60), idleSeconds);
@@ -395,7 +351,6 @@ public class OMSwebmain {
                 System.out.println("\n[IDLE WATCHDOG] Page reloaded & UI state restored. You are at the Main Menu.");
                 System.out.print("Enter Choice (1-8 to execute, 0=Exit): ");
             }
-
             try { Thread.sleep(200); } catch (Exception ignored) {}
         }
     }

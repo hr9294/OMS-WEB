@@ -7,7 +7,7 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 
 /**
  * OMSweb_DashboardAudit
- * 
+ *
  * Comprehensive 12-Model Dashboard Reflection & Verification Suite:
  * 1. TURNOVER (BDT)
  * 2. BUY VALUE (BDT)
@@ -21,7 +21,7 @@ import org.openqa.selenium.support.ui.WebDriverWait;
  * 10. EXCHANGE CONTRIBUTION (BDT)
  * 11. TOP DEALERS & TOP ASSOCIATES
  * 12. MOST TRADED CLIENTS
- * 
+ *
  * Features:
  * - Pre-Trade (Baseline) Snapshot Capture
  * - Live Trade Execution (Buy/Sell)
@@ -33,7 +33,6 @@ import org.openqa.selenium.support.ui.WebDriverWait;
  */
 @SuppressWarnings("unchecked")
 public class OMSweb_DashboardAudit {
-
     public static class TurnoverModel {
         public String bigValue = "0";
         public String currency = "BDT";
@@ -223,10 +222,8 @@ public class OMSweb_DashboardAudit {
         snap.label = label;
         snap.timestamp = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
         if (driver == null) return snap;
-
         navigateToDashboard(driver);
         waitForDashboardReady(driver, 10);
-
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
             Map<String, Object> raw = (Map<String, Object>) js.executeScript(
@@ -263,7 +260,6 @@ public class OMSweb_DashboardAudit {
                 "res.mostTradedClients = extractCardBasic('MOST TRADED CLIENTS');\n" +
                 "return res;\n"
             );
-
             if (raw != null) {
                 parseTurnoverCard((Map<String, Object>) raw.get("turnover"), snap.turnover);
                 parseBuyValueCard((Map<String, Object>) raw.get("buyValue"), snap.buyValue);
@@ -278,7 +274,6 @@ public class OMSweb_DashboardAudit {
                 parseDealersCard((Map<String, Object>) raw.get("topDealers"), snap.topDealers);
                 parseClientsCard((Map<String, Object>) raw.get("mostTradedClients"), snap.mostTradedClients);
             }
-
             // Extract Top Associates Tab
             try {
                 js.executeScript(
@@ -307,11 +302,9 @@ public class OMSweb_DashboardAudit {
                     "if (btn) btn.click();\n"
                 );
             } catch (Exception ignored) {}
-
         } catch (Exception e) {
             System.out.println("[WARN: captureSnapshot] " + e.getMessage());
         }
-
         return snap;
     }
 
@@ -495,7 +488,6 @@ public class OMSweb_DashboardAudit {
         if (raw == null) return;
         String txt = (String) raw.get("rawText");
         if (txt == null) return;
-
         Matcher mTotal = Pattern.compile("([0-9,]+)\\s*/\\s*([0-9,]+)\\s*Users online", Pattern.CASE_INSENSITIVE).matcher(txt);
         if (mTotal.find()) {
             m.usersOnline = (int) parseNumSafe(mTotal.group(1));
@@ -503,7 +495,6 @@ public class OMSweb_DashboardAudit {
             m.usersOffline = Math.max(0, m.usersTotal - m.usersOnline);
             m.usersOnlineText = mTotal.group(1) + " / " + mTotal.group(2);
         }
-
         Matcher mDealers = Pattern.compile("Dealers\\s*\\n?\\s*([0-9,]+)\\s*/\\s*([0-9,]+)", Pattern.CASE_INSENSITIVE).matcher(txt);
         if (mDealers.find()) {
             m.dealersOnline = (int) parseNumSafe(mDealers.group(1));
@@ -511,7 +502,6 @@ public class OMSweb_DashboardAudit {
             m.dealersOffline = Math.max(0, m.dealersTotal - m.dealersOnline);
             m.dealersText = mDealers.group(1) + " / " + mDealers.group(2);
         }
-
         Matcher mClients = Pattern.compile("Clients\\s*\\n?\\s*([0-9,]+)\\s*/\\s*([0-9,]+)", Pattern.CASE_INSENSITIVE).matcher(txt);
         if (mClients.find()) {
             m.clientsOnline = (int) parseNumSafe(mClients.group(1));
@@ -519,7 +509,6 @@ public class OMSweb_DashboardAudit {
             m.clientsOffline = Math.max(0, m.clientsTotal - m.clientsOnline);
             m.clientsText = mClients.group(1) + " / " + mClients.group(2);
         }
-
         Matcher mAssociates = Pattern.compile("Associates\\s*\\n?\\s*([0-9,]+)\\s*/\\s*([0-9,]+)", Pattern.CASE_INSENSITIVE).matcher(txt);
         if (mAssociates.find()) {
             m.associatesOnline = (int) parseNumSafe(mAssociates.group(1));
@@ -527,13 +516,10 @@ public class OMSweb_DashboardAudit {
             m.associatesOffline = Math.max(0, m.associatesTotal - m.associatesOnline);
             m.associatesText = mAssociates.group(1) + " / " + mAssociates.group(2);
         }
-
         Matcher mDesk = Pattern.compile("([0-9,]+)\\s*\\n?\\s*Desktop", Pattern.CASE_INSENSITIVE).matcher(txt);
         if (mDesk.find()) m.desktopSessions = mDesk.group(1);
-
         Matcher mMob = Pattern.compile("([0-9,]+)\\s*\\n?\\s*Mobile", Pattern.CASE_INSENSITIVE).matcher(txt);
         if (mMob.find()) m.mobileSessions = mMob.group(1);
-
         Matcher mSess = Pattern.compile("([0-9,]+)\\s*\\n?\\s*Sessions", Pattern.CASE_INSENSITIVE).matcher(txt);
         if (mSess.find()) m.totalSessions = mSess.group(1);
     }
@@ -593,7 +579,6 @@ public class OMSweb_DashboardAudit {
         System.out.println("\n========================================================================================================================");
         System.out.printf("                    OMS-WEB DASHBOARD 12-MODEL AUDIT REPORT: %s (%s)%n", s.label, s.timestamp);
         System.out.println("========================================================================================================================");
-
         // 1. Turnover
         System.out.println("\n[MODEL 1: TURNOVER (BDT)]");
         System.out.printf("  * Total Turnover Value : %s BDT (%s)%n", s.turnover.bigValue, s.turnover.subtext);
@@ -604,7 +589,6 @@ public class OMSweb_DashboardAudit {
         System.out.printf("  | Yesterday         | %-20s | %-20s |%n", s.turnover.dseYesterday, s.turnover.cseYesterday);
         System.out.printf("  | Change            | %-20s | %-20s |%n", s.turnover.dseChange, s.turnover.cseChange);
         System.out.println("  +-------------------+----------------------+----------------------+");
-
         // 2. Buy Value
         System.out.println("\n[MODEL 2: BUY VALUE (BDT)]");
         System.out.printf("  * Total Buy Value      : %s BDT%n", s.buyValue.bigValue);
@@ -615,7 +599,6 @@ public class OMSweb_DashboardAudit {
         System.out.printf("  | Yesterday         | %-20s | %-20s |%n", s.buyValue.dseYesterday, s.buyValue.cseYesterday);
         System.out.printf("  | Change            | %-20s | %-20s |%n", s.buyValue.dseChange, s.buyValue.cseChange);
         System.out.println("  +-------------------+----------------------+----------------------+");
-
         // 3. Sell Value
         System.out.println("\n[MODEL 3: SELL VALUE (BDT)]");
         System.out.printf("  * Total Sell Value     : %s BDT%n", s.sellValue.bigValue);
@@ -626,7 +609,6 @@ public class OMSweb_DashboardAudit {
         System.out.printf("  | Yesterday         | %-20s | %-20s |%n", s.sellValue.dseYesterday, s.sellValue.cseYesterday);
         System.out.printf("  | Change            | %-20s | %-20s |%n", s.sellValue.dseChange, s.sellValue.cseChange);
         System.out.println("  +-------------------+----------------------+----------------------+");
-
         // 4. Broker Limit
         System.out.println("\n[MODEL 4: BROKER LIMIT (BDT)]");
         System.out.println("  +-------------------+----------------------+----------------------+");
@@ -637,7 +619,6 @@ public class OMSweb_DashboardAudit {
         System.out.printf("  | Remaining Limit   | %-20s | %-20s |%n", s.brokerLimit.dseRemaining, s.brokerLimit.cseRemaining);
         System.out.printf("  | Utilisation       | %-20s | %-20s |%n", s.brokerLimit.dseUtilisation, s.brokerLimit.cseUtilisation);
         System.out.println("  +-------------------+----------------------+----------------------+");
-
         // 5. Trades Count
         System.out.println("\n[MODEL 5: TRADES (Count)]");
         System.out.printf("  * Total Executed Trades: %s Trades%n", s.trades.bigCount);
@@ -648,7 +629,6 @@ public class OMSweb_DashboardAudit {
         System.out.printf("  | Yesterday         | %-20s | %-20s |%n", s.trades.dseYesterday, s.trades.cseYesterday);
         System.out.printf("  | Change            | %-20s | %-20s |%n", s.trades.dseChange, s.trades.cseChange);
         System.out.println("  +-------------------+----------------------+----------------------+");
-
         // 6. Buy Trades Count
         System.out.println("\n[MODEL 6: BUY TRADES (Count)]");
         System.out.printf("  * Total Buy Trades     : %s Trades%n", s.buyTrades.bigCount);
@@ -659,7 +639,6 @@ public class OMSweb_DashboardAudit {
         System.out.printf("  | Yesterday         | %-20s | %-20s |%n", s.buyTrades.dseYesterday, s.buyTrades.cseYesterday);
         System.out.printf("  | Change            | %-20s | %-20s |%n", s.buyTrades.dseChange, s.buyTrades.cseChange);
         System.out.println("  +-------------------+----------------------+----------------------+");
-
         // 7. Sell Trades Count
         System.out.println("\n[MODEL 7: SELL TRADES (Count)]");
         System.out.printf("  * Total Sell Trades    : %s Trades%n", s.sellTrades.bigCount);
@@ -670,7 +649,6 @@ public class OMSweb_DashboardAudit {
         System.out.printf("  | Yesterday         | %-20s | %-20s |%n", s.sellTrades.dseYesterday, s.sellTrades.cseYesterday);
         System.out.printf("  | Change            | %-20s | %-20s |%n", s.sellTrades.dseChange, s.sellTrades.cseChange);
         System.out.println("  +-------------------+----------------------+----------------------+");
-
         // 8. Most Traded Stocks
         System.out.println("\n[MODEL 8: MOST TRADED STOCKS]");
         if (s.mostTradedStocks.isEmpty()) {
@@ -684,7 +662,6 @@ public class OMSweb_DashboardAudit {
             }
             System.out.println("  +-------------------+----------------------+----------------------+");
         }
-
         // 9. Active Users (Active vs Inactive)
         System.out.println("\n[MODEL 9: ACTIVE & INACTIVE USERS]");
         System.out.printf("  * Total Online Users : %s (%d Active / %d Inactive - %.2f%% Inactive)%n",
@@ -699,7 +676,6 @@ public class OMSweb_DashboardAudit {
         System.out.println("  +-------------------+----------------------+----------------------+----------------------+");
         System.out.printf("  * Live Sessions     : %s Desktop | %s Mobile | %s Total Sessions%n",
                 s.activeUsers.desktopSessions, s.activeUsers.mobileSessions, s.activeUsers.totalSessions);
-
         // 10. Exchange Contribution
         System.out.println("\n[MODEL 10: EXCHANGE CONTRIBUTION (BDT)]");
         System.out.println("  +-------------------+----------------------+----------------------+----------------------+");
@@ -709,7 +685,6 @@ public class OMSweb_DashboardAudit {
             System.out.printf("  | %-17s | %-20s | %-20s | %-20s |%n", er.exch, er.market, er.oms, er.share);
         }
         System.out.println("  +-------------------+----------------------+----------------------+----------------------+");
-
         // 11. Top Dealers & Top Associates
         System.out.println("\n[MODEL 11: TOP DEALERS & TOP ASSOCIATES]");
         System.out.println("  -- TOP DEALERS TAB --");
@@ -734,7 +709,6 @@ public class OMSweb_DashboardAudit {
             }
             System.out.println("  +---------------------------------------+----------------------+");
         }
-
         // 12. Most Traded Clients
         System.out.println("\n[MODEL 12: MOST TRADED CLIENTS]");
         if (s.mostTradedClients.isEmpty()) System.out.println("  (No client trade records)");
@@ -758,43 +732,34 @@ public class OMSweb_DashboardAudit {
         System.out.printf("          DASHBOARD REFLECTION COMPARISON AUDIT: %s%n", title);
         System.out.printf("          [PRE: %s (%s)]  ==>  [POST: %s (%s)]%n", pre.label, pre.timestamp, post.label, post.timestamp);
         System.out.println("========================================================================================================================");
-
         System.out.println("+---------------------------------+--------------------+--------------------+--------+------------------------------------+");
         System.out.printf("| %-31s | %-18s | %-18s | %-6s | %-34s |%n", "MODEL & PARAMETER", "PRE-ACTION (UI)", "POST-ACTION (UI)", "Result", "Remarks");
         System.out.println("+---------------------------------+--------------------+--------------------+--------+------------------------------------+");
-
         // Turnover
         printDiffRow("1. Turnover (Total)", pre.turnover.bigValue, post.turnover.bigValue, false);
         printDiffRow("1. Turnover (DSE Today)", pre.turnover.dseToday, post.turnover.dseToday, false);
         printDiffRow("1. Turnover (CSE Today)", pre.turnover.cseToday, post.turnover.cseToday, false);
-
         // Buy Value
         printDiffRow("2. Buy Value (Total)", pre.buyValue.bigValue, post.buyValue.bigValue, false);
         printDiffRow("2. Buy Value (DSE Today)", pre.buyValue.dseToday, post.buyValue.dseToday, false);
-
         // Sell Value
         printDiffRow("3. Sell Value (Total)", pre.sellValue.bigValue, post.sellValue.bigValue, false);
         printDiffRow("3. Sell Value (DSE Today)", pre.sellValue.dseToday, post.sellValue.dseToday, false);
-
         // Broker Limit
         printDiffRow("4. Broker Limit Used (DSE)", pre.brokerLimit.dseUsed, post.brokerLimit.dseUsed, false);
         printDiffRow("4. Broker Limit Remaining", pre.brokerLimit.dseRemaining, post.brokerLimit.dseRemaining, false);
         printDiffRow("4. Broker Limit Utilisation", pre.brokerLimit.dseUtilisation, post.brokerLimit.dseUtilisation, true);
-
         // Trades
         printDiffRow("5. Total Trades Count", pre.trades.bigCount, post.trades.bigCount, false);
         printDiffRow("6. Buy Trades Count", pre.buyTrades.bigCount, post.buyTrades.bigCount, false);
         printDiffRow("7. Sell Trades Count", pre.sellTrades.bigCount, post.sellTrades.bigCount, false);
-
         // Active Users
         printDiffRow("9. Active Users (Online)", pre.activeUsers.usersOnlineText, post.activeUsers.usersOnlineText, true);
         printDiffRow("9. Dealers Online", pre.activeUsers.dealersText, post.activeUsers.dealersText, true);
         printDiffRow("9. Clients Online", pre.activeUsers.clientsText, post.activeUsers.clientsText, true);
         printDiffRow("9. Associates Online", pre.activeUsers.associatesText, post.activeUsers.associatesText, true);
         printDiffRow("9. Total Live Sessions", pre.activeUsers.totalSessions, post.activeUsers.totalSessions, false);
-
         System.out.println("+---------------------------------+--------------------+--------------------+--------+------------------------------------+");
-
         // Mathematical Consistency Check
         System.out.println("\n>>> [MATHEMATICAL REFLECTION AUDIT VERIFICATIONS]");
         double toVal = parseNumSafe(post.turnover.bigValue);
@@ -803,28 +768,24 @@ public class OMSweb_DashboardAudit {
         boolean mathValOk = Math.abs(toVal - (bvVal + svVal)) < 0.01;
         System.out.printf("  [CHECK 1] Turnover == Buy Value + Sell Value: %s (Turnover: %,.2f, Buy+Sell: %,.2f)%n",
                 mathValOk ? "✓ PASS (PERFECT)" : "✗ MISMATCH", toVal, bvVal + svVal);
-
         double trCount = parseNumSafe(post.trades.bigCount);
         double btCount = parseNumSafe(post.buyTrades.bigCount);
         double stCount = parseNumSafe(post.sellTrades.bigCount);
         boolean mathTrOk = Math.abs(trCount - (btCount + stCount)) < 0.01;
         System.out.printf("  [CHECK 2] Total Trades == Buy Trades + Sell Trades: %s (Total: %,.0f, Buy+Sell: %,.0f)%n",
                 mathTrOk ? "✓ PASS (PERFECT)" : "✗ MISMATCH", trCount, btCount + stCount);
-
         double blTotal = parseNumSafe(post.brokerLimit.dseTotal);
         double blUsed = parseNumSafe(post.brokerLimit.dseUsed);
         double blRem = parseNumSafe(post.brokerLimit.dseRemaining);
         boolean mathBlOk = Math.abs((blTotal - blUsed) - blRem) < 0.01;
         System.out.printf("  [CHECK 3] Broker Limit: Total - Used == Remaining: %s (Total-Used: %,.2f, Remaining: %,.2f)%n",
                 mathBlOk ? "✓ PASS (PERFECT)" : "✗ MISMATCH", blTotal - blUsed, blRem);
-
         int uTot = post.activeUsers.usersTotal;
         int uOn = post.activeUsers.usersOnline;
         int uOff = post.activeUsers.usersOffline;
         boolean mathUserOk = (uOn + uOff == uTot);
         System.out.printf("  [CHECK 4] Active Users: Online + Offline == Registered Total: %s (%d + %d == %d)%n",
                 mathUserOk ? "✓ PASS (PERFECT)" : "✗ MISMATCH", uOn, uOff, uTot);
-
         System.out.println("========================================================================================================================\n");
     }
 
@@ -833,7 +794,6 @@ public class OMSweb_DashboardAudit {
         String c = (curr == null || curr.trim().isEmpty()) ? "-" : curr.trim();
         String result = "PASS";
         String remarks = "In Sync";
-
         if (!isText && !p.equals("-") && !c.equals("-")) {
             double dP = parseNumSafe(p);
             double dC = parseNumSafe(c);
@@ -857,11 +817,9 @@ public class OMSweb_DashboardAudit {
                 remarks = "Updated: " + p + " -> " + c;
             }
         }
-
         if (p.length() > 18) p = p.substring(0, 15) + "...";
         if (c.length() > 18) c = c.substring(0, 15) + "...";
         if (remarks.length() > 34) remarks = remarks.substring(0, 31) + "...";
-
         System.out.printf("| %-31s | %-18s | %-18s | %-6s | %-34s |%n", param, p, c, result, remarks);
     }
 
@@ -877,12 +835,10 @@ public class OMSweb_DashboardAudit {
         System.out.println("\n==========================================================================================");
         System.out.println("       OMS-WEB: REAL-TIME 12-MODEL DASHBOARD DATA REFLECTION & AUDIT SUITE");
         System.out.println("==========================================================================================");
-
         // 1. Pre-Action Snapshot
         System.out.println("\n[PHASE 1/4] Collecting Baseline (Previous) Dashboard Data across all 12 models...");
         DashboardSnapshot preSnap = captureSnapshot(driver, "PRE-ACTION BASELINE");
         displayModelWiseDashboard(preSnap);
-
         // 2. Perform Trade if requested
         boolean doTrade = true;
         if (sc != null && !OMSwebmain.isCi) {
@@ -892,7 +848,6 @@ public class OMSweb_DashboardAudit {
                 doTrade = false;
             }
         }
-
         if (doTrade) {
             System.out.println("\n[PHASE 2/4] Executing Live Order on Trade Portal...");
             String targetSymbol = OMSweb_Trade.activeSymbol != null ? OMSweb_Trade.activeSymbol : "GP";
@@ -911,7 +866,6 @@ public class OMSweb_DashboardAudit {
             } catch (Exception e) {
                 System.out.println("  -> Trade encounter: " + e.getMessage());
             }
-
             // User requirement: after trade happen check order terminal to any latest order exits or not if not no need to take snapshot and compare the data
             boolean hasLatestOrder = OMSweb_Trade.hasLatestOrderInTerminal(driver, targetClient, targetSymbol);
             if (!hasLatestOrder) {
@@ -921,14 +875,12 @@ public class OMSweb_DashboardAudit {
         } else {
             System.out.println("\n[PHASE 2/4] Skipped trade execution by user request.");
         }
-
         // 3. Post-Action Snapshot
         System.out.println("\n[PHASE 3/4] Collecting Post-Action Dashboard Data across all 12 models...");
         navigateToDashboard(driver);
         waitForDashboardReady(driver, 10);
         DashboardSnapshot postSnap = captureSnapshot(driver, "POST-ACTION RECOVERY");
         displayModelWiseDashboard(postSnap);
-
         // 4. Comparison & Reflection Report
         System.out.println("\n[PHASE 4/4] Comparing Previous vs Post-Action Snapshots & Auditing Reflection...");
         compareAndReportSnapshots(preSnap, postSnap, "12-MODEL LIVE DASHBOARD VERIFICATION");
@@ -957,5 +909,4 @@ public class OMSweb_DashboardAudit {
             e.printStackTrace();
         }
     }
-
 }

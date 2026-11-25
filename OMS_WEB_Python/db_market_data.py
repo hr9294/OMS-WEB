@@ -67,8 +67,6 @@ _CSE_LTP_CACHE: Dict[str, Dict[str, Any]] = {}
 _DSE_BBO_CACHE: Dict[str, Dict[str, Any]] = {}
 _CSE_BBO_CACHE: Dict[str, Dict[str, Any]] = {}
 
-
-
 # Circuit Breaker & Fast Connectivity Monitor
 _LAST_DB_FAILURE_TIME = 0.0
 _DB_COOLDOWN_SEC = 60.0
@@ -112,17 +110,14 @@ def get_db_connection():
     """
     if is_db_circuit_open():
         raise ConnectionError("DB Circuit open (cooldown active)")
-
     import psycopg2
     errors = []
     any_reachable = False
-
     for ep in DB_ENDPOINTS:
         label = ep["label"]
         uri = ep["uri"]
         host = ep["host"]
         port = ep["port"]
-
         if not is_host_reachable(host, port, 0.15):
             continue
         any_reachable = True
@@ -132,7 +127,6 @@ def get_db_connection():
             raw_uri = "postgresql://" + uri[len("postgresql+psycopg2://"):]
         else:
             raw_uri = uri
-
         try:
             conn = psycopg2.connect(raw_uri, connect_timeout=DB_CONFIG.get("timeout", 2))
             record_db_success()
@@ -152,11 +146,9 @@ def get_db_connection():
                 return conn
             except Exception as e2:
                 errors.append(f"{label} fallback params: {e2}")
-
     if not any_reachable:
         record_db_failure()
     raise ConnectionError(f"Failed to connect to DBs: {'; '.join(errors) if errors else 'hosts unreachable'}")
-
 
 def is_strictly_public_equity(symbol: str, company_name: str = "", sector: str = "", symbol_instr: str = "") -> bool:
     """
@@ -186,9 +178,7 @@ def is_strictly_public_equity(symbol: str, company_name: str = "", sector: str =
     instr_upper = (symbol_instr or "").upper()
     if instr_upper in ["OPT", "FUT", "MLEG", "TBILL", "TBOND", "CORP", "GOVDBT", "CORPDBT", "TB", "CB", "DB"]:
         return False
-
     return True
-
 
 # =========================================================================
 # 1. LTP & STATISTICS: dse_md_ltp / cse_md_ltp
@@ -201,7 +191,6 @@ def fetch_ltp_from_db(exchange: str = "DSE", symbol: Optional[str] = None) -> Di
     results: Dict[str, Dict[str, Any]] = {}
     ex_clean = (exchange or "DSE").strip().upper()
     target_cache = _CSE_LTP_CACHE if ex_clean == "CSE" else _DSE_LTP_CACHE
-
     if is_db_circuit_open():
         cached = load_public_board_cache(CACHE_FILE)
         if cached:
@@ -212,7 +201,6 @@ def fetch_ltp_from_db(exchange: str = "DSE", symbol: Optional[str] = None) -> Di
                 if (not symbol or k == symbol.strip().upper()) and is_strictly_public_equity(k, v.get("company_name", ""), v.get("sector", ""), v.get("symbol_instr", ""))
             }
         return results
-
     if target_cache:
         if symbol:
             s_clean = symbol.strip().upper()
@@ -220,12 +208,9 @@ def fetch_ltp_from_db(exchange: str = "DSE", symbol: Optional[str] = None) -> Di
                 return {s_clean: target_cache[s_clean]}
         else:
             return dict(target_cache)
-
     table_ltp = "cse_md_ltp" if ex_clean == "CSE" else "dse_md_ltp"
     table_sym = "cse_md_symbols" if ex_clean == "CSE" else "dse_md_symbols"
-
     sym_filter = f"AND l.symbol = '{symbol.strip().upper()}'" if symbol else ""
-
     query = f"""
         SELECT
             l.symbol,
@@ -274,7 +259,6 @@ def fetch_ltp_from_db(exchange: str = "DSE", symbol: Optional[str] = None) -> Di
             sinstr = str(r[14] or "").strip()
             if not is_strictly_public_equity(sym, cname, sec, sinstr):
                 continue
-
             results[sym] = {
                 "symbol": sym,
                 "company_name": cname,
@@ -311,7 +295,6 @@ def fetch_ltp_from_db(exchange: str = "DSE", symbol: Optional[str] = None) -> Di
         }
     return results
 
-
 def collect_ltp(exchange: str = "DSE") -> Dict[str, Dict[str, Any]]:
     """
     Explicitly triggers real-time LTP collection from PostgreSQL database (marketdb)
@@ -327,7 +310,6 @@ def collect_ltp(exchange: str = "DSE") -> Dict[str, Dict[str, Any]]:
     print(f"[SUCCESS: DB LTP] Collected {len(ltp_map)} Public Board symbols from {DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['dbname']} ({ex_clean})")
     return ltp_map
 
-
 # =========================================================================
 # 2. BID/ASK PRICE (BBO): dse_md_bbo / cse_md_bbo
 # =========================================================================
@@ -342,9 +324,7 @@ def fetch_bbo_from_db(exchange: str = "DSE", symbol: Optional[str] = None) -> Di
     ex_clean = (exchange or "DSE").strip().upper()
     table_bbo = "cse_md_bbo" if ex_clean == "CSE" else "dse_md_bbo"
     table_sym = "cse_md_symbols" if ex_clean == "CSE" else "dse_md_symbols"
-
     sym_filter = f"AND b.symbol = '{symbol.strip().upper()}'" if symbol else ""
-
     query = f"""
         SELECT
             b.symbol,
@@ -386,7 +366,6 @@ def fetch_bbo_from_db(exchange: str = "DSE", symbol: Optional[str] = None) -> Di
             sinstr = str(r[9] or "").strip()
             if not is_strictly_public_equity(sym, cname, sec, sinstr):
                 continue
-
             results[sym] = {
                 "symbol": sym,
                 "board": "PUBLIC",
@@ -403,7 +382,6 @@ def fetch_bbo_from_db(exchange: str = "DSE", symbol: Optional[str] = None) -> Di
         print(f"[WARN: DB BBO] {e}")
         return results
 
-
 # =========================================================================
 # 3. MARKET DEPTH: dse_md_mktdepth / cse_md_mktdepth
 # =========================================================================
@@ -418,9 +396,7 @@ def fetch_mktdepth_from_db(exchange: str = "DSE", symbol: Optional[str] = None) 
     ex_clean = (exchange or "DSE").strip().upper()
     table_depth = "cse_md_mktdepth" if ex_clean == "CSE" else "dse_md_mktdepth"
     table_sym = "cse_md_symbols" if ex_clean == "CSE" else "dse_md_symbols"
-
     sym_filter = f"AND m.symbol = '{symbol.strip().upper()}'" if symbol else ""
-
     query = f"""
         SELECT
             m.symbol,
@@ -462,10 +438,8 @@ def fetch_mktdepth_from_db(exchange: str = "DSE", symbol: Optional[str] = None) 
             cname = str(r[5] or sym).strip()
             sec = str(r[6] or "").strip()
             sinstr = str(r[7] or "").strip()
-
             if not is_strictly_public_equity(sym, cname, sec, sinstr):
                 continue
-
             factor = 10.0 ** dec
             bid_parsed = []
             ask_parsed = []
@@ -505,7 +479,6 @@ def fetch_mktdepth_from_db(exchange: str = "DSE", symbol: Optional[str] = None) 
                         })
                 except Exception:
                     pass
-
             results[sym] = {
                 "symbol": sym,
                 "board": "PUBLIC",
@@ -519,7 +492,6 @@ def fetch_mktdepth_from_db(exchange: str = "DSE", symbol: Optional[str] = None) 
     except Exception as e:
         print(f"[WARN: DB Depth] {e}")
         return results
-
 
 # =========================================================================
 # 4. UNIFIED COMPLETE MARKET SNAPSHOT
@@ -565,7 +537,6 @@ def fetch_complete_market_depth(symbol: str, exchange: str = "DSE") -> Dict[str,
     if depth_data:
         bid_lvls = depth_data.get("bid_levels", [])
         ask_lvls = depth_data.get("ask_levels", [])
-
         for i in range(1, 6):
             if i <= len(bid_lvls):
                 bl = bid_lvls[i - 1]
@@ -576,7 +547,6 @@ def fetch_complete_market_depth(symbol: str, exchange: str = "DSE") -> Dict[str,
                 data[f"Bid_L{i}_Price"] = "-"
                 data[f"Bid_L{i}_Qty"] = "-"
                 data[f"Bid_L{i}_Ordr"] = "-"
-
             if i <= len(ask_lvls):
                 al = ask_lvls[i - 1]
                 data[f"Ask_L{i}_Price"] = f"{al['price']:.2f}"
@@ -586,19 +556,15 @@ def fetch_complete_market_depth(symbol: str, exchange: str = "DSE") -> Dict[str,
                 data[f"Ask_L{i}_Price"] = "-"
                 data[f"Ask_L{i}_Qty"] = "-"
                 data[f"Ask_L{i}_Ordr"] = "-"
-
     return data
-
 
 # Backward-compatible helper aliases
 fetch_public_board_from_db = fetch_ltp_from_db
-
 
 def get_public_symbols_list(exchange: str = "DSE") -> List[str]:
     """Returns sorted list of all public board symbols available in the database."""
     data = fetch_ltp_from_db(exchange)
     return sorted(list(data.keys()))
-
 
 def get_public_symbol_ltp(symbol: str, exchange: str = "DSE") -> Optional[float]:
     """Returns the live LTP for a given public board symbol, or None if not found."""
@@ -616,7 +582,6 @@ def get_public_symbol_ltp(symbol: str, exchange: str = "DSE") -> Optional[float]
         return data[sym_clean].get("ltp")
     return None
 
-
 def get_public_symbol_bbo(symbol: str, exchange: str = "DSE") -> Dict[str, float]:
     """Returns Best Bid & Ask prices for a given public board symbol."""
     sym_clean = symbol.strip().upper()
@@ -628,7 +593,6 @@ def get_public_symbol_bbo(symbol: str, exchange: str = "DSE") -> Dict[str, float
         "ask_qty": bbo.get("ask_qty", 0),
     }
 
-
 def save_public_board_cache(data: Dict[str, Dict[str, Any]], path: str) -> None:
     """Saves the collected market data dictionary to a JSON cache file."""
     try:
@@ -637,7 +601,6 @@ def save_public_board_cache(data: Dict[str, Dict[str, Any]], path: str) -> None:
             json.dump(data, f, indent=2)
     except Exception as e:
         print(f"[WARN: save_public_board_cache] {e}")
-
 
 def load_public_board_cache(path: str) -> Dict[str, Dict[str, Any]]:
     """Loads cached public board data from disk."""
@@ -649,13 +612,11 @@ def load_public_board_cache(path: str) -> Dict[str, Dict[str, Any]]:
             pass
     return {}
 
-
 def print_public_board_summary(exchange: str = "DSE", limit: int = 30) -> None:
     """Prints a comprehensive summary table combining LTP (ltp), BBO (bbo), and Depth queues (mktdepth)."""
     ex = exchange.upper()
     ltp_map = fetch_ltp_from_db(ex)
     bbo_map = fetch_bbo_from_db(ex)
-
     print("\n" + "=" * 115)
     print(f"  DATABASE TABLES: {ex} ONLY PUBLIC BOARD MARKET DATA (board = 'PUBLIC')")
     print(f"    - LTP:        {ex.lower()}_md_ltp")
@@ -667,7 +628,6 @@ def print_public_board_summary(exchange: str = "DSE", limit: int = 30) -> None:
     header = f"{'#':<4} | {'Symbol':<12} | {'Company Name':<26} | {'LTP (BDT)':>10} | {'Best Bid (Qty)':>18} | {'Best Ask (Qty)':>18} | {'SH/SL Bounds':>15}"
     print(header)
     print("-" * 115)
-
     symbols = sorted(list(ltp_map.keys()))
     for idx, sym in enumerate(symbols[:limit], 1):
         l_item = ltp_map[sym]
@@ -678,17 +638,13 @@ def print_public_board_summary(exchange: str = "DSE", limit: int = 30) -> None:
         ltp_val = l_item.get("ltp", 0.0)
         up_val = l_item.get("circuit_up", 0.0)
         down_val = l_item.get("circuit_down", 0.0)
-
         bid_str = f"{b_item.get('bid_price', 0.0):.2f} ({b_item.get('bid_qty', 0)})" if b_item.get("bid_price", 0.0) > 0 else "-"
         ask_str = f"{b_item.get('ask_price', 0.0):.2f} ({b_item.get('ask_qty', 0)})" if b_item.get("ask_price", 0.0) > 0 else "-"
         bounds_str = f"{up_val:.1f} / {down_val:.1f}"
-
         print(f"{idx:<4} | {sym:<12} | {cname:<26} | {ltp_val:>10.2f} | {bid_str:>18} | {ask_str:>18} | {bounds_str:>15}")
-
     if len(symbols) > limit:
         print(f"... and {len(symbols) - limit} more Public Board symbols collected from DB tables.")
     print("=" * 115 + "\n")
-
 
 if __name__ == "__main__":
     first_arg = sys.argv[1].strip() if len(sys.argv) > 1 else "DSE"

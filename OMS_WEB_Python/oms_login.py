@@ -9,9 +9,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-
 from config import BASE_URL, DEFAULT_USERNAME, DEFAULT_PASSWORD
-
 
 def press_ok_automatically(driver: webdriver.Chrome) -> None:
     """Dismisses browser alerts, breach popups, or web modal OK buttons automatically."""
@@ -52,7 +50,6 @@ def press_ok_automatically(driver: webdriver.Chrome) -> None:
     except Exception:
         pass
 
-
 def login(
     driver: webdriver.Chrome,
     username: Optional[str] = None,
@@ -64,18 +61,15 @@ def login(
     """
     usr = username or DEFAULT_USERNAME
     pwd = password or DEFAULT_PASSWORD
-
     print(f"\n[LOGIN] Navigating to {BASE_URL}...")
     driver.get(BASE_URL)
     time.sleep(1.0)
-
     try:
         driver.execute_script(
             "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
         )
     except Exception:
         pass
-
     wait = WebDriverWait(driver, 10)
 
     # Fill username
@@ -138,6 +132,5 @@ def login(
     except Exception:
         pass
     time.sleep(1.0)
-
     print("✔ [LOGIN] Authentication successful. Logged in as: " + usr)
     return True

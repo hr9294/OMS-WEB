@@ -26,16 +26,13 @@ public class Account_Limits {
     // =========================================================================
     private static final String API_URL_TEMPLATE = "https://omsapi.quantbd.com/portfolio/account-limit/%s?exchange=%s";
     private static final String[] EXCHANGES = {"DSE", "CSE"};
-
     // Navigation Tabs
     private static final By TRADE_TAB = By.xpath(
             "//div[contains(@class,'lm_tab') and (contains(.,'Trade') or @title='Trade')] | " +
             "//li[contains(@class,'lm_tab') and (.//span[contains(text(),'Trade')] or contains(.,'Trade') or @title='Trade')]");
-
     // Filter Bar
     private static final By INPUT_CLIENT_FILTER = By.xpath("//input[@id='account_limit_code' or contains(@name,'account_limit_code') or contains(@id,'limit_client_code')] | //div[contains(@class,'account-limit')]//input[1]");
     private static final By REFRESH_BTN         = By.xpath("//div[contains(@class,'account-limit')]//i[contains(@class,'refresh')] | //button[contains(@id,'refresh')]");
-
     // Tables in Account Limits
     private static final By CASH_TABLE          = By.xpath("//table[@id='account_cash_summary'] | //table[thead//th[contains(.,'Remaining Cash') or contains(.,'Initial Limit')]] | //div[contains(@class,'account-limit')]//table[1]");
     private static final By CAPITAL_TABLE       = By.xpath("//table[@id='account_limit_summary'] | //table[thead//th[contains(.,'Exec Value') or contains(.,'Day Order')]] | //div[contains(@class,'account-limit')]//table[2]");
@@ -47,13 +44,11 @@ public class Account_Limits {
         System.out.println("\n=======================================================");
         System.out.println("            ACCOUNT LIMITS DATA VIEWER                 ");
         System.out.println("=======================================================");
-
         // Auto-detect client code from Trade page inputs
         String clientCode = readInputSafe(driver, By.id("order_client_code"));
         if (clientCode.isEmpty()) clientCode = "23986";
         String exchange = "DSE";
         System.out.printf("[LIMITS] Using Client Code: %s | Exchange: %s%n", clientCode, exchange);
-
         // Navigate and capture snapshot
         navigateToAccountLimits(driver);
         filterByClient(driver, clientCode);
@@ -131,7 +126,6 @@ public class Account_Limits {
         private final String boId;
         private final String status;
         private final String clientName;
-
         public ClientCashRecord(String clientCode, double cash, double initialCash,
                                 double matureBalance, double ledgerBalance, double totalCash,
                                 double equity, String boId, String status, String clientName) {
@@ -157,7 +151,6 @@ public class Account_Limits {
         public String getBoId() { return boId; }
         public String getStatus() { return status; }
         public String getClientName() { return clientName; }
-
         @Override
         public String toString() {
             return String.format("Client: %-8s | Cash: %,12.2f BDT | Mature: %,12.2f BDT | BO ID: %-16s | Status: %-8s | Name: %s",
@@ -266,7 +259,6 @@ public class Account_Limits {
      */
     public static class InsufficientCashLimitException extends RuntimeException {
         private static final long serialVersionUID = 1L;
-
         public InsufficientCashLimitException(double requiredCash, String reason) {
             super(String.format("Cash Limit Allocation Failed: Required %,.2f BDT could not be resolved. %s", requiredCash, reason));
         }
@@ -276,7 +268,6 @@ public class Account_Limits {
         private final String clientCode;
         private final double allocatedLimit;
         private final String source;
-
         public ResolvedCashLimit(String clientCode, double limit, String source) {
             this.clientCode = clientCode;
             this.allocatedLimit = limit;
@@ -300,7 +291,6 @@ public class Account_Limits {
             Double defaultClientLimit,
             double requiredAmount,
             String excludeClient) {
-
         // 1. Specified cash limit takes top priority (No DB Lookup)
         if (specifiedCashLimit != null && specifiedCashLimit > 0.0) {
             System.out.printf("[CASH LIMIT] Using explicitly specified limit: %,.2f BDT (No DB lookup)%n", specifiedCashLimit);
@@ -310,7 +300,6 @@ public class Account_Limits {
                     "EXPLICITLY_SPECIFIED"
             );
         }
-
         // 2. Default client assigned -> use its limit (Strictly NO DB Lookup)
         if (defaultClientCode != null && !defaultClientCode.trim().isEmpty() && defaultClientLimit != null && defaultClientLimit > 0.0) {
             System.out.printf("[CASH LIMIT] Using pre-assigned default client [%s] limit: %,.2f BDT (Zero DB lookup)%n",
@@ -321,7 +310,6 @@ public class Account_Limits {
                     "DEFAULT_CLIENT"
             );
         }
-
         // 3. Fallback: Query DB for entity with higher limit (Cash >= requiredAmount)
         System.out.printf("[CASH LIMIT] Querying PostgreSQL for active entity with Cash >= %,.2f BDT...%n", requiredAmount);
         String sql = "SELECT c.\"ClientCode\", c.\"Cash\", a.\"Name\" " +
@@ -331,7 +319,6 @@ public class Account_Limits {
                      (excludeClient != null && !excludeClient.trim().isEmpty() ? "AND c.\"ClientCode\" != ? " : "") +
                      "AND a.\"BOID\" IS NOT NULL " +
                      "ORDER BY c.\"Cash\" DESC LIMIT 1;";
-
         try (Connection conn = getQtraderDbConnection()) {
             if (conn != null) {
                 try (PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -352,7 +339,6 @@ public class Account_Limits {
         } catch (Exception e) {
             throw new InsufficientCashLimitException(requiredAmount, "Database query execution failed: " + e.getMessage());
         }
-
         // 4. If none found -> raise clear exception
         throw new InsufficientCashLimitException(requiredAmount,
                 "No active client entity with Cash >= " + String.format("%,.2f", requiredAmount) + " BDT found in database.");
@@ -371,25 +357,21 @@ public class Account_Limits {
         System.out.println("|              CASH LIMIT 3-TIER PRECEDENCE UNIT TEST SUITE                   |");
         System.out.println("+=============================================================================+");
         boolean allPassed = true;
-
         // Case 1: Explicitly specified limit
         ResolvedCashLimit r1 = resolveCashLimit(750000.0, null, null, 100000.0, null);
         boolean p1 = r1.getAllocatedLimit() == 750000.0 && "EXPLICITLY_SPECIFIED".equals(r1.getSource());
         System.out.printf("Test 1 [Specified Limit]: %,.2f BDT (%s) -> %s%n", r1.getAllocatedLimit(), r1.getSource(), p1 ? "PASS" : "FAIL");
         allPassed &= p1;
-
         // Case 2: Default client assigned with limit
         ResolvedCashLimit r2 = resolveCashLimit(null, "23986", 600000.0, 100000.0, null);
         boolean p2 = r2.getAllocatedLimit() == 600000.0 && "23986".equals(r2.getClientCode()) && "DEFAULT_CLIENT".equals(r2.getSource());
         System.out.printf("Test 2 [Default Client]: Client %s, %,.2f BDT (%s) -> %s%n", r2.getClientCode(), r2.getAllocatedLimit(), r2.getSource(), p2 ? "PASS" : "FAIL");
         allPassed &= p2;
-
         // Case 3: Specified overrides default client
         ResolvedCashLimit r3 = resolveCashLimit(900000.0, "23986", 600000.0, 100000.0, null);
         boolean p3 = r3.getAllocatedLimit() == 900000.0 && "EXPLICITLY_SPECIFIED".equals(r3.getSource());
         System.out.printf("Test 3 [Specified Overrides Default]: %,.2f BDT (%s) -> %s%n", r3.getAllocatedLimit(), r3.getSource(), p3 ? "PASS" : "FAIL");
         allPassed &= p3;
-
         // Case 4: Neither specified -> fallback to DB query
         try {
             ResolvedCashLimit r4 = resolveCashLimit(null, null, null, 10000.0, null);
@@ -399,7 +381,6 @@ public class Account_Limits {
         } catch (InsufficientCashLimitException e) {
             System.out.printf("Test 4 [DB Lookup Fallback]: DB unavailable in test env -> SKIPPED/PASS (%s)%n", e.getMessage());
         }
-
         // Case 5: Unattainable limit -> throws InsufficientCashLimitException
         boolean p5 = false;
         try {
@@ -409,7 +390,6 @@ public class Account_Limits {
             System.out.printf("Test 5 [Exception on Insufficient Cash]: Caught expected InsufficientCashLimitException -> PASS%n");
         }
         allPassed &= p5;
-
         System.out.printf("+-----------------------------------------------------------------------------+%n");
         System.out.printf("| ALL CASH LIMIT PRECEDENCE TESTS: %-42s |%n", allPassed ? "ALL PASSED (5/5)" : "SOME FAILED");
         System.out.printf("+-----------------------------------------------------------------------------+%n%n");
@@ -446,7 +426,6 @@ public class Account_Limits {
         }
         return list;
     }
-
     // 2. DATA MODEL FOR CLIENT CASH & STATUS
     // =========================================================================
     public static class ClientCashInfo {
@@ -455,7 +434,6 @@ public class Account_Limits {
         private final String boId;
         private final String status;
         private final String clientName;
-
         public ClientCashInfo(String clientCode, double cash, String boId, String status, String clientName) {
             this.clientCode = clientCode;
             this.cash = cash;
@@ -469,7 +447,6 @@ public class Account_Limits {
         public String getBoId() { return boId; }
         public String getStatus() { return status; }
         public String getClientName() { return clientName; }
-
         @Override
         public String toString() {
             return String.format("Client: %-8s | Cash: %,12.2f BDT | BO ID: %-16s | Status: %-8s | Name: %s",
@@ -498,7 +475,6 @@ public class Account_Limits {
             int desiredCount = Math.min(targetCount, shuffled.size());
             chosen = new ArrayList<>(shuffled.subList(0, desiredCount));
             chosen.sort((a, b) -> Double.compare(b.getCash(), a.getCash()));
-
             System.out.println();
             System.out.println("+----+----------+--------------------+------------------+----------+--------------------------------+");
             System.out.printf("| %-2s | %-8s | %-18s | %-16s | %-8s | %-30s |%n",
@@ -511,15 +487,12 @@ public class Account_Limits {
                         c.getClientName().length() > 30 ? c.getClientName().substring(0, 30) : c.getClientName());
             }
             System.out.println("+----+----------+--------------------+------------------+----------+--------------------------------+");
-
             String topClient = !chosen.isEmpty() ? chosen.get(0).getClientCode() : "08570";
             try { OMSweb_Trade.restoreTradePageState(driver, "GP", topClient); } catch (Exception ignored) {}
             return chosen.stream().map(ClientCashInfo::getClientCode).collect(Collectors.toList());
         }
-
         JavascriptExecutor js = (JavascriptExecutor) driver;
         Map<String, Double> discoveredCashMap = new LinkedHashMap<>();
-
         // 1. Confirmed Active Accounts with Cash >= 100,000 BDT & Valid 16-Digit BO IDs
         String[] verifiedHighCashSeeds = {
             "08096", // 694,922.53 BDT | BO: 1203110065478644 | MD ARIF HOSSEN
@@ -541,7 +514,6 @@ public class Account_Limits {
         for (String seed : verifiedHighCashSeeds) {
             discoveredCashMap.put(seed, minCash);
         }
-
         // 2. Query Live Limits Engine (/broker_ccd/list) directly across all accounts
         try {
             System.out.println("[ACCOUNT LIMITS] Querying Limits Engine for accounts with Cash >= 100,000 BDT...");
@@ -569,7 +541,6 @@ public class Account_Limits {
                 ".catch(function(e) { cb([]); });",
                 minCash
             );
-
             if (ccdRes instanceof List) {
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> list = (List<Map<String, Object>>) ccdRes;
@@ -586,10 +557,8 @@ public class Account_Limits {
         } catch (Exception e) {
             System.out.println("[INFO: Limits Engine Query] " + e.getMessage());
         }
-
         // 3. For each candidate account, verify live client data (/shared/getclientdata/?cln_code=)
         List<ClientCashInfo> eligibleClients = new ArrayList<>();
-
         for (Map.Entry<String, Double> entry : discoveredCashMap.entrySet()) {
             String code = entry.getKey();
             try {
@@ -602,27 +571,21 @@ public class Account_Limits {
                 double mature = parseDbl(details.getOrDefault("mature_balance", "0"));
                 double tableCash = entry.getValue();
                 double effectiveCash = Math.max(tableCash, Math.max(cashLimit, mature));
-
                 // Validate BO ID: non-empty, not '-', length >= 8
                 boolean hasBoId = (boId != null && !boId.isEmpty() && !boId.equals("-") && !boId.equalsIgnoreCase("null") && !boId.equals("0") && boId.replaceAll("[^0-9]", "").length() >= 8);
-
                 // Validate Active Status
                 String statusLower = status.toLowerCase();
                 boolean isActive = (status.isEmpty() || status.equalsIgnoreCase("A") || status.equalsIgnoreCase("Active") || status.equalsIgnoreCase("1") || status.equalsIgnoreCase("true")
                         || (!statusLower.contains("inact") && !statusLower.contains("close") && !statusLower.contains("suspend") && !statusLower.contains("block")));
-
                 if (hasBoId && isActive && effectiveCash >= minCash) {
                     eligibleClients.add(new ClientCashInfo(code, effectiveCash, boId, status.isEmpty() ? "Active" : status, name));
                 }
             } catch (Exception ignored) {}
         }
-
         // 4. Sort eligible clients by Cash descending (highest cash first)
         eligibleClients.sort((a, b) -> Double.compare(b.getCash(), a.getCash()));
-
         System.out.printf("[ACCOUNT LIMITS] Found %d active clients with cash >= %,.2f BDT & valid BO ID.%n",
                 eligibleClients.size(), minCash);
-
         // 5. Randomly select 4-5 clients from this high-cash pool
         List<ClientCashInfo> chosen = new ArrayList<>();
         if (!eligibleClients.isEmpty()) {
@@ -633,7 +596,6 @@ public class Account_Limits {
             // Sort chosen clients descending by cash balance
             chosen.sort((a, b) -> Double.compare(b.getCash(), a.getCash()));
         }
-
         // Display chosen client table
         System.out.println();
         System.out.println("+----+----------+--------------------+------------------+----------+--------------------------------+");
@@ -647,7 +609,6 @@ public class Account_Limits {
                     c.getClientName().length() > 30 ? c.getClientName().substring(0, 30) : c.getClientName());
         }
         System.out.println("+----+----------+--------------------+------------------+----------+--------------------------------+");
-
         // AUTOMATICALLY RETURN TO TRADE PAGE AND RESTORE STATE
         String topClient = !chosen.isEmpty() ? chosen.get(0).getClientCode() : "08096";
         OMSweb_Trade.restoreTradePageState(driver, "GP", topClient);
@@ -662,7 +623,6 @@ public class Account_Limits {
                 "return ths.some(function(th) { return (th.innerText || '').toLowerCase().includes('client code'); });"
             );
             if (Boolean.TRUE.equals(isVis)) return;
-
             By navBy = By.xpath(
                 "//a[contains(@href,'account_limit') or contains(@data-link,'account_limit') or contains(@title,'Account Limit') or contains(@data-original-title,'Account Limit')] | " +
                 "//a[.//i[contains(@class,'fa-usd') or contains(@class,'fa-dollar') or contains(@class,'fa-money')]] | " +
@@ -692,7 +652,6 @@ public class Account_Limits {
                 "return inst && inst.offsetParent !== null;"
             );
             if (Boolean.TRUE.equals(alreadyVisible)) return;
-
             Boolean clicked = (Boolean) js.executeScript(
                 "var tabs = Array.from(document.querySelectorAll('.lm_tab, li.lm_tab, div.lm_tab'));" +
                 "var tradeTab = tabs.find(function(t) {" +
@@ -735,7 +694,6 @@ public class Account_Limits {
                 cleanClient
             );
             Thread.sleep(400);
-
             // Additional UI interaction fallback
             try {
                 WebElement input = driver.findElement(INPUT_CLIENT_FILTER);
@@ -773,14 +731,12 @@ public class Account_Limits {
         } catch (Exception e) {
             System.out.printf("[WARN: Admin API] Account Limits query failed: %s%n", e.getMessage());
         }
-
         // Tier 2: Try QuantBD Token API
         List<String> exchangeOrder = new ArrayList<>();
         exchangeOrder.add(preferredExchange != null && !preferredExchange.isEmpty() ? preferredExchange : "DSE");
         for (String ex : EXCHANGES) {
             if (!exchangeOrder.contains(ex)) exchangeOrder.add(ex);
         }
-
         for (String ex : exchangeOrder) {
             String apiUrl = String.format(API_URL_TEMPLATE, clientCode, ex);
             try {
@@ -792,7 +748,6 @@ public class Account_Limits {
                 }
             } catch (Exception ignored) {}
         }
-
         // Tier 3 Fallback: DOM Table Scraping (Exact tables in your screenshot)
         System.out.println("[FALLBACK: UI] API unavailable. Extracting from Account Limits DOM tables...");
         Map<String, String> uiData = fetchFromUiTables(driver);
@@ -815,7 +770,6 @@ public class Account_Limits {
         } catch (Exception ignored) {}
         return Collections.emptyMap();
     }
-
     public static Map<String, String> getUiSnapshot(WebDriver driver, String clientCode) {
         try { OMSweb_Trade.openWidgetTab(driver, "Account Limits"); } catch (Exception ignored) {}
         if (clientCode != null && !clientCode.trim().isEmpty()) {
@@ -823,7 +777,6 @@ public class Account_Limits {
         }
         Map<String, String> uiData = fetchFromUiTables(driver);
         uiData.put("DATA_SOURCE", "UI Tables DOM");
-
         // Fetch client commission rate and compute commission amount
         if (driver != null && clientCode != null && !clientCode.trim().isEmpty()) {
             try {
@@ -839,7 +792,6 @@ public class Account_Limits {
                         if (end > 0) {
                             double commRate = OMSweb_Trade.parseNumSafe(sub.substring(0, end));
                             uiData.put("Commission_Rate", String.format(Locale.US, "%.4f", commRate));
-
                             double dayOrder = OMSweb_Trade.parseNumSafe(uiData.getOrDefault("Cash_Day_Order", "0"));
                             if (dayOrder <= 0) dayOrder = OMSweb_Trade.parseNumSafe(uiData.getOrDefault("Total_Transaction", "0"));
                             if (dayOrder <= 0) dayOrder = OMSweb_Trade.parseNumSafe(uiData.getOrDefault("Buy_Exec_Value", "0"));
@@ -852,11 +804,9 @@ public class Account_Limits {
         }
         return uiData;
     }
-
     private static Map<String, String> fetchFromUiTables(WebDriver driver) {
         Map<String, String> data = new LinkedHashMap<>();
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(6));
-
         for (int attempt = 1; attempt <= 3; attempt++) {
             try {
                 // 1. Scrape Top Cash Table (Initial Limit, Remaining Cash, Day Order, Total Transaction, Net Transaction)
@@ -872,14 +822,12 @@ public class Account_Limits {
                         data.put("Net_Transaction", cells.get(5).getText().trim());
                     }
                 }
-
                 // 2. Scrape Bottom Capital Table (Max Capital Buy, Max Capital Sell)
                 try {
                     WebElement capTable = driver.findElement(CAPITAL_TABLE);
                     scrapeCapitalRow(capTable, "Max Capital Buy", "Buy", data);
                     scrapeCapitalRow(capTable, "Max Capital Sell", "Sell", data);
                 } catch (Exception ignored) {}
-
                 return data;
             } catch (StaleElementReferenceException e) {
                 if (attempt == 3) throw e;
@@ -918,7 +866,6 @@ public class Account_Limits {
             String cookieHeader = cookies.stream().map(c -> c.getName() + "=" + c.getValue()).collect(Collectors.joining("; "));
             conn.setRequestProperty("Cookie", cookieHeader);
         }
-
         try {
             JavascriptExecutor js = (JavascriptExecutor) driver;
             String token = (String) js.executeScript("return window.localStorage.getItem('token') || window.localStorage.getItem('access_token');");
@@ -926,7 +873,6 @@ public class Account_Limits {
                 conn.setRequestProperty("Authorization", token.startsWith("Bearer ") ? token : "Bearer " + token);
             }
         } catch (Exception ignored) {}
-
         int responseCode = conn.getResponseCode();
         if (responseCode != 200) return Collections.emptyMap();
         StringBuilder jsonBuilder = new StringBuilder();
@@ -980,7 +926,6 @@ public class Account_Limits {
         }
         return null;
     }
-
     private static Map<String, String> parseAccountLimitsJson(String json) {
         Map<String, String> result = new LinkedHashMap<>();
         if (json == null || json.trim().isEmpty() || !json.contains("ClientCode")) return result;
@@ -1036,7 +981,6 @@ public class Account_Limits {
         double executedTradeValue = effExecQty * tradeRate;
         double dueTradeValue = effDueQty * tradeRate;
         double totalTradeValue = tradeQty * tradeRate;
-
         // Cash fields
         double oldRemainingCash = parseNum(before.getOrDefault("Remaining_Cash", "0"));
         double newRemainingCash = parseNum(after.getOrDefault("Remaining_Cash", "0"));
@@ -1044,12 +988,10 @@ public class Account_Limits {
         double newDayOrder = parseNum(after.getOrDefault("Cash_Day_Order", "0"));
         double oldTotalTx = parseNum(before.getOrDefault("Total_Transaction", "0"));
         double newTotalTx = parseNum(after.getOrDefault("Total_Transaction", "0"));
-
         // Capital Exec fields
         String execKey = isBuy ? "Buy_Exec_Value" : "Sell_Exec_Value";
         double oldExecVal = parseNum(before.getOrDefault(execKey, "0"));
         double newExecVal = parseNum(after.getOrDefault(execKey, "0"));
-
         // Expected math
         double expectedDayOrder = oldDayOrder + totalTradeValue;
         double expectedTotalTx = oldTotalTx + executedTradeValue;
@@ -1077,7 +1019,6 @@ public class Account_Limits {
         System.out.printf("| %-20s | %-16.2f | %-16.2f | %-16.2f | %-7s%n", (isBuy ? "Max Cap Buy Exec" : "Max Cap Sell Exec"), oldExecVal, newExecVal, expectedExecVal, execValPass ? "PASS" : "FAIL");
         System.out.printf("| Remaining Cash       | %-16.2f | %-16.2f | %-16.2f | %-7s%n", oldRemainingCash, newRemainingCash, expectedCash, "INFO");
         System.out.println("+=========================================================================================+");
-
         if (dayOrderPass && (totalTxPass || effExecQty == 0) && (execValPass || effExecQty == 0)) {
             System.out.println(">>> [ACCOUNT LIMITS AUDIT PASSED] Account limits and cash reflect the trade accurately!");
         } else {
@@ -1118,7 +1059,6 @@ public class Account_Limits {
             if (!k.equals("DATA_SOURCE")) System.out.printf("   %-22s: %s%n", k, v);
         });
     }
-
     // Standalone launcher for Eclipse & command-line execution
     public static void main(String[] args) {
         WebDriver driver = OMSwebmain.createDriver();

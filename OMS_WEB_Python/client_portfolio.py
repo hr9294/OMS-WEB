@@ -8,9 +8,7 @@ import re
 import time
 from typing import Dict, Optional
 from selenium import webdriver
-
 import oms_price
-
 
 def default_zero_portfolio(symbol: str = "GP") -> Dict[str, str]:
     return {
@@ -25,7 +23,6 @@ def default_zero_portfolio(symbol: str = "GP") -> Dict[str, str]:
         "gain_percent": "0.00",
     }
 
-
 def navigate_to_portfolio(driver: webdriver.Chrome) -> None:
     if not driver:
         return
@@ -38,12 +35,10 @@ def navigate_to_portfolio(driver: webdriver.Chrome) -> None:
     except Exception:
         pass
 
-
 def get_client_details(driver: webdriver.Chrome, client_code: str) -> Dict[str, str]:
     code = (client_code or "").strip()
     if not code or not driver:
         return {"client_code": code, "cash_limit": "0.00", "mature_balance": "0.00", "bo_id": "-", "status": "Active", "client_name": f"Client {code}"}
-
     script = """
     var xhr = new XMLHttpRequest();
     xhr.open('GET', '/shared/getclientdata/?cln_code=' + encodeURIComponent(arguments[0]), false);
@@ -66,9 +61,7 @@ def get_client_details(driver: webdriver.Chrome, client_code: str) -> Dict[str, 
                 return out
     except Exception as e:
         print(f"[PORTFOLIO API: WARN] Error fetching details for {code}: {e}")
-
     return {"client_code": code, "cash_limit": "0.00", "mature_balance": "0.00", "bo_id": "-", "status": "Active", "client_name": f"Client {code}"}
-
 
 def _extract_portfolio_row_from_json(raw_json: str, clean_sym: str) -> Dict[str, str]:
     if not raw_json or raw_json.strip() in ("", "[]"):
@@ -117,7 +110,6 @@ def _extract_portfolio_row_from_json(raw_json: str, clean_sym: str) -> Dict[str,
             }
     return {}
 
-
 def fetch_from_admin_shared_api(driver: webdriver.Chrome, client_code: str, target_symbol: str, exchange: str = "DSE") -> Dict[str, str]:
     if not driver or not client_code:
         return {}
@@ -141,11 +133,9 @@ def fetch_from_admin_shared_api(driver: webdriver.Chrome, client_code: str, targ
         pass
     return {}
 
-
 def get_api_snapshot(driver: webdriver.Chrome, client_code: str, symbol: str = "GP", preferred_exchange: str = "DSE") -> Dict[str, str]:
     ex = (preferred_exchange or "DSE").strip().upper()
     return fetch_from_admin_shared_api(driver, client_code, oms_price.clean_symbol(symbol), ex)
-
 
 def _fetch_from_ui_table(driver: webdriver.Chrome, symbol: str) -> Dict[str, str]:
     clean_sym = oms_price.clean_symbol(symbol)
@@ -185,7 +175,6 @@ def _fetch_from_ui_table(driver: webdriver.Chrome, symbol: str) -> Dict[str, str
         pass
     return default_zero_portfolio(clean_sym)
 
-
 def get_ui_snapshot(driver: webdriver.Chrome, client_code: str, symbol: str = "GP", exchange: str = "DSE") -> Dict[str, str]:
     clean_sym = oms_price.clean_symbol(symbol)
     ex = (exchange or "DSE").strip().upper()
@@ -197,7 +186,6 @@ def get_ui_snapshot(driver: webdriver.Chrome, client_code: str, symbol: str = "G
     ui["DATA_SOURCE"] = f"UI Table DOM ({ex})"
     return ui
 
-
 def get_snapshot(driver: webdriver.Chrome, client_code: str, symbol: Optional[str] = None, preferred_exchange: str = "DSE") -> Dict[str, str]:
     if symbol:
         ex_order = [preferred_exchange.upper()] + [e for e in ("DSE", "CSE") if e != preferred_exchange.upper()]
@@ -207,7 +195,6 @@ def get_snapshot(driver: webdriver.Chrome, client_code: str, symbol: Optional[st
                 return api
         return _fetch_from_ui_table(driver, symbol)
     return get_client_details(driver, client_code)
-
 
 def ensure_client_loaded_in_ui(driver: webdriver.Chrome, client_code: str) -> None:
     if not driver or not client_code:
@@ -222,7 +209,6 @@ def ensure_client_loaded_in_ui(driver: webdriver.Chrome, client_code: str) -> No
         time.sleep(0.4)
     except Exception:
         pass
-
 
 def verify(
     before: Optional[Dict[str, str]],
@@ -244,7 +230,6 @@ def verify(
     new_tot = oms_price.parse_float(after.get("total_qty", after.get("totalqty")))
     old_sal = oms_price.parse_float(before.get("saleable_qty", before.get("saleable", before.get("qty"))))
     new_sal = oms_price.parse_float(after.get("saleable_qty", after.get("saleable", after.get("qty"))))
-
     eff_exec = executed_qty if executed_qty > 0 else (int(abs(new_tot - old_tot)) or trade_qty)
     expected_tot = (old_tot + eff_exec) if is_buy else (old_tot - eff_exec)
     qty_pass = abs(new_tot - expected_tot) < 0.001
@@ -253,17 +238,14 @@ def verify(
         if is_buy
         else abs(new_sal - (old_sal - eff_exec)) < 0.001
     )
-
     old_cost = oms_price.parse_float(before.get("total_cost", before.get("totalcost")))
     new_cost = oms_price.parse_float(after.get("total_cost", after.get("totalcost")))
     cost_pass = (new_cost >= old_cost or eff_exec == 0) if is_buy else (new_cost <= old_cost or eff_exec == 0)
-
     print(f"[PORTFOLIO AUDIT] {side.upper()} {eff_exec} {symbol} @ {trade_rate:.2f} ({exchange}) | "
           f"Tot: {old_tot:.0f}->{new_tot:.0f} ({'PASS' if qty_pass else 'FAIL'}) | "
           f"Sal: {old_sal:.0f}->{new_sal:.0f} ({'PASS' if sal_pass else 'FAIL'}) | "
           f"Cost: {old_cost:.2f}->{new_cost:.2f} ({'PASS' if cost_pass else 'FAIL'})")
     return qty_pass and sal_pass and cost_pass
-
 
 def print_portfolio(client_code: str, snapshot: Dict[str, str]) -> None:
     print(f"\n+--- CLIENT PORTFOLIO SNAPSHOT: {client_code} ---+")

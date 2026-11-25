@@ -1,6 +1,5 @@
 import org.openqa.selenium.WebDriver;
 import java.util.Scanner;
-
 import java.net.URI;
 //import java.net.http.HttpClient;
 //import java.net.http.HttpRequest;
@@ -25,19 +24,16 @@ public class Order_Summary {
     // =========================================================================
     private static final String API_URL_TEMPLATE = "https://omsapi.quantbd.com/portfolio/order-summary/%s?exchange=%s";
     private static final String[] EXCHANGES = {"DSE", "CSE"};
-
     // Navigation Tabs
     private static final By ORDER_SUMMARY_TAB = By.xpath("//div[contains(@class,'lm_tab') and contains(.,'Order Summary')] | //a[normalize-space()='Order Summary'] | //div[@title='Order Summary']");
     private static final By TRADE_TAB = By.xpath(
             "//div[contains(@class,'lm_tab') and (contains(.,'Trade') or @title='Trade')] | " +
             "//li[contains(@class,'lm_tab') and (.//span[contains(text(),'Trade')] or contains(.,'Trade') or @title='Trade')]");
-
     // Filter Inputs (Top bar in your screenshot)
     private static final By INPUT_CLIENT_FILTER = By.xpath("//input[@id='order_summary_code' or contains(@name,'order_summary_code')] | //div[contains(@class,'order-summary')]//input[1]");
     private static final By INPUT_SEARCH_SYMBOL = By.xpath("//input[@id='order_summary_symbol' or contains(@name,'order_summary_symbol')] | //input[@placeholder='Search Symbol' or contains(@id,'search_symbol')]");
     private static final By BTN_CLEAR           = By.xpath("//button[normalize-space()='Clear' or contains(@class,'btn-danger')]");
     private static final By REFRESH_BTN         = By.xpath("//div[contains(@class,'order-summary')]//i[contains(@class,'refresh')] | //button[contains(@id,'refresh')]");
-
     // Tables
     private static final By DETAIL_TABLE        = By.xpath("//table[@id='ordsum-order-table'] | //table[thead//th[contains(.,'B Qty') or contains(.,'Total Ordr')]] | //div[contains(@class,'order-summary')]//table[last()]");
     private static final By SUMMARY_SIDE_TABLE  = By.xpath("//table[@id='ordsum-summary-table'] | //table[thead//th[contains(.,'Ord Qty') or contains(.,'Exec Value')]] | //div[contains(@class,'order-summary')]//table[1]");
@@ -51,7 +47,6 @@ public class Order_Summary {
         System.out.println("\n=======================================================");
         System.out.println("            ORDER SUMMARY DATA VIEWER                  ");
         System.out.println("=======================================================");
-
         // Auto-detect symbol & client from Trade page inputs so you don't re-type
         String symbol = readInputSafe(driver, By.id("order_instrument"), By.id("instrument"), By.id("marketwatch_symbol"));
         String clientCode = readInputSafe(driver, By.id("order_client_code"));
@@ -61,9 +56,7 @@ public class Order_Summary {
             System.out.print("Enter Symbol (e.g. GP, ACFL): ");
             symbol = sc.nextLine().trim().toUpperCase();
         }
-
         System.out.printf("[SUMMARY] Auto-detected: Client: %s | Symbol: %s | Exchange: %s%n", clientCode, symbol, exchange);
-
         // Navigate to Order Summary Tab
         navigateToOrderSummary(driver);
         filterBySymbol(driver, symbol);
@@ -95,7 +88,6 @@ public class Order_Summary {
                 "return inst && inst.offsetParent !== null;"
             );
             if (Boolean.TRUE.equals(alreadyVisible)) return;
-
             Boolean clicked = (Boolean) js.executeScript(
                 "var tabs = Array.from(document.querySelectorAll('.lm_tab, li.lm_tab, div.lm_tab'));" +
                 "var tradeTab = tabs.find(function(t) {" +
@@ -158,7 +150,6 @@ public class Order_Summary {
                 cleanSym
             );
             Thread.sleep(400);
-
             // Additional UI interaction fallback
             try {
                 if (!cleanClient.isEmpty()) {
@@ -201,7 +192,6 @@ public class Order_Summary {
     // =========================================================================
     public static Map<String, String> getSnapshot(WebDriver driver, String clientCode, String symbol, String preferredExchange) {
         String cleanSymbol = cleanSymbol(symbol);
-
         // Tier 1: Admin Live Orders API (/live_orders/order_summary_view/)
         try {
             String adminUrl = String.format("/live_orders/order_summary_view/?page=1&per_page=50&client_code=%s&symbol_code=%s", clientCode, cleanSymbol);
@@ -215,14 +205,12 @@ public class Order_Summary {
         } catch (Exception e) {
             System.out.printf("[WARN: Admin API] Order Summary query failed: %s%n", e.getMessage());
         }
-
         // Tier 2: QuantBD Microservice Token API (DSE + CSE)
         List<String> exchangeOrder = new ArrayList<>();
         exchangeOrder.add(preferredExchange != null && !preferredExchange.isEmpty() ? preferredExchange : "DSE");
         for (String ex : EXCHANGES) {
             if (!exchangeOrder.contains(ex)) exchangeOrder.add(ex);
         }
-
         for (String ex : exchangeOrder) {
             String apiUrl = String.format(API_URL_TEMPLATE, clientCode, ex);
             try {
@@ -234,7 +222,6 @@ public class Order_Summary {
                 }
             } catch (Exception ignored) {}
         }
-
         // Tier 3 Fallback: DOM Table Scraping (Exact tables in your screenshot)
         System.out.println("[FALLBACK: UI] API unavailable. Extracting from Order Summary DOM tables...");
         Map<String, String> uiData = fetchFromUiTables(driver, cleanSymbol);
@@ -258,7 +245,6 @@ public class Order_Summary {
         } catch (Exception ignored) {}
         return Collections.emptyMap();
     }
-
     public static Map<String, String> getUiSnapshot(WebDriver driver, String clientCode, String symbol) {
         try { OMSweb_Trade.openWidgetTab(driver, "Order Summary"); } catch (Exception ignored) {}
         if (clientCode != null && !clientCode.trim().isEmpty()) {
@@ -268,15 +254,12 @@ public class Order_Summary {
         uiData.put("DATA_SOURCE", "UI Tables DOM");
         return uiData;
     }
-
     public static Map<String, String> getUiSnapshot(WebDriver driver, String symbol) {
         return getUiSnapshot(driver, null, symbol);
     }
-
     private static Map<String, String> fetchFromUiTables(WebDriver driver, String symbol) {
         Map<String, String> data = new LinkedHashMap<>();
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(6));
-
         for (int attempt = 1; attempt <= 3; attempt++) {
             try {
                 // 1. Scrape Bottom Detail Table (Client, Symbol, B Qty, S Qty, B Ordr, S Ordr, Total Ordr, etc.)
@@ -284,7 +267,6 @@ public class Order_Summary {
                 Map<String, Integer> headerMap = getHeaderMap(detailTable);
                 String rowPath = String.format(SYMBOL_ROW_XPATH, symbol);
                 List<WebElement> rows = detailTable.findElements(By.xpath(rowPath));
-
                 if (!rows.isEmpty()) {
                     List<WebElement> cells = rows.get(0).findElements(By.xpath("./td"));
                     for (Map.Entry<String, Integer> entry : headerMap.entrySet()) {
@@ -293,7 +275,6 @@ public class Order_Summary {
                         }
                     }
                 }
-
                 // 2. Scrape Top Side Breakdown (Buy, Sell, Total, Net)
                 try {
                     WebElement sideTable = driver.findElement(SUMMARY_SIDE_TABLE);
@@ -301,7 +282,6 @@ public class Order_Summary {
                     scrapeSideRow(sideTable, "Sell", data);
                     scrapeSideRow(sideTable, "Total", data);
                 } catch (Exception ignored) {}
-
                 return data;
             } catch (StaleElementReferenceException e) {
                 if (attempt == 3) throw e;
@@ -322,7 +302,6 @@ public class Order_Summary {
             }
         } catch (Exception ignored) {}
     }
-
     private static Map<String, Integer> getHeaderMap(WebElement table) {
         Map<String, Integer> map = new LinkedHashMap<>();
         List<WebElement> headers = table.findElements(DETAIL_TABLE_HEADERS);
@@ -417,7 +396,6 @@ public class Order_Summary {
         }
         return null;
     }
-
     private static Map<String, String> parseOrderSummaryJson(String json, String targetSymbol) {
         Map<String, String> result = new LinkedHashMap<>();
         if (json == null || json.trim().isEmpty() || !json.contains("\"code\":200")) return result;
@@ -452,7 +430,6 @@ public class Order_Summary {
             result.put("Sell_Exec_Qty", "0");
             result.put("Total_Exec_Qty", "0");
         }
-
         Pattern totalPattern = Pattern.compile("\"total_summary_data\"\\s*:\\s*\\{([^}]+)\\}");
         Matcher tm = totalPattern.matcher(json);
         if (tm.find()) {
@@ -522,7 +499,6 @@ public class Order_Summary {
         System.out.printf("| Total Ordr      | %-14s | %-14s | %-14s | %-7s%n", before.getOrDefault("Total Ordr", "-"), after.getOrDefault("Total Ordr", "-"), "~Incremented", "INFO");
         System.out.printf("| Net Amount      | %-14s | %-14s | %-14s | %-7s%n", before.getOrDefault("Net Amount", "-"), after.getOrDefault("Net Amount", "-"), "~Updated", "INFO");
         System.out.println("+=========================================================================================+");
-
         if (qtyPass && ordrPass) {
             System.out.println(">>> [ORDER SUMMARY AUDIT PASSED] Order Summary correctly updated!");
         } else {
@@ -577,7 +553,6 @@ public class Order_Summary {
         System.out.printf("   %-20s: %-10s | %-20s: %s%n", "Buy Exec Value", snap.getOrDefault("B Amount", "0.00"), "Sell Exec Value", snap.getOrDefault("S Amount", "0.00"));
         System.out.printf("   %-20s: %-10s | %-20s: %s%n", "Total Orders", snap.getOrDefault("Total Ordr", "0"), "Total Exec Qty", snap.getOrDefault("Total_Exec_Qty", "0"));
         System.out.printf("   %-20s: %-10s | %-20s: %s%n", "Net Exec Value", snap.getOrDefault("Net Amount", "0.00"), "Avg Exec Price", snap.getOrDefault("Avg Price", "0.00"));
-
         if (snap.containsKey("Buy_Orders") || snap.containsKey("Total_Orders")) {
             System.out.println("   [CLIENT PORTFOLIO-WIDE TOTALS (ALL SYMBOLS)]");
             System.out.printf("   %-20s: %-10s | %-20s: %s%n", "All Buy Orders", snap.getOrDefault("Buy_Orders", "-"), "All Sell Orders", snap.getOrDefault("Sell_Orders", "-"));
@@ -587,7 +562,6 @@ public class Order_Summary {
             System.out.printf("   %-20s: %-10s | %-20s: %s%n", "Total Client Orders", snap.getOrDefault("Total_Orders", "-"), "Total Client Value", snap.getOrDefault("Total_Exec_Value", "-"));
         }
     }
-
     // Standalone launcher for Eclipse & command-line execution
     public static void main(String[] args) {
         WebDriver driver = OMSwebmain.createDriver();

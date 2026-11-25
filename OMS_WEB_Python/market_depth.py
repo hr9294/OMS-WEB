@@ -6,9 +6,7 @@ import json
 import time
 from typing import Dict
 from selenium import webdriver
-
 import oms_price
-
 
 def navigate_to_market_depth(driver: webdriver.Chrome) -> None:
     if not driver:
@@ -22,7 +20,6 @@ def navigate_to_market_depth(driver: webdriver.Chrome) -> None:
         time.sleep(0.4)
     except Exception:
         pass
-
 
 def search_symbol_in_depth(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> None:
     """Retains Public symbol format (e.g. GP.PUBLIC) and triggers getmktdepth."""
@@ -59,7 +56,6 @@ def search_symbol_in_depth(driver: webdriver.Chrome, symbol: str, exchange: str 
     except Exception:
         pass
 
-
 def get_api_snapshot(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> Dict[str, str]:
     sym = oms_price.clean_symbol(symbol)
     ex = (exchange or "DSE").upper()
@@ -94,7 +90,6 @@ def get_api_snapshot(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE
         pass
     return snapshot
 
-
 def get_ui_snapshot(driver: webdriver.Chrome) -> Dict[str, str]:
     if not driver:
         return {}
@@ -121,7 +116,6 @@ def get_ui_snapshot(driver: webdriver.Chrome) -> Dict[str, str]:
         """) or {}
     except Exception:
         return {}
-
 
 def get_snapshot(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> Dict[str, str]:
     sym = oms_price.clean_symbol(symbol)

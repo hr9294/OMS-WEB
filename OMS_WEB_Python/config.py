@@ -80,7 +80,6 @@ LOCAL_CHROMEDRIVER_PATH = (
     r"D:\Automation & Load Testing\Selenium\Software\152.0.7977.64 chromedriver-win64\chromedriver-win64\chromedriver.exe"
 )
 
-
 def is_host_reachable(host: str, port: int, timeout_sec: float = 0.15) -> bool:
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -88,7 +87,6 @@ def is_host_reachable(host: str, port: int, timeout_sec: float = 0.15) -> bool:
             return s.connect_ex((host, port)) == 0
     except Exception:
         return False
-
 
 def _connect_pg_failover(hosts: list, port: int, dbname: str, user: str, password: str) -> Optional[Any]:
     """Connects to Primary/Secondary PostgreSQL using fast socket pre-check; returns None if unavailable."""
@@ -109,20 +107,17 @@ def _connect_pg_failover(hosts: list, port: int, dbname: str, user: str, passwor
             pass
     return None
 
-
 def get_qtrader_db_connection() -> Optional[Any]:
     return _connect_pg_failover(
         [QTRADER_PRIMARY_HOST, QTRADER_SECONDARY_HOST],
         QTRADER_DB_PORT, QTRADER_DB_NAME, QTRADER_DB_USER, QTRADER_DB_PASS,
     )
 
-
 def get_marketdata_db_connection() -> Optional[Any]:
     return _connect_pg_failover(
         [PRIMARY_DB_HOST, SECONDARY_DB_HOST],
         MKT_DB_PORT, MKT_DB_NAME, MKT_DB_USER, MKT_DB_PASS,
     )
-
 
 def read_line_with_timeout(prompt: str, default_val: str = "", timeout_sec: float = 4.0) -> str:
     """
@@ -134,7 +129,6 @@ def read_line_with_timeout(prompt: str, default_val: str = "", timeout_sec: floa
     if IS_CI or not sys.stdin or not sys.stdin.isatty():
         print(f" [Auto-selected default: {default_val}]")
         return default_val
-
     try:
         if os.name == "nt":
             import msvcrt
