@@ -174,6 +174,40 @@ public class RMS {
     }
 
     /**
+     * Client exclusivity evaluation result guaranteeing no client appears in both
+     * Allowed and Disallowed sets simultaneously.
+     */
+    public static class ClientExclusivityResult {
+        public final String primaryClient;
+        public final boolean primaryAllowed;
+        public final List<String> otherClients;
+        public final boolean hasOverlap;
+        public final boolean valid;
+        public final String reason;
+
+        public ClientExclusivityResult(String primaryClient, boolean primaryAllowed,
+                                       List<String> otherClients, boolean hasOverlap,
+                                       boolean valid, String reason) {
+            this.primaryClient = primaryClient;
+            this.primaryAllowed = primaryAllowed;
+            this.otherClients = otherClients != null
+                    ? Collections.unmodifiableList(new ArrayList<>(otherClients))
+                    : Collections.emptyList();
+            this.hasOverlap = hasOverlap;
+            this.valid = valid;
+            this.reason = reason != null ? reason : "";
+        }
+
+        @Override
+        public String toString() {
+            return String.format(
+                "ClientExclusivityResult[primary=%s(%s), others=%s, overlap=%b, valid=%b, reason=%s]",
+                primaryClient, primaryAllowed ? "ALLOWED" : "DISALLOWED",
+                otherClients, hasOverlap, valid, reason);
+        }
+    }
+
+    /**
      * Unauthorized Board & Market Restriction Record Model.
      */
     public static class BoardRestrictionRecord {
@@ -721,8 +755,13 @@ public class RMS {
     // 3. CLIENTS RMS (CLIENT NETTING & RISK ELIGIBILITY)
     // =========================================================================
 
+    private static final String CLIENTS_RMS_ROOT_JS =
+        "var root = document.querySelector('#clients_rms, .tab-pane.active, main, body') || document.body;\n";
+
     /**
      * Switches between Allowed and Disallowed list views in Clients RMS.
+     * Scoped to the active Clients RMS container and interactive controls only,
+     * requiring an exact text match so "Allowed" never collides with "Disallowed".
      */
     public static boolean switchClientsList(WebDriver driver, boolean allowed) {
         if (driver == null) return false;
@@ -733,9 +772,14 @@ public class RMS {
             JavascriptExecutor js = (JavascriptExecutor) driver;
 
             Boolean switched = (Boolean) js.executeScript(
+                CLIENTS_RMS_ROOT_JS +
                 "var target = arguments[0];\n" +
-                "var btns = Array.from(document.querySelectorAll('button, a.btn, .btn, span, div'));\n" +
-                "var targetBtn = btns.find(function(b) { var t = (b.innerText||b.textContent||'').trim().toLowerCase(); return t === target; });\n" +
+                "var btns = Array.from(root.querySelectorAll('button, a.btn, .btn, input[type=\"button\"], input[type=\"submit\"], [role=\"button\"], [role=\"tab\"], .nav-link'));\n" +
+                "var matches = btns.filter(function(b) {\n" +
+                "    var t = (b.innerText || b.textContent || b.value || '').trim().toLowerCase();\n" +
+                "    return t === target;\n" +
+                "});\n" +
+                "var targetBtn = matches.find(function(b) { return b.offsetParent !== null; }) || matches[0];\n" +
                 "if (targetBtn) {\n" +
                 "    if (window.jQuery) window.jQuery(targetBtn).trigger('click');\n" +
                 "    targetBtn.click();\n" +
@@ -753,17 +797,16 @@ public class RMS {
     }
 
     /**
-     * Extracts list of client records from Clients RMS table.
+     * Extracts client records from whichever Clients RMS list view is currently displayed.
      */
-    @SuppressWarnings("unchecked")
-    public static List<ClientRmsRecord> fetchClientsRmsList(WebDriver driver, boolean allowed) {
+    public static List<ClientRmsRecord> fetchClientsRmsCurrentView(WebDriver driver, boolean allowedLabel) {
         List<ClientRmsRecord> list = new ArrayList<>();
         if (driver == null) return list;
         try {
-            switchClientsList(driver, allowed);
             JavascriptExecutor js = (JavascriptExecutor) driver;
             String script =
-                "var rows = Array.from(document.querySelectorAll('table tbody tr, tr'));\n" +
+                CLIENTS_RMS_ROOT_JS +
+                "var rows = Array.from(root.querySelectorAll('table tbody tr, tr'));\n" +
                 "var res = [];\n" +
                 "for (var i = 0; i < rows.length; i++) {\n" +
                 "    var tds = rows[i].querySelectorAll('td');\n" +
@@ -778,20 +821,27 @@ public class RMS {
                 "}\n" +
                 "return res;\n";
 
-            List<Map<String, Object>> raw = (List<Map<String, Object>>) js.executeScript(script);
-            if (raw != null) {
-                for (Map<String, Object> r : raw) {
-                    list.add(new ClientRmsRecord(
-                        String.valueOf(r.getOrDefault("no", "1")),
-                        String.valueOf(r.getOrDefault("client_code", "-")),
-                        String.valueOf(r.getOrDefault("datetime", "-")),
-                        allowed ? "ALLOWED" : "DISALLOWED",
-                        allowed
-                    ));
+            Object rawObj = js.executeScript(script);
+            if (rawObj instanceof List<?> rawList) {
+                for (Object item : rawList) {
+                    if (!(item instanceof Map<?, ?> r)) continue;
+                    String no = r.containsKey("no") && r.get("no") != null ? String.valueOf(r.get("no")) : "1";
+                    String cln = r.containsKey("client_code") && r.get("client_code") != null ? String.valueOf(r.get("client_code")) : "-";
+                    String dt = r.containsKey("datetime") && r.get("datetime") != null ? String.valueOf(r.get("datetime")) : "-";
+                    list.add(new ClientRmsRecord(no, cln, dt, allowedLabel ? "ALLOWED" : "DISALLOWED", allowedLabel));
                 }
             }
         } catch (Exception ignored) {}
         return list;
+    }
+
+    /**
+     * Extracts list of client records from Clients RMS table for the specified list view.
+     */
+    public static List<ClientRmsRecord> fetchClientsRmsList(WebDriver driver, boolean allowed) {
+        if (driver == null) return new ArrayList<>();
+        switchClientsList(driver, allowed);
+        return fetchClientsRmsCurrentView(driver, allowed);
     }
 
     /**
@@ -828,7 +878,8 @@ public class RMS {
 
             // 1. Click '+ Add'
             js.executeScript(
-                "var btns = Array.from(document.querySelectorAll('button, a.btn, .btn'));\n" +
+                CLIENTS_RMS_ROOT_JS +
+                "var btns = Array.from(root.querySelectorAll('button, a.btn, .btn'));\n" +
                 "var addBtn = btns.find(function(b) { var t = (b.innerText||b.textContent||'').trim().toLowerCase(); return t === '+ add' || t === 'add' || t.indexOf('+ add') !== -1; });\n" +
                 "if (addBtn) { if (window.jQuery) window.jQuery(addBtn).trigger('click'); addBtn.click(); }\n"
             );
@@ -837,7 +888,7 @@ public class RMS {
             // 2. Type client code
             js.executeScript(
                 "var cln = arguments[0];\n" +
-                "var modal = document.querySelector('.modal, [role=\"dialog\"], body');\n" +
+                "var modal = document.querySelector('.modal.show, .modal[style*=\"display: block\"], .modal, [role=\"dialog\"], body');\n" +
                 "var inps = Array.from(modal.querySelectorAll('input[type=\"text\"], input:not([type])'));\n" +
                 "var cInp = inps.find(function(i) { var p = (i.placeholder||'').toLowerCase(); return p.indexOf('client') !== -1 || p.indexOf('code') !== -1; }) || inps[0];\n" +
                 "if (cInp) {\n" +
@@ -873,7 +924,157 @@ public class RMS {
     }
 
     /**
-     * Checks if a client is allowed for day netting.
+     * Idempotently removes a client code from the Allowed or Disallowed Clients RMS list.
+     * Deletes the row if present, confirms the modal, handles password auth, and syncs window.RMS_CLIENT_NETTING.
+     */
+    public static boolean removeClientFromRiskList(WebDriver driver, String clientCode, boolean allowed, String password) {
+        if (driver == null || clientCode == null || clientCode.trim().isEmpty()) return false;
+        String cln = clientCode.trim().toUpperCase();
+        try {
+            navigateToClientsRmsTab(driver);
+            switchClientsList(driver, allowed);
+            JavascriptExecutor js = (JavascriptExecutor) driver;
+
+            Boolean deleted = (Boolean) js.executeScript(
+                CLIENTS_RMS_ROOT_JS +
+                "var cln = arguments[0];\n" +
+                "var rows = Array.from(root.querySelectorAll('table tbody tr, tr'));\n" +
+                "for (var i = 0; i < rows.length; i++) {\n" +
+                "    var r = rows[i];\n" +
+                "    var tds = r.querySelectorAll('td');\n" +
+                "    if (tds.length >= 2) {\n" +
+                "        var matched = false;\n" +
+                "        for (var c = 0; c < tds.length; c++) {\n" +
+                "            if ((tds[c].innerText || tds[c].textContent || '').trim().toUpperCase() === cln) { matched = true; break; }\n" +
+                "        }\n" +
+                "        if (matched) {\n" +
+                "            var delBtn = r.querySelector('button, a, .btn, [class*=\"delete\"], [class*=\"remove\"], [class*=\"danger\"], i.fa-trash, i.fa-times, svg');\n" +
+                "            if (delBtn) {\n" +
+                "                if (window.jQuery) window.jQuery(delBtn).trigger('click');\n" +
+                "                delBtn.click();\n" +
+                "                return true;\n" +
+                "            }\n" +
+                "        }\n" +
+                "    }\n" +
+                "}\n" +
+                "return false;",
+                cln
+            );
+
+            if (Boolean.TRUE.equals(deleted)) {
+                Thread.sleep(500);
+                js.executeScript(
+                    "var modal = document.querySelector('.modal.show, .jconfirm-box, .swal2-popup, [role=\"dialog\"], .modal') || document;\n" +
+                    "var btns = Array.from(modal.querySelectorAll('button, a.btn, input[type=\"button\"], input[type=\"submit\"]'));\n" +
+                    "var yes = btns.find(function(b) {\n" +
+                    "    var t = (b.innerText || b.textContent || b.value || '').trim().toLowerCase();\n" +
+                    "    return t === 'yes' || t === 'confirm' || t === 'ok' || t === 'delete' || t === 'remove';\n" +
+                    "});\n" +
+                    "if (yes) { if (window.jQuery) window.jQuery(yes).trigger('click'); yes.click(); }\n"
+                );
+                Thread.sleep(500);
+                submitPasswordAuthentication(driver, password);
+                Thread.sleep(400);
+                System.out.printf("  ✓ [RMS CLIENTS] Removed Client '%s' from %s list.%n", cln, allowed ? "ALLOWED" : "DISALLOWED");
+            } else {
+                System.out.printf("  -> [RMS CLIENTS] Client '%s' not present in %s list (idempotent no-op).%n", cln, allowed ? "ALLOWED" : "DISALLOWED");
+            }
+
+            js.executeScript(
+                "var cln = arguments[0]; var removedFromAllowed = arguments[1];\n" +
+                "if (window.RMS_CLIENT_NETTING && window.RMS_CLIENT_NETTING[cln] && window.RMS_CLIENT_NETTING[cln].allowed === removedFromAllowed) {\n" +
+                "    delete window.RMS_CLIENT_NETTING[cln];\n" +
+                "}\n",
+                cln, allowed
+            );
+            return true;
+        } catch (Exception e) {
+            System.out.println("[RMS CLIENTS: ERROR] Removing client: " + e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Checks whether a client code is present in the live Allowed or Disallowed Clients RMS list.
+     */
+    public static boolean isClientPresentInList(WebDriver driver, String clientCode, boolean allowed) {
+        if (driver == null || clientCode == null || clientCode.trim().isEmpty()) return false;
+        String cln = clientCode.trim().toUpperCase();
+        List<ClientRmsRecord> records = fetchClientsRmsList(driver, allowed);
+        for (ClientRmsRecord r : records) {
+            if (r != null && r.clientCode != null && cln.equalsIgnoreCase(r.clientCode.trim())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Enforces exclusive client netting state: removes from !allowed list first,
+     * adds to allowed list if not already present, and verifies membership via isClientPresentInList.
+     */
+    public static boolean setClientNettingState(WebDriver driver, String clientCode, boolean allowed, String password) {
+        if (driver == null || clientCode == null || clientCode.trim().isEmpty()) return false;
+        String cln = clientCode.trim().toUpperCase();
+        boolean removedOpposite = removeClientFromRiskList(driver, cln, !allowed, password);
+        if (!removedOpposite) {
+            System.out.printf("  [RMS CLIENTS: WARN] Opposite list cleanup failed for '%s'.%n", cln);
+        }
+
+        boolean alreadyPresent = isClientPresentInList(driver, cln, allowed);
+        boolean added = alreadyPresent || addClientToRiskList(driver, cln, allowed, password);
+        try {
+            ((JavascriptExecutor) driver).executeScript(
+                "var cln = arguments[0]; var allowed = arguments[1];\n" +
+                "if (!window.RMS_CLIENT_NETTING) window.RMS_CLIENT_NETTING = {};\n" +
+                "window.RMS_CLIENT_NETTING[cln] = { status: allowed ? 'ALLOWED' : 'BLOCKED', allowed: allowed };\n",
+                cln, allowed
+            );
+        } catch (Exception ignored) {}
+
+        boolean presentTarget = isClientPresentInList(driver, cln, allowed);
+        boolean absentOpposite = !isClientPresentInList(driver, cln, !allowed);
+        boolean verified = added && presentTarget && absentOpposite;
+        System.out.printf("  -> [RMS CLIENTS] Verified exclusive state for '%s' (%s): presentTarget=%b, absentOpposite=%b -> %s%n",
+                cln, allowed ? "ALLOWED" : "DISALLOWED", presentTarget, absentOpposite, verified ? "PASS" : "WARN");
+        return verified;
+    }
+
+    /**
+     * Checks live qRMS Allowed & Disallowed tables to determine whether a client is allowed for day netting.
+     */
+    public static boolean verifyClientNettingAllowedLiveRms(WebDriver driver, String clientCode) {
+        if (clientCode == null || clientCode.trim().isEmpty()) return true;
+        if (driver == null) return isClientNettingAllowed(null, clientCode);
+        String cln = clientCode.trim().toUpperCase();
+
+        boolean inDisallowed = isClientPresentInList(driver, cln, false);
+        boolean inAllowed = isClientPresentInList(driver, cln, true);
+        boolean resolvedAllowed;
+        if (inDisallowed) {
+            if (inAllowed) {
+                System.out.printf("  [RMS CLIENTS: WARN] Client '%s' found in BOTH Allowed and Disallowed lists; treating as DISALLOWED.%n", cln);
+            }
+            resolvedAllowed = false;
+        } else if (inAllowed) {
+            resolvedAllowed = true;
+        } else {
+            return isClientNettingAllowed(driver, cln);
+        }
+
+        try {
+            ((JavascriptExecutor) driver).executeScript(
+                "var cln = arguments[0]; var allowed = arguments[1];\n" +
+                "if (!window.RMS_CLIENT_NETTING) window.RMS_CLIENT_NETTING = {};\n" +
+                "window.RMS_CLIENT_NETTING[cln] = { status: allowed ? 'ALLOWED' : 'BLOCKED', allowed: allowed };\n",
+                cln, resolvedAllowed
+            );
+        } catch (Exception ignored) {}
+        return resolvedAllowed;
+    }
+
+    /**
+     * Checks if a client is allowed for day netting (non-navigating window cache lookup).
      */
     public static boolean isClientNettingAllowed(WebDriver driver, String clientCode) {
         if (clientCode == null || clientCode.trim().isEmpty()) return true;
@@ -897,14 +1098,88 @@ public class RMS {
         return true;
     }
 
+    /**
+     * Evaluates mutual exclusivity between a primary client and a list of other clients
+     * assigned to the opposite RMS status (!primaryAllowed).
+     */
+    public static ClientExclusivityResult evaluateClientExclusivity(
+            String primaryClient, boolean primaryAllowed, List<String> otherClients) {
+        String primary = primaryClient != null ? primaryClient.trim().toUpperCase() : "";
+        Set<String> dedupedOthers = new LinkedHashSet<>();
+        if (otherClients != null) {
+            for (String o : otherClients) {
+                if (o != null && !o.trim().isEmpty()) {
+                    dedupedOthers.add(o.trim().toUpperCase());
+                }
+            }
+        }
+        List<String> normalizedOthers = new ArrayList<>(dedupedOthers);
+        if (primary.isEmpty()) {
+            return new ClientExclusivityResult(primary, primaryAllowed, normalizedOthers, false, false,
+                    "Primary client code must not be empty.");
+        }
+        boolean overlap = dedupedOthers.contains(primary);
+        if (overlap) {
+            String reason = String.format(
+                    "Exclusivity violation: client '%s' cannot be both %s and %s in the same rule.",
+                    primary, primaryAllowed ? "ALLOWED" : "DISALLOWED", !primaryAllowed ? "ALLOWED" : "DISALLOWED");
+            return new ClientExclusivityResult(primary, primaryAllowed, normalizedOthers, true, false, reason);
+        }
+        String reason = String.format(
+                "Exclusive partition valid: '%s' -> %s | %d other client(s) -> %s.",
+                primary, primaryAllowed ? "ALLOWED" : "DISALLOWED",
+                normalizedOthers.size(), !primaryAllowed ? "ALLOWED" : "DISALLOWED");
+        return new ClientExclusivityResult(primary, primaryAllowed, normalizedOthers, false, true, reason);
+    }
+
+    /**
+     * Asserts that a ClientExclusivityResult is valid with zero overlap, throwing IllegalStateException on conflict.
+     */
+    public static void assertClientExclusivityRule(ClientExclusivityResult result) {
+        if (result == null) {
+            throw new IllegalStateException("Client exclusivity result must not be null.");
+        }
+        if (result.hasOverlap || !result.valid) {
+            throw new IllegalStateException(result.reason.isEmpty() ? "Client exclusivity rule violated." : result.reason);
+        }
+    }
+
+    /**
+     * Evaluates, asserts, and applies a mutually exclusive Clients RMS rule on the live portal:
+     * sets primaryClient to primaryAllowed and all otherClients to !primaryAllowed.
+     */
+    public static boolean applyClientExclusivityRule(
+            WebDriver driver, String primaryClient, boolean primaryAllowed,
+            List<String> otherClients, String password) {
+        ClientExclusivityResult eval = evaluateClientExclusivity(primaryClient, primaryAllowed, otherClients);
+        assertClientExclusivityRule(eval);
+        if (driver == null) return false;
+
+        boolean ok = setClientNettingState(driver, eval.primaryClient, eval.primaryAllowed, password);
+        for (String other : eval.otherClients) {
+            ok &= setClientNettingState(driver, other, !eval.primaryAllowed, password);
+        }
+        return ok;
+    }
+
     // =========================================================================
     // 4. APPLICABLE SYMBOLS (SCRIP RISK CONTROLS)
     // =========================================================================
 
     /**
+     * Normalizes a trading ticker by stripping exchange tags ([DSE]) and board suffixes (.PUBLIC/.BLOCK/.SPOT).
+     */
+    private static String cleanBaseSymbol(String symbol) {
+        if (symbol == null) return "";
+        String s = symbol.trim().toUpperCase().replaceAll("\\[[A-Z0-9]+\\]", "");
+        int dot = s.indexOf('.');
+        if (dot >= 0) s = s.substring(0, dot);
+        return s.trim();
+    }
+
+    /**
      * Extracts list of applicable symbols for an exchange.
      */
-    @SuppressWarnings("unchecked")
     public static List<ApplicableSymbolRecord> fetchApplicableSymbolsList(WebDriver driver, String exchange) {
         List<ApplicableSymbolRecord> list = new ArrayList<>();
         if (driver == null) return list;
@@ -921,7 +1196,7 @@ public class RMS {
                 "        var ex = (tds[0].innerText || tds[0].textContent || '').trim().toUpperCase();\n" +
                 "        var sym = (tds[1].innerText || tds[1].textContent || '').trim().toUpperCase();\n" +
                 "        if (ex && sym && ex !== 'EXCHANGE' && sym !== 'TICKER') {\n" +
-                "            if (!targetEx || targetEx === 'ALL' || ex === targetEx) {\n" +
+                "            if (!targetEx || targetEx === 'ALL' || targetEx === 'BOTH' || ex === targetEx) {\n" +
                 "                res.push({ exchange: ex, ticker: sym });\n" +
                 "            }\n" +
                 "        }\n" +
@@ -929,15 +1204,13 @@ public class RMS {
                 "}\n" +
                 "return res;\n";
 
-            List<Map<String, Object>> raw = (List<Map<String, Object>>) js.executeScript(script, exchange);
-            if (raw != null) {
-                for (Map<String, Object> r : raw) {
-                    list.add(new ApplicableSymbolRecord(
-                        String.valueOf(r.getOrDefault("exchange", "DSE")),
-                        String.valueOf(r.getOrDefault("ticker", "-")),
-                        "APPLICABLE (Scrip Netting Active)",
-                        true
-                    ));
+            Object rawObj = js.executeScript(script, exchange);
+            if (rawObj instanceof List<?> rawList) {
+                for (Object item : rawList) {
+                    if (!(item instanceof Map<?, ?> r)) continue;
+                    String rEx = r.containsKey("exchange") && r.get("exchange") != null ? String.valueOf(r.get("exchange")) : "DSE";
+                    String rTicker = r.containsKey("ticker") && r.get("ticker") != null ? String.valueOf(r.get("ticker")) : "-";
+                    list.add(new ApplicableSymbolRecord(rEx, rTicker, "APPLICABLE (Scrip Netting Active)", true));
                 }
             }
         } catch (Exception ignored) {}
@@ -955,10 +1228,7 @@ public class RMS {
         System.out.printf("| %-4s | %-10s | %-24s | %-37s |%n", "NO.", "EXCHANGE", "TICKER SYMBOL", "STATUS / ACTION");
         System.out.println("+------+------------+--------------------------+-----------------------------------------+");
         if (list.isEmpty()) {
-            System.out.printf("| %-4s | %-10s | %-24s | %-37s |%n", "1", "DSE", "GP", "APPLICABLE (Scrip Netting Active)");
-            System.out.printf("| %-4s | %-10s | %-24s | %-37s |%n", "2", "DSE", "AAMRANET", "APPLICABLE (Scrip Netting Active)");
-            System.out.printf("| %-4s | %-10s | %-24s | %-37s |%n", "3", "CSE", "GP", "APPLICABLE (Scrip Netting Active)");
-            System.out.printf("| %-4s | %-10s | %-24s | %-37s |%n", "4", "CSE", "AAMRANET", "APPLICABLE (Scrip Netting Active)");
+            System.out.printf("| %-4s | %-10s | %-24s | %-37s |%n", "-", "-", "No Data Found!", "No Applicable Symbols Listed");
         } else {
             int idx = 1;
             for (ApplicableSymbolRecord r : list) {
@@ -1100,18 +1370,26 @@ public class RMS {
     }
 
     /**
-     * Checks if a symbol is eligible for Day Netting in qRMS.
+     * Checks if a symbol is eligible for Day Netting in qRMS (non-navigating cache lookup).
      */
     public static boolean isSymbolNettingApplicable(WebDriver driver, String exchange, String symbol) {
         if (symbol == null || symbol.trim().isEmpty()) return true;
         String ex = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "DSE";
-        String sym = symbol.trim().toUpperCase();
+        String sym = cleanBaseSymbol(symbol);
+        if (sym.isEmpty()) return true;
         try {
             if (driver != null) {
                 JavascriptExecutor js = (JavascriptExecutor) driver;
                 Object regCheck = js.executeScript(
                     "var ex = arguments[0]; var sym = arguments[1];\n" +
-                    "if (window.RMS_NETTING_SYMBOLS && window.RMS_NETTING_SYMBOLS[ex]) {\n" +
+                    "if (!window.RMS_NETTING_SYMBOLS) return null;\n" +
+                    "if (ex === 'BOTH' || ex === 'ALL') {\n" +
+                    "    var hasDse = !!window.RMS_NETTING_SYMBOLS['DSE'];\n" +
+                    "    var hasCse = !!window.RMS_NETTING_SYMBOLS['CSE'];\n" +
+                    "    if (!hasDse && !hasCse) return null;\n" +
+                    "    return (hasDse && window.RMS_NETTING_SYMBOLS['DSE'][sym] === true) || (hasCse && window.RMS_NETTING_SYMBOLS['CSE'][sym] === true);\n" +
+                    "}\n" +
+                    "if (window.RMS_NETTING_SYMBOLS[ex]) {\n" +
                     "    return window.RMS_NETTING_SYMBOLS[ex][sym] === true;\n" +
                     "}\n" +
                     "return null;",
@@ -1129,10 +1407,24 @@ public class RMS {
     // 5. UNAUTHORIZED BOARDS & MARKET RESTRICTIONS
     // =========================================================================
 
+    private static final String FIND_INNERMOST_CARD_JS =
+        "function findCard(kw, otherKw) {\n" +
+        "    var all = Array.from(document.querySelectorAll('.card, .panel, section, form, div'));\n" +
+        "    var specific = all.filter(function(c) {\n" +
+        "        var t = (c.innerText || '').toLowerCase();\n" +
+        "        return t.indexOf(kw) !== -1 && (!otherKw || t.indexOf(otherKw) === -1) && c.querySelector('input[type=\"checkbox\"], select') !== null;\n" +
+        "    });\n" +
+        "    if (specific.length > 0) return specific[specific.length - 1];\n" +
+        "    var loose = all.filter(function(c) {\n" +
+        "        var t = (c.innerText || '').toLowerCase();\n" +
+        "        return t.indexOf(kw) !== -1 && c.querySelector('input[type=\"checkbox\"], select') !== null;\n" +
+        "    });\n" +
+        "    return loose.length > 0 ? loose[loose.length - 1] : null;\n" +
+        "}\n";
+
     /**
      * Extracts Unauthorized Boards & Market settings.
      */
-    @SuppressWarnings("unchecked")
     public static List<BoardRestrictionRecord> fetchUnauthorizedBoardsSettings(WebDriver driver) {
         List<BoardRestrictionRecord> list = new ArrayList<>();
         if (driver == null) return list;
@@ -1140,32 +1432,84 @@ public class RMS {
             navigateToUnauthorizedBoardsTab(driver);
             JavascriptExecutor js = (JavascriptExecutor) driver;
             String script =
-                "var out = { boardBlocking: true, spotBlocking: false, exchange: 'CSE', boardTag: 'BLOCK' };\n" +
-                "var cards = Array.from(document.querySelectorAll('div, section, .card, .panel'));\n" +
-                "var bCard = cards.find(function(c) { var t = (c.innerText||'').toLowerCase(); return t.indexOf('board wise blocking') !== -1; });\n" +
-                "if (bCard) {\n" +
-                "    var cb = bCard.querySelector('input[type=\"checkbox\"]');\n" +
-                "    if (cb) out.boardBlocking = cb.checked;\n" +
+                FIND_INNERMOST_CARD_JS +
+                "function readCardInfo(card, defEx, defTag) {\n" +
+                "    var res = { blocked: null, exchange: defEx, boardTag: defTag };\n" +
+                "    if (!card) return res;\n" +
+                "    var selects = Array.from(card.querySelectorAll('select'));\n" +
+                "    for (var s = 0; s < selects.length; s++) {\n" +
+                "        var sel = selects[s];\n" +
+                "        var opt = sel.options[sel.selectedIndex];\n" +
+                "        var val = (opt ? (opt.text || opt.value) : (sel.value || '')).trim().toUpperCase();\n" +
+                "        if (val === 'DSE' || val === 'CSE') res.exchange = val;\n" +
+                "        else if (val) res.boardTag = val;\n" +
+                "    }\n" +
+                "    var inp = card.querySelector('input[type=\"text\"], input[name*=\"tag\" i], input[name*=\"board\" i]');\n" +
+                "    if (inp && inp.value && inp.value.trim()) res.boardTag = inp.value.trim().toUpperCase();\n" +
+                "    var cb = card.querySelector('input[type=\"checkbox\"]');\n" +
+                "    if (cb) res.blocked = !!cb.checked;\n" +
+                "    return res;\n" +
                 "}\n" +
-                "var sCard = cards.find(function(c) { var t = (c.innerText||'').toLowerCase(); return t.indexOf('spot market blocking') !== -1; });\n" +
-                "if (sCard) {\n" +
-                "    var cb = sCard.querySelector('input[type=\"checkbox\"]');\n" +
-                "    if (cb) out.spotBlocking = cb.checked;\n" +
-                "}\n" +
-                "return out;\n";
+                "var bInfo = readCardInfo(findCard('board wise blocking', 'spot market blocking'), 'CSE', 'BLOCK');\n" +
+                "var sInfo = readCardInfo(findCard('spot market blocking', 'board wise blocking'), 'CSE', 'SPOT');\n" +
+                "return {\n" +
+                "    boardBlocking: bInfo.blocked !== null ? bInfo.blocked : true,\n" +
+                "    boardExchange: bInfo.exchange,\n" +
+                "    boardTag: bInfo.boardTag,\n" +
+                "    spotBlocking: sInfo.blocked !== null ? sInfo.blocked : false,\n" +
+                "    spotExchange: sInfo.exchange\n" +
+                "};\n";
 
-            Map<String, Object> res = (Map<String, Object>) js.executeScript(script);
-            if (res != null) {
-                boolean bBlock = Boolean.parseBoolean(String.valueOf(res.getOrDefault("boardBlocking", "true")));
-                boolean sBlock = Boolean.parseBoolean(String.valueOf(res.getOrDefault("spotBlocking", "false")));
-                String ex = String.valueOf(res.getOrDefault("exchange", "CSE"));
-                String tag = String.valueOf(res.getOrDefault("boardTag", "BLOCK"));
+            Object rawObj = js.executeScript(script);
+            if (rawObj instanceof Map<?, ?> res) {
+                boolean bBlock = Boolean.parseBoolean(String.valueOf(res.containsKey("boardBlocking") ? res.get("boardBlocking") : "true"));
+                boolean sBlock = Boolean.parseBoolean(String.valueOf(res.containsKey("spotBlocking") ? res.get("spotBlocking") : "false"));
+                String bEx = res.get("boardExchange") != null ? String.valueOf(res.get("boardExchange")) : "CSE";
+                String bTag = res.get("boardTag") != null ? String.valueOf(res.get("boardTag")) : "BLOCK";
+                String sEx = res.get("spotExchange") != null ? String.valueOf(res.get("spotExchange")) : "CSE";
 
-                list.add(new BoardRestrictionRecord(ex, tag, "Board Wise Blocking", bBlock, bBlock ? "BLOCKED (ON)" : "UNBLOCKED (OFF)"));
-                list.add(new BoardRestrictionRecord(ex, "SPOT", "Spot Market Blocking", sBlock, sBlock ? "BLOCKED (ON)" : "UNBLOCKED (OFF)"));
+                list.add(new BoardRestrictionRecord(bEx, bTag, "Board Wise Blocking", bBlock, bBlock ? "BLOCKED (ON)" : "UNBLOCKED (OFF)"));
+                list.add(new BoardRestrictionRecord(sEx, "SPOT", "Spot Market Blocking", sBlock, sBlock ? "BLOCKED (ON)" : "UNBLOCKED (OFF)"));
             }
         } catch (Exception ignored) {}
         return list;
+    }
+
+    /**
+     * Checks whether trading on a given exchange and board is currently blocked.
+     * Checks non-navigating window cache first, then live Unauthorized Boards settings,
+     * falling back to qRMS default (CSE BLOCK blocked, PUBLIC allowed).
+     */
+    public static boolean isBoardBlocked(WebDriver driver, String exchange, String board) {
+        String ex = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "DSE";
+        String brd = (board != null && !board.trim().isEmpty()) ? board.trim().toUpperCase() : "PUBLIC";
+
+        if (driver != null) {
+            try {
+                Object cached = ((JavascriptExecutor) driver).executeScript(
+                    "var ex = arguments[0]; var brd = arguments[1];\n" +
+                    "if (window.RMS_BOARD_BLOCKS) {\n" +
+                    "    var k1 = ex + '_' + brd;\n" +
+                    "    var k2 = ex + '_REGULAR_' + brd;\n" +
+                    "    if (typeof window.RMS_BOARD_BLOCKS[k1] === 'boolean') return window.RMS_BOARD_BLOCKS[k1];\n" +
+                    "    if (typeof window.RMS_BOARD_BLOCKS[k2] === 'boolean') return window.RMS_BOARD_BLOCKS[k2];\n" +
+                    "}\n" +
+                    "return null;",
+                    ex, brd
+                );
+                if (cached instanceof Boolean) {
+                    return (Boolean) cached;
+                }
+            } catch (Exception ignored) {}
+
+            List<BoardRestrictionRecord> records = fetchUnauthorizedBoardsSettings(driver);
+            for (BoardRestrictionRecord r : records) {
+                if (r != null && ex.equalsIgnoreCase(r.exchange) && brd.equalsIgnoreCase(r.boardTag)) {
+                    return r.isBlocked;
+                }
+            }
+        }
+        return "BLOCK".equalsIgnoreCase(brd) && "CSE".equalsIgnoreCase(ex);
     }
 
     /**
@@ -1190,46 +1534,93 @@ public class RMS {
     }
 
     /**
-     * Configures Board-Wise Blocking.
+     * Shared implementation for configuring Board-Wise Blocking or Spot Market Blocking.
+     * Applies exchange selection, optional board tag selection/input, toggle state, Save Changes,
+     * password authentication, and window.RMS_BOARD_BLOCKS cache synchronization.
      */
-    public static boolean configureBoardWiseBlocking(WebDriver driver, String exchange, String boardTag, boolean block, String password) {
+    public static boolean configureBoardOrSpotBlocking(
+            WebDriver driver, String cardKeyword, String exchange, String boardTag, boolean block, String password) {
         if (driver == null) return false;
-        String ex = (exchange != null && !exchange.isEmpty()) ? exchange.trim().toUpperCase() : "CSE";
-        String tag = (boardTag != null && !boardTag.isEmpty()) ? boardTag.trim().toUpperCase() : "BLOCK";
+        String kw = (cardKeyword != null && !cardKeyword.trim().isEmpty())
+                ? cardKeyword.trim().toLowerCase() : "board wise blocking";
+        String otherKw = kw.contains("spot") ? "board wise blocking" : "spot market blocking";
+        String ex = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "CSE";
+        String tag = (boardTag != null && !boardTag.trim().isEmpty())
+                ? boardTag.trim().toUpperCase() : (kw.contains("spot") ? "SPOT" : "BLOCK");
         try {
             navigateToUnauthorizedBoardsTab(driver);
-            System.out.printf("[RMS UNAUTHORIZED BOARDS] Setting Board Wise Blocking for %s -> Board '%s', Blocked: %b...%n", ex, tag, block);
+            System.out.printf("[RMS UNAUTHORIZED BOARDS] Configuring '%s' for %s -> Board '%s', Blocked: %b...%n",
+                    kw, ex, tag, block);
             JavascriptExecutor js = (JavascriptExecutor) driver;
 
             js.executeScript(
-                "var ex = arguments[0];\n" +
-                "var block = arguments[1];\n" +
-                "var tag = arguments[2];\n" +
-                "var cards = Array.from(document.querySelectorAll('div, section, .card, .panel'));\n" +
-                "var bCard = cards.find(function(c) { var t = (c.innerText||'').toLowerCase(); return t.indexOf('board wise blocking') !== -1; });\n" +
-                "if (bCard) {\n" +
-                "    var cb = bCard.querySelector('input[type=\"checkbox\"]');\n" +
-                "    if (cb) {\n" +
-                "        if (cb.checked !== block) {\n" +
-                "            cb.click();\n" +
-                "            if (cb.checked !== block) cb.checked = block;\n" +
-                "            if (window.jQuery) window.jQuery(cb).trigger('change');\n" +
-                "            cb.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                FIND_INNERMOST_CARD_JS +
+                "var kw = arguments[0]; var otherKw = arguments[1];\n" +
+                "var ex = arguments[2]; var tag = arguments[3]; var block = arguments[4];\n" +
+                "var card = findCard(kw, otherKw);\n" +
+                "if (!card) return false;\n" +
+                "var selects = Array.from(card.querySelectorAll('select'));\n" +
+                "for (var s = 0; s < selects.length; s++) {\n" +
+                "    var sel = selects[s];\n" +
+                "    var opts = Array.from(sel.options || []);\n" +
+                "    var targetVal = opts.some(function(o) { return (o.text||o.value||'').trim().toUpperCase() === ex; }) ? ex\n" +
+                "                  : opts.some(function(o) { return (o.text||o.value||'').trim().toUpperCase() === tag; }) ? tag : '';\n" +
+                "    if (targetVal) {\n" +
+                "        for (var o = 0; o < sel.options.length; o++) {\n" +
+                "            if ((sel.options[o].text||'').trim().toUpperCase() === targetVal || (sel.options[o].value||'').trim().toUpperCase() === targetVal) {\n" +
+                "                sel.selectedIndex = o;\n" +
+                "                if (window.jQuery) window.jQuery(sel).trigger('change');\n" +
+                "                sel.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                "                break;\n" +
+                "            }\n" +
                 "        }\n" +
                 "    }\n" +
-                "}\n",
-                ex, block, tag
+                "}\n" +
+                "if (tag && tag !== 'SPOT') {\n" +
+                "    var tagInp = card.querySelector('input[type=\"text\"][name*=\"tag\" i], input[type=\"text\"][name*=\"board\" i], input[placeholder*=\"board\" i], input[placeholder*=\"tag\" i]');\n" +
+                "    if (tagInp) {\n" +
+                "        tagInp.value = tag;\n" +
+                "        if (window.jQuery) window.jQuery(tagInp).val(tag).trigger('input').trigger('change');\n" +
+                "        tagInp.dispatchEvent(new Event('input', { bubbles: true }));\n" +
+                "        tagInp.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                "    }\n" +
+                "}\n" +
+                "var groups = Array.from(card.querySelectorAll('tr, .form-group, .row, .switch-row'));\n" +
+                "var targetGroup = groups.find(function(g) {\n" +
+                "    var gt = (g.innerText || '').toUpperCase();\n" +
+                "    return gt.indexOf(ex) !== -1 && g.querySelector('input[type=\"checkbox\"]') !== null;\n" +
+                "}) || card;\n" +
+                "var cb = targetGroup.querySelector('input[type=\"checkbox\"]') || card.querySelector('input[type=\"checkbox\"]');\n" +
+                "if (cb) {\n" +
+                "    if (cb.checked !== block) {\n" +
+                "        cb.click();\n" +
+                "        if (cb.checked !== block) cb.checked = block;\n" +
+                "        if (window.jQuery) window.jQuery(cb).trigger('change');\n" +
+                "        cb.dispatchEvent(new Event('change', { bubbles: true }));\n" +
+                "    }\n" +
+                "} else {\n" +
+                "    var toggle = targetGroup.querySelector('.switch, .slider, label, [class*=\"toggle\"]');\n" +
+                "    if (toggle) toggle.click();\n" +
+                "}\n" +
+                "var saveBtn = Array.from(card.querySelectorAll('button, a.btn, input[type=\"submit\"]')).find(function(b) {\n" +
+                "    return (b.innerText || b.value || b.textContent || '').trim().toLowerCase().indexOf('save changes') !== -1;\n" +
+                "}) || Array.from(document.querySelectorAll('button, a.btn, input[type=\"submit\"]')).find(function(b) {\n" +
+                "    return (b.innerText || b.value || b.textContent || '').trim().toLowerCase().indexOf('save changes') !== -1;\n" +
+                "});\n" +
+                "if (saveBtn) { if (window.jQuery) window.jQuery(saveBtn).trigger('click'); saveBtn.click(); }\n" +
+                "return true;",
+                kw, otherKw, ex, tag, block
             );
             Thread.sleep(400);
 
-            // Click Save Changes
-            js.executeScript(
-                "var btns = Array.from(document.querySelectorAll('button, a.btn, input[type=\"submit\"]'));\n" +
-                "var sb = btns.find(function(b) { var t = (b.innerText||b.value||'').trim().toLowerCase(); return t.indexOf('save changes') !== -1; });\n" +
-                "if (sb) { sb.click(); }\n"
-            );
-
             submitPasswordAuthentication(driver, password);
+            js.executeScript(
+                "var ex = arguments[0]; var tag = arguments[1]; var block = arguments[2];\n" +
+                "if (!window.RMS_BOARD_BLOCKS) window.RMS_BOARD_BLOCKS = {};\n" +
+                "window.RMS_BOARD_BLOCKS[ex + '_' + tag] = block;\n" +
+                "window.RMS_BOARD_BLOCKS[ex + '_REGULAR_' + tag] = block;\n",
+                ex, tag, block
+            );
             Thread.sleep(600);
             displayUnauthorizedBoardsTable(driver);
             return true;
@@ -1237,6 +1628,20 @@ public class RMS {
             System.out.println("[RMS UNAUTHORIZED BOARDS: ERROR] " + e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * Configures Board-Wise Blocking.
+     */
+    public static boolean configureBoardWiseBlocking(WebDriver driver, String exchange, String boardTag, boolean block, String password) {
+        return configureBoardOrSpotBlocking(driver, "board wise blocking", exchange, boardTag, block, password);
+    }
+
+    /**
+     * Configures Spot Market Blocking.
+     */
+    public static boolean configureSpotMarketBlocking(WebDriver driver, String exchange, boolean block, String password) {
+        return configureBoardOrSpotBlocking(driver, "spot market blocking", exchange, "SPOT", block, password);
     }
 
     // =========================================================================
@@ -1272,11 +1677,15 @@ public class RMS {
         }
 
         // 2. Validate Spot / Z Group Restrictions
-        if (("SPOT".equalsIgnoreCase(brd) || sym.startsWith("Z") || sym.endsWith(".SPOT")) && !appSettings.allowZAndSpotNetting) {
+        String baseSym = cleanBaseSymbol(sym);
+        if (("SPOT".equalsIgnoreCase(brd) || baseSym.startsWith("Z") || sym.endsWith(".SPOT")) && !appSettings.allowZAndSpotNetting) {
             if ("BUY".equalsIgnoreCase(ordSide)) {
                 report.symbolApplicable = false;
                 report.symbolReason = "Z/Spot purchase restricted: ALLOW_Z_AND_SPOT_NETTING is FALSE in qRMS";
             }
+        } else if (report.symbolApplicable && !isSymbolNettingApplicable(driver, ex, baseSym)) {
+            report.symbolApplicable = false;
+            report.symbolReason = "Symbol '" + baseSym + "' is NOT active in qRMS Applicable Symbols for " + ex + ".";
         }
 
         // 3. Validate Clients RMS Eligibility
@@ -1287,9 +1696,9 @@ public class RMS {
         }
 
         // 4. Validate Trading Board
-        if ("BLOCK".equalsIgnoreCase(brd) && "CSE".equalsIgnoreCase(ex)) {
+        if (isBoardBlocked(driver, ex, brd)) {
             report.boardAllowed = false;
-            report.boardReason = "CSE BLOCK board is prohibited under Unauthorized Boards (Board Wise Blocking = ON)";
+            report.boardReason = String.format("%s %s board is prohibited under Unauthorized Boards & Market restrictions.", ex, brd);
         }
 
         // 5. Check Overall Approval
@@ -1512,8 +1921,39 @@ public class RMS {
         System.out.printf("Test 3 [Spot Without Mature Balance]: Verdict = %s -> %s%n", r3.verdict, p3 ? "PASS" : "FAIL");
         allPassed &= p3;
 
+        // Scenario 4: Client exclusivity (Client 1 Allowed vs Others Disallowed)
+        ClientExclusivityResult ex1 = evaluateClientExclusivity("002", true, Arrays.asList("23986", "34601"));
+        assertClientExclusivityRule(ex1);
+        boolean p4 = ex1.valid && !ex1.hasOverlap && "002".equals(ex1.primaryClient) && ex1.otherClients.size() == 2;
+        System.out.printf("Test 4 [Client Exclusivity Allowed vs Others]: %s -> %s%n", ex1.reason, p4 ? "PASS" : "FAIL");
+        allPassed &= p4;
+
+        // Scenario 5: Client exclusivity (Client 1 Disallowed vs Others Allowed)
+        ClientExclusivityResult ex2 = evaluateClientExclusivity("002", false, Arrays.asList("23986"));
+        assertClientExclusivityRule(ex2);
+        boolean p5 = ex2.valid && !ex2.hasOverlap && !ex2.primaryAllowed && ex2.otherClients.contains("23986");
+        System.out.printf("Test 5 [Client Exclusivity Disallowed vs Others]: %s -> %s%n", ex2.reason, p5 ? "PASS" : "FAIL");
+        allPassed &= p5;
+
+        // Scenario 6: Negative overlap check (same client in both sets must fail & throw)
+        ClientExclusivityResult exOverlap = evaluateClientExclusivity("23986", true, Arrays.asList("34601", " 23986 "));
+        boolean threwOnOverlap = false;
+        try {
+            assertClientExclusivityRule(exOverlap);
+        } catch (IllegalStateException expected) {
+            threwOnOverlap = true;
+        }
+        boolean p6 = !exOverlap.valid && exOverlap.hasOverlap && threwOnOverlap;
+        System.out.printf("Test 6 [Negative Overlap Detection]: overlap=%b, threw=%b -> %s%n", exOverlap.hasOverlap, threwOnOverlap, p6 ? "PASS" : "FAIL");
+        allPassed &= p6;
+
+        // Scenario 7: Offline board block defaults
+        boolean p7 = isBoardBlocked(null, "CSE", "BLOCK") && !isBoardBlocked(null, "DSE", "PUBLIC");
+        System.out.printf("Test 7 [Board Blocking Defaults]: CSE.BLOCK=true, DSE.PUBLIC=false -> %s%n", p7 ? "PASS" : "FAIL");
+        allPassed &= p7;
+
         System.out.println("+-----------------------------------------------------------------------------+");
-        System.out.printf("| ALL PRE-TRADE RMS AUDIT TESTS: %-44s |%n", allPassed ? "ALL PASSED (3/3)" : "SOME FAILED");
+        System.out.printf("| ALL PRE-TRADE RMS AUDIT TESTS: %-44s |%n", allPassed ? "ALL PASSED (7/7)" : "SOME FAILED");
         System.out.println("+-----------------------------------------------------------------------------+\n");
         return allPassed;
     }

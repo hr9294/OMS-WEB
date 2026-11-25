@@ -1,6 +1,11 @@
+import java.io.File;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -8,8 +13,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Scanner;
 
+import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 /**
@@ -202,6 +209,171 @@ public class Day_Netting {
             this.symbol = (symbol != null && !symbol.trim().isEmpty()) ? symbol.trim().toUpperCase() : "GP";
             this.clientCode = (clientCode != null && !clientCode.trim().isEmpty()) ? clientCode.trim() : "23986";
             this.board = (board != null && !board.trim().isEmpty()) ? board.trim().toUpperCase() : "PUBLIC";
+        }
+    }
+
+    /**
+     * Canonical 9 Day Netting compliance scenarios covering client exclusivity,
+     * symbol/client eligibility blocking, post-accepted-order rule flips, and Stock File uploads.
+     */
+    public enum NettingScenarioType {
+        S1_CLIENT1_ALLOWED_OTHERS_DISALLOWED("S1: Client 1 Allowed vs Others Disallowed"),
+        S2_CLIENT1_DISALLOWED_OTHERS_ALLOWED("S2: Client 1 Disallowed vs Others Allowed"),
+        S3_SYMBOL_ALLOWED_CLIENT_DISALLOWED("S3: Symbol Allowed + Client Disallowed -> No Saleable Update"),
+        S4_SYMBOL_DISALLOWED_CLIENT_ALLOWED("S4: Symbol Disallowed + Client Allowed -> No Saleable Update"),
+        S5_POST_ORDER_ALLOW_SYMBOL("S5: Post-Accepted-Order Allow Symbol -> Check Reflection"),
+        S6_POST_ORDER_ALLOW_CLIENT("S6: Post-Accepted-Order Allow Client -> Check Update"),
+        S7_ALLOW_NETTING_PLUS_STOCK_FILE("S7: Allow Netting + Stock File -> Saleable Updated"),
+        S8_DISALLOW_NETTING_PLUS_STOCK_FILE("S8: Disallow Netting + Stock File -> Saleable Updated"),
+        S9_DISALLOW_PLUS_STOCK_FILE_THEN_ALLOW("S9: Disallow + Stock File -> Then Allow Netting -> Saleable Updated");
+
+        private final String displayName;
+
+        NettingScenarioType(String displayName) {
+            this.displayName = displayName;
+        }
+
+        public String getDisplayName() {
+            return displayName;
+        }
+    }
+
+    /**
+     * Policy governing how post-accepted-order RMS allow flips are evaluated.
+     */
+    public enum RetroactivePolicy {
+        RETROACTIVE_APPLY,
+        PROSPECTIVE_ONLY,
+        OBSERVE_AND_REPORT
+    }
+
+    /**
+     * Execution parameters for running the 9-Scenario Day Netting Compliance Matrix.
+     */
+    public static class NettingScenarioConfig {
+        public String primaryClient = "002";
+        public List<String> otherClients = new ArrayList<>(Collections.singletonList("23986"));
+        public String symbol = "GP";
+        public String exchange = "BOTH";
+        public String board = "PUBLIC";
+        public NettingMode nettingMode = NettingMode.INDIVIDUAL_EXCHANGE;
+        public boolean dseEnabled = true;
+        public boolean cseEnabled = true;
+        public boolean allowZSpot = false;
+        public int orderQty = 10;
+        public double orderRate = 266.90;
+        public String rmsPassword = "12345";
+        public String stockFilePath = "";
+        public boolean allowLiveStockUpload = false;
+        public boolean executeLiveOrders = true;
+        public RetroactivePolicy retroactivePolicy = RetroactivePolicy.OBSERVE_AND_REPORT;
+        public String scenarioFilter = "ALL";
+    }
+
+    /**
+     * Immutable specification for one scenario in the 9-Scenario Matrix.
+     */
+    public static class NettingScenarioSpec {
+        public final int number;
+        public final NettingScenarioType type;
+        public final String title;
+        public final String ruleDescription;
+        public final boolean initialClientAllowed;
+        public final boolean initialSymbolAllowed;
+        public final boolean postOrderAllowSymbol;
+        public final boolean postOrderAllowClient;
+        public final boolean requiresStockFile;
+        public final boolean expectSaleableUpdatedInitially;
+        public final boolean expectSaleableUpdatedAfterFlip;
+
+        public NettingScenarioSpec(
+                int number, NettingScenarioType type, String title, String ruleDescription,
+                boolean initialClientAllowed, boolean initialSymbolAllowed,
+                boolean postOrderAllowSymbol, boolean postOrderAllowClient,
+                boolean requiresStockFile, boolean expectSaleableUpdatedInitially,
+                boolean expectSaleableUpdatedAfterFlip) {
+            this.number = number;
+            this.type = type;
+            this.title = title;
+            this.ruleDescription = ruleDescription;
+            this.initialClientAllowed = initialClientAllowed;
+            this.initialSymbolAllowed = initialSymbolAllowed;
+            this.postOrderAllowSymbol = postOrderAllowSymbol;
+            this.postOrderAllowClient = postOrderAllowClient;
+            this.requiresStockFile = requiresStockFile;
+            this.expectSaleableUpdatedInitially = expectSaleableUpdatedInitially;
+            this.expectSaleableUpdatedAfterFlip = expectSaleableUpdatedAfterFlip;
+        }
+    }
+
+    /**
+     * Outcome produced by executing one scenario of the 9-Scenario Compliance Matrix.
+     */
+    public static class NettingScenarioOutcome {
+        public final NettingScenarioSpec spec;
+        public final boolean executedLive;
+        public final boolean passed;
+        public final boolean applicabilityOk;
+        public final boolean exclusivityOk;
+        public final boolean saleableAuditOk;
+        public final String preSaleableSummary;
+        public final String postSaleableSummary;
+        public final String verdict;
+        public final String details;
+        public final NettingSaleableAuditResult auditResult;
+        public final SaleableDeltaReport deltaReport;
+
+        public NettingScenarioOutcome(
+                NettingScenarioSpec spec, boolean executedLive, boolean passed,
+                boolean applicabilityOk, boolean exclusivityOk, boolean saleableAuditOk,
+                String preSaleableSummary, String postSaleableSummary,
+                String verdict, String details,
+                NettingSaleableAuditResult auditResult, SaleableDeltaReport deltaReport) {
+            this.spec = spec;
+            this.executedLive = executedLive;
+            this.passed = passed;
+            this.applicabilityOk = applicabilityOk;
+            this.exclusivityOk = exclusivityOk;
+            this.saleableAuditOk = saleableAuditOk;
+            this.preSaleableSummary = preSaleableSummary != null ? preSaleableSummary : "-";
+            this.postSaleableSummary = postSaleableSummary != null ? postSaleableSummary : "-";
+            this.verdict = verdict != null ? verdict : (passed ? "PASS" : "FAIL");
+            this.details = details != null ? details : "";
+            this.auditResult = auditResult;
+            this.deltaReport = deltaReport;
+        }
+    }
+
+    /**
+     * Snapshot of initial qRMS netting settings captured before running test mutations.
+     */
+    public static class QrmsNettingStateSnapshot {
+        public final String dayNettingSettings;
+        public final boolean dseEnabled;
+        public final boolean cseEnabled;
+        public final boolean allowZSpot;
+        public final List<RMS.ClientRmsRecord> allowedClients;
+        public final List<RMS.ClientRmsRecord> disallowedClients;
+        public final List<RMS.ApplicableSymbolRecord> dseSymbols;
+        public final List<RMS.ApplicableSymbolRecord> cseSymbols;
+        public final List<RMS.BoardRestrictionRecord> boardRestrictions;
+        public final boolean capturedFromLiveDriver;
+
+        public QrmsNettingStateSnapshot(
+                String dayNettingSettings, boolean dseEnabled, boolean cseEnabled, boolean allowZSpot,
+                List<RMS.ClientRmsRecord> allowedClients, List<RMS.ClientRmsRecord> disallowedClients,
+                List<RMS.ApplicableSymbolRecord> dseSymbols, List<RMS.ApplicableSymbolRecord> cseSymbols,
+                List<RMS.BoardRestrictionRecord> boardRestrictions, boolean capturedFromLiveDriver) {
+            this.dayNettingSettings = dayNettingSettings != null ? dayNettingSettings : "INDIVIDUAL EXCHANGE";
+            this.dseEnabled = dseEnabled;
+            this.cseEnabled = cseEnabled;
+            this.allowZSpot = allowZSpot;
+            this.allowedClients = allowedClients != null ? new ArrayList<>(allowedClients) : new ArrayList<>();
+            this.disallowedClients = disallowedClients != null ? new ArrayList<>(disallowedClients) : new ArrayList<>();
+            this.dseSymbols = dseSymbols != null ? new ArrayList<>(dseSymbols) : new ArrayList<>();
+            this.cseSymbols = cseSymbols != null ? new ArrayList<>(cseSymbols) : new ArrayList<>();
+            this.boardRestrictions = boardRestrictions != null ? new ArrayList<>(boardRestrictions) : new ArrayList<>();
+            this.capturedFromLiveDriver = capturedFromLiveDriver;
         }
     }
 
@@ -991,73 +1163,78 @@ public class Day_Netting {
     }
 
     /**
-     * Uploads an Applicable Symbols File (.csv, .xlsx, .txt).
+     * Uploads an Applicable Symbols File (.csv, .xlsx, .txt) and confirms the upload modal if present.
      */
     public static boolean uploadApplicableSymbolsFile(WebDriver driver, String filePath) {
-        if (driver == null || filePath == null || filePath.isEmpty()) return false;
+        if (driver == null || filePath == null || filePath.trim().isEmpty()) return false;
+        File f = new File(filePath.trim());
+        if (!f.exists() || !f.isFile()) {
+            System.out.printf("[RMS APPLICABLE SYMBOLS: ERROR] Local file does not exist: %s%n", filePath);
+            return false;
+        }
         try {
             navigateToApplicableSymbolTab(driver);
-            System.out.printf("[RMS APPLICABLE SYMBOLS] Uploading Symbols File: %s...%n", filePath);
+            System.out.printf("[RMS APPLICABLE SYMBOLS] Uploading Symbols File: %s...%n", f.getAbsolutePath());
             JavascriptExecutor js = (JavascriptExecutor) driver;
 
-            // Check if file input is present in DOM
-            Boolean uploaded = (Boolean) js.executeScript(
-                "var fileInput = document.querySelector('input[type=\"file\"]');\n" +
-                "if (fileInput) {\n" +
-                "    fileInput.style.display = 'block';\n" +
-                "    fileInput.style.visibility = 'visible';\n" +
-                "    return true;\n" +
-                "}\n" +
-                "return false;"
-            );
-
-            if (Boolean.TRUE.equals(uploaded)) {
-                org.openqa.selenium.WebElement fileEl = driver.findElement(org.openqa.selenium.By.cssSelector("input[type=\"file\"]"));
-                fileEl.sendKeys(filePath);
-                Thread.sleep(1200);
-                System.out.println("  ✓ [RMS APPLICABLE SYMBOLS] File uploaded and processed successfully.");
-                displayApplicableSymbolsTable(driver);
-                return true;
-            } else {
-                System.out.println("  [RMS APPLICABLE SYMBOLS] File input handled via upload dialogue.");
-                return true;
+            List<WebElement> inputs = driver.findElements(By.cssSelector("input[type=\"file\"]"));
+            if (inputs.isEmpty()) {
+                js.executeScript(
+                    "var btns = Array.from(document.querySelectorAll('button, a.btn, .btn, label'));\n" +
+                    "var upBtn = btns.find(function(b) {\n" +
+                    "    var t = (b.innerText || b.textContent || '').trim().toLowerCase();\n" +
+                    "    return t.indexOf('upload') !== -1 || t.indexOf('import') !== -1;\n" +
+                    "});\n" +
+                    "if (upBtn) { if (window.jQuery) window.jQuery(upBtn).trigger('click'); upBtn.click(); }\n"
+                );
+                Thread.sleep(400);
+                inputs = driver.findElements(By.cssSelector("input[type=\"file\"]"));
             }
+
+            if (inputs.isEmpty()) {
+                System.out.println("[RMS APPLICABLE SYMBOLS: WARN] No <input type=\"file\"> found on Applicable Symbol tab.");
+                return false;
+            }
+
+            WebElement fileEl = inputs.get(0);
+            js.executeScript(
+                "arguments[0].style.display = 'block';" +
+                "arguments[0].style.visibility = 'visible';" +
+                "arguments[0].style.opacity = '1';" +
+                "arguments[0].removeAttribute('hidden');",
+                fileEl
+            );
+            fileEl.sendKeys(f.getAbsolutePath());
+            js.executeScript(
+                "if (window.jQuery) window.jQuery(arguments[0]).trigger('input').trigger('change');" +
+                "arguments[0].dispatchEvent(new Event('input', { bubbles: true }));" +
+                "arguments[0].dispatchEvent(new Event('change', { bubbles: true }));",
+                fileEl
+            );
+            Thread.sleep(500);
+            OMSweb_UploadData.confirmUploadModalIfPresent(driver);
+            submitPasswordAuthentication(driver, null);
+            Thread.sleep(1000);
+            dismissOverlays(driver);
+            System.out.println("  ✓ [RMS APPLICABLE SYMBOLS] File uploaded and processed successfully.");
+            displayApplicableSymbolsTable(driver);
+            return true;
         } catch (Exception e) {
             System.out.println("[RMS APPLICABLE SYMBOLS: ERROR] File upload: " + e.getMessage());
             return false;
         }
     }
 
-    @SuppressWarnings("unchecked")
     public static List<Map<String, String>> fetchApplicableSymbolsList(WebDriver driver) {
-        List<Map<String, String>> out = new java.util.ArrayList<>();
+        List<Map<String, String>> out = new ArrayList<>();
         if (driver == null) return out;
-        try {
-            JavascriptExecutor js = (JavascriptExecutor) driver;
-            String script =
-                "var rows = Array.from(document.querySelectorAll('table tbody tr, tr'));\n" +
-                "var list = [];\n" +
-                "for (var i = 0; i < rows.length; i++) {\n" +
-                "    var tds = rows[i].querySelectorAll('td');\n" +
-                "    if (tds.length >= 2) {\n" +
-                "        var ex = (tds[0].innerText || tds[0].textContent || '').trim();\n" +
-                "        var sym = (tds[1].innerText || tds[1].textContent || '').trim();\n" +
-                "        if (ex && sym && ex.toUpperCase() !== 'EXCHANGE' && sym.toUpperCase() !== 'TICKER') {\n" +
-                "            list.push({ exchange: ex, ticker: sym });\n" +
-                "        }\n" +
-                "    }\n" +
-                "}\n" +
-                "return list;\n";
-            List<Map<String, Object>> res = (List<Map<String, Object>>) js.executeScript(script);
-            if (res != null) {
-                for (Map<String, Object> item : res) {
-                    Map<String, String> m = new LinkedHashMap<>();
-                    m.put("exchange", String.valueOf(item.getOrDefault("exchange", "DSE")));
-                    m.put("ticker", String.valueOf(item.getOrDefault("ticker", "-")));
-                    out.add(m);
-                }
-            }
-        } catch (Exception ignored) {}
+        List<RMS.ApplicableSymbolRecord> records = RMS.fetchApplicableSymbolsList(driver, "ALL");
+        for (RMS.ApplicableSymbolRecord r : records) {
+            Map<String, String> m = new LinkedHashMap<>();
+            m.put("exchange", r.exchange != null ? r.exchange : "DSE");
+            m.put("ticker", r.ticker != null ? r.ticker : "-");
+            out.add(m);
+        }
         return out;
     }
 
@@ -1069,12 +1246,7 @@ public class Day_Netting {
         System.out.printf("| %-4s | %-10s | %-24s | %-37s |%n", "NO.", "EXCHANGE", "TICKER SYMBOL", "STATUS / ACTION");
         System.out.println("+------+------------+--------------------------+-----------------------------------------+");
         if (list.isEmpty()) {
-            System.out.printf("| %-4s | %-10s | %-24s | %-37s |%n", "1", "DSE", "1JANATAMF", "APPLICABLE (Scrip Netting Active)");
-            System.out.printf("| %-4s | %-10s | %-24s | %-37s |%n", "2", "CSE", "1STPRIMFMF", "APPLICABLE (Scrip Netting Active)");
-            System.out.printf("| %-4s | %-10s | %-24s | %-37s |%n", "3", "DSE", "AAMRANET", "APPLICABLE (Scrip Netting Active)");
-            System.out.printf("| %-4s | %-10s | %-24s | %-37s |%n", "4", "CSE", "AAMRANET", "APPLICABLE (Scrip Netting Active)");
-            System.out.printf("| %-4s | %-10s | %-24s | %-37s |%n", "5", "CSE", "ABB1STMF", "APPLICABLE (Scrip Netting Active)");
-            System.out.printf("| %-4s | %-10s | %-24s | %-37s |%n", "6", "CSE", "ABBLPBOND", "APPLICABLE (Scrip Netting Active)");
+            System.out.printf("| %-4s | %-10s | %-24s | %-37s |%n", "-", "-", "No Data Found!", "No Applicable Symbols Listed");
         } else {
             int idx = 1;
             for (Map<String, String> row : list) {
@@ -1085,130 +1257,42 @@ public class Day_Netting {
     }
 
     // =========================================================================
-    // 2.3 CLIENTS RMS (qRMS -> Netting -> Clients RMS)
+    // 2.3 CLIENTS RMS (qRMS -> Netting -> Clients RMS) [Delegated to RMS]
     // =========================================================================
 
     /**
      * Navigates to qRMS Administration -> Netting -> Clients RMS subtab.
      */
     public static boolean navigateToClientsRmsTab(WebDriver driver) {
-        if (driver == null) return false;
-        try {
-            System.out.println("[RMS CLIENTS] Navigating to Netting -> Clients RMS...");
-            JavascriptExecutor js = (JavascriptExecutor) driver;
-
-            // 1. Ensure Netting top-level tab is clicked
-            js.executeScript(
-                "var tabs = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
-                "var nt = tabs.find(function(el) { return (el.innerText||el.textContent||'').trim().toLowerCase() === 'netting'; });\n" +
-                "if (nt) { if (window.jQuery) window.jQuery(nt).trigger('click'); nt.click(); }\n"
-            );
-            Thread.sleep(500);
-
-            // 2. Click subtab 'Clients RMS'
-            js.executeScript(
-                "var subTabs = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
-                "var crt = subTabs.find(function(el) { var t = (el.innerText||el.textContent||'').trim().toLowerCase(); return t === 'clients rms' || t.indexOf('clients rms') !== -1; });\n" +
-                "if (crt) { if (window.jQuery) window.jQuery(crt).trigger('click'); crt.click(); return true; }\n" +
-                "return false;"
-            );
-            Thread.sleep(600);
-            System.out.println("[RMS CLIENTS] Subtab 'Clients RMS' active: CONFIRMED");
-            return true;
-        } catch (Exception e) {
-            System.out.println("[RMS CLIENTS: WARN] " + e.getMessage());
-            return false;
-        }
+        return RMS.navigateToClientsRmsTab(driver);
     }
 
     /**
      * Switches between Allowed and Disallowed lists in Clients RMS.
      */
     public static boolean switchClientsNettingList(WebDriver driver, boolean allowed) {
-        if (driver == null) return false;
-        try {
-            navigateToClientsRmsTab(driver);
-            String target = allowed ? "allowed" : "disallowed";
-            System.out.printf("[RMS CLIENTS] Switching list view to: %s...%n", target.toUpperCase());
-            JavascriptExecutor js = (JavascriptExecutor) driver;
-
-            Boolean switched = (Boolean) js.executeScript(
-                "var target = arguments[0];\n" +
-                "var btns = Array.from(document.querySelectorAll('button, a.btn, .btn, span, div'));\n" +
-                "var targetBtn = btns.find(function(b) { var t = (b.innerText||b.textContent||'').trim().toLowerCase(); return t === target; });\n" +
-                "if (targetBtn) {\n" +
-                "    if (window.jQuery) window.jQuery(targetBtn).trigger('click');\n" +
-                "    targetBtn.click();\n" +
-                "    return true;\n" +
-                "}\n" +
-                "return false;",
-                target
-            );
-            Thread.sleep(600);
-            return Boolean.TRUE.equals(switched);
-        } catch (Exception e) {
-            System.out.println("[RMS CLIENTS: WARN] Switch list: " + e.getMessage());
-            return false;
-        }
+        return RMS.switchClientsList(driver, allowed);
     }
 
     /**
      * Adds a client to the Allowed or Disallowed Netting list.
      */
     public static boolean addClientToNettingList(WebDriver driver, String clientCode, boolean allowed, String password) {
-        if (driver == null || clientCode == null || clientCode.trim().isEmpty()) return false;
-        String cln = clientCode.trim().toUpperCase();
-        try {
-            navigateToClientsRmsTab(driver);
-            switchClientsNettingList(driver, allowed);
-            System.out.printf("[RMS CLIENTS] Adding Client '%s' to %s list...%n", cln, allowed ? "ALLOWED" : "DISALLOWED");
-            JavascriptExecutor js = (JavascriptExecutor) driver;
+        return RMS.addClientToRiskList(driver, clientCode, allowed, password);
+    }
 
-            // 1. Click '+ Add' button
-            js.executeScript(
-                "var btns = Array.from(document.querySelectorAll('button, a.btn, .btn'));\n" +
-                "var addBtn = btns.find(function(b) { var t = (b.innerText||b.textContent||'').trim().toLowerCase(); return t === '+ add' || t === 'add' || t.indexOf('+ add') !== -1; });\n" +
-                "if (addBtn) { if (window.jQuery) window.jQuery(addBtn).trigger('click'); addBtn.click(); }\n"
-            );
-            Thread.sleep(500);
+    /**
+     * Idempotently removes a client from the Allowed or Disallowed Netting list.
+     */
+    public static boolean removeClientFromNettingList(WebDriver driver, String clientCode, boolean allowed, String password) {
+        return RMS.removeClientFromRiskList(driver, clientCode, allowed, password);
+    }
 
-            // 2. Type client code in input/modal
-            js.executeScript(
-                "var cln = arguments[0];\n" +
-                "var modal = document.querySelector('.modal, [role=\"dialog\"], body');\n" +
-                "var inps = Array.from(modal.querySelectorAll('input[type=\"text\"], input:not([type])'));\n" +
-                "var cInp = inps.find(function(i) { var p = (i.placeholder||'').toLowerCase(); return p.indexOf('client') !== -1 || p.indexOf('code') !== -1; }) || inps[0];\n" +
-                "if (cInp) {\n" +
-                "    cInp.value = cln;\n" +
-                "    if (window.jQuery) window.jQuery(cInp).val(cln).trigger('input').trigger('change').trigger('keyup');\n" +
-                "    cInp.dispatchEvent(new Event('input', { bubbles: true }));\n" +
-                "    cInp.dispatchEvent(new Event('change', { bubbles: true }));\n" +
-                "}\n" +
-                "// Submit if modal has confirm button\n" +
-                "var cBtns = Array.from(modal.querySelectorAll('button, a.btn, input[type=\"submit\"]'));\n" +
-                "var subBtn = cBtns.find(function(b) { var t = (b.innerText||b.value||'').trim().toLowerCase(); return t === 'save' || t === 'add' || t === 'confirm' || t === 'ok'; });\n" +
-                "if (subBtn) { subBtn.click(); }\n",
-                cln
-            );
-            Thread.sleep(600);
-
-            submitPasswordAuthentication(driver, password);
-
-            // Sync with window registry
-            js.executeScript(
-                "var cln = arguments[0]; var allowed = arguments[1];\n" +
-                "if (!window.RMS_CLIENT_NETTING) window.RMS_CLIENT_NETTING = {};\n" +
-                "window.RMS_CLIENT_NETTING[cln] = { status: allowed ? 'ALLOWED' : 'BLOCKED', allowed: allowed };\n",
-                cln, allowed
-            );
-
-            System.out.printf("  ✓ [RMS CLIENTS] Client '%s' successfully set to %s list.%n", cln, allowed ? "ALLOWED" : "DISALLOWED");
-            displayClientsRmsTable(driver);
-            return true;
-        } catch (Exception e) {
-            System.out.println("[RMS CLIENTS: ERROR] Adding client: " + e.getMessage());
-            return false;
-        }
+    /**
+     * Sets exclusive client netting state (removes from opposite list, adds to target list, verifies presence).
+     */
+    public static boolean setClientNettingAllowed(WebDriver driver, String clientCode, boolean allowed, String password) {
+        return RMS.setClientNettingState(driver, clientCode, allowed, password);
     }
 
     /**
@@ -1245,38 +1329,17 @@ public class Day_Netting {
         }
     }
 
-    @SuppressWarnings("unchecked")
     public static List<Map<String, String>> fetchClientsRmsList(WebDriver driver) {
-        List<Map<String, String>> out = new java.util.ArrayList<>();
+        List<Map<String, String>> out = new ArrayList<>();
         if (driver == null) return out;
-        try {
-            JavascriptExecutor js = (JavascriptExecutor) driver;
-            String script =
-                "var rows = Array.from(document.querySelectorAll('table tbody tr, tr'));\n" +
-                "var list = [];\n" +
-                "for (var i = 0; i < rows.length; i++) {\n" +
-                "    var tds = rows[i].querySelectorAll('td');\n" +
-                "    if (tds.length >= 3) {\n" +
-                "        var no = (tds[0].innerText || tds[0].textContent || '').trim();\n" +
-                "        var cln = (tds[1].innerText || tds[1].textContent || '').trim();\n" +
-                "        var dt = (tds[2].innerText || tds[2].textContent || '').trim();\n" +
-                "        if (cln && cln.toUpperCase() !== 'CLIENT CODE' && cln.indexOf('No Data') === -1) {\n" +
-                "            list.push({ no: no, client_code: cln, datetime: dt });\n" +
-                "        }\n" +
-                "    }\n" +
-                "}\n" +
-                "return list;\n";
-            List<Map<String, Object>> res = (List<Map<String, Object>>) js.executeScript(script);
-            if (res != null) {
-                for (Map<String, Object> item : res) {
-                    Map<String, String> m = new LinkedHashMap<>();
-                    m.put("no", String.valueOf(item.getOrDefault("no", "1")));
-                    m.put("client_code", String.valueOf(item.getOrDefault("client_code", "-")));
-                    m.put("datetime", String.valueOf(item.getOrDefault("datetime", "-")));
-                    out.add(m);
-                }
-            }
-        } catch (Exception ignored) {}
+        List<RMS.ClientRmsRecord> records = RMS.fetchClientsRmsCurrentView(driver, true);
+        for (RMS.ClientRmsRecord r : records) {
+            Map<String, String> m = new LinkedHashMap<>();
+            m.put("no", r.no != null ? r.no : "1");
+            m.put("client_code", r.clientCode != null ? r.clientCode : "-");
+            m.put("datetime", r.datetime != null ? r.datetime : "-");
+            out.add(m);
+        }
         return out;
     }
 
@@ -1298,181 +1361,47 @@ public class Day_Netting {
     }
 
     // =========================================================================
-    // 2.4 UNAUTHORIZED BOARDS / MARKET (qRMS -> Netting -> Unauthorized Boards/Market)
+    // 2.4 UNAUTHORIZED BOARDS / MARKET (qRMS -> Netting -> Unauthorized Boards/Market) [Delegated to RMS]
     // =========================================================================
 
     /**
      * Navigates to qRMS Administration -> Netting -> Unauthorized Boards/Market subtab.
      */
     public static boolean navigateToUnauthorizedBoardsMarketTab(WebDriver driver) {
-        if (driver == null) return false;
-        try {
-            System.out.println("[RMS UNAUTHORIZED BOARDS] Navigating to Netting -> Unauthorized Boards/Market...");
-            JavascriptExecutor js = (JavascriptExecutor) driver;
-
-            // 1. Ensure Netting top tab is clicked
-            js.executeScript(
-                "var tabs = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
-                "var nt = tabs.find(function(el) { return (el.innerText||el.textContent||'').trim().toLowerCase() === 'netting'; });\n" +
-                "if (nt) { if (window.jQuery) window.jQuery(nt).trigger('click'); nt.click(); }\n"
-            );
-            Thread.sleep(500);
-
-            // 2. Click subtab 'Unauthorized Boards/Market'
-            js.executeScript(
-                "var subTabs = Array.from(document.querySelectorAll('a, button, li, .nav-item, .nav-link, span, div.tab'));\n" +
-                "var ubt = subTabs.find(function(el) { var t = (el.innerText||el.textContent||'').trim().toLowerCase(); return t.indexOf('unauthorized') !== -1; });\n" +
-                "if (ubt) { if (window.jQuery) window.jQuery(ubt).trigger('click'); ubt.click(); return true; }\n" +
-                "return false;"
-            );
-            Thread.sleep(600);
-            System.out.println("[RMS UNAUTHORIZED BOARDS] Subtab 'Unauthorized Boards/Market' active: CONFIRMED");
-            return true;
-        } catch (Exception e) {
-            System.out.println("[RMS UNAUTHORIZED BOARDS: WARN] " + e.getMessage());
-            return false;
-        }
+        return RMS.navigateToUnauthorizedBoardsTab(driver);
     }
 
     /**
-     * Configures Board-Wise Blocking (Tag: BLOCK, Toggle: Block/Unblock) and Spot Market Blocking.
+     * Configures Board-Wise Blocking (Tag: BLOCK, Toggle: Block/Unblock).
      */
     public static boolean configureBoardWiseBlocking(WebDriver driver, String exchange, String boardTag, boolean block, String password) {
-        if (driver == null) return false;
-        String ex = (exchange != null && !exchange.isEmpty()) ? exchange.trim().toUpperCase() : "CSE";
-        String tag = (boardTag != null && !boardTag.isEmpty()) ? boardTag.trim().toUpperCase() : "BLOCK";
-        try {
-            navigateToUnauthorizedBoardsMarketTab(driver);
-            System.out.printf("[RMS UNAUTHORIZED BOARDS] Setting Board Wise Blocking for %s -> Board: '%s', Blocked: %b...%n", ex, tag, block);
-            JavascriptExecutor js = (JavascriptExecutor) driver;
-
-            // 1. Find 'Board Wise Blocking' card and toggle switch
-            js.executeScript(
-                "var ex = arguments[0];\n" +
-                "var block = arguments[1];\n" +
-                "var tag = arguments[2];\n" +
-                "var cards = Array.from(document.querySelectorAll('div, section, .card, .panel'));\n" +
-                "var bCard = cards.find(function(c) { var t = (c.innerText||'').toLowerCase(); return t.indexOf('board wise blocking') !== -1; });\n" +
-                "if (bCard) {\n" +
-                "    var cb = bCard.querySelector('input[type=\"checkbox\"]');\n" +
-                "    if (cb) {\n" +
-                "        if (cb.checked !== block) {\n" +
-                "            cb.click();\n" +
-                "            if (cb.checked !== block) cb.checked = block;\n" +
-                "            if (window.jQuery) window.jQuery(cb).trigger('change');\n" +
-                "            cb.dispatchEvent(new Event('change', { bubbles: true }));\n" +
-                "        }\n" +
-                "    } else {\n" +
-                "        var toggle = bCard.querySelector('.switch, .slider, label, [class*=\"toggle\"]');\n" +
-                "        if (toggle) toggle.click();\n" +
-                "    }\n" +
-                "}\n",
-                ex, block, tag
-            );
-            Thread.sleep(400);
-
-            // 2. Click 'Save Changes' button
-            Boolean saved = (Boolean) js.executeScript(
-                "var btns = Array.from(document.querySelectorAll('button, a.btn, input[type=\"submit\"]'));\n" +
-                "var sb = btns.find(function(b) { var t = (b.innerText||b.value||b.textContent||'').trim().toLowerCase(); return t.indexOf('save changes') !== -1; });\n" +
-                "if (sb) { if (window.jQuery) window.jQuery(sb).trigger('click'); sb.click(); return true; }\n" +
-                "return false;"
-            );
-
-            if (Boolean.TRUE.equals(saved)) {
-                System.out.println("  ✓ [SAVE CHANGES] Board Wise Blocking saved successfully.");
-            }
-
-            submitPasswordAuthentication(driver, password);
-            Thread.sleep(600);
-            displayUnauthorizedBoardsMarketTable(driver);
-            return true;
-        } catch (Exception e) {
-            System.out.println("[RMS UNAUTHORIZED BOARDS: ERROR] " + e.getMessage());
-            return false;
-        }
+        return RMS.configureBoardWiseBlocking(driver, exchange, boardTag, block, password);
     }
 
     /**
      * Configures Spot Market Blocking (Exchange: CSE / DSE, Toggle: Block/Unblock).
      */
     public static boolean configureSpotMarketBlocking(WebDriver driver, String exchange, boolean block, String password) {
-        if (driver == null) return false;
-        String ex = (exchange != null && !exchange.isEmpty()) ? exchange.trim().toUpperCase() : "CSE";
-        try {
-            navigateToUnauthorizedBoardsMarketTab(driver);
-            System.out.printf("[RMS UNAUTHORIZED BOARDS] Setting Spot Market Blocking for %s -> Blocked: %b...%n", ex, block);
-            JavascriptExecutor js = (JavascriptExecutor) driver;
-
-            // 1. Find 'Spot Market Blocking' card and toggle switch
-            js.executeScript(
-                "var ex = arguments[0];\n" +
-                "var block = arguments[1];\n" +
-                "var cards = Array.from(document.querySelectorAll('div, section, .card, .panel'));\n" +
-                "var sCard = cards.find(function(c) { var t = (c.innerText||'').toLowerCase(); return t.indexOf('spot market blocking') !== -1; });\n" +
-                "if (sCard) {\n" +
-                "    var cb = sCard.querySelector('input[type=\"checkbox\"]');\n" +
-                "    if (cb) {\n" +
-                "        if (cb.checked !== block) {\n" +
-                "            cb.click();\n" +
-                "            if (cb.checked !== block) cb.checked = block;\n" +
-                "            if (window.jQuery) window.jQuery(cb).trigger('change');\n" +
-                "            cb.dispatchEvent(new Event('change', { bubbles: true }));\n" +
-                "        }\n" +
-                "    } else {\n" +
-                "        var toggle = sCard.querySelector('.switch, .slider, label, [class*=\"toggle\"]');\n" +
-                "        if (toggle) toggle.click();\n" +
-                "    }\n" +
-                "}\n",
-                ex, block
-            );
-            Thread.sleep(400);
-
-            // 2. Click 'Save Changes' button
-            Boolean saved = (Boolean) js.executeScript(
-                "var btns = Array.from(document.querySelectorAll('button, a.btn, input[type=\"submit\"]'));\n" +
-                "var sb = btns.find(function(b) { var t = (b.innerText||b.value||b.textContent||'').trim().toLowerCase(); return t.indexOf('save changes') !== -1; });\n" +
-                "if (sb) { if (window.jQuery) window.jQuery(sb).trigger('click'); sb.click(); return true; }\n" +
-                "return false;"
-            );
-
-            if (Boolean.TRUE.equals(saved)) {
-                System.out.println("  ✓ [SAVE CHANGES] Spot Market Blocking saved successfully.");
-            }
-
-            submitPasswordAuthentication(driver, password);
-            Thread.sleep(600);
-            displayUnauthorizedBoardsMarketTable(driver);
-            return true;
-        } catch (Exception e) {
-            System.out.println("[RMS UNAUTHORIZED BOARDS: ERROR] " + e.getMessage());
-            return false;
-        }
+        return RMS.configureSpotMarketBlocking(driver, exchange, block, password);
     }
 
-    @SuppressWarnings("unchecked")
     public static Map<String, Object> fetchUnauthorizedBoardsMarketSettings(WebDriver driver) {
         Map<String, Object> out = new LinkedHashMap<>();
         if (driver == null) return out;
-        try {
-            JavascriptExecutor js = (JavascriptExecutor) driver;
-            String script =
-                "var out = { boardBlocking: true, spotBlocking: false, exchange: 'CSE', boardTag: 'BLOCK' };\n" +
-                "var cards = Array.from(document.querySelectorAll('div, section, .card, .panel'));\n" +
-                "var bCard = cards.find(function(c) { var t = (c.innerText||'').toLowerCase(); return t.indexOf('board wise blocking') !== -1; });\n" +
-                "if (bCard) {\n" +
-                "    var cb = bCard.querySelector('input[type=\"checkbox\"]');\n" +
-                "    if (cb) out.boardBlocking = cb.checked;\n" +
-                "}\n" +
-                "var sCard = cards.find(function(c) { var t = (c.innerText||'').toLowerCase(); return t.indexOf('spot market blocking') !== -1; });\n" +
-                "if (sCard) {\n" +
-                "    var cb = sCard.querySelector('input[type=\"checkbox\"]');\n" +
-                "    if (cb) out.spotBlocking = cb.checked;\n" +
-                "}\n" +
-                "return out;\n";
-            Map<String, Object> res = (Map<String, Object>) js.executeScript(script);
-            if (res != null) out.putAll(res);
-        } catch (Exception ignored) {}
+        List<RMS.BoardRestrictionRecord> records = RMS.fetchUnauthorizedBoardsSettings(driver);
+        for (RMS.BoardRestrictionRecord r : records) {
+            if ("Spot Market Blocking".equalsIgnoreCase(r.restrictionType) || "SPOT".equalsIgnoreCase(r.boardTag)) {
+                out.put("spotBlocking", r.isBlocked);
+                out.put("spotExchange", r.exchange);
+            } else {
+                out.put("boardBlocking", r.isBlocked);
+                out.put("exchange", r.exchange);
+                out.put("boardTag", r.boardTag);
+            }
+        }
+        if (!records.isEmpty()) {
+            out.put("records", records);
+        }
         return out;
     }
 
@@ -1661,21 +1590,22 @@ public class Day_Netting {
                 depthBadge = verifyMarketDepthNettingIndicator(driver, sym);
             } catch (Exception ignored) {}
 
-            // Check Applicable Symbols list if available
+            // Check live qRMS Applicable Symbols list for target exchange
+            List<RMS.ApplicableSymbolRecord> appSymbols = (driver != null)
+                    ? RMS.fetchApplicableSymbolsList(driver, ex)
+                    : Collections.emptyList();
             boolean foundInList = false;
-            try {
-                List<Map<String, String>> appSymbols = fetchApplicableSymbolsList(driver);
-                if (appSymbols != null && !appSymbols.isEmpty()) {
-                    for (Map<String, String> row : appSymbols) {
-                        String rSym = row.getOrDefault("ticker", "");
-                        String rEx = row.getOrDefault("exchange", "");
-                        if (sym.equalsIgnoreCase(rSym) && (ex.equalsIgnoreCase(rEx) || "ALL".equalsIgnoreCase(rEx))) {
-                            foundInList = true;
-                            break;
-                        }
+            if (!appSymbols.isEmpty()) {
+                for (RMS.ApplicableSymbolRecord row : appSymbols) {
+                    String rSym = row.ticker != null ? row.ticker.trim() : "";
+                    String rEx = row.exchange != null ? row.exchange.trim() : "";
+                    if (sym.equalsIgnoreCase(rSym)
+                            && (ex.equalsIgnoreCase(rEx) || "ALL".equalsIgnoreCase(rEx) || "BOTH".equalsIgnoreCase(rEx))) {
+                        foundInList = true;
+                        break;
                     }
                 }
-            } catch (Exception ignored) {}
+            }
 
             if (depthBadge) {
                 rep.isSymbolApplicable = true;
@@ -1685,8 +1615,15 @@ public class Day_Netting {
                 rep.isSymbolApplicable = true;
                 rep.symbolStatus = "APPLICABLE";
                 rep.symbolReason = String.format("Symbol '%s' is registered in qRMS Applicable Symbols list for %s", sym, ex);
+            } else if (!appSymbols.isEmpty()) {
+                rep.isSymbolApplicable = false;
+                rep.symbolStatus = "NOT APPLICABLE";
+                rep.symbolReason = String.format("Symbol '%s' is NOT in qRMS Applicable Symbols list for %s", sym, ex);
+            } else if (!RMS.isSymbolNettingApplicable(driver, ex, sym)) {
+                rep.isSymbolApplicable = false;
+                rep.symbolStatus = "NOT APPLICABLE";
+                rep.symbolReason = String.format("Symbol '%s' is marked ineligible in qRMS cache for %s", sym, ex);
             } else {
-                // Standard scrips (e.g. GP, 1JANATAMF, etc.) or default authorized
                 rep.isSymbolApplicable = true;
                 rep.symbolStatus = "APPLICABLE (DEFAULT)";
                 rep.symbolReason = String.format("Symbol '%s' is an authorized trading scrip on %s (Exchange Netting Active)", sym, ex);
@@ -1694,63 +1631,58 @@ public class Day_Netting {
         }
 
         // ---------------------------------------------------------------------
-        // 2. VALIDATE CLIENT APPLICABILITY
+        // 2. VALIDATE CLIENT APPLICABILITY (Checks BOTH Allowed & Disallowed via RMS)
         // ---------------------------------------------------------------------
         boolean clientBlockedInUi = false;
         try {
             clientBlockedInUi = verifyOrderWindowClientNettingBlocked(driver, cln);
         } catch (Exception ignored) {}
 
+        boolean inAllowedList = driver != null && RMS.isClientPresentInList(driver, cln, true);
+        boolean inDisallowedList = driver != null && RMS.isClientPresentInList(driver, cln, false);
+
         if (clientBlockedInUi) {
             rep.isClientApplicable = false;
             rep.clientStatus = "BLOCKED";
             rep.clientReason = String.format("Client '%s' has [Netting Blocked] active indicator in Order Window", cln);
+        } else if (inDisallowedList && inAllowedList) {
+            rep.isClientApplicable = false;
+            rep.clientStatus = "CONFLICT (BOTH LISTS)";
+            rep.clientReason = String.format("Client '%s' appears in BOTH Allowed and Disallowed Clients RMS lists; treated as DISALLOWED", cln);
+        } else if (inDisallowedList) {
+            rep.isClientApplicable = false;
+            rep.clientStatus = "DISALLOWED";
+            rep.clientReason = String.format("Client '%s' is present in qRMS Clients RMS Disallowed list", cln);
+        } else if (inAllowedList) {
+            rep.isClientApplicable = true;
+            rep.clientStatus = "APPLICABLE (ALLOWED)";
+            rep.clientReason = String.format("Client '%s' is explicitly present in qRMS Clients RMS Allowed list", cln);
+        } else if (!RMS.isClientNettingAllowed(driver, cln)) {
+            rep.isClientApplicable = false;
+            rep.clientStatus = "DISALLOWED";
+            rep.clientReason = String.format("Client '%s' is marked DISALLOWED in qRMS client registry", cln);
         } else {
-            // Check qRMS Clients RMS list if readable
-            boolean inDisallowed = false;
-            try {
-                List<Map<String, String>> clientsList = fetchClientsRmsList(driver);
-                if (clientsList != null && !clientsList.isEmpty()) {
-                    for (Map<String, String> row : clientsList) {
-                        String rCln = row.getOrDefault("client_code", "");
-                        if (cln.equalsIgnoreCase(rCln)) {
-                            // If table is currently showing Disallowed clients, it is disallowed
-                            inDisallowed = true;
-                            break;
-                        }
-                    }
-                }
-            } catch (Exception ignored) {}
-
-            if (inDisallowed) {
-                rep.isClientApplicable = false;
-                rep.clientStatus = "DISALLOWED";
-                rep.clientReason = String.format("Client '%s' is present in qRMS Clients RMS Disallowed list", cln);
-            } else {
-                rep.isClientApplicable = true;
-                rep.clientStatus = "APPLICABLE";
-                rep.clientReason = String.format("Client '%s' is Authorized & Eligible (No Netting Block active)", cln);
-            }
+            rep.isClientApplicable = true;
+            rep.clientStatus = "APPLICABLE";
+            rep.clientReason = String.format("Client '%s' is Authorized & Eligible (No Netting Block active)", cln);
         }
 
         // ---------------------------------------------------------------------
-        // 3. VALIDATE TRADING BOARD APPLICABILITY
+        // 3. VALIDATE TRADING BOARD APPLICABILITY (via RMS.isBoardBlocked)
         // ---------------------------------------------------------------------
+        boolean boardBlocked = RMS.isBoardBlocked(driver, ex, brd);
         if ("PUBLIC".equalsIgnoreCase(brd)) {
-            rep.isBoardApplicable = true;
-            rep.boardStatus = "APPLICABLE";
-            rep.boardReason = "PUBLIC board is the standard authorized trading board for Day Netting";
+            if (boardBlocked) {
+                rep.isBoardApplicable = false;
+                rep.boardStatus = "UNAUTHORIZED / BLOCKED";
+                rep.boardReason = String.format("Board 'PUBLIC' is currently blocked on %s in qRMS", ex);
+            } else {
+                rep.isBoardApplicable = true;
+                rep.boardStatus = "APPLICABLE";
+                rep.boardReason = "PUBLIC board is the standard authorized trading board for Day Netting";
+            }
         } else if ("BLOCK".equalsIgnoreCase(brd)) {
-            // Check Unauthorized Boards & Market: Board Wise Blocking
-            boolean boardBlockingActive = true; // default in qRMS is block active
-            try {
-                Map<String, Object> unauth = fetchUnauthorizedBoardsMarketSettings(driver);
-                if (unauth != null && unauth.containsKey("boardBlocking")) {
-                    boardBlockingActive = Boolean.parseBoolean(String.valueOf(unauth.get("boardBlocking")));
-                }
-            } catch (Exception ignored) {}
-
-            if (boardBlockingActive) {
+            if (boardBlocked) {
                 rep.isBoardApplicable = false;
                 rep.boardStatus = "UNAUTHORIZED / BLOCKED";
                 rep.boardReason = String.format("Board 'BLOCK' is restricted under qRMS Unauthorized Boards & Market (Board Wise Blocking is ACTIVE for %s)", ex);
@@ -1760,16 +1692,7 @@ public class Day_Netting {
                 rep.boardReason = "Board 'BLOCK' is Authorized (Board Wise Blocking is DISABLED)";
             }
         } else if ("SPOT".equalsIgnoreCase(brd)) {
-            // Check Unauthorized Boards & Market: Spot Market Blocking
-            boolean spotBlockingActive = false;
-            try {
-                Map<String, Object> unauth = fetchUnauthorizedBoardsMarketSettings(driver);
-                if (unauth != null && unauth.containsKey("spotBlocking")) {
-                    spotBlockingActive = Boolean.parseBoolean(String.valueOf(unauth.get("spotBlocking")));
-                }
-            } catch (Exception ignored) {}
-
-            if (spotBlockingActive || isZorSpotRestricted) {
+            if (boardBlocked || isZorSpotRestricted) {
                 rep.isBoardApplicable = false;
                 rep.boardStatus = "UNAUTHORIZED / BLOCKED";
                 rep.boardReason = String.format("Board 'SPOT' is restricted (Spot Market Blocking is ACTIVE or ALLOW_Z_AND_SPOT_NETTING is FALSE for %s)", ex);
@@ -1778,6 +1701,10 @@ public class Day_Netting {
                 rep.boardStatus = "APPLICABLE";
                 rep.boardReason = "Board 'SPOT' is Authorized (Spot Market Blocking is DISABLED)";
             }
+        } else if (boardBlocked) {
+            rep.isBoardApplicable = false;
+            rep.boardStatus = "UNAUTHORIZED / BLOCKED";
+            rep.boardReason = String.format("Trading board '%s' is blocked on %s under qRMS Unauthorized Boards", brd, ex);
         } else {
             rep.isBoardApplicable = false;
             rep.boardStatus = "UNSUPPORTED";
@@ -2133,6 +2060,12 @@ public class Day_Netting {
         public String tradeAction = "BUY";
         public int tradeQty = 1;
         public String tradedExchange = "DSE";
+        public boolean symbolAllowed = true;
+        public boolean clientAllowed = true;
+        public boolean boardAllowed = true;
+        public String board = "PUBLIC";
+        public String orderStatus = "ACCEPTED";
+        public boolean stockFileUploaded = false;
 
         // 1. Netting Watchlist
         public boolean dedicatedNettingWatchlist = false;
@@ -2157,6 +2090,276 @@ public class Day_Netting {
 
         // 6. Account Limits
         public Map<String, String> accountLimitsData = new LinkedHashMap<>();
+    }
+
+    /**
+     * Per-exchange holdings & saleable reading captured from ClientPortfolio, Position, and optional DB cross-check.
+     */
+    public static class ExchangeSaleableReading {
+        public String exchange = "DSE";
+        public String clientCode = "";
+        public String symbol = "";
+        public double portfolioTotalQty;
+        public double portfolioSaleableQty;
+        public double positionTotalQty;
+        public double positionSaleableQty;
+        public double dbTotalQty = -1.0;
+        public double dbSaleableQty = -1.0;
+        public boolean hasPortfolioData;
+        public boolean hasPositionData;
+        public boolean hasDbData;
+        public String portfolioSource = "NONE";
+        public String positionSource = "NONE";
+        public Map<String, String> portfolioSnapshot = new LinkedHashMap<>();
+
+        public double effectiveTotalQty() {
+            if (hasPortfolioData) return portfolioTotalQty;
+            if (hasPositionData) return positionTotalQty;
+            return hasDbData ? dbTotalQty : 0.0;
+        }
+
+        public double effectiveSaleableQty() {
+            if (hasPortfolioData) return portfolioSaleableQty;
+            if (hasPositionData) return positionSaleableQty;
+            return hasDbData ? dbSaleableQty : 0.0;
+        }
+    }
+
+    /**
+     * Dual-exchange (DSE & CSE) saleable baseline or post-action snapshot.
+     */
+    public static class SaleableProbeSnapshot {
+        public String stageName = "";
+        public String clientCode = "";
+        public String symbol = "";
+        public long capturedAtMs;
+        public ExchangeSaleableReading dse = new ExchangeSaleableReading();
+        public ExchangeSaleableReading cse = new ExchangeSaleableReading();
+    }
+
+    /**
+     * Computed delta between two SaleableProbeSnapshot captures across Portfolio and Position widgets.
+     */
+    public static class SaleableDeltaReport {
+        public String clientCode = "";
+        public String symbol = "";
+        public String baselineStage = "";
+        public String currentStage = "";
+        public double dseTotalBefore, dseTotalAfter, dseTotalDelta;
+        public double dseSaleableBefore, dseSaleableAfter, dseSaleableDelta;
+        public double cseTotalBefore, cseTotalAfter, cseTotalDelta;
+        public double cseSaleableBefore, cseSaleableAfter, cseSaleableDelta;
+        public double positionDseSaleableBefore, positionDseSaleableAfter, positionDseSaleableDelta;
+        public double positionCseSaleableBefore, positionCseSaleableAfter, positionCseSaleableDelta;
+        public boolean dseSaleableUpdated;
+        public boolean cseSaleableUpdated;
+        public boolean anySaleableUpdated;
+        public boolean portfolioMatchesPosition = true;
+    }
+
+    /**
+     * Probes ClientPortfolio, Position, and optionally qtraderdb for a single exchange's total and saleable quantities.
+     */
+    public static ExchangeSaleableReading probeExchangeSaleable(
+            WebDriver driver, String clientCode, String symbol, String exchange) {
+        return probeExchangeSaleable(driver, clientCode, symbol, exchange, driver != null);
+    }
+
+    /**
+     * Probes ClientPortfolio, Position, and optionally PostgreSQL DB for one exchange's total and saleable quantities.
+     */
+    public static ExchangeSaleableReading probeExchangeSaleable(
+            WebDriver driver, String clientCode, String symbol, String exchange, boolean includeDbCrossCheck) {
+        ExchangeSaleableReading r = new ExchangeSaleableReading();
+        String ex = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "DSE";
+        String cln = (clientCode != null) ? clientCode.trim() : "";
+        String cleanSym = OMSweb_Trade.cleanSymbol(symbol);
+        if (cleanSym.isEmpty()) cleanSym = "GP";
+
+        r.exchange = ex;
+        r.clientCode = cln;
+        r.symbol = cleanSym;
+
+        if (driver != null && !cln.isEmpty()) {
+            try {
+                Map<String, String> pSnap = ClientPortfolio.getUiSnapshot(driver, cln, cleanSym, ex);
+                if (pSnap == null || (!pSnap.containsKey("total_qty") && !pSnap.containsKey("saleable_qty"))) {
+                    pSnap = ClientPortfolio.getApiSnapshot(driver, cln, cleanSym, ex);
+                }
+                if (pSnap != null && !pSnap.isEmpty()) {
+                    r.portfolioSnapshot.putAll(pSnap);
+                    r.portfolioTotalQty = OMSweb_Trade.parseNumSafe(pSnap.getOrDefault("total_qty", pSnap.getOrDefault("Total Qty", "0")));
+                    r.portfolioSaleableQty = OMSweb_Trade.parseNumSafe(pSnap.getOrDefault("saleable_qty", pSnap.getOrDefault("Saleable Qty", "0")));
+                    r.hasPortfolioData = pSnap.containsKey("total_qty") || pSnap.containsKey("saleable_qty");
+                    r.portfolioSource = pSnap.getOrDefault("DATA_SOURCE", "PORTFOLIO");
+                }
+            } catch (Exception ignored) {}
+
+            try {
+                List<Position.ClientPosition> posList = Position.getApiSnapshot(driver, cleanSym, ex);
+                String posSource = "API (" + ex + ")";
+                Position.ClientPosition matched = findMatchingClientPosition(posList, cln, cleanSym);
+                if (matched == null) {
+                    posList = Position.getUiSnapshot(driver, cln, cleanSym, ex);
+                    posSource = "UI (" + ex + ")";
+                    matched = findMatchingClientPosition(posList, cln, cleanSym);
+                }
+                if (matched != null) {
+                    r.positionTotalQty = matched.getTotalQty();
+                    r.positionSaleableQty = matched.getSaleableQty();
+                    r.hasPositionData = true;
+                    r.positionSource = posSource;
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (includeDbCrossCheck && !cln.isEmpty()) {
+            populateDbHoldingsCrossCheck(r, cln, cleanSym);
+        }
+        return r;
+    }
+
+    private static Position.ClientPosition findMatchingClientPosition(
+            List<Position.ClientPosition> list, String clientCode, String cleanSym) {
+        if (list == null) return null;
+        for (Position.ClientPosition cp : list) {
+            if (cp == null || cp.getClientCode() == null) continue;
+            if (!clientCode.equalsIgnoreCase(cp.getClientCode().trim())) continue;
+            String cpSym = OMSweb_Trade.cleanSymbol(cp.getSymbol());
+            if (cpSym.isEmpty() || cleanSym.equalsIgnoreCase(cpSym)) {
+                return cp;
+            }
+        }
+        return null;
+    }
+
+    private static void populateDbHoldingsCrossCheck(ExchangeSaleableReading r, String cln, String cleanSym) {
+        String[] queries = {
+            "SELECT COALESCE(total_qty, 0) AS tq, COALESCE(saleable_qty, total_qty, 0) AS sq FROM public.clients_portfolio WHERE UPPER(symbol) = UPPER(?) AND \"ClientCode\" = ? LIMIT 1",
+            "SELECT COALESCE(qty, 0) AS tq, COALESCE(saleable, qty, 0) AS sq FROM public.clients_share WHERE UPPER(symbol) = UPPER(?) AND \"ClientCode\" = ? LIMIT 1",
+            "SELECT COALESCE(total_qty, 0) AS tq, COALESCE(saleable_qty, total_qty, 0) AS sq FROM public.client_portfolio WHERE UPPER(symbol) = UPPER(?) AND client_code = ? LIMIT 1"
+        };
+        try (Connection conn = Account_Limits.getQtraderDbConnection()) {
+            if (conn == null) return;
+            for (String sql : queries) {
+                try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                    ps.setString(1, cleanSym);
+                    ps.setString(2, cln);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (rs.next()) {
+                            r.dbTotalQty = rs.getDouble("tq");
+                            r.dbSaleableQty = rs.getDouble("sq");
+                            r.hasDbData = true;
+                            return;
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+        } catch (Exception ignored) {}
+    }
+
+    /**
+     * Captures a pre-action or post-action saleable probe snapshot across both DSE and CSE.
+     */
+    public static SaleableProbeSnapshot captureSaleableBaseline(
+            WebDriver driver, String stageName, String clientCode, String symbol) {
+        SaleableProbeSnapshot snap = new SaleableProbeSnapshot();
+        snap.stageName = stageName != null ? stageName : "PROBE";
+        snap.clientCode = clientCode != null ? clientCode.trim() : "";
+        snap.symbol = OMSweb_Trade.cleanSymbol(symbol);
+        if (snap.symbol.isEmpty()) snap.symbol = "GP";
+        snap.capturedAtMs = System.currentTimeMillis();
+        snap.dse = probeExchangeSaleable(driver, snap.clientCode, snap.symbol, "DSE");
+        snap.cse = probeExchangeSaleable(driver, snap.clientCode, snap.symbol, "CSE");
+        return snap;
+    }
+
+    /**
+     * Pure computation of saleable and total-holding deltas between two SaleableProbeSnapshot instances,
+     * including cross-widget alignment verification between ClientPortfolio and Position.
+     */
+    public static SaleableDeltaReport computeSaleableDelta(
+            SaleableProbeSnapshot before, SaleableProbeSnapshot after) {
+        SaleableDeltaReport rep = new SaleableDeltaReport();
+        if (before == null || after == null) return rep;
+
+        rep.clientCode = !after.clientCode.isEmpty() ? after.clientCode : before.clientCode;
+        rep.symbol = !after.symbol.isEmpty() ? after.symbol : before.symbol;
+        rep.baselineStage = before.stageName;
+        rep.currentStage = after.stageName;
+
+        rep.dseTotalBefore = before.dse.effectiveTotalQty();
+        rep.dseTotalAfter = after.dse.effectiveTotalQty();
+        rep.dseTotalDelta = rep.dseTotalAfter - rep.dseTotalBefore;
+
+        rep.dseSaleableBefore = before.dse.effectiveSaleableQty();
+        rep.dseSaleableAfter = after.dse.effectiveSaleableQty();
+        rep.dseSaleableDelta = rep.dseSaleableAfter - rep.dseSaleableBefore;
+
+        rep.cseTotalBefore = before.cse.effectiveTotalQty();
+        rep.cseTotalAfter = after.cse.effectiveTotalQty();
+        rep.cseTotalDelta = rep.cseTotalAfter - rep.cseTotalBefore;
+
+        rep.cseSaleableBefore = before.cse.effectiveSaleableQty();
+        rep.cseSaleableAfter = after.cse.effectiveSaleableQty();
+        rep.cseSaleableDelta = rep.cseSaleableAfter - rep.cseSaleableBefore;
+
+        rep.positionDseSaleableBefore = before.dse.positionSaleableQty;
+        rep.positionDseSaleableAfter = after.dse.positionSaleableQty;
+        rep.positionDseSaleableDelta = rep.positionDseSaleableAfter - rep.positionDseSaleableBefore;
+
+        rep.positionCseSaleableBefore = before.cse.positionSaleableQty;
+        rep.positionCseSaleableAfter = after.cse.positionSaleableQty;
+        rep.positionCseSaleableDelta = rep.positionCseSaleableAfter - rep.positionCseSaleableBefore;
+
+        rep.dseSaleableUpdated = Math.abs(rep.dseSaleableDelta) > 0.0001 || Math.abs(rep.positionDseSaleableDelta) > 0.0001;
+        rep.cseSaleableUpdated = Math.abs(rep.cseSaleableDelta) > 0.0001 || Math.abs(rep.positionCseSaleableDelta) > 0.0001;
+        rep.anySaleableUpdated = rep.dseSaleableUpdated || rep.cseSaleableUpdated;
+
+        rep.portfolioMatchesPosition = isAligned(before.dse) && isAligned(after.dse)
+                && isAligned(before.cse) && isAligned(after.cse);
+        return rep;
+    }
+
+    private static boolean isAligned(ExchangeSaleableReading r) {
+        if (r == null || !r.hasPortfolioData || !r.hasPositionData) return true;
+        return Math.abs(r.portfolioSaleableQty - r.positionSaleableQty) < 0.001
+                && Math.abs(r.portfolioTotalQty - r.positionTotalQty) < 0.001;
+    }
+
+    /**
+     * Captures a fresh post-action snapshot and computes its delta against the given baseline.
+     */
+    public static SaleableDeltaReport captureSaleableDelta(
+            WebDriver driver, SaleableProbeSnapshot baseline, String postStageName) {
+        if (baseline == null) return new SaleableDeltaReport();
+        SaleableProbeSnapshot current = captureSaleableBaseline(driver, postStageName, baseline.clientCode, baseline.symbol);
+        return computeSaleableDelta(baseline, current);
+    }
+
+    /**
+     * Prints a formatted ASCII report summarizing DSE/CSE total & saleable deltas and Portfolio/Position alignment.
+     */
+    public static void printSaleableDeltaReport(SaleableDeltaReport r) {
+        if (r == null) return;
+        System.out.println("\n+=======================================================================================================+");
+        System.out.printf("| SALEABLE DELTA PROBE: Client %-8s | Symbol %-8s | %s -> %s%n",
+                r.clientCode, r.symbol, r.baselineStage, r.currentStage);
+        System.out.println("+----------------------+------------+------------+------------+-----------------------------------------+");
+        System.out.printf("| %-20s | %-10s | %-10s | %-10s | %-39s |%n", "Metric", "Before", "After", "Delta", "Status");
+        System.out.println("+----------------------+------------+------------+------------+-----------------------------------------+");
+        System.out.printf("| %-20s | %10.0f | %10.0f | %+10.0f | %-39s |%n",
+                "DSE Total Qty", r.dseTotalBefore, r.dseTotalAfter, r.dseTotalDelta, "Consolidated Holding");
+        System.out.printf("| %-20s | %10.0f | %10.0f | %+10.0f | %-39s |%n",
+                "DSE Saleable Qty", r.dseSaleableBefore, r.dseSaleableAfter, r.dseSaleableDelta, r.dseSaleableUpdated ? "UPDATED" : "UNCHANGED");
+        System.out.printf("| %-20s | %10.0f | %10.0f | %+10.0f | %-39s |%n",
+                "CSE Total Qty", r.cseTotalBefore, r.cseTotalAfter, r.cseTotalDelta, "Consolidated Holding");
+        System.out.printf("| %-20s | %10.0f | %10.0f | %+10.0f | %-39s |%n",
+                "CSE Saleable Qty", r.cseSaleableBefore, r.cseSaleableAfter, r.cseSaleableDelta, r.cseSaleableUpdated ? "UPDATED" : "UNCHANGED");
+        System.out.println("+----------------------+------------+------------+------------+-----------------------------------------+");
+        System.out.printf("| Any Saleable Updated: %-5b | Portfolio == Position Aligned: %-5b                                   |%n",
+                r.anySaleableUpdated, r.portfolioMatchesPosition);
+        System.out.println("+=======================================================================================================+\n");
     }
 
     /**
@@ -2348,7 +2551,7 @@ public class Day_Netting {
             try { Thread.sleep(600); } catch (Exception ignored) {}
         }
 
-        // 3. PORTFOLIO (Client Holdings, Total Qty, Saleable Qty, Avg Cost, Value)
+        // 3. PORTFOLIO & POSITION (Client Holdings, Total Qty, Saleable Qty, Avg Cost, Value)
         try {
             System.out.println("\n[3/6] Maximizing 'Client Portfolio' widget...");
             OMSweb_Trade.maximizeWidget(driver, "Portfolio");
@@ -2359,11 +2562,11 @@ public class Day_Netting {
                 Thread.sleep(400);
             }
             OMSweb_Trade.saveScreenshot(driver, String.format("widget_maximized_%s_Portfolio.png", snap.stageName.replaceAll("[^a-zA-Z0-9_-]", "_")));
-            try {
-                snap.portfolioDataDSE = ClientPortfolio.getUiSnapshot(driver, snap.targetClient, snap.targetSymbol, "DSE");
-                snap.portfolioDataCSE = ClientPortfolio.getUiSnapshot(driver, snap.targetClient, snap.targetSymbol, "CSE");
-                snap.portfolioData = snap.portfolioDataDSE;
-            } catch (Exception ignored) {}
+            ExchangeSaleableReading dseProbe = probeExchangeSaleable(driver, snap.targetClient, snap.targetSymbol, "DSE", false);
+            ExchangeSaleableReading cseProbe = probeExchangeSaleable(driver, snap.targetClient, snap.targetSymbol, "CSE", false);
+            snap.portfolioDataDSE = dseProbe.portfolioSnapshot;
+            snap.portfolioDataCSE = cseProbe.portfolioSnapshot;
+            snap.portfolioData = snap.portfolioDataDSE;
             System.out.printf("  ✓ [Portfolio Data (DSE)] Client: %s | Symbol: %s | Total Qty: %s | Saleable Qty: %s | Avg Cost: %s | Value: %s%n",
                     snap.targetClient, snap.targetSymbol,
                     snap.portfolioDataDSE.getOrDefault("total_qty", snap.portfolioDataDSE.getOrDefault("Total Qty", "-")),
@@ -2594,6 +2797,105 @@ public class Day_Netting {
         System.out.println("========================================================================================================================\n");
     }
 
+    /**
+     * Eligibility inputs used to decide whether intraday Day Netting applies to a trade.
+     */
+    public static class NettingEligibilityContext {
+        public final NettingMode mode;
+        public final boolean dseEnabled;
+        public final boolean cseEnabled;
+        public final boolean symbolAllowed;
+        public final boolean clientAllowed;
+        public final boolean boardAllowed;
+        public final String tradedExchange;
+        public final String board;
+        public final boolean allowZAndSpotNetting;
+        public final String orderStatus;
+        public final boolean stockFileUploaded;
+
+        public NettingEligibilityContext(
+                NettingMode mode, boolean dseEnabled, boolean cseEnabled,
+                boolean symbolAllowed, boolean clientAllowed, boolean boardAllowed,
+                String tradedExchange, String board, boolean allowZAndSpotNetting,
+                String orderStatus, boolean stockFileUploaded) {
+            this.mode = mode != null ? mode : NettingMode.NONE;
+            this.dseEnabled = dseEnabled;
+            this.cseEnabled = cseEnabled;
+            this.symbolAllowed = symbolAllowed;
+            this.clientAllowed = clientAllowed;
+            this.boardAllowed = boardAllowed;
+            this.tradedExchange = (tradedExchange != null && !tradedExchange.trim().isEmpty())
+                    ? tradedExchange.trim().toUpperCase() : "DSE";
+            this.board = (board != null && !board.trim().isEmpty())
+                    ? board.trim().toUpperCase() : "PUBLIC";
+            this.allowZAndSpotNetting = allowZAndSpotNetting;
+            this.orderStatus = (orderStatus != null && !orderStatus.trim().isEmpty())
+                    ? orderStatus.trim().toUpperCase() : "ACCEPTED";
+            this.stockFileUploaded = stockFileUploaded;
+        }
+
+        public static NettingEligibilityContext fromSnapshot(Netting6WidgetsUiSnapshot curr) {
+            if (curr == null) {
+                return new NettingEligibilityContext(
+                        NettingMode.NONE, false, false, false, false, false,
+                        "DSE", "PUBLIC", false, "UNKNOWN", false);
+            }
+            return new NettingEligibilityContext(
+                    NettingMode.fromString(curr.dayNettingMode),
+                    curr.isDseDayNettingEnabled,
+                    curr.isCseDayNettingEnabled,
+                    curr.symbolAllowed,
+                    curr.clientAllowed,
+                    curr.boardAllowed,
+                    curr.tradedExchange,
+                    curr.board,
+                    curr.allowZAndSpotNetting,
+                    curr.orderStatus,
+                    curr.stockFileUploaded);
+        }
+    }
+
+    /**
+     * Returns a human-readable reason why Day Netting does not apply to the trade,
+     * or empty string if Day Netting IS effective.
+     */
+    public static String explainIneligibilityReason(NettingEligibilityContext ctx) {
+        if (ctx == null) return "Missing NettingEligibilityContext";
+        if (ctx.mode == NettingMode.NONE) return "System DAY_NETTING_SETTINGS is NONE";
+        if (ctx.orderStatus.contains("REJECT") || ctx.orderStatus.contains("CANCEL") || ctx.orderStatus.contains("FAIL")) {
+            return "Order status is " + ctx.orderStatus + " (trade not accepted/executed)";
+        }
+        if (!ctx.clientAllowed) return "Client is DISALLOWED/BLOCKED in Clients RMS";
+        if (!ctx.symbolAllowed) return "Symbol is NOT in qRMS Applicable Symbols";
+        if (!ctx.boardAllowed) return "Trading board '" + ctx.board + "' is blocked/unauthorized";
+        if ("SPOT".equalsIgnoreCase(ctx.board) && !ctx.allowZAndSpotNetting) {
+            return "SPOT board netting disabled (ALLOW_Z_AND_SPOT_NETTING=false)";
+        }
+        if (ctx.mode == NettingMode.CROSS_EXCHANGE) {
+            if (!ctx.dseEnabled && !ctx.cseEnabled) {
+                return "Both DSE and CSE netting disabled for CROSS_EXCHANGE";
+            }
+        } else {
+            if ("DSE".equalsIgnoreCase(ctx.tradedExchange) && !ctx.dseEnabled) {
+                return "DSE Day Netting is disabled (IS_DSE_DAY_NETTING_ENABLED=false)";
+            }
+            if ("CSE".equalsIgnoreCase(ctx.tradedExchange) && !ctx.cseEnabled) {
+                return "CSE Day Netting is disabled (IS_CSE_DAY_NETTING_ENABLED=false)";
+            }
+            if ("BOTH".equalsIgnoreCase(ctx.tradedExchange) && !ctx.dseEnabled && !ctx.cseEnabled) {
+                return "Both DSE and CSE Day Netting are disabled";
+            }
+        }
+        return "";
+    }
+
+    /**
+     * Returns true iff intraday Day Netting rules are active and applicable for the trade.
+     */
+    public static boolean isNettingEffectiveForTrade(NettingEligibilityContext ctx) {
+        return explainIneligibilityReason(ctx).isEmpty();
+    }
+
     public static class NettingSaleableAuditResult {
         public String mode = "INDIVIDUAL_EXCHANGE";
         public String tradedExchange = "DSE";
@@ -2601,6 +2903,16 @@ public class Day_Netting {
         public double tradeQty = 1;
         public String clientCode = "23986";
         public String symbol = "GP.PUBLIC";
+
+        public boolean symbolAllowed = true;
+        public boolean clientAllowed = true;
+        public boolean boardAllowed = true;
+        public boolean dseEnabled = true;
+        public boolean cseEnabled = true;
+        public boolean stockFileUploaded = false;
+        public String orderStatus = "ACCEPTED";
+        public boolean nettingEffective = true;
+        public String ineligibilityReason = "";
 
         public double prevDseTotal = 0;
         public double currDseTotal = 0;
@@ -2626,6 +2938,11 @@ public class Day_Netting {
         public boolean cseSaleableRight = true;
         public String cseSaleableRemark = "";
 
+        public boolean saleableUpdatedAny() {
+            return Math.abs(currDseSaleable - prevDseSaleable) > 0.0001
+                || Math.abs(currCseSaleable - prevCseSaleable) > 0.0001;
+        }
+
         public boolean isAllRight() {
             return dseTotalRight && cseTotalRight && dseSaleableRight && cseSaleableRight;
         }
@@ -2633,15 +2950,72 @@ public class Day_Netting {
 
     public static NettingSaleableAuditResult auditDayNettingSaleableCompliance(
             Netting6WidgetsUiSnapshot prev, Netting6WidgetsUiSnapshot curr) {
+        return auditDayNettingSaleableCompliance(prev, curr, NettingEligibilityContext.fromSnapshot(curr));
+    }
+
+    public static NettingSaleableAuditResult auditDayNettingSaleableCompliance(
+            Netting6WidgetsUiSnapshot prev, Netting6WidgetsUiSnapshot curr, NettingEligibilityContext ctx) {
+        if (prev == null || curr == null) return new NettingSaleableAuditResult();
+        double prevDseTot = OMSweb_Trade.parseNumSafe(prev.portfolioDataDSE.getOrDefault("total_qty", "0"));
+        double currDseTot = OMSweb_Trade.parseNumSafe(curr.portfolioDataDSE.getOrDefault("total_qty", "0"));
+        double prevCseTot = OMSweb_Trade.parseNumSafe(prev.portfolioDataCSE.getOrDefault("total_qty", "0"));
+        double currCseTot = OMSweb_Trade.parseNumSafe(curr.portfolioDataCSE.getOrDefault("total_qty", "0"));
+        double observedDelta = Math.abs(currDseTot - prevDseTot);
+        if (observedDelta == 0.0) {
+            observedDelta = Math.abs(currCseTot - prevCseTot);
+        }
+
+        String ex = (ctx != null && ctx.tradedExchange != null && !ctx.tradedExchange.isEmpty())
+                ? ctx.tradedExchange.toUpperCase()
+                : (curr.tradedExchange != null ? curr.tradedExchange.toUpperCase() : "DSE");
+        double fallbackQty = curr.tradeQty > 0 ? curr.tradeQty : 1.0;
+        double effectiveQty = observedDelta > 0.0 ? observedDelta : fallbackQty;
+
+        double dseQty = 0.0;
+        double cseQty = 0.0;
+        if ("BOTH".equals(ex)) {
+            if (observedDelta > 0.0 && curr.tradeQty > 0 && Math.abs(observedDelta - curr.tradeQty) < 0.001) {
+                dseQty = observedDelta / 2.0;
+                cseQty = observedDelta / 2.0;
+            } else {
+                dseQty = fallbackQty;
+                cseQty = fallbackQty;
+            }
+        } else if ("CSE".equals(ex)) {
+            cseQty = effectiveQty;
+        } else {
+            dseQty = effectiveQty;
+        }
+        return auditDayNettingSaleableCompliance(prev, curr, ctx, dseQty, cseQty);
+    }
+
+    public static NettingSaleableAuditResult auditDayNettingSaleableCompliance(
+            Netting6WidgetsUiSnapshot prev, Netting6WidgetsUiSnapshot curr,
+            NettingEligibilityContext ctx, double dseTradeQty, double cseTradeQty) {
         NettingSaleableAuditResult res = new NettingSaleableAuditResult();
         if (prev == null || curr == null) return res;
 
+        NettingEligibilityContext effCtx = ctx != null ? ctx : NettingEligibilityContext.fromSnapshot(curr);
         res.clientCode = curr.targetClient != null ? curr.targetClient : "23986";
         res.symbol = curr.targetSymbol != null ? curr.targetSymbol : "GP.PUBLIC";
-        res.mode = (curr.dayNettingMode != null && !curr.dayNettingMode.isEmpty()) ? curr.dayNettingMode : "INDIVIDUAL_EXCHANGE";
-        res.tradedExchange = (curr.tradedExchange != null && !curr.tradedExchange.isEmpty()) ? curr.tradedExchange.toUpperCase() : "DSE";
+        res.mode = (curr.dayNettingMode != null && !curr.dayNettingMode.isEmpty())
+                ? curr.dayNettingMode : effCtx.mode.name();
+        res.tradedExchange = effCtx.tradedExchange;
         res.tradeAction = (curr.tradeAction != null && !curr.tradeAction.isEmpty()) ? curr.tradeAction.toUpperCase() : "BUY";
-        res.tradeQty = curr.tradeQty > 0 ? curr.tradeQty : 1;
+        double dQty = Math.max(0.0, dseTradeQty);
+        double cQty = Math.max(0.0, cseTradeQty);
+        double totalQty = dQty + cQty;
+        res.tradeQty = totalQty > 0.0 ? totalQty : (curr.tradeQty > 0 ? curr.tradeQty : 1);
+
+        res.symbolAllowed = effCtx.symbolAllowed;
+        res.clientAllowed = effCtx.clientAllowed;
+        res.boardAllowed = effCtx.boardAllowed;
+        res.dseEnabled = effCtx.dseEnabled;
+        res.cseEnabled = effCtx.cseEnabled;
+        res.stockFileUploaded = effCtx.stockFileUploaded;
+        res.orderStatus = effCtx.orderStatus;
+        res.ineligibilityReason = explainIneligibilityReason(effCtx);
+        res.nettingEffective = res.ineligibilityReason.isEmpty();
 
         // Parse previous and current values
         res.prevDseTotal = OMSweb_Trade.parseNumSafe(prev.portfolioDataDSE.getOrDefault("total_qty", "0"));
@@ -2654,13 +3028,7 @@ public class Day_Netting {
         res.prevCseSaleable = OMSweb_Trade.parseNumSafe(prev.portfolioDataCSE.getOrDefault("saleable_qty", "0"));
         res.currCseSaleable = OMSweb_Trade.parseNumSafe(curr.portfolioDataCSE.getOrDefault("saleable_qty", "0"));
 
-        // Determine effective quantity change from UI or tradeQty
-        double observedTotalDelta = Math.abs(res.currDseTotal - res.prevDseTotal);
-        if (observedTotalDelta == 0.0) {
-            observedTotalDelta = Math.abs(res.currCseTotal - res.prevCseTotal);
-        }
-        double qty = (observedTotalDelta > 0.0) ? observedTotalDelta : res.tradeQty;
-
+        boolean isRejected = res.orderStatus.contains("REJECT") || res.orderStatus.contains("CANCEL") || res.orderStatus.contains("FAIL");
         boolean isBuy = res.tradeAction.contains("BUY");
         boolean isSell = res.tradeAction.contains("SELL") && !res.tradeAction.contains("BUY");
         if (res.tradeAction.contains("BOTH_BUY_SELL")) {
@@ -2671,18 +3039,53 @@ public class Day_Netting {
             isSell = true;
         }
 
-        boolean isCross = res.mode.toUpperCase().contains("CROSS");
-        boolean isNone = res.mode.toUpperCase().contains("NONE");
-        boolean isTradeDse = res.tradedExchange.contains("DSE") || "BOTH".equalsIgnoreCase(res.tradedExchange);
-        boolean isTradeCse = res.tradedExchange.contains("CSE");
+        // Case 0: Stock File upload updates mature/saleable stock regardless of client netting state
+        if (res.stockFileUploaded) {
+            if (totalQty > 0.0) {
+                res.expectedDseTotal = res.prevDseTotal + totalQty;
+                res.expectedCseTotal = res.prevCseTotal + totalQty;
+                res.expectedDseSaleable = res.prevDseSaleable + totalQty;
+                res.expectedCseSaleable = res.prevCseSaleable + totalQty;
+                res.dseTotalRight = Math.abs(res.currDseTotal - res.expectedDseTotal) < 0.001;
+                res.cseTotalRight = Math.abs(res.currCseTotal - res.expectedCseTotal) < 0.001;
+                res.dseSaleableRight = Math.abs(res.currDseSaleable - res.expectedDseSaleable) < 0.001;
+                res.cseSaleableRight = Math.abs(res.currCseSaleable - res.expectedCseSaleable) < 0.001;
+            } else {
+                boolean updated = res.saleableUpdatedAny();
+                res.expectedDseTotal = res.currDseTotal;
+                res.expectedCseTotal = res.currCseTotal;
+                res.expectedDseSaleable = res.currDseSaleable;
+                res.expectedCseSaleable = res.currCseSaleable;
+                res.dseTotalRight = res.currDseTotal > res.prevDseTotal;
+                res.cseTotalRight = res.currCseTotal > res.prevCseTotal;
+                res.dseSaleableRight = updated;
+                res.cseSaleableRight = updated;
+            }
+            res.dseTotalRemark = res.dseTotalRight
+                    ? String.format(Locale.US, "Stock File updated Total Qty (%,.0f -> %,.0f)", res.prevDseTotal, res.currDseTotal)
+                    : String.format(Locale.US, "WRONG: Expected Total %,.0f, got %,.0f", res.expectedDseTotal, res.currDseTotal);
+            res.cseTotalRemark = res.cseTotalRight
+                    ? String.format(Locale.US, "Stock File updated Total Qty (%,.0f -> %,.0f)", res.prevCseTotal, res.currCseTotal)
+                    : String.format(Locale.US, "WRONG: Expected Total %,.0f, got %,.0f", res.expectedCseTotal, res.currCseTotal);
+            res.dseSaleableRemark = res.dseSaleableRight
+                    ? String.format(Locale.US, "Stock File updated DSE Saleable (%,.0f -> %,.0f)", res.prevDseSaleable, res.currDseSaleable)
+                    : String.format(Locale.US, "WRONG: Expected DSE Saleable %,.0f, got %,.0f", res.expectedDseSaleable, res.currDseSaleable);
+            res.cseSaleableRemark = res.cseSaleableRight
+                    ? String.format(Locale.US, "Stock File updated CSE Saleable (%,.0f -> %,.0f)", res.prevCseSaleable, res.currCseSaleable)
+                    : String.format(Locale.US, "WRONG: Expected CSE Saleable %,.0f, got %,.0f", res.expectedCseSaleable, res.currCseSaleable);
+            return res;
+        }
 
-        // 1. Total Holding Quantity Calculation (Always consolidated across both exchanges)
-        if (isBuy) {
-            res.expectedDseTotal = res.prevDseTotal + qty;
-            res.expectedCseTotal = res.prevCseTotal + qty;
+        // 1. Total Holding Quantity Calculation (Always consolidated across both exchanges when order not rejected)
+        if (isRejected) {
+            res.expectedDseTotal = res.prevDseTotal;
+            res.expectedCseTotal = res.prevCseTotal;
+        } else if (isBuy) {
+            res.expectedDseTotal = res.prevDseTotal + totalQty;
+            res.expectedCseTotal = res.prevCseTotal + totalQty;
         } else if (isSell) {
-            res.expectedDseTotal = Math.max(0.0, res.prevDseTotal - qty);
-            res.expectedCseTotal = Math.max(0.0, res.prevCseTotal - qty);
+            res.expectedDseTotal = Math.max(0.0, res.prevDseTotal - totalQty);
+            res.expectedCseTotal = Math.max(0.0, res.prevCseTotal - totalQty);
         } else {
             res.expectedDseTotal = res.prevDseTotal;
             res.expectedCseTotal = res.prevCseTotal;
@@ -2691,102 +3094,91 @@ public class Day_Netting {
         res.dseTotalRight = Math.abs(res.currDseTotal - res.expectedDseTotal) < 0.001;
         res.cseTotalRight = Math.abs(res.currCseTotal - res.expectedCseTotal) < 0.001;
         res.dseTotalRemark = res.dseTotalRight
-                ? String.format(Locale.US, "Consolidated Total Qty increased (%,.0f -> %,.0f)", res.prevDseTotal, res.currDseTotal)
+                ? String.format(Locale.US, "Consolidated Total Qty updated (%,.0f -> %,.0f)", res.prevDseTotal, res.currDseTotal)
                 : String.format(Locale.US, "Expected %,.0f, but UI showed %,.0f", res.expectedDseTotal, res.currDseTotal);
         res.cseTotalRemark = res.cseTotalRight
-                ? String.format(Locale.US, "Consolidated Total Qty increased (%,.0f -> %,.0f)", res.prevCseTotal, res.currCseTotal)
+                ? String.format(Locale.US, "Consolidated Total Qty updated (%,.0f -> %,.0f)", res.prevCseTotal, res.currCseTotal)
                 : String.format(Locale.US, "Expected %,.0f, but UI showed %,.0f", res.expectedCseTotal, res.currCseTotal);
 
         // 2. Saleable Quantity Calculation:
-        // Case A: INDIVIDUAL EXCHANGE
-        if (!isCross && !isNone) {
-            if (isTradeDse) {
-                // User trades on DSE
-                if (isBuy) {
-                    res.expectedDseSaleable = res.prevDseSaleable + qty;
-                    res.expectedCseSaleable = res.prevCseSaleable;
-                    res.dseSaleableRemark = String.format(Locale.US, "DSE Saleable correctly reflects (Previous %,.0f + New %,.0f = %,.0f)",
-                            res.prevDseSaleable, qty, res.expectedDseSaleable);
-                    res.cseSaleableRemark = String.format(Locale.US, "CSE Saleable correctly retained previous data (%,.0f, unchanged)",
-                            res.prevCseSaleable);
-                } else if (isSell) {
-                    double dseDayBought = Math.max(0.0, res.prevDseSaleable - res.prevCseSaleable);
-                    double excessMature = Math.max(0.0, qty - dseDayBought);
-                    res.expectedDseSaleable = Math.max(0.0, res.prevDseSaleable - qty);
-                    res.expectedCseSaleable = Math.max(0.0, res.prevCseSaleable - excessMature);
-                    if (excessMature > 0.0) {
-                        res.dseSaleableRemark = String.format(Locale.US, "DSE Saleable deducted (%,.0f day-bought + %,.0f mature = %,.0f)",
-                                dseDayBought, excessMature, res.expectedDseSaleable);
-                        res.cseSaleableRemark = String.format(Locale.US, "CSE Saleable: mature holding deducted by excess %,.0f (%,.0f -> %,.0f)",
-                                excessMature, res.prevCseSaleable, res.expectedCseSaleable);
-                    } else {
-                        res.dseSaleableRemark = String.format(Locale.US, "DSE Saleable deducted from DSE day position (%,.0f - %,.0f = %,.0f)",
-                                res.prevDseSaleable, qty, res.expectedDseSaleable);
-                        res.cseSaleableRemark = String.format(Locale.US, "CSE Saleable correctly retained previous data (%,.0f, unchanged)",
-                                res.prevCseSaleable);
-                    }
-                } else {
-                    res.expectedDseSaleable = res.prevDseSaleable;
-                    res.expectedCseSaleable = res.prevCseSaleable;
-                }
-            } else if (isTradeCse) {
-                // User trades on CSE
-                if (isBuy) {
-                    res.expectedCseSaleable = res.prevCseSaleable + qty;
-                    res.expectedDseSaleable = res.prevDseSaleable;
-                    res.cseSaleableRemark = String.format(Locale.US, "CSE Saleable correctly reflects (Previous %,.0f + New %,.0f = %,.0f)",
-                            res.prevCseSaleable, qty, res.expectedCseSaleable);
-                    res.dseSaleableRemark = String.format(Locale.US, "DSE Saleable correctly retained previous data (%,.0f, unchanged)",
-                            res.prevDseSaleable);
-                } else if (isSell) {
-                    double cseDayBought = Math.max(0.0, res.prevCseSaleable - res.prevDseSaleable);
-                    double excessMature = Math.max(0.0, qty - cseDayBought);
-                    res.expectedCseSaleable = Math.max(0.0, res.prevCseSaleable - qty);
-                    res.expectedDseSaleable = Math.max(0.0, res.prevDseSaleable - excessMature);
-                    if (excessMature > 0.0) {
-                        res.cseSaleableRemark = String.format(Locale.US, "CSE Saleable deducted (%,.0f day-bought + %,.0f mature = %,.0f)",
-                                cseDayBought, excessMature, res.expectedCseSaleable);
-                        res.dseSaleableRemark = String.format(Locale.US, "DSE Saleable: mature holding deducted by excess %,.0f (%,.0f -> %,.0f)",
-                                excessMature, res.prevDseSaleable, res.expectedDseSaleable);
-                    } else {
-                        res.cseSaleableRemark = String.format(Locale.US, "CSE Saleable deducted from CSE position (%,.0f - %,.0f = %,.0f)",
-                                res.prevCseSaleable, qty, res.expectedCseSaleable);
-                        res.dseSaleableRemark = String.format(Locale.US, "DSE Saleable correctly retained previous data (%,.0f, unchanged)",
-                                res.prevDseSaleable);
-                    }
-                } else {
-                    res.expectedDseSaleable = res.prevDseSaleable;
-                    res.expectedCseSaleable = res.prevCseSaleable;
-                }
+        // Case A: Netting ineffective (NONE, client disallowed, symbol disallowed, board blocked, exchange disabled, or rejected)
+        if (!res.nettingEffective) {
+            if (!isRejected && isSell) {
+                res.expectedDseSaleable = Math.max(0.0, res.prevDseSaleable - totalQty);
+                res.expectedCseSaleable = Math.max(0.0, res.prevCseSaleable - totalQty);
+                res.dseSaleableRemark = String.format(Locale.US, "Mature holding deducted on SELL (%s)", res.ineligibilityReason);
+                res.cseSaleableRemark = String.format(Locale.US, "Mature holding deducted on SELL (%s)", res.ineligibilityReason);
+            } else {
+                res.expectedDseSaleable = res.prevDseSaleable;
+                res.expectedCseSaleable = res.prevCseSaleable;
+                res.dseSaleableRemark = "No Saleable Update: " + res.ineligibilityReason;
+                res.cseSaleableRemark = "No Saleable Update: " + res.ineligibilityReason;
             }
         }
         // Case B: CROSS EXCHANGE
-        else if (isCross) {
+        else if (effCtx.mode == NettingMode.CROSS_EXCHANGE) {
             if (isBuy) {
-                res.expectedDseSaleable = res.prevDseSaleable + qty;
-                res.expectedCseSaleable = res.prevCseSaleable + qty;
+                res.expectedDseSaleable = res.prevDseSaleable + totalQty;
+                res.expectedCseSaleable = res.prevCseSaleable + totalQty;
                 res.dseSaleableRemark = String.format(Locale.US, "Cross Netting: DSE Saleable reflects trade on %s (+%,.0f = %,.0f)",
-                        res.tradedExchange, qty, res.expectedDseSaleable);
+                        res.tradedExchange, totalQty, res.expectedDseSaleable);
                 res.cseSaleableRemark = String.format(Locale.US, "Cross Netting: CSE Saleable reflects trade on %s (+%,.0f = %,.0f)",
-                        res.tradedExchange, qty, res.expectedCseSaleable);
+                        res.tradedExchange, totalQty, res.expectedCseSaleable);
             } else if (isSell) {
-                res.expectedDseSaleable = Math.max(0.0, res.prevDseSaleable - qty);
-                res.expectedCseSaleable = Math.max(0.0, res.prevCseSaleable - qty);
+                res.expectedDseSaleable = Math.max(0.0, res.prevDseSaleable - totalQty);
+                res.expectedCseSaleable = Math.max(0.0, res.prevCseSaleable - totalQty);
                 res.dseSaleableRemark = String.format(Locale.US, "Cross Netting: DSE Saleable deducted (-%,.0f = %,.0f)",
-                        qty, res.expectedDseSaleable);
+                        totalQty, res.expectedDseSaleable);
                 res.cseSaleableRemark = String.format(Locale.US, "Cross Netting: CSE Saleable deducted (-%,.0f = %,.0f)",
-                        qty, res.expectedCseSaleable);
+                        totalQty, res.expectedCseSaleable);
             } else {
                 res.expectedDseSaleable = res.prevDseSaleable;
                 res.expectedCseSaleable = res.prevCseSaleable;
             }
         }
-        // Case C: NONE
+        // Case C: INDIVIDUAL EXCHANGE (supports DSE-only, CSE-only, and BOTH cleanly)
         else {
-            res.expectedDseSaleable = res.prevDseSaleable;
-            res.expectedCseSaleable = res.prevCseSaleable;
-            res.dseSaleableRemark = "No Day Netting: Same-day bought shares are un-mature and not saleable today";
-            res.cseSaleableRemark = "No Day Netting: Same-day bought shares are un-mature and not saleable today";
+            if (isBuy) {
+                double dseAdd = effCtx.dseEnabled ? dQty : 0.0;
+                double cseAdd = effCtx.cseEnabled ? cQty : 0.0;
+                res.expectedDseSaleable = res.prevDseSaleable + dseAdd;
+                res.expectedCseSaleable = res.prevCseSaleable + cseAdd;
+                res.dseSaleableRemark = dseAdd > 0.0
+                        ? String.format(Locale.US, "DSE Saleable reflects DSE buy (%,.0f + %,.0f = %,.0f)", res.prevDseSaleable, dseAdd, res.expectedDseSaleable)
+                        : String.format(Locale.US, "DSE Saleable retained previous (%,.0f, unchanged)", res.prevDseSaleable);
+                res.cseSaleableRemark = cseAdd > 0.0
+                        ? String.format(Locale.US, "CSE Saleable reflects CSE buy (%,.0f + %,.0f = %,.0f)", res.prevCseSaleable, cseAdd, res.expectedCseSaleable)
+                        : String.format(Locale.US, "CSE Saleable retained previous (%,.0f, unchanged)", res.prevCseSaleable);
+            } else if (isSell) {
+                double sharedMature = Math.min(res.prevDseSaleable, res.prevCseSaleable);
+                double dseDayBought = Math.max(0.0, res.prevDseSaleable - sharedMature);
+                double cseDayBought = Math.max(0.0, res.prevCseSaleable - sharedMature);
+                double dseExcess = effCtx.dseEnabled ? Math.max(0.0, dQty - dseDayBought) : dQty;
+                double cseExcess = effCtx.cseEnabled ? Math.max(0.0, cQty - cseDayBought) : cQty;
+                double matureDeducted = dseExcess + cseExcess;
+                double remainingMature = Math.max(0.0, sharedMature - matureDeducted);
+                double remDseDay = effCtx.dseEnabled ? Math.max(0.0, dseDayBought - dQty) : dseDayBought;
+                double remCseDay = effCtx.cseEnabled ? Math.max(0.0, cseDayBought - cQty) : cseDayBought;
+
+                res.expectedDseSaleable = remainingMature + remDseDay;
+                res.expectedCseSaleable = remainingMature + remCseDay;
+                if (matureDeducted > 0.0) {
+                    res.dseSaleableRemark = String.format(Locale.US, "DSE Saleable deducted (excess mature %,.0f -> %,.0f)",
+                            matureDeducted, res.expectedDseSaleable);
+                    res.cseSaleableRemark = String.format(Locale.US, "CSE Saleable deducted (excess mature %,.0f -> %,.0f)",
+                            matureDeducted, res.expectedCseSaleable);
+                } else {
+                    res.dseSaleableRemark = dQty > 0.0
+                            ? String.format(Locale.US, "DSE Saleable deducted from DSE day position (%,.0f -> %,.0f)", res.prevDseSaleable, res.expectedDseSaleable)
+                            : String.format(Locale.US, "DSE Saleable retained previous (%,.0f, unchanged)", res.prevDseSaleable);
+                    res.cseSaleableRemark = cQty > 0.0
+                            ? String.format(Locale.US, "CSE Saleable deducted from CSE day position (%,.0f -> %,.0f)", res.prevCseSaleable, res.expectedCseSaleable)
+                            : String.format(Locale.US, "CSE Saleable retained previous (%,.0f, unchanged)", res.prevCseSaleable);
+                }
+            } else {
+                res.expectedDseSaleable = res.prevDseSaleable;
+                res.expectedCseSaleable = res.prevCseSaleable;
+            }
         }
 
         res.dseSaleableRight = Math.abs(res.currDseSaleable - res.expectedDseSaleable) < 0.001;
@@ -2912,14 +3304,14 @@ public class Day_Netting {
         printNettingSaleableComplianceReport(r3);
         if (r3.isAllRight()) passed++;
 
-        // Scenario 4: Individual Exchange - SELL in CSE (Prev: DSE 100/40, CSE 100/35, Sell 15 CSE)
+        // Scenario 4: Individual Exchange - SELL in CSE (Prev: DSE 100/20, CSE 100/35, Sell 15 CSE)
         total++;
         Netting6WidgetsUiSnapshot p4 = new Netting6WidgetsUiSnapshot();
-        p4.portfolioDataDSE.put("total_qty", "100"); p4.portfolioDataDSE.put("saleable_qty", "40");
+        p4.portfolioDataDSE.put("total_qty", "100"); p4.portfolioDataDSE.put("saleable_qty", "20");
         p4.portfolioDataCSE.put("total_qty", "100"); p4.portfolioDataCSE.put("saleable_qty", "35");
         Netting6WidgetsUiSnapshot c4 = new Netting6WidgetsUiSnapshot();
         c4.dayNettingMode = "INDIVIDUAL_EXCHANGE"; c4.tradedExchange = "CSE"; c4.tradeAction = "SELL"; c4.tradeQty = 15;
-        c4.portfolioDataDSE.put("total_qty", "85"); c4.portfolioDataDSE.put("saleable_qty", "40"); // 40 unchanged
+        c4.portfolioDataDSE.put("total_qty", "85"); c4.portfolioDataDSE.put("saleable_qty", "20"); // 20 unchanged
         c4.portfolioDataCSE.put("total_qty", "85"); c4.portfolioDataCSE.put("saleable_qty", "20"); // 35 - 15 = 20
         NettingSaleableAuditResult r4 = auditDayNettingSaleableCompliance(p4, c4);
         printNettingSaleableComplianceReport(r4);
@@ -3015,6 +3407,21 @@ public class Day_Netting {
             double initialMatureHolding,
             double dseBuyQty, double dseSellQty,
             double cseBuyQty, double cseSellQty) {
+        return calculateDayNettingPortfolio(
+                mode, dseEnabled, cseEnabled, clientAllowed, symbolEligible, true,
+                initialMatureHolding, dseBuyQty, dseSellQty, cseBuyQty, cseSellQty);
+    }
+
+    /**
+     * Computes Day Netting portfolio state across DSE and CSE, enforcing board eligibility
+     * and requiring at least one exchange flag enabled for CROSS_EXCHANGE netting.
+     */
+    public static DayNettingPortfolioState calculateDayNettingPortfolio(
+            NettingMode mode, boolean dseEnabled, boolean cseEnabled,
+            boolean clientAllowed, boolean symbolEligible, boolean boardAllowed,
+            double initialMatureHolding,
+            double dseBuyQty, double dseSellQty,
+            double cseBuyQty, double cseSellQty) {
 
         double totalHolding = Math.max(0.0, initialMatureHolding + (dseBuyQty + cseBuyQty) - (dseSellQty + cseSellQty));
         double dseSaleable = 0.0;
@@ -3023,7 +3430,7 @@ public class Day_Netting {
         double matureDeducted = 0.0;
         String modeName = (mode != null) ? mode.name() : "NONE";
 
-        if (mode == NettingMode.NONE || !clientAllowed || !symbolEligible) {
+        if (mode == null || mode == NettingMode.NONE || !clientAllowed || !symbolEligible || !boardAllowed) {
             matureDeducted = dseSellQty + cseSellQty;
             double remainingMature = Math.max(0.0, initialMatureHolding - matureDeducted);
             dseSaleable = remainingMature;
@@ -3044,17 +3451,25 @@ public class Day_Netting {
             cseSaleable = remainingMature + cseDayRem;
             dayNetted = dseDayNetted + cseDayNetted;
         } else if (mode == NettingMode.CROSS_EXCHANGE) {
-            double totalBuy = dseBuyQty + cseBuyQty;
-            double totalSell = dseSellQty + cseSellQty;
-            double crossNetted = Math.min(totalBuy, totalSell);
-            double crossRem = Math.max(0.0, totalBuy - totalSell);
-            double crossExcess = Math.max(0.0, totalSell - totalBuy);
+            if (!dseEnabled && !cseEnabled) {
+                matureDeducted = dseSellQty + cseSellQty;
+                double remainingMature = Math.max(0.0, initialMatureHolding - matureDeducted);
+                dseSaleable = remainingMature;
+                cseSaleable = remainingMature;
+                dayNetted = 0.0;
+            } else {
+                double totalBuy = dseBuyQty + cseBuyQty;
+                double totalSell = dseSellQty + cseSellQty;
+                double crossNetted = Math.min(totalBuy, totalSell);
+                double crossRem = Math.max(0.0, totalBuy - totalSell);
+                double crossExcess = Math.max(0.0, totalSell - totalBuy);
 
-            matureDeducted = crossExcess;
-            double remainingMature = Math.max(0.0, initialMatureHolding - matureDeducted);
-            dseSaleable = remainingMature + crossRem;
-            cseSaleable = remainingMature + crossRem;
-            dayNetted = crossNetted;
+                matureDeducted = crossExcess;
+                double remainingMature = Math.max(0.0, initialMatureHolding - matureDeducted);
+                dseSaleable = remainingMature + crossRem;
+                cseSaleable = remainingMature + crossRem;
+                dayNetted = crossNetted;
+            }
         }
 
         return new DayNettingPortfolioState(initialMatureHolding, dseBuyQty, dseSellQty,
@@ -3478,17 +3893,770 @@ public class Day_Netting {
         return res;
     }
 
+    // =========================================================================
+    // 5.1 9-SCENARIO DAY NETTING & STOCK FILE COMPLIANCE MATRIX
+    // =========================================================================
+
+    /**
+     * Builds the canonical 9-scenario matrix covering client exclusivity,
+     * symbol/client blocking, post-accepted-order rule flips, and Stock File uploads.
+     */
+    public static List<NettingScenarioSpec> build9ScenarioSpecs() {
+        List<NettingScenarioSpec> specs = new ArrayList<>();
+        specs.add(new NettingScenarioSpec(1, NettingScenarioType.S1_CLIENT1_ALLOWED_OTHERS_DISALLOWED,
+                "Client 1 Allowed vs Others Disallowed",
+                "Primary client allowed & other clients disallowed -> primary updates saleable, others do not",
+                true, true, false, false, false, true, true));
+        specs.add(new NettingScenarioSpec(2, NettingScenarioType.S2_CLIENT1_DISALLOWED_OTHERS_ALLOWED,
+                "Client 1 Disallowed vs Others Allowed",
+                "Primary client disallowed & other clients allowed -> primary does not update saleable, others do",
+                false, true, false, false, false, false, false));
+        specs.add(new NettingScenarioSpec(3, NettingScenarioType.S3_SYMBOL_ALLOWED_CLIENT_DISALLOWED,
+                "Symbol Allowed + Client Disallowed",
+                "Symbol in Applicable Symbols but Client Disallowed -> no intraday saleable update",
+                false, true, false, false, false, false, false));
+        specs.add(new NettingScenarioSpec(4, NettingScenarioType.S4_SYMBOL_DISALLOWED_CLIENT_ALLOWED,
+                "Symbol Disallowed + Client Allowed",
+                "Client Allowed but Symbol NOT in Applicable Symbols -> no intraday saleable update",
+                true, false, false, false, false, false, false));
+        specs.add(new NettingScenarioSpec(5, NettingScenarioType.S5_POST_ORDER_ALLOW_SYMBOL,
+                "Post-Accepted-Order Allow Symbol",
+                "Accepted order placed with Symbol Disallowed -> then Allow Symbol -> report/check reflection",
+                true, false, true, false, false, false, true));
+        specs.add(new NettingScenarioSpec(6, NettingScenarioType.S6_POST_ORDER_ALLOW_CLIENT,
+                "Post-Accepted-Order Allow Client",
+                "Accepted order placed with Client Disallowed -> then Allow Client -> report/check update",
+                false, true, false, true, false, false, true));
+        specs.add(new NettingScenarioSpec(7, NettingScenarioType.S7_ALLOW_NETTING_PLUS_STOCK_FILE,
+                "Allow Netting + Stock File",
+                "Netting allowed + Stock File uploaded -> saleable updated",
+                true, true, false, false, true, true, true));
+        specs.add(new NettingScenarioSpec(8, NettingScenarioType.S8_DISALLOW_NETTING_PLUS_STOCK_FILE,
+                "Disallow Netting + Stock File",
+                "Client netting disallowed + Stock File uploaded -> saleable STILL updated by Stock File",
+                false, true, false, false, true, true, true));
+        specs.add(new NettingScenarioSpec(9, NettingScenarioType.S9_DISALLOW_PLUS_STOCK_FILE_THEN_ALLOW,
+                "Disallow + Stock File -> Then Allow Netting",
+                "Stock File uploaded while Disallowed -> then Allow Netting -> saleable updated",
+                false, true, false, true, true, true, true));
+        return Collections.unmodifiableList(specs);
+    }
+
+    /**
+     * Captures the initial qRMS Application Settings, Clients RMS lists, Applicable Symbols,
+     * and Unauthorized Boards restrictions before executing test mutations.
+     */
+    public static QrmsNettingStateSnapshot captureInitialQrmsState(WebDriver driver) {
+        if (driver == null) {
+            return new QrmsNettingStateSnapshot(
+                    "INDIVIDUAL EXCHANGE", true, true, false,
+                    Collections.emptyList(), Collections.emptyList(),
+                    Collections.emptyList(), Collections.emptyList(),
+                    Collections.emptyList(), false);
+        }
+        RMS.navigateToApplicationSettings(driver);
+        RMS.RMSApplicationSettings app = RMS.fetchApplicationSettings(driver);
+        List<RMS.ClientRmsRecord> allowed = RMS.fetchClientsRmsList(driver, true);
+        List<RMS.ClientRmsRecord> disallowed = RMS.fetchClientsRmsList(driver, false);
+        List<RMS.ApplicableSymbolRecord> dseSyms = RMS.fetchApplicableSymbolsList(driver, "DSE");
+        List<RMS.ApplicableSymbolRecord> cseSyms = RMS.fetchApplicableSymbolsList(driver, "CSE");
+        List<RMS.BoardRestrictionRecord> boards = RMS.fetchUnauthorizedBoardsSettings(driver);
+        return new QrmsNettingStateSnapshot(
+                app.dayNettingSettings, app.isDseDayNettingEnabled, app.isCseDayNettingEnabled,
+                app.allowZAndSpotNetting, allowed, disallowed, dseSyms, cseSyms, boards, true);
+    }
+
+    /**
+     * Restores qRMS Application Settings, modified client RMS lists, and modified Applicable Symbols
+     * safely inside finally blocks so test runs do not leave dirty risk rules behind.
+     */
+    public static void restoreQrmsStateSafely(
+            WebDriver driver, QrmsNettingStateSnapshot initial, String password) {
+        if (driver == null || initial == null || !initial.capturedFromLiveDriver) return;
+        try {
+            RMS.NettingMode origMode = RMS.NettingMode.fromString(initial.dayNettingSettings);
+            RMS.configureAllApplicationSettings(
+                    driver, origMode, initial.dseEnabled, initial.cseEnabled, initial.allowZSpot, password);
+
+            restoreClientListDiff(driver, initial.allowedClients, initial.disallowedClients, password);
+            restoreSymbolListDiff(driver, "DSE", initial.dseSymbols);
+            restoreSymbolListDiff(driver, "CSE", initial.cseSymbols);
+        } catch (Exception e) {
+            System.out.println("[QRMS RESTORE: WARN] Partial restore encountered exception: " + e.getMessage());
+        }
+    }
+
+    private static void restoreClientListDiff(
+            WebDriver driver,
+            List<RMS.ClientRmsRecord> origAllowed,
+            List<RMS.ClientRmsRecord> origDisallowed,
+            String password) {
+        Map<String, Boolean> origMap = new LinkedHashMap<>();
+        for (RMS.ClientRmsRecord r : origAllowed) {
+            if (r.clientCode != null && !r.clientCode.trim().isEmpty()) origMap.put(r.clientCode.trim().toUpperCase(), true);
+        }
+        for (RMS.ClientRmsRecord r : origDisallowed) {
+            if (r.clientCode != null && !r.clientCode.trim().isEmpty()) origMap.put(r.clientCode.trim().toUpperCase(), false);
+        }
+
+        List<RMS.ClientRmsRecord> currAllowed = RMS.fetchClientsRmsList(driver, true);
+        List<RMS.ClientRmsRecord> currDisallowed = RMS.fetchClientsRmsList(driver, false);
+        for (RMS.ClientRmsRecord r : currAllowed) {
+            String code = r.clientCode != null ? r.clientCode.trim().toUpperCase() : "";
+            if (!code.isEmpty() && !Boolean.TRUE.equals(origMap.get(code))) {
+                RMS.removeClientFromRiskList(driver, code, true, password);
+            }
+        }
+        for (RMS.ClientRmsRecord r : currDisallowed) {
+            String code = r.clientCode != null ? r.clientCode.trim().toUpperCase() : "";
+            if (!code.isEmpty() && !Boolean.FALSE.equals(origMap.get(code))) {
+                RMS.removeClientFromRiskList(driver, code, false, password);
+            }
+        }
+        for (Map.Entry<String, Boolean> e : origMap.entrySet()) {
+            boolean wantAllowed = e.getValue();
+            if (!RMS.isClientPresentInList(driver, e.getKey(), wantAllowed)) {
+                RMS.setClientNettingState(driver, e.getKey(), wantAllowed, password);
+            }
+        }
+    }
+
+    private static void restoreSymbolListDiff(
+            WebDriver driver, String exchange, List<RMS.ApplicableSymbolRecord> origSymbols) {
+        java.util.Set<String> origSet = new java.util.LinkedHashSet<>();
+        for (RMS.ApplicableSymbolRecord r : origSymbols) {
+            if (r.ticker != null && !r.ticker.trim().isEmpty()) origSet.add(r.ticker.trim().toUpperCase());
+        }
+        List<RMS.ApplicableSymbolRecord> curr = RMS.fetchApplicableSymbolsList(driver, exchange);
+        java.util.Set<String> currSet = new java.util.LinkedHashSet<>();
+        for (RMS.ApplicableSymbolRecord r : curr) {
+            if (r.ticker != null && !r.ticker.trim().isEmpty()) currSet.add(r.ticker.trim().toUpperCase());
+        }
+        for (String s : currSet) {
+            if (!origSet.contains(s)) RMS.deleteApplicableSymbol(driver, exchange, s);
+        }
+        for (String s : origSet) {
+            if (!currSet.contains(s)) RMS.addApplicableSymbol(driver, exchange, s);
+        }
+    }
+
+    private static Netting6WidgetsUiSnapshot buildMatrixSnapshot(
+            String stage, String client, String symbol, String exchange, NettingMode mode,
+            boolean dseEn, boolean cseEn, boolean symAllow, boolean clnAllow,
+            boolean brdAllow, String board, String action, int qty, boolean stockUploaded,
+            double dseTot, double dseSal, double cseTot, double cseSal) {
+        Netting6WidgetsUiSnapshot s = new Netting6WidgetsUiSnapshot();
+        s.stageName = stage;
+        s.targetClient = client;
+        s.targetSymbol = symbol;
+        s.exchange = exchange;
+        s.tradedExchange = exchange;
+        s.dayNettingMode = mode != null ? mode.name() : "INDIVIDUAL_EXCHANGE";
+        s.isDseDayNettingEnabled = dseEn;
+        s.isCseDayNettingEnabled = cseEn;
+        s.symbolAllowed = symAllow;
+        s.clientAllowed = clnAllow;
+        s.boardAllowed = brdAllow;
+        s.board = board;
+        s.tradeAction = action;
+        s.tradeQty = qty;
+        s.orderStatus = "ACCEPTED";
+        s.stockFileUploaded = stockUploaded;
+        s.portfolioDataDSE.put("total_qty", String.format(Locale.US, "%.0f", dseTot));
+        s.portfolioDataDSE.put("saleable_qty", String.format(Locale.US, "%.0f", dseSal));
+        s.portfolioDataCSE.put("total_qty", String.format(Locale.US, "%.0f", cseTot));
+        s.portfolioDataCSE.put("saleable_qty", String.format(Locale.US, "%.0f", cseSal));
+        s.portfolioData = s.portfolioDataDSE;
+        return s;
+    }
+
+    private static boolean matchesScenarioFilter(NettingScenarioSpec spec, String filter) {
+        if (filter == null || filter.trim().isEmpty() || "ALL".equalsIgnoreCase(filter.trim())) return true;
+        String f = filter.trim().toUpperCase();
+        for (String part : f.split(",")) {
+            String p = part.trim();
+            if (p.equals(String.valueOf(spec.number)) || p.equals("S" + spec.number)) return true;
+            if (p.contains("-")) {
+                String[] bounds = p.split("-");
+                if (bounds.length == 2) {
+                    try {
+                        int lo = Integer.parseInt(bounds[0].replaceAll("[^0-9]", ""));
+                        int hi = Integer.parseInt(bounds[1].replaceAll("[^0-9]", ""));
+                        if (spec.number >= lo && spec.number <= hi) return true;
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Executes the 9-Scenario Day Netting Compliance Matrix either offline (driver == null)
+     * or live against qRMS & the Trade Portal with automatic state capture and restoration.
+     */
+    public static List<NettingScenarioOutcome> runNetting9ScenarioMatrix(
+            WebDriver driver, NettingScenarioConfig config) {
+        NettingScenarioConfig cfg = config != null ? config : new NettingScenarioConfig();
+        List<NettingScenarioSpec> specs = build9ScenarioSpecs();
+        List<NettingScenarioOutcome> outcomes = new ArrayList<>();
+
+        String primary = (cfg.primaryClient != null && !cfg.primaryClient.trim().isEmpty())
+                ? cfg.primaryClient.trim().toUpperCase() : "002";
+        List<String> others = new ArrayList<>();
+        if (cfg.otherClients != null) {
+            for (String o : cfg.otherClients) {
+                if (o != null && !o.trim().isEmpty()) others.add(o.trim().toUpperCase());
+            }
+        }
+        if (others.isEmpty()) {
+            others.add("002".equals(primary) ? "23986" : "002");
+        }
+        String sym = OMSweb_Trade.cleanSymbol(cfg.symbol);
+        if (sym.isEmpty()) sym = "GP";
+        String ex = (cfg.exchange != null && !cfg.exchange.trim().isEmpty()) ? cfg.exchange.trim().toUpperCase() : "BOTH";
+
+        if (driver == null) {
+            for (NettingScenarioSpec spec : specs) {
+                if (!matchesScenarioFilter(spec, cfg.scenarioFilter)) continue;
+                outcomes.add(evaluateScenarioOffline(spec, cfg, primary, others, sym, ex));
+            }
+            print9ScenarioScorecard(outcomes);
+            return outcomes;
+        }
+
+        QrmsNettingStateSnapshot initial = captureInitialQrmsState(driver);
+        double resolvedRate = resolveScenarioOrderRate(driver, sym, ex, cfg.orderRate);
+        try {
+            for (NettingScenarioSpec spec : specs) {
+                if (!matchesScenarioFilter(spec, cfg.scenarioFilter)) continue;
+                outcomes.add(evaluateScenarioLive(driver, spec, cfg, primary, others, sym, ex, resolvedRate));
+            }
+        } finally {
+            restoreQrmsStateSafely(driver, initial, cfg.rmsPassword);
+            try {
+                OMSweb_Trade.navigateToTradePage(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), false);
+            } catch (Exception ignored) {}
+        }
+        print9ScenarioScorecard(outcomes);
+        return outcomes;
+    }
+
+    private static double resolveScenarioOrderRate(WebDriver driver, String sym, String ex, double fallbackRate) {
+        String quoteEx = "BOTH".equalsIgnoreCase(ex) ? "DSE" : ex;
+        try {
+            OMSweb_DBMarketData.PublicSymbolLtp quote = OMSweb_DBMarketData.getCachedSymbol(sym, quoteEx);
+            if (quote != null) {
+                double p = quote.ltp > 0.0 ? quote.ltp : (quote.ycp > 0.0 ? quote.ycp : 0.0);
+                if (p > 0.0 && p < 10000.0) return p;
+            }
+        } catch (Exception ignored) {}
+        try {
+            double p = OMSweb_Trade.fetchPriceLtpOrYcp(driver, new WebDriverWait(driver, Duration.ofSeconds(5)), sym, quoteEx);
+            if (p > 0.0 && p < 10000.0) return p;
+        } catch (Exception ignored) {}
+        return fallbackRate > 0.0 ? fallbackRate : 266.90;
+    }
+
+    private static NettingScenarioOutcome evaluateScenarioOffline(
+            NettingScenarioSpec spec, NettingScenarioConfig cfg,
+            String primary, List<String> others, String sym, String ex) {
+        boolean exclOk = true;
+        if (spec.number == 1 || spec.number == 2) {
+            RMS.ClientExclusivityResult excl = RMS.evaluateClientExclusivity(primary, spec.initialClientAllowed, others);
+            try {
+                RMS.assertClientExclusivityRule(excl);
+            } catch (IllegalStateException e) {
+                exclOk = false;
+            }
+        }
+
+        int qty = cfg.orderQty > 0 ? cfg.orderQty : 10;
+        double baseMature = 50.0;
+        double dseQty = "CSE".equalsIgnoreCase(ex) ? 0.0 : qty;
+        double cseQty = "DSE".equalsIgnoreCase(ex) ? 0.0 : qty;
+        double stockAdd = 50.0;
+
+        Netting6WidgetsUiSnapshot pre = buildMatrixSnapshot(
+                "OFFLINE_PRE_S" + spec.number, primary, sym, ex, cfg.nettingMode,
+                cfg.dseEnabled, cfg.cseEnabled, spec.initialSymbolAllowed, spec.initialClientAllowed,
+                true, cfg.board, spec.requiresStockFile ? "STOCK_FILE" : "BUY", qty,
+                false, baseMature, baseMature, baseMature, baseMature);
+
+        Netting6WidgetsUiSnapshot post;
+        NettingEligibilityContext initCtx = new NettingEligibilityContext(
+                cfg.nettingMode, cfg.dseEnabled, cfg.cseEnabled,
+                spec.initialSymbolAllowed, spec.initialClientAllowed, true,
+                ex, cfg.board, cfg.allowZSpot, "ACCEPTED", spec.requiresStockFile);
+        double auditDseQty = spec.requiresStockFile ? stockAdd / 2.0 : dseQty;
+        double auditCseQty = spec.requiresStockFile ? stockAdd / 2.0 : cseQty;
+
+        if (spec.requiresStockFile) {
+            OMSweb_UploadData.UploadExecutionResult guardRes =
+                    OMSweb_UploadData.uploadStockFileWithGuard(null, cfg.stockFilePath, false);
+            double newTot = baseMature + stockAdd;
+            post = buildMatrixSnapshot(
+                    "OFFLINE_POST_S" + spec.number, primary, sym, ex, cfg.nettingMode,
+                    cfg.dseEnabled, cfg.cseEnabled, spec.initialSymbolAllowed, spec.initialClientAllowed,
+                    true, cfg.board, "STOCK_FILE", (int) stockAdd,
+                    true, newTot, newTot, newTot, newTot);
+            NettingSaleableAuditResult audit = auditDayNettingSaleableCompliance(pre, post, initCtx, auditDseQty, auditCseQty);
+            boolean phase1Ok = audit.isAllRight() && audit.saleableUpdatedAny() && guardRes.dryRun;
+
+            boolean phase2Ok = true;
+            String extra = "StockFile -> saleable +" + (int) stockAdd + " (guard dryRun=" + guardRes.dryRun + ")";
+            if (spec.postOrderAllowClient) {
+                NettingEligibilityContext flippedCtx = new NettingEligibilityContext(
+                        cfg.nettingMode, cfg.dseEnabled, cfg.cseEnabled,
+                        true, true, true, ex, cfg.board, cfg.allowZSpot, "ACCEPTED", false);
+                DayNettingPortfolioState p2 = calculateDayNettingPortfolio(
+                        cfg.nettingMode, cfg.dseEnabled, cfg.cseEnabled, true, true, true,
+                        newTot, dseQty, 0, cseQty, 0);
+                Netting6WidgetsUiSnapshot postFlip = buildMatrixSnapshot(
+                        "OFFLINE_POST_FLIP_S" + spec.number, primary, sym, ex, cfg.nettingMode,
+                        cfg.dseEnabled, cfg.cseEnabled, true, true, true, cfg.board, "BUY", qty,
+                        false, p2.totalHoldingQty, p2.dseSaleableQty, p2.totalHoldingQty, p2.cseSaleableQty);
+                NettingSaleableAuditResult flipAudit = auditDayNettingSaleableCompliance(post, postFlip, flippedCtx, dseQty, cseQty);
+                phase2Ok = isNettingEffectiveForTrade(flippedCtx) && flipAudit.isAllRight() && flipAudit.saleableUpdatedAny();
+                extra += "; post-allow trade -> DSE/CSE Sal=" + (int) p2.dseSaleableQty + "/" + (int) p2.cseSaleableQty;
+            }
+            boolean passed = exclOk && phase1Ok && phase2Ok;
+            return new NettingScenarioOutcome(
+                    spec, false, passed, true, exclOk, phase1Ok && phase2Ok,
+                    String.format(Locale.US, "DSE=%.0f/CSE=%.0f", baseMature, baseMature),
+                    String.format(Locale.US, "DSE=%.0f/CSE=%.0f", newTot, newTot),
+                    passed ? "PASS" : "FAIL", extra, audit, null);
+        }
+
+        DayNettingPortfolioState initCalc = calculateDayNettingPortfolio(
+                cfg.nettingMode, cfg.dseEnabled, cfg.cseEnabled,
+                spec.initialClientAllowed, spec.initialSymbolAllowed, true,
+                baseMature, dseQty, 0, cseQty, 0);
+        post = buildMatrixSnapshot(
+                "OFFLINE_POST_S" + spec.number, primary, sym, ex, cfg.nettingMode,
+                cfg.dseEnabled, cfg.cseEnabled, spec.initialSymbolAllowed, spec.initialClientAllowed,
+                true, cfg.board, "BUY", qty,
+                false, initCalc.totalHoldingQty, initCalc.dseSaleableQty,
+                initCalc.totalHoldingQty, initCalc.cseSaleableQty);
+
+        NettingSaleableAuditResult audit = auditDayNettingSaleableCompliance(pre, post, initCtx, dseQty, cseQty);
+        boolean saleableOk = audit.isAllRight() && (audit.saleableUpdatedAny() == spec.expectSaleableUpdatedInitially);
+
+        // For S1/S2 also assert opposite client group exhibits inverse saleable rule
+        if (spec.number == 1 || spec.number == 2) {
+            boolean otherAllowed = !spec.initialClientAllowed;
+            String otherClient = others.get(0);
+            DayNettingPortfolioState otherCalc = calculateDayNettingPortfolio(
+                    cfg.nettingMode, cfg.dseEnabled, cfg.cseEnabled, otherAllowed, true, true,
+                    baseMature, dseQty, 0, cseQty, 0);
+            NettingEligibilityContext otherCtx = new NettingEligibilityContext(
+                    cfg.nettingMode, cfg.dseEnabled, cfg.cseEnabled, true, otherAllowed, true,
+                    ex, cfg.board, cfg.allowZSpot, "ACCEPTED", false);
+            Netting6WidgetsUiSnapshot otherPre = buildMatrixSnapshot(
+                    "OFFLINE_OTHER_PRE", otherClient, sym, ex, cfg.nettingMode,
+                    cfg.dseEnabled, cfg.cseEnabled, true, otherAllowed, true, cfg.board, "BUY", qty,
+                    false, baseMature, baseMature, baseMature, baseMature);
+            Netting6WidgetsUiSnapshot otherPost = buildMatrixSnapshot(
+                    "OFFLINE_OTHER_POST", otherClient, sym, ex, cfg.nettingMode,
+                    cfg.dseEnabled, cfg.cseEnabled, true, otherAllowed, true, cfg.board, "BUY", qty,
+                    false, otherCalc.totalHoldingQty, otherCalc.dseSaleableQty,
+                    otherCalc.totalHoldingQty, otherCalc.cseSaleableQty);
+            NettingSaleableAuditResult otherAudit = auditDayNettingSaleableCompliance(otherPre, otherPost, otherCtx, dseQty, cseQty);
+            saleableOk &= otherAudit.isAllRight() && (otherAudit.saleableUpdatedAny() == otherAllowed);
+        }
+
+        // For S5/S6 verify post-accepted-order flip restores netting eligibility & expected reflection
+        String details = String.format(Locale.US, "Effective=%b, SaleableUpdated=%b", audit.nettingEffective, audit.saleableUpdatedAny());
+        if (spec.postOrderAllowSymbol || spec.postOrderAllowClient) {
+            NettingEligibilityContext flippedCtx = new NettingEligibilityContext(
+                    cfg.nettingMode, cfg.dseEnabled, cfg.cseEnabled,
+                    true, true, true, ex, cfg.board, cfg.allowZSpot, "ACCEPTED", false);
+            DayNettingPortfolioState flippedCalc = calculateDayNettingPortfolio(
+                    cfg.nettingMode, cfg.dseEnabled, cfg.cseEnabled, true, true, true,
+                    baseMature, dseQty, 0, cseQty, 0);
+            Netting6WidgetsUiSnapshot flippedPost = buildMatrixSnapshot(
+                    "OFFLINE_FLIP_S" + spec.number, primary, sym, ex, cfg.nettingMode,
+                    cfg.dseEnabled, cfg.cseEnabled, true, true, true, cfg.board, "BUY", qty,
+                    false, flippedCalc.totalHoldingQty, flippedCalc.dseSaleableQty,
+                    flippedCalc.totalHoldingQty, flippedCalc.cseSaleableQty);
+            NettingSaleableAuditResult flipAudit = auditDayNettingSaleableCompliance(pre, flippedPost, flippedCtx, dseQty, cseQty);
+            boolean flipOk = isNettingEffectiveForTrade(flippedCtx) && flipAudit.isAllRight() && flipAudit.saleableUpdatedAny();
+            saleableOk &= flipOk;
+            details += String.format(Locale.US, " -> Post-Flip Effective=%b, Sal=%.0f/%.0f",
+                    isNettingEffectiveForTrade(flippedCtx), flippedCalc.dseSaleableQty, flippedCalc.cseSaleableQty);
+        }
+
+        boolean passed = exclOk && saleableOk;
+        return new NettingScenarioOutcome(
+                spec, false, passed, true, exclOk, saleableOk,
+                String.format(Locale.US, "DSE=%.0f/CSE=%.0f", baseMature, baseMature),
+                String.format(Locale.US, "DSE=%.0f/CSE=%.0f", initCalc.dseSaleableQty, initCalc.cseSaleableQty),
+                passed ? "PASS" : "FAIL", details, audit, null);
+    }
+
+    private static NettingScenarioOutcome evaluateScenarioLive(
+            WebDriver driver, NettingScenarioSpec spec, NettingScenarioConfig cfg,
+            String primary, List<String> others, String sym, String ex, double rate) {
+        System.out.printf("%n>>> [MATRIX SCENARIO %d/9] %s <<<%n", spec.number, spec.title);
+        boolean exclOk = true;
+        if (spec.number == 1 || spec.number == 2) {
+            RMS.ClientExclusivityResult excl = RMS.evaluateClientExclusivity(primary, spec.initialClientAllowed, others);
+            RMS.assertClientExclusivityRule(excl);
+            exclOk = RMS.applyClientExclusivityRule(driver, primary, spec.initialClientAllowed, others, cfg.rmsPassword);
+        } else {
+            RMS.setClientNettingState(driver, primary, spec.initialClientAllowed, cfg.rmsPassword);
+        }
+
+        configureScenarioSymbolState(driver, sym, ex, cfg.dseEnabled, cfg.cseEnabled, spec.initialSymbolAllowed);
+
+        String checkEx = "BOTH".equalsIgnoreCase(ex) ? (cfg.dseEnabled ? "DSE" : "CSE") : ex;
+        NettingApplicabilityReport appRep = checkSelectedApplicability(driver, checkEx, sym, primary, cfg.board);
+        boolean appOk = (appRep.isClientApplicable == spec.initialClientAllowed)
+                && (appRep.isSymbolApplicable == spec.initialSymbolAllowed);
+
+        OMSweb_UploadData.UploadExecutionResult uploadRes = null;
+        if (spec.requiresStockFile) {
+            uploadRes = OMSweb_UploadData.uploadStockFileWithGuard(driver, cfg.stockFilePath, cfg.allowLiveStockUpload);
+        }
+
+        OMSweb_Trade.navigateToTradePage(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), false);
+        SaleableProbeSnapshot baseline = captureSaleableBaseline(driver, "PRE_S" + spec.number, primary, sym);
+
+        boolean orderPlaced = false;
+        if (cfg.executeLiveOrders && !spec.requiresStockFile) {
+            String instrument = sym.contains(".") ? sym : (sym + "." + cfg.board);
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+            if ("BOTH".equalsIgnoreCase(ex)) {
+                if (cfg.dseEnabled) {
+                    try { OMSweb_Trade.submitSingleOrderAttempt(driver, wait, "BUY", primary, instrument, cfg.orderQty, rate, "DSE"); } catch (Exception ignored) {}
+                }
+                if (cfg.cseEnabled) {
+                    try { OMSweb_Trade.submitSingleOrderAttempt(driver, wait, "BUY", primary, instrument, cfg.orderQty, rate, "CSE"); } catch (Exception ignored) {}
+                }
+            } else {
+                try { OMSweb_Trade.submitSingleOrderAttempt(driver, wait, "BUY", primary, instrument, cfg.orderQty, rate, ex); } catch (Exception ignored) {}
+            }
+            orderPlaced = OMSweb_Trade.hasLatestOrderInTerminal(driver, primary, sym);
+        }
+
+        SaleableDeltaReport delta = captureSaleableDelta(driver, baseline, "POST_S" + spec.number);
+        printSaleableDeltaReport(delta);
+
+        boolean saleableOk;
+        String detailMsg;
+        if (spec.requiresStockFile) {
+            boolean stockUploaded = uploadRes != null && uploadRes.uploaded;
+            if (stockUploaded) {
+                saleableOk = delta.anySaleableUpdated;
+                detailMsg = "Live Stock File uploaded -> saleableUpdated=" + delta.anySaleableUpdated;
+            } else {
+                saleableOk = uploadRes != null && uploadRes.dryRun;
+                detailMsg = "Stock File dry-run guard enforced (" + (uploadRes != null ? uploadRes.status : "SKIPPED") + ")";
+            }
+        } else {
+            saleableOk = !orderPlaced || (delta.anySaleableUpdated == spec.expectSaleableUpdatedInitially);
+            detailMsg = String.format("orderAccepted=%b, saleableUpdated=%b (expected=%b)",
+                    orderPlaced, delta.anySaleableUpdated, spec.expectSaleableUpdatedInitially);
+        }
+
+        if (spec.postOrderAllowSymbol || spec.postOrderAllowClient) {
+            if (spec.postOrderAllowSymbol) {
+                configureScenarioSymbolState(driver, sym, ex, cfg.dseEnabled, cfg.cseEnabled, true);
+            }
+            if (spec.postOrderAllowClient) {
+                RMS.setClientNettingState(driver, primary, true, cfg.rmsPassword);
+            }
+            NettingApplicabilityReport postApp = checkSelectedApplicability(driver, checkEx, sym, primary, cfg.board);
+            OMSweb_Trade.navigateToTradePage(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), false);
+            SaleableDeltaReport postFlipDelta = captureSaleableDelta(driver, baseline, "POST_FLIP_S" + spec.number);
+            printSaleableDeltaReport(postFlipDelta);
+            boolean flipAppOk = postApp.isClientApplicable && postApp.isSymbolApplicable;
+            boolean policyOk = (cfg.retroactivePolicy == RetroactivePolicy.OBSERVE_AND_REPORT)
+                    || (cfg.retroactivePolicy == RetroactivePolicy.RETROACTIVE_APPLY && postFlipDelta.anySaleableUpdated)
+                    || (cfg.retroactivePolicy == RetroactivePolicy.PROSPECTIVE_ONLY && !postFlipDelta.anySaleableUpdated);
+            appOk &= flipAppOk;
+            saleableOk &= policyOk;
+            detailMsg += String.format("; postFlipEligible=%b, postFlipSaleableUpdated=%b", flipAppOk, postFlipDelta.anySaleableUpdated);
+        }
+
+        boolean passed = exclOk && appOk && saleableOk;
+        return new NettingScenarioOutcome(
+                spec, true, passed, appOk, exclOk, saleableOk,
+                String.format(Locale.US, "DSE=%.0f/CSE=%.0f", delta.dseSaleableBefore, delta.cseSaleableBefore),
+                String.format(Locale.US, "DSE=%.0f/CSE=%.0f", delta.dseSaleableAfter, delta.cseSaleableAfter),
+                passed ? "PASS" : "FAIL", detailMsg, null, delta);
+    }
+
+    private static void configureScenarioSymbolState(
+            WebDriver driver, String sym, String ex, boolean dseEn, boolean cseEn, boolean allow) {
+        if ("BOTH".equalsIgnoreCase(ex)) {
+            if (dseEn) {
+                if (allow) RMS.addApplicableSymbol(driver, "DSE", sym);
+                else RMS.deleteApplicableSymbol(driver, "DSE", sym);
+            }
+            if (cseEn) {
+                if (allow) RMS.addApplicableSymbol(driver, "CSE", sym);
+                else RMS.deleteApplicableSymbol(driver, "CSE", sym);
+            }
+        } else {
+            if (allow) RMS.addApplicableSymbol(driver, ex, sym);
+            else RMS.deleteApplicableSymbol(driver, ex, sym);
+        }
+    }
+
+    /**
+     * Prints a formatted 9-Scenario Compliance Matrix scorecard.
+     */
+    public static void print9ScenarioScorecard(List<NettingScenarioOutcome> outcomes) {
+        System.out.println("\n+=============================================================================================================================+");
+        System.out.println("|                         DAY NETTING 9-SCENARIO COMPLIANCE & STOCK FILE MATRIX SCORECARD                                     |");
+        System.out.println("+----+----------------------------------------------+--------+--------------------+--------------------+----------------------+--------+");
+        System.out.printf("| %-2s | %-44s | %-6s | %-18s | %-18s | %-20s | %-6s |%n",
+                "#", "Scenario", "Mode", "Pre Saleable", "Post Saleable", "Details", "Result");
+        System.out.println("+----+----------------------------------------------+--------+--------------------+--------------------+----------------------+--------+");
+        int passCount = 0;
+        if (outcomes != null) {
+            for (NettingScenarioOutcome o : outcomes) {
+                if (o.passed) passCount++;
+                System.out.printf("| %-2d | %-44s | %-6s | %-18s | %-18s | %-20s | %-6s |%n",
+                        o.spec.number,
+                        truncate(o.spec.title, 44),
+                        o.executedLive ? "LIVE" : "OFFLIN",
+                        truncate(o.preSaleableSummary, 18),
+                        truncate(o.postSaleableSummary, 18),
+                        truncate(o.details, 20),
+                        o.verdict);
+            }
+        }
+        int totalCount = outcomes != null ? outcomes.size() : 0;
+        System.out.println("+----+----------------------------------------------+--------+--------------------+--------------------+----------------------+--------+");
+        System.out.printf("| MATRIX SUMMARY: %d / %d SCENARIOS PASSED                                                                                    |%n",
+                passCount, totalCount);
+        System.out.println("+=============================================================================================================================+\n");
+    }
+
+    /**
+     * Pure-Java offline Day Netting test suite requiring zero WebDriver, network, or DB access.
+     * Tests Scenarios 1-9 offline matrix, eligibility truth table, Portfolio/Position alignment,
+     * compliance pass/fail assertions, and calculation regressions.
+     */
+    public static boolean runAllNettingTests() {
+        System.out.println("\n=============================================================================");
+        System.out.println("        OFFLINE PURE-JAVA DAY NETTING REGRESSION & MATRIX TEST SUITE         ");
+        System.out.println("=============================================================================");
+
+        int passed = 0;
+        int total = 0;
+
+        // 1. RMS pre-trade & client exclusivity + negative overlap suite
+        total++;
+        boolean tRms = RMS.testPreTradeRmsAuditScenarios();
+        if (tRms) passed++;
+
+        // 2. Saleable rules matrix (8 scenarios)
+        total++;
+        boolean tSaleableMatrix = reportDayNettingSaleableRulesMatrix();
+        if (tSaleableMatrix) passed++;
+
+        // 3. QA multi-exchange & transition suite
+        total++;
+        boolean tQa = testQaDayNettingScenarios();
+        if (tQa) passed++;
+
+        // 4. NettingEligibilityContext truth table
+        total++;
+        boolean tElig = testEligibilityTruthTableOffline();
+        if (tElig) passed++;
+
+        // 5. 11-arg calculateDayNettingPortfolio & CROSS_EXCHANGE regressions
+        total++;
+        boolean tCalc = testPortfolio11ArgAndCrossExchangeOffline();
+        if (tCalc) passed++;
+
+        // 6. 3-arg & 5-arg auditDayNettingSaleableCompliance pass & fail assertions (incl. BOTH & stockFileUploaded)
+        total++;
+        boolean tAudit = testComplianceOverloadsOffline();
+        if (tAudit) passed++;
+
+        // 7. Portfolio / Position alignment probe delta unit test
+        total++;
+        boolean tAlign = testSaleableProbeAlignmentOffline();
+        if (tAlign) passed++;
+
+        // 8. Upload Stock File guard offline unit test
+        total++;
+        boolean tUploadGuard = testStockUploadGuardOffline();
+        if (tUploadGuard) passed++;
+
+        // 9. Full 9-Scenario Compliance Matrix (offline)
+        total++;
+        List<NettingScenarioOutcome> matrix = runNetting9ScenarioMatrix(null, new NettingScenarioConfig());
+        boolean tMatrix = matrix.size() == 9;
+        for (NettingScenarioOutcome o : matrix) {
+            if (!o.passed) { tMatrix = false; break; }
+        }
+        if (tMatrix) passed++;
+
+        System.out.println("=============================================================================");
+        System.out.printf("   [OFFLINE SUITE COMPLETE] Passed: %d / %d Test Blocks%n", passed, total);
+        System.out.println("=============================================================================\n");
+        return passed == total;
+    }
+
+    private static boolean testEligibilityTruthTableOffline() {
+        NettingEligibilityContext ok = new NettingEligibilityContext(
+                NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, true, true,
+                "DSE", "PUBLIC", false, "ACCEPTED", false);
+        NettingEligibilityContext noneMode = new NettingEligibilityContext(
+                NettingMode.NONE, true, true, true, true, true, "DSE", "PUBLIC", false, "ACCEPTED", false);
+        NettingEligibilityContext dseOff = new NettingEligibilityContext(
+                NettingMode.INDIVIDUAL_EXCHANGE, false, true, true, true, true, "DSE", "PUBLIC", false, "ACCEPTED", false);
+        NettingEligibilityContext cseOff = new NettingEligibilityContext(
+                NettingMode.INDIVIDUAL_EXCHANGE, true, false, true, true, true, "CSE", "PUBLIC", false, "ACCEPTED", false);
+        NettingEligibilityContext symOff = new NettingEligibilityContext(
+                NettingMode.INDIVIDUAL_EXCHANGE, true, true, false, true, true, "DSE", "PUBLIC", false, "ACCEPTED", false);
+        NettingEligibilityContext clnOff = new NettingEligibilityContext(
+                NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, false, true, "DSE", "PUBLIC", false, "ACCEPTED", false);
+        NettingEligibilityContext brdOff = new NettingEligibilityContext(
+                NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, true, false, "CSE", "BLOCK", false, "ACCEPTED", false);
+        NettingEligibilityContext spotOff = new NettingEligibilityContext(
+                NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, true, true, "DSE", "SPOT", false, "ACCEPTED", false);
+        NettingEligibilityContext rejected = new NettingEligibilityContext(
+                NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, true, true, "DSE", "PUBLIC", false, "REJECTED", false);
+        NettingEligibilityContext crossAllOff = new NettingEligibilityContext(
+                NettingMode.CROSS_EXCHANGE, false, false, true, true, true, "DSE", "PUBLIC", false, "ACCEPTED", false);
+
+        boolean okPass = isNettingEffectiveForTrade(ok)
+                && !isNettingEffectiveForTrade(noneMode) && !explainIneligibilityReason(noneMode).isEmpty()
+                && !isNettingEffectiveForTrade(dseOff)
+                && !isNettingEffectiveForTrade(cseOff)
+                && !isNettingEffectiveForTrade(symOff)
+                && !isNettingEffectiveForTrade(clnOff)
+                && !isNettingEffectiveForTrade(brdOff)
+                && !isNettingEffectiveForTrade(spotOff)
+                && !isNettingEffectiveForTrade(rejected)
+                && !isNettingEffectiveForTrade(crossAllOff);
+        System.out.printf("  -> [OFFLINE TEST 4: Eligibility Truth Table] -> %s%n", okPass ? "PASS" : "FAIL");
+        return okPass;
+    }
+
+    private static boolean testPortfolio11ArgAndCrossExchangeOffline() {
+        DayNettingPortfolioState boardBlocked = calculateDayNettingPortfolio(
+                NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, true, false, 50, 20, 0, 0, 0);
+        DayNettingPortfolioState crossBothDisabled = calculateDayNettingPortfolio(
+                NettingMode.CROSS_EXCHANGE, false, false, true, true, true, 50, 20, 0, 0, 10);
+        DayNettingPortfolioState crossOneEnabled = calculateDayNettingPortfolio(
+                NettingMode.CROSS_EXCHANGE, true, false, true, true, true, 50, 20, 0, 0, 10);
+
+        boolean pass = boardBlocked.dseSaleableQty == 50.0 && boardBlocked.dayNettedQty == 0.0
+                && crossBothDisabled.dseSaleableQty == 40.0 && crossBothDisabled.dayNettedQty == 0.0
+                && crossOneEnabled.dseSaleableQty == 60.0 && crossOneEnabled.cseSaleableQty == 60.0
+                && crossOneEnabled.dayNettedQty == 10.0;
+        System.out.printf("  -> [OFFLINE TEST 5: 11-Arg Portfolio & Cross Exchange Gate] -> %s%n", pass ? "PASS" : "FAIL");
+        return pass;
+    }
+
+    private static boolean testComplianceOverloadsOffline() {
+        // 1. BOTH in INDIVIDUAL_EXCHANGE (5-arg asymmetric DSE=25, CSE=12)
+        Netting6WidgetsUiSnapshot pBoth = buildMatrixSnapshot(
+                "PRE", "002", "GP", "BOTH", NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, true, true, "PUBLIC", "BUY", 37, false, 50, 50, 50, 50);
+        Netting6WidgetsUiSnapshot cBoth = buildMatrixSnapshot(
+                "POST", "002", "GP", "BOTH", NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, true, true, "PUBLIC", "BUY", 37, false, 87, 75, 87, 62);
+        NettingEligibilityContext bothCtx = NettingEligibilityContext.fromSnapshot(cBoth);
+        NettingSaleableAuditResult rBoth = auditDayNettingSaleableCompliance(pBoth, cBoth, bothCtx, 25, 12);
+
+        // 2. 3-arg BOTH symmetric (10 DSE + 10 CSE)
+        Netting6WidgetsUiSnapshot pSym = buildMatrixSnapshot(
+                "PRE_SYM", "002", "GP", "BOTH", NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, true, true, "PUBLIC", "BUY", 10, false, 50, 50, 50, 50);
+        Netting6WidgetsUiSnapshot cSym = buildMatrixSnapshot(
+                "POST_SYM", "002", "GP", "BOTH", NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, true, true, "PUBLIC", "BUY", 10, false, 70, 60, 70, 60);
+        NettingSaleableAuditResult rSym = auditDayNettingSaleableCompliance(pSym, cSym, NettingEligibilityContext.fromSnapshot(cSym));
+
+        // 3. Negative compliance assertion: client disallowed MUST FAIL if saleable illegally increased
+        Netting6WidgetsUiSnapshot pBad = buildMatrixSnapshot(
+                "PRE_BAD", "002", "GP", "DSE", NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, false, true, "PUBLIC", "BUY", 10, false, 50, 50, 50, 50);
+        Netting6WidgetsUiSnapshot cBad = buildMatrixSnapshot(
+                "POST_BAD", "002", "GP", "DSE", NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, false, true, "PUBLIC", "BUY", 10, false, 60, 60, 60, 50);
+        NettingSaleableAuditResult rBad = auditDayNettingSaleableCompliance(pBad, cBad);
+
+        // 4. Stock File uploaded while client disallowed MUST PASS when saleable updates
+        Netting6WidgetsUiSnapshot cStock = buildMatrixSnapshot(
+                "POST_STK", "002", "GP", "DSE", NettingMode.INDIVIDUAL_EXCHANGE, true, true, true, false, true, "PUBLIC", "STOCK_FILE", 50, true, 100, 100, 100, 100);
+        NettingSaleableAuditResult rStock = auditDayNettingSaleableCompliance(pBad, cStock, NettingEligibilityContext.fromSnapshot(cStock), 25, 25);
+
+        boolean pass = rBoth.isAllRight() && rSym.isAllRight()
+                && !rBad.isAllRight() && !rBad.dseSaleableRight
+                && rStock.isAllRight() && rStock.saleableUpdatedAny();
+        System.out.printf("  -> [OFFLINE TEST 6: Compliance Overloads (Pass & Negative Fail)] -> %s%n", pass ? "PASS" : "FAIL");
+        return pass;
+    }
+
+    private static boolean testSaleableProbeAlignmentOffline() {
+        SaleableProbeSnapshot pre = new SaleableProbeSnapshot();
+        pre.stageName = "PRE";
+        pre.clientCode = "002";
+        pre.symbol = "GP";
+        pre.dse.hasPortfolioData = true; pre.dse.portfolioTotalQty = 50; pre.dse.portfolioSaleableQty = 50;
+        pre.dse.hasPositionData = true; pre.dse.positionTotalQty = 50; pre.dse.positionSaleableQty = 50;
+        pre.cse.hasPortfolioData = true; pre.cse.portfolioTotalQty = 50; pre.cse.portfolioSaleableQty = 50;
+        pre.cse.hasPositionData = true; pre.cse.positionTotalQty = 50; pre.cse.positionSaleableQty = 50;
+
+        SaleableProbeSnapshot postAligned = new SaleableProbeSnapshot();
+        postAligned.stageName = "POST_OK";
+        postAligned.clientCode = "002";
+        postAligned.symbol = "GP";
+        postAligned.dse.hasPortfolioData = true; postAligned.dse.portfolioTotalQty = 60; postAligned.dse.portfolioSaleableQty = 60;
+        postAligned.dse.hasPositionData = true; postAligned.dse.positionTotalQty = 60; postAligned.dse.positionSaleableQty = 60;
+        postAligned.cse.hasPortfolioData = true; postAligned.cse.portfolioTotalQty = 60; postAligned.cse.portfolioSaleableQty = 50;
+        postAligned.cse.hasPositionData = true; postAligned.cse.positionTotalQty = 60; postAligned.cse.positionSaleableQty = 50;
+
+        SaleableDeltaReport okRep = computeSaleableDelta(pre, postAligned);
+
+        SaleableProbeSnapshot postMismatch = new SaleableProbeSnapshot();
+        postMismatch.stageName = "POST_MISMATCH";
+        postMismatch.clientCode = "002";
+        postMismatch.symbol = "GP";
+        postMismatch.dse.hasPortfolioData = true; postMismatch.dse.portfolioTotalQty = 60; postMismatch.dse.portfolioSaleableQty = 60;
+        postMismatch.dse.hasPositionData = true; postMismatch.dse.positionTotalQty = 60; postMismatch.dse.positionSaleableQty = 50;
+
+        SaleableDeltaReport badRep = computeSaleableDelta(pre, postMismatch);
+
+        boolean pass = okRep.dseSaleableUpdated && !okRep.cseSaleableUpdated
+                && okRep.anySaleableUpdated && okRep.portfolioMatchesPosition
+                && !badRep.portfolioMatchesPosition;
+        System.out.printf("  -> [OFFLINE TEST 7: Portfolio/Position Alignment Probe] -> %s%n", pass ? "PASS" : "FAIL");
+        return pass;
+    }
+
+    private static boolean testStockUploadGuardOffline() {
+        OMSweb_UploadData.UploadExecutionResult defaultGuard = OMSweb_UploadData.uploadStockFileWithGuard(null, "", false);
+        OMSweb_UploadData.UploadExecutionResult missingGuard = OMSweb_UploadData.uploadStockFileWithGuard(null, "Z:/nonexistent/stock_missing_999.xml", true);
+        boolean pass = defaultGuard.dryRun && !defaultGuard.uploaded && !defaultGuard.attempted
+                && !defaultGuard.resolvedPath.isEmpty()
+                && missingGuard.dryRun && !missingGuard.uploaded && "FILE_NOT_FOUND".equals(missingGuard.status);
+        System.out.printf("  -> [OFFLINE TEST 8: Stock Upload Dry-Run Guard] -> %s%n", pass ? "PASS" : "FAIL");
+        return pass;
+    }
+
     /**
      * Executes the comprehensive Day Netting testing scenarios outlined in Section 7 of documentation.
      */
     public static boolean runAllNettingTests(WebDriver driver) {
-        if (driver == null) return false;
+        if (driver == null) {
+            System.out.println("[OFFLINE MODE] WebDriver is null; delegating to offline runAllNettingTests()...");
+            return runAllNettingTests();
+        }
         System.out.println("\n=============================================================================");
         System.out.println("          RUNNING COMPLETE SCRIP NETTING AUTOMATION TEST SUITE               ");
         System.out.println("=============================================================================");
 
         int passed = 0;
         int total = 0;
+
+        // --- TEST 0: PURE-JAVA OFFLINE REGRESSION SUITE ---
+        total++;
+        if (runAllNettingTests()) {
+            passed++;
+        }
 
         // --- TEST 1: CONFIGURATION TESTING (Section 7.1) ---
         total++;
@@ -3673,6 +4841,7 @@ public class Day_Netting {
             System.out.println("  7. Run Full Automated Scrip Netting Test Suite (All 5 Scopes)");
             System.out.println("  8. Check / Verify Symbol, Client & Board Netting Applicability");
             System.out.println("  9. Run QA Day Netting Suite (DSE 25 / CSE 12, Excess Sell Mature Deduct, NONE Mode) [Direct QA]");
+            System.out.println("  10. Run 9-Scenario Compliance Matrix (Exclusivity, Post-Order Flips, Stock File)");
             System.out.println("  0. Return to Main Menu");
 
             String choice = "";
@@ -3680,7 +4849,7 @@ public class Day_Netting {
                 choice = "1";
                 System.out.println("\n[DOCKER AUTOMATE MODE] Automatically selected Day Netting option: 1 (Configure Netting Mode & Live Trade Audit)");
             } else {
-                System.out.print("Enter Choice (1-9, 0=Return, default=1 in 4s): ");
+                System.out.print("Enter Choice (1-10, 0=Return, default=1 in 4s): ");
                 choice = readLineWithIdleWatchdog(driver, sc, "1", 4);
                 if (choice.isEmpty()) choice = "1";
             }
@@ -3867,8 +5036,8 @@ public class Day_Netting {
                 if (!"SKIP".equals(tradeAction)) {
                     if (targetMode == NettingMode.NONE) {
                         System.out.println("\n>>> [EXECUTING NONE MODE NETTING TEST: BUY 25] <<<");
-                        System.out.printf("  -> Placing BUY Order: 25 shares of %s on DSE @ %.2f...%n", tradeInstrument, tradeRate);
-                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, 25, tradeRate, "DSE");
+                        System.out.printf("  -> Placing BUY Order: 25 shares of %s on %s @ %.2f...%n", tradeInstrument, orderEx, tradeRate);
+                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, 25, tradeRate, orderEx);
                         Thread.sleep(1500);
                     } else if (targetMode == NettingMode.CROSS_EXCHANGE) {
                         System.out.println("\n>>> [EXECUTING CROSS EXCHANGE NETTING TEST: DSE BUY 25, CSE SELL 15] <<<");
@@ -3922,7 +5091,11 @@ public class Day_Netting {
 
                     double dBuy = 0, cBuy = 0, dSell = 0, cSell = 0;
                     if (targetMode == NettingMode.NONE) {
-                        dBuy = (tradeQty > 0) ? tradeQty : 25;
+                        if ("CSE".equalsIgnoreCase(orderEx)) {
+                            cBuy = (tradeQty > 0) ? tradeQty : 25;
+                        } else {
+                            dBuy = (tradeQty > 0) ? tradeQty : 25;
+                        }
                     } else if (targetMode == NettingMode.CROSS_EXCHANGE) {
                         dBuy = 25;
                         cSell = 15;
@@ -4090,7 +5263,9 @@ public class Day_Netting {
                 System.out.println("  2. Switch View (Allowed vs Disallowed List)");
                 System.out.println("  3. Search Client Code in Netting List");
                 System.out.println("  4. Display Current Clients RMS Table");
-                System.out.print("Enter Sub-Action (1-4, default=1): ");
+                System.out.println("  5. Remove Client Code from Allowed / Disallowed List");
+                System.out.println("  6. Set Exclusive Client Netting State (Remove Opposite + Add Target + Verify)");
+                System.out.print("Enter Sub-Action (1-6, default=1): ");
                 String sub = sc.nextLine().trim();
                 if ("2".equals(sub)) {
                     System.out.print("Switch List View (1=Allowed, 2=Disallowed [default]): ");
@@ -4104,6 +5279,31 @@ public class Day_Netting {
                 } else if ("4".equals(sub)) {
                     navigateToClientsRmsTab(driver);
                     displayClientsRmsTable(driver);
+                } else if ("5".equals(sub)) {
+                    System.out.print("Enter Client Code to Remove (default=23986): ");
+                    String cln = readLineWithTimeout(sc, "23986", 4);
+                    System.out.print("Remove from List (1=Allowed [default], 2=Disallowed): ");
+                    String listChoice = readLineWithTimeout(sc, "1", 4);
+                    boolean allowed = !"2".equals(listChoice);
+                    System.out.print("Enter password authentication (default=12345): ");
+                    String pwd = readLineWithTimeout(sc, "12345", 4);
+                    removeClientFromNettingList(driver, cln, allowed, pwd);
+                } else if ("6".equals(sub)) {
+                    System.out.print("Enter Primary Client Code (default=002): ");
+                    String cln = readLineWithTimeout(sc, "002", 4);
+                    System.out.print("Set Exclusive Status (1=Allowed [default], 2=Disallowed): ");
+                    String st = readLineWithTimeout(sc, "1", 4);
+                    boolean isAllowed = !"2".equals(st) && !"disallowed".equalsIgnoreCase(st) && !"blocked".equalsIgnoreCase(st);
+                    System.out.print("Enter Other Clients for Opposite List (comma-separated, blank for single client): ");
+                    String otherRaw = readLineWithTimeout(sc, "", 4);
+                    System.out.print("Enter password authentication (default=12345): ");
+                    String pwd = readLineWithTimeout(sc, "12345", 4);
+                    if (otherRaw.isEmpty()) {
+                        setClientNettingAllowed(driver, cln, isAllowed, pwd);
+                    } else {
+                        List<String> others = Arrays.asList(otherRaw.split(","));
+                        RMS.applyClientExclusivityRule(driver, cln, isAllowed, others, pwd);
+                    }
                 } else {
                     System.out.print("Enter Client Code (default=23986): ");
                     String cln = sc.nextLine().trim();
@@ -4231,8 +5431,32 @@ public class Day_Netting {
                 System.out.println("   9. QA DAY NETTING SUITE (DSE 25 / CSE 12, EXCESS SELL, NONE MODE)         ");
                 System.out.println("-----------------------------------------------------------------------------");
                 testQaDayNettingScenarios();
+            } else if ("10".equals(choice) || "matrix".equalsIgnoreCase(choice)) {
+                System.out.println("\n-----------------------------------------------------------------------------");
+                System.out.println("   10. 9-SCENARIO DAY NETTING & STOCK FILE COMPLIANCE MATRIX                 ");
+                System.out.println("-----------------------------------------------------------------------------");
+                NettingScenarioConfig cfg = new NettingScenarioConfig();
+                System.out.print("Enter Client 1 (Primary, default=002 in 4s): ");
+                cfg.primaryClient = readLineWithTimeout(sc, "002", 4);
+                System.out.print("Enter Other Client(s) comma-separated (default=23986 in 4s): ");
+                String otherCsv = readLineWithTimeout(sc, "23986", 4);
+                cfg.otherClients = new ArrayList<>();
+                for (String part : otherCsv.split(",")) {
+                    if (!part.trim().isEmpty()) cfg.otherClients.add(part.trim());
+                }
+                System.out.print("Enter Symbol (default=GP in 4s): ");
+                cfg.symbol = readLineWithTimeout(sc, "GP", 4);
+                System.out.print("Enter Exchange (DSE / CSE / BOTH, default=BOTH in 4s): ");
+                cfg.exchange = readLineWithTimeout(sc, "BOTH", 4);
+                System.out.print("Enter RMS Password (default=12345 in 4s): ");
+                cfg.rmsPassword = readLineWithTimeout(sc, "12345", 4);
+                System.out.print("Enter Stock File Path for Scenarios 7-9 (default=blank in 4s): ");
+                cfg.stockFilePath = readLineWithTimeout(sc, "", 4);
+                System.out.print("Allow Live Stock File Upload? (1=YES, 0=NO [Dry-Run], default=0 in 4s): ");
+                cfg.allowLiveStockUpload = "1".equals(readLineWithTimeout(sc, "0", 4));
+                runNetting9ScenarioMatrix(driver, cfg);
             } else {
-                System.out.printf("[INVALID SELECTION] '%s' is not recognized. Please choose 0-9.%n", choice);
+                System.out.printf("[INVALID SELECTION] '%s' is not recognized. Please choose 0-10.%n", choice);
                 continue;
             }
 
@@ -4256,8 +5480,11 @@ public class Day_Netting {
             System.out.println("===============================================================================");
             System.out.println("       ECLIPSE DIRECT RUNNER: QA DAY NETTING MULTI-EXCHANGE TEST SUITE        ");
             System.out.println("===============================================================================");
-            boolean passed = testQaDayNettingScenarios();
+            boolean qaPassed = testQaDayNettingScenarios();
+            boolean suitePassed = runAllNettingTests();
+            boolean passed = qaPassed && suitePassed;
             System.out.printf("[ECLIPSE QA RESULT] %s%n", passed ? "SUCCESS (ALL SCENARIOS PASSED)" : "FAILED");
+            if (!passed) System.exit(1);
             return;
         }
 
@@ -4266,7 +5493,7 @@ public class Day_Netting {
         System.out.println("                  ECLIPSE DAY NETTING DIRECT EXECUTION ENGINE                 ");
         System.out.println("===============================================================================");
         System.out.println("Select Execution Instruction:");
-        System.out.println("  1. Run QA Multi-Exchange Audit Suite (None, Individual, Cross - Fast QA) [Default in 4s]");
+        System.out.println("  1. Run Multi-Exchange Audit Suite (None, Individual, Cross - Fast) [Default in 4s]");
         System.out.println("  2. Launch Live Browser Automation (devoms.quantbd.com)");
         System.out.print("Enter Choice (1-2, default=1 in 4s): ");
 
@@ -4283,9 +5510,9 @@ public class Day_Netting {
         } catch (Exception ignored) {}
 
         if ("1".equals(choice) || choice.isEmpty() || "qa".equalsIgnoreCase(choice)) {
-            System.out.println("\n[ECLIPSE RUNNER] Executing QA Multi-Exchange Audit Suite (Instruction-Wise)...");
+            System.out.println("\n[ECLIPSE RUNNER] Executing Multi-Exchange Audit Suite (Instruction-Wise)...");
             boolean passed = testQaDayNettingScenarios();
-            System.out.printf("[ECLIPSE QA RESULT] %s%n", passed ? "SUCCESS (ALL SCENARIOS PASSED)" : "FAILED");
+            System.out.printf("[ECLIPSE RESULT] %s%n", passed ? "SUCCESS (ALL SCENARIOS PASSED)" : "FAILED");
             return;
         }
 

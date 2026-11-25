@@ -181,6 +181,35 @@ public class OMSweb_UploadData {
         }
     }
 
+    /**
+     * Structured outcome returned by guarded upload operations.
+     */
+    public static class UploadExecutionResult {
+        public final boolean attempted;
+        public final boolean uploaded;
+        public final boolean dryRun;
+        public final String resolvedPath;
+        public final String status;
+        public final String message;
+
+        public UploadExecutionResult(boolean attempted, boolean uploaded, boolean dryRun,
+                                     String resolvedPath, String status, String message) {
+            this.attempted = attempted;
+            this.uploaded = uploaded;
+            this.dryRun = dryRun;
+            this.resolvedPath = resolvedPath != null ? resolvedPath : "";
+            this.status = status != null ? status : "";
+            this.message = message != null ? message : "";
+        }
+
+        @Override
+        public String toString() {
+            return String.format(
+                "UploadExecutionResult[attempted=%b, uploaded=%b, dryRun=%b, status=%s, path=%s, msg=%s]",
+                attempted, uploaded, dryRun, status, resolvedPath, message);
+        }
+    }
+
     // =========================================================================
     // 3. MAIN INTERACTIVE ENTRY POINT (Integration with OMSwebmain)
     // =========================================================================
@@ -810,6 +839,90 @@ public class OMSweb_UploadData {
         return uploadFileSafely(driver, UploadSubMenu.CSE_CIRCUIT_BREAKER_FILE, filePath, dryRun);
     }
 
+    /**
+     * Resolves the default sample XML file path for supported Upload Data sub-menus.
+     */
+    public static String resolveDefaultSampleFilePath(UploadSubMenu subMenu) {
+        if (subMenu == null) return "";
+        String rel;
+        if (subMenu == UploadSubMenu.CLIENT_FILE) {
+            rel = "sample_files/increment_active_clients.xml";
+        } else if (subMenu == UploadSubMenu.STOCK_FILE) {
+            rel = "sample_files/increment_stock.xml";
+        } else if (subMenu == UploadSubMenu.CASH_FILE) {
+            rel = "sample_files/increment_cash.xml";
+        } else {
+            return "";
+        }
+        File direct = new File(rel);
+        if (direct.exists() && direct.isFile()) return rel;
+        File nested = new File("OMS WEB", rel);
+        if (nested.exists() && nested.isFile()) return nested.getPath();
+        return rel;
+    }
+
+    /**
+     * Uploads a Stock File with path precedence (explicitPath -> STOCK_FILE_PATH env -> default sample path)
+     * while enforcing DEFAULT_NO_UPLOAD and CI dry-run guards unless explicitly allowed and the file exists.
+     * On a live upload, navigates cleanly back to the Trade Portal afterward.
+     */
+    public static UploadExecutionResult uploadStockFileWithGuard(
+            WebDriver driver, String explicitPath, boolean allowLiveUpload) {
+        String resolvedPath = (explicitPath != null && !explicitPath.trim().isEmpty()) ? explicitPath.trim() : "";
+        if (resolvedPath.isEmpty()) {
+            String envPath = System.getenv("STOCK_FILE_PATH");
+            if (envPath != null && !envPath.trim().isEmpty()) {
+                resolvedPath = envPath.trim();
+            }
+        }
+        if (resolvedPath.isEmpty()) {
+            resolvedPath = resolveDefaultSampleFilePath(UploadSubMenu.STOCK_FILE);
+        }
+
+        File file = new File(resolvedPath);
+        boolean fileExists = !resolvedPath.isEmpty() && file.exists() && file.isFile();
+        String finalPath = fileExists ? file.getAbsolutePath() : resolvedPath;
+
+        boolean isCiEnv = "true".equalsIgnoreCase(System.getenv("CI"))
+                || "true".equalsIgnoreCase(System.getenv("HEADLESS"))
+                || "true".equalsIgnoreCase(System.getenv("DOCKER_MODE"))
+                || "true".equalsIgnoreCase(System.getenv("AUTOMATE_MODE"));
+
+        if ((DEFAULT_NO_UPLOAD && !allowLiveUpload) || (isCiEnv && !allowLiveUpload)) {
+            if (driver != null) {
+                uploadStockFile(driver, finalPath, true);
+            }
+            System.out.printf("[UPLOAD GUARD] Dry-run guard active (DEFAULT_NO_UPLOAD=%b, CI=%b, allowLiveUpload=%b) -> path: %s%n",
+                    DEFAULT_NO_UPLOAD, isCiEnv, allowLiveUpload, finalPath);
+            return new UploadExecutionResult(false, false, true, finalPath, "DRY_RUN_GUARD",
+                    "Stock file upload skipped because dry-run guard is active.");
+        }
+
+        if (!fileExists) {
+            System.out.printf("[UPLOAD GUARD] Stock file not found on disk: %s%n", finalPath);
+            return new UploadExecutionResult(false, false, true, finalPath, "FILE_NOT_FOUND",
+                    "Stock file does not exist: " + finalPath);
+        }
+
+        if (driver == null) {
+            System.out.printf("[UPLOAD GUARD] WebDriver is null (offline); skipping live upload of %s%n", finalPath);
+            return new UploadExecutionResult(false, false, true, finalPath, "OFFLINE_NO_DRIVER",
+                    "WebDriver is null; live Stock File upload skipped.");
+        }
+
+        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+        navigateToUploadDataPage(driver, wait);
+        boolean uploaded = uploadStockFile(driver, finalPath, false);
+        OMSweb_Trade.navigateToTradePage(driver, wait, false);
+        return new UploadExecutionResult(
+                true,
+                uploaded,
+                false,
+                finalPath,
+                uploaded ? "UPLOADED" : "UPLOAD_FAILED",
+                uploaded ? "Stock file uploaded and returned to Trade Portal." : "Stock file upload failed.");
+    }
+
     // =========================================================================
     // 8. HELPER METHODS (DOM Click, Find Input, Confirmation)
     // =========================================================================
@@ -943,14 +1056,7 @@ public class OMSweb_UploadData {
             return;
         }
 
-        String defaultPath = "";
-        if (selectedMenu == UploadSubMenu.CLIENT_FILE) {
-            defaultPath = "sample_files/increment_active_clients.xml";
-        } else if (selectedMenu == UploadSubMenu.STOCK_FILE) {
-            defaultPath = "sample_files/increment_stock.xml";
-        } else if (selectedMenu == UploadSubMenu.CASH_FILE) {
-            defaultPath = "sample_files/increment_cash.xml";
-        }
+        String defaultPath = resolveDefaultSampleFilePath(selectedMenu);
 
         if (!defaultPath.isEmpty() && new File(defaultPath).exists()) {
             System.out.printf("Enter Absolute Local Path for '%s' (press ENTER for default: %s): ", selectedMenu.getDisplayName(), defaultPath);
