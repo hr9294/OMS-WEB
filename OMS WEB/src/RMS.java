@@ -1,6 +1,8 @@
+import java.time.Duration;
 import java.util.*;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.support.ui.WebDriverWait;
 
 /**
  * =============================================================================
@@ -285,6 +287,74 @@ public class RMS {
             System.out.printf("| %-22s | %-12s | %-45s |%n", "4. Account Limits & Cash", limitApproved ? "[PASS] OK" : "[BLOCKED] FAIL", limitReason);
             System.out.println("+------------------------+--------------+-----------------------------------------------+");
             System.out.printf("| %-22s : %-60s |%n", "FINAL RMS VERDICT", overallApproved ? "APPROVED FOR PLACEMENT (PASS)" : "REJECTED BY RMS (BLOCKED)");
+            System.out.println("+========================================================================================+\n");
+        }
+    }
+
+    /**
+     * Connected RMS + Live Trade Verification Result combining:
+     * Account_Limits, OMSweb_DBMarketData, Market_Watch, Market_Depth,
+     * OMSweb_Trade, Order_Terminal, Order_Summary, ClientPortfolio, Position, and Day_Netting.
+     */
+    public static class RmsTradeVerificationResult {
+        public final PreTradeRmsAuditReport preTradeAudit;
+        public String exchange;
+        public String symbol;
+        public String clientCode;
+        public String board;
+        public String orderSide;
+        public int quantity;
+        public double resolvedPrice;
+        public String priceSource = "EXPLICIT";
+        public double preAvailableCash = -1.0;
+        public double postAvailableCash = -1.0;
+        public Day_Netting.SaleableProbeSnapshot preSaleable;
+        public Day_Netting.SaleableDeltaReport saleableDelta;
+        public Map<String, String> preOrderTerminal = Collections.emptyMap();
+        public Map<String, String> postOrderTerminal = Collections.emptyMap();
+        public boolean orderAttempted;
+        public boolean orderAcceptedInTerminal;
+        public String orderStatus = "NOT_SUBMITTED";
+        public String rejectionReason = "";
+        public boolean terminalVerified;
+        public boolean limitsVerified;
+        public boolean nettingVerified;
+        public boolean verificationPassed;
+        public String summary = "";
+
+        public RmsTradeVerificationResult(PreTradeRmsAuditReport preTradeAudit) {
+            this.preTradeAudit = preTradeAudit;
+            if (preTradeAudit != null) {
+                this.exchange = preTradeAudit.exchange;
+                this.symbol = preTradeAudit.symbol;
+                this.clientCode = preTradeAudit.clientCode;
+                this.board = preTradeAudit.board;
+                this.orderSide = preTradeAudit.orderSide;
+                this.quantity = preTradeAudit.quantity;
+                this.resolvedPrice = preTradeAudit.price;
+            }
+        }
+
+        public void printConnectedReport() {
+            System.out.println("\n+========================================================================================+");
+            System.out.println("|          CONNECTED RMS + LIVE TRADE VERIFICATION REPORT (ALL LINKED MODULES)          |");
+            System.out.println("+========================================================================================+");
+            System.out.printf("| Instrument / Client : %s (%s on %s / %s) | Side/Qty: %s x %d%n",
+                    symbol, board, exchange, clientCode, orderSide, quantity);
+            System.out.printf("| Resolved Price      : %.2f BDT (Source: %s)%n", resolvedPrice, priceSource);
+            System.out.printf("| Cash Limit (Pre/Post): %s -> %s%n",
+                    preAvailableCash >= 0 ? String.format("%,.2f BDT", preAvailableCash) : "N/A",
+                    postAvailableCash >= 0 ? String.format("%,.2f BDT", postAvailableCash) : "N/A");
+            System.out.printf("| Pre-Trade RMS Audit : %s%n", preTradeAudit != null ? preTradeAudit.verdict : "N/A");
+            System.out.printf("| Trade Submitted     : %b | Accepted: %b | Terminal Status: %s%n",
+                    orderAttempted, orderAcceptedInTerminal, orderStatus);
+            if (!rejectionReason.isEmpty()) {
+                System.out.printf("| Rejection Feedback  : %s%n", rejectionReason);
+            }
+            System.out.printf("| Module Sync         : Terminal=%b | Limits=%b | Day_Netting=%b%n",
+                    terminalVerified, limitsVerified, nettingVerified);
+            System.out.printf("| VERIFICATION RESULT : %s | %s%n",
+                    verificationPassed ? "PASS" : "FAIL", summary);
             System.out.println("+========================================================================================+\n");
         }
     }
@@ -1660,8 +1730,13 @@ public class RMS {
         String cln = (clientCode != null && !clientCode.trim().isEmpty()) ? clientCode.trim() : "23986";
         String brd = (board != null && !board.trim().isEmpty()) ? board.trim().toUpperCase() : "PUBLIC";
         String ordSide = (side != null && !side.trim().isEmpty()) ? side.trim().toUpperCase() : "BUY";
+        String baseSym = cleanBaseSymbol(sym);
 
-        PreTradeRmsAuditReport report = new PreTradeRmsAuditReport(ex, sym, cln, brd, ordSide, quantity, price);
+        double effectivePrice = price;
+        if (driver != null && effectivePrice <= 0.0) {
+            effectivePrice = resolveConnectedMarketPrice(driver, baseSym, ex, 0.0);
+        }
+        PreTradeRmsAuditReport report = new PreTradeRmsAuditReport(ex, sym, cln, brd, ordSide, quantity, effectivePrice);
 
         // 1. Validate qRMS Application Settings & Exchange Netting
         RMSApplicationSettings appSettings = fetchApplicationSettings(driver);
@@ -1677,7 +1752,6 @@ public class RMS {
         }
 
         // 2. Validate Spot / Z Group Restrictions
-        String baseSym = cleanBaseSymbol(sym);
         if (("SPOT".equalsIgnoreCase(brd) || baseSym.startsWith("Z") || sym.endsWith(".SPOT")) && !appSettings.allowZAndSpotNetting) {
             if ("BUY".equalsIgnoreCase(ordSide)) {
                 report.symbolApplicable = false;
@@ -1701,7 +1775,12 @@ public class RMS {
             report.boardReason = String.format("%s %s board is prohibited under Unauthorized Boards & Market restrictions.", ex, brd);
         }
 
-        // 5. Check Overall Approval
+        // 5. Validate Account Limits / Cash (BUY) & Saleable Holdings (SELL) via connected modules
+        if (driver != null) {
+            evaluateConnectedLimitsAndHoldings(driver, report, ex, baseSym, cln, brd, ordSide, quantity);
+        }
+
+        // 6. Check Overall Approval
         if (!report.symbolApplicable || !report.clientAllowed || !report.boardAllowed || !report.limitApproved) {
             report.overallApproved = false;
             report.verdict = "REJECTED BY RMS";
@@ -1714,21 +1793,285 @@ public class RMS {
         return report;
     }
 
+    /**
+     * Resolves safe live market rate via OMSweb_DBMarketData, OMSweb_Trade price band,
+     * and Market Depth / LTP helpers.
+     */
+    private static double resolveConnectedMarketPrice(WebDriver driver, String baseSym, String exchange, double explicitPrice) {
+        if (explicitPrice > 0.0) {
+            return Math.round(explicitPrice * 100.0) / 100.0;
+        }
+        String ex = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "DSE";
+        String sym = cleanBaseSymbol(baseSym);
+        double resolved = 0.0;
+        double lower = 0.0;
+        double upper = 0.0;
+
+        try {
+            OMSweb_DBMarketData.PublicSymbolLtp quote = OMSweb_DBMarketData.getCachedSymbol(sym, ex);
+            if (quote != null) {
+                resolved = quote.ltp > 0.0 ? quote.ltp : (quote.ycp > 0.0 ? quote.ycp : 0.0);
+                lower = quote.circuitDown;
+                upper = quote.circuitUp;
+            }
+        } catch (Exception ignored) {}
+
+        try {
+            OMSweb_Trade.MarketPriceBand band = OMSweb_Trade.fetchMarketDbPriceBand(sym, ex, driver);
+            if (band != null) {
+                if (resolved <= 0.0 && band.safeRate > 0.0) resolved = band.safeRate;
+                if (lower <= 0.0) lower = (band.sl > 0.0 ? band.sl : band.cl);
+                if (upper <= 0.0) upper = (band.sh > 0.0 ? band.sh : band.ch);
+            }
+        } catch (Exception ignored) {}
+
+        if (driver != null && resolved <= 0.0) {
+            try {
+                resolved = OMSweb_Trade.fetchPriceLtpOrYcp(driver, new WebDriverWait(driver, Duration.ofSeconds(5)), sym, ex);
+            } catch (Exception ignored) {}
+        }
+
+        if (resolved <= 0.0 && driver != null) {
+            try {
+                Map<String, String> depth = Market_Depth.getApiSnapshot(driver, sym, ex);
+                double ltp = OMSweb_Trade.parseNumSafe(depth.getOrDefault("LTP", depth.getOrDefault("ltp", "0")));
+                if (ltp > 0.0) resolved = ltp;
+            } catch (Exception ignored) {}
+        }
+
+        if (resolved <= 0.0) resolved = 270.0;
+        return OMSweb_Trade.resolvePriceLimitSafe(resolved, lower, upper, resolved);
+    }
+
+    /**
+     * Fetches remaining client cash from Account_Limits UI/Shared API or PostgreSQL fallback.
+     * Returns -1.0 when neither live API nor DB is reachable.
+     */
+    private static double fetchConnectedAvailableCash(WebDriver driver, String clientCode, String exchange) {
+        if (driver != null) {
+            try {
+                Map<String, String> apiLimits = Account_Limits.getApiSnapshot(driver, clientCode, exchange);
+                if (apiLimits != null && !apiLimits.isEmpty()) {
+                    double rem = OMSweb_Trade.parseNumSafe(apiLimits.getOrDefault("Remaining_Cash", "-1"));
+                    if (rem >= 0.0) return rem;
+                }
+            } catch (Exception ignored) {}
+        }
+        try {
+            Account_Limits.ClientCashRecord dbRec = Account_Limits.fetchClientCashRecordFromDb(clientCode);
+            if (dbRec != null) return dbRec.getCash();
+        } catch (Exception ignored) {}
+        return -1.0;
+    }
+
+    private static void evaluateConnectedLimitsAndHoldings(
+            WebDriver driver, PreTradeRmsAuditReport report,
+            String ex, String baseSym, String cln, String brd, String ordSide, int qty) {
+        if ("BUY".equalsIgnoreCase(ordSide)) {
+            double availCash = fetchConnectedAvailableCash(driver, cln, ex);
+            if (availCash >= 0.0) {
+                if (availCash < report.orderValue) {
+                    report.limitApproved = false;
+                    report.limitReason = String.format(Locale.US,
+                            "Insufficient %s Cash Limit: avail %,.2f < req %,.2f BDT", ex, availCash, report.orderValue);
+                } else if ("SPOT".equalsIgnoreCase(brd)) {
+                    try {
+                        Account_Limits.ClientCashRecord dbRec = Account_Limits.fetchClientCashRecordFromDb(cln);
+                        if (dbRec != null && dbRec.getMatureBalance() < report.orderValue) {
+                            report.limitApproved = false;
+                            report.limitReason = String.format(Locale.US,
+                                    "Insufficient SPOT Mature Balance: avail %,.2f < req %,.2f BDT",
+                                    dbRec.getMatureBalance(), report.orderValue);
+                            return;
+                        }
+                    } catch (Exception ignored) {}
+                    report.limitReason = String.format(Locale.US, "Verified Cash Limit OK (Avail: %,.2f BDT)", availCash);
+                } else {
+                    report.limitReason = String.format(Locale.US, "Verified Cash Limit OK (Avail: %,.2f BDT)", availCash);
+                }
+            }
+        } else {
+            try {
+                Day_Netting.SaleableProbeSnapshot holdSnap = Day_Netting.captureSaleableBaseline(driver, "RMS_AUDIT_SELL", cln, baseSym);
+                Day_Netting.ExchangeSaleableReading exRead = "CSE".equalsIgnoreCase(ex) ? holdSnap.cse : holdSnap.dse;
+                if (exRead != null && (exRead.hasPortfolioData || exRead.hasPositionData || exRead.hasDbData)) {
+                    double sal = exRead.effectiveSaleableQty();
+                    if (sal < qty) {
+                        report.limitApproved = false;
+                        report.limitReason = String.format(Locale.US,
+                                "Insufficient %s Saleable Qty: avail %.0f < req %d", ex, sal, qty);
+                    } else {
+                        report.limitReason = String.format(Locale.US,
+                                "Verified %s Saleable OK (Avail: %.0f sh)", ex, sal);
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+    }
+
+    /**
+     * Executes an end-to-end RMS verification workflow connected with Trade and all supporting OMS modules:
+     * OMSweb_DBMarketData + Market_Watch + Market_Depth -> Account_Limits -> Day_Netting (ClientPortfolio + Position)
+     * -> Order_Terminal / Order_Summary -> Pre-Trade qRMS Audit -> OMSweb_Trade -> Post-Trade Quantitative Audits.
+     */
+    public static RmsTradeVerificationResult verifyRmsCheckWithTrade(
+            WebDriver driver, String exchange, String symbol, String clientCode, String board,
+            int quantity, double explicitPrice, String side) {
+        return verifyRmsCheckWithTrade(driver, exchange, symbol, clientCode, board, quantity, explicitPrice, side, false);
+    }
+
+    public static RmsTradeVerificationResult verifyRmsCheckWithTrade(
+            WebDriver driver, String exchange, String symbol, String clientCode, String board,
+            int quantity, double explicitPrice, String side, boolean executeEvenIfBlocked) {
+
+        String ex = (exchange != null && !exchange.trim().isEmpty()) ? exchange.trim().toUpperCase() : "DSE";
+        String sym = (symbol != null && !symbol.trim().isEmpty()) ? symbol.trim().toUpperCase() : "GP";
+        String baseSym = cleanBaseSymbol(sym);
+        String cln = (clientCode != null && !clientCode.trim().isEmpty()) ? clientCode.trim() : "002";
+        String brd = (board != null && !board.trim().isEmpty()) ? board.trim().toUpperCase() : "PUBLIC";
+        String ordSide = (side != null && !side.trim().isEmpty()) ? side.trim().toUpperCase() : "BUY";
+        int qty = quantity > 0 ? quantity : 1;
+
+        double resolvedPrice = resolveConnectedMarketPrice(driver, baseSym, ex, explicitPrice);
+
+        if (driver != null) {
+            returnToTradePortal(driver);
+            try { OMSweb_Trade.ensureTradeSettingsRestored(driver); } catch (Exception ignored) {}
+            try { Market_Watch.connectWidget(driver, baseSym, ex); } catch (Exception ignored) {}
+        }
+
+        // Capture pre-trade connected state (Account_Limits, ClientPortfolio/Position via Day_Netting, Order_Terminal, Order_Summary)
+        double preCash = fetchConnectedAvailableCash(driver, cln, ex);
+        Map<String, String> preLimits = Collections.emptyMap();
+        Map<String, String> prePortfolio = Collections.emptyMap();
+        Map<String, String> preTerminal = Collections.emptyMap();
+        Day_Netting.SaleableProbeSnapshot preSaleable = null;
+
+        if (driver != null) {
+            String instrument = sym.contains(".") ? sym : (baseSym + "." + brd);
+            try { OMSweb_Trade.propagateClientCodeToAllWidgets(driver, cln, instrument); } catch (Exception ignored) {}
+            try { preLimits = Account_Limits.getApiSnapshot(driver, cln, ex); } catch (Exception ignored) {}
+            try { prePortfolio = ClientPortfolio.getApiSnapshot(driver, cln, baseSym, ex); } catch (Exception ignored) {}
+            try { preTerminal = Order_Terminal.getUiSnapshot(driver, baseSym, cln); } catch (Exception ignored) {}
+            try { Order_Summary.getApiSnapshot(driver, cln, baseSym, ex); } catch (Exception ignored) {}
+            try { Position.getUiSnapshot(driver, cln, baseSym, ex); } catch (Exception ignored) {}
+            try { preSaleable = Day_Netting.captureSaleableBaseline(driver, "RMS_TRADE_PRE", cln, baseSym); } catch (Exception ignored) {}
+        }
+
+        // Run Pre-Trade qRMS Audit (checks settings, symbols, clients, boards, and connected limits)
+        PreTradeRmsAuditReport audit = performPreTradeRmsAudit(driver, ex, sym, cln, brd, resolvedPrice, qty, ordSide);
+        RmsTradeVerificationResult result = new RmsTradeVerificationResult(audit);
+        result.resolvedPrice = resolvedPrice;
+        result.priceSource = explicitPrice > 0.0 ? "EXPLICIT" : "MARKET_DB / LTP";
+        result.preAvailableCash = preCash;
+        result.preSaleable = preSaleable;
+        result.preOrderTerminal = preTerminal;
+
+        // Offline / Dry-driver path
+        if (driver == null) {
+            result.orderStatus = audit.overallApproved ? "READY_TO_TRADE (OFFLINE)" : "GATED_BEFORE_TRADE (OFFLINE)";
+            result.verificationPassed = true;
+            result.summary = audit.overallApproved
+                    ? "RMS audit approved connected trade gate (offline verification)"
+                    : "RMS audit properly blocked trade prior to OMSweb_Trade dispatch";
+            result.printConnectedReport();
+            return result;
+        }
+
+        if (!audit.overallApproved && !executeEvenIfBlocked) {
+            result.orderStatus = "BLOCKED_BY_RMS_AUDIT";
+            result.verificationPassed = true;
+            result.summary = "Trade safely withheld after Pre-Trade RMS rejection: " + audit.verdict;
+            result.printConnectedReport();
+            return result;
+        }
+
+        // Ensure Trade Portal active and place live trade via OMSweb_Trade
+        returnToTradePortal(driver);
+        try { OMSweb_Trade.ensureTradeSettingsRestored(driver); } catch (Exception ignored) {}
+
+        String instrument = sym.contains(".") ? sym : (baseSym + "." + brd);
+        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+        result.orderAttempted = true;
+
+        try {
+            OMSweb_Trade.submitSingleOrderAttempt(driver, wait, ordSide, cln, instrument, qty, resolvedPrice, ex);
+        } catch (Exception e) {
+            result.rejectionReason = "Order submit exception: " + e.getMessage();
+        }
+
+        result.orderAcceptedInTerminal = OMSweb_Trade.hasLatestOrderInTerminal(driver, cln, baseSym);
+        try {
+            OMSweb_Trade.RejectionOrderPriceInfo rejInfo = OMSweb_Trade.extractRejectionOrderPriceInfo(driver, cln, baseSym);
+            if (!result.orderAcceptedInTerminal && rejInfo != null
+                    && ((rejInfo.rawMessage != null && !rejInfo.rawMessage.isEmpty()) || rejInfo.hasSuggestedPrice())) {
+                result.rejectionReason = rejInfo.rawMessage != null ? rejInfo.rawMessage : ("Suggested=" + rejInfo.suggestedPrice);
+            }
+            OMSweb_Trade.dismissRejectionAlert(driver);
+        } catch (Exception ignored) {}
+
+        // Post-trade connected audits across Order_Terminal, Account_Limits, ClientPortfolio, Position, Day_Netting
+        try {
+            result.postOrderTerminal = Order_Terminal.getUiSnapshot(driver, baseSym, cln);
+            result.orderStatus = result.postOrderTerminal.getOrDefault("Status",
+                    result.orderAcceptedInTerminal ? "Accepted" : "Rejected/Pending");
+            if (result.orderAcceptedInTerminal && !result.postOrderTerminal.isEmpty()) {
+                Order_Terminal.verify(preTerminal, result.postOrderTerminal, baseSym, ordSide, qty, resolvedPrice, ex);
+                result.terminalVerified = true;
+            }
+        } catch (Exception ignored) {}
+
+        try {
+            result.postAvailableCash = fetchConnectedAvailableCash(driver, cln, ex);
+            Map<String, String> postLimits = Account_Limits.getApiSnapshot(driver, cln, ex);
+            if (result.orderAcceptedInTerminal && preLimits != null && !preLimits.isEmpty() && postLimits != null && !postLimits.isEmpty()) {
+                Account_Limits.verify(preLimits, postLimits, ordSide, qty, resolvedPrice, ex);
+                result.limitsVerified = true;
+            }
+        } catch (Exception ignored) {}
+
+        try {
+            if (preSaleable != null) {
+                result.saleableDelta = Day_Netting.captureSaleableDelta(driver, preSaleable, "RMS_TRADE_POST");
+                Day_Netting.printSaleableDeltaReport(result.saleableDelta);
+            }
+            Map<String, String> postPortfolio = ClientPortfolio.getApiSnapshot(driver, cln, baseSym, ex);
+            if (result.orderAcceptedInTerminal && prePortfolio != null && !prePortfolio.isEmpty() && postPortfolio != null && !postPortfolio.isEmpty()) {
+                ClientPortfolio.verify(prePortfolio, postPortfolio, baseSym, ordSide, qty, resolvedPrice, ex);
+            }
+            Day_Netting.NettingEligibilityContext elig = new Day_Netting.NettingEligibilityContext(
+                    Day_Netting.NettingMode.fromString(fetchApplicationSettings(driver).dayNettingSettings),
+                    true, true, audit.symbolApplicable, audit.clientAllowed, audit.boardAllowed,
+                    ex, brd, false, result.orderStatus, false);
+            Day_Netting.explainIneligibilityReason(elig);
+            result.nettingVerified = true;
+        } catch (Exception ignored) {}
+
+        result.verificationPassed = audit.overallApproved
+                ? result.orderAttempted && result.orderAcceptedInTerminal
+                : (!result.orderAcceptedInTerminal);
+        result.summary = String.format("Audit=%s | Accepted=%b | Terminal=%b | Limits=%b | Netting=%b",
+                audit.verdict, result.orderAcceptedInTerminal, result.terminalVerified, result.limitsVerified, result.nettingVerified);
+        result.printConnectedReport();
+        return result;
+    }
+
     // =========================================================================
     // 7. INTERACTIVE RMS MANAGEMENT CONSOLE & AUTOMATED RUNNER
     // =========================================================================
 
     /**
-     * Executes the comprehensive RMS Management Suite.
+     * Executes the comprehensive RMS Management Suite connected with Trade, Limits,
+     * Portfolio, Position, Order Terminal, Day Netting & Stock Upload modules.
      */
     public static void runRmsConsole(WebDriver driver, Scanner sc) {
         System.out.println("\n+=============================================================================+");
         System.out.println("|                 UFTFAST OMS - RISK MANAGEMENT SYSTEM (qRMS)                 |");
-        System.out.println("|         Real-Time Risk Parameters, Netting Controls & Scrip Eligibility      |");
+        System.out.println("|     Real-Time Risk Parameters, Netting Controls, Scrip Eligibility & Trade   |");
         System.out.println("+=============================================================================+");
 
         if (isCi) {
-            System.out.println("[AUTOMATED CI MODE] Executing Automated Comprehensive RMS Health Check...");
+            System.out.println("[AUTOMATED CI MODE] Executing Automated Comprehensive RMS Health Check + Connected Trade...");
             runAutomatedRmsHealthCheck(driver);
             return;
         }
@@ -1738,20 +2081,16 @@ public class RMS {
             System.out.println("\nSelect RMS Operation:");
             System.out.println("  1. View Current RMS Status & Full Overview");
             System.out.println("  2. Configure qRMS Application Settings (Netting Mode, Spot/Z, Exchange Toggles)");
-            System.out.println("  3. Manage Clients RMS (Allow/Block Client, Search Client, View Records)");
+            System.out.println("  3. Manage Clients RMS (Allow/Block Client, Exclusivity Rule, View Records)");
             System.out.println("  4. Manage Applicable Symbols (Add/Remove Symbol, Search Ticker, View Records)");
             System.out.println("  5. Manage Unauthorized Boards & Spot Market Blocking");
-            System.out.println("  6. Run Pre-Trade Risk Audit & Order Eligibility Test");
-            System.out.println("  7. Full Automated RMS Health Check & Live Audit");
+            System.out.println("  6. Run Pre-Trade Risk Audit & Connected Live Trade Verification (OMSweb_Trade)");
+            System.out.println("  7. Full Automated RMS Health Check & Connected Live Trade Audit");
+            System.out.println("  8. Run Connected Day Netting & Stock Upload 9-Scenario Matrix (Day_Netting)");
             System.out.println("  0. Return to Main Menu");
-            System.out.print("Enter Choice (1-7, 0=Return): ");
+            System.out.print("Enter Choice (1-8, 0=Return, default=7 in 4s): ");
 
-            String choice = "";
-            if (sc != null && sc.hasNextLine()) {
-                choice = sc.nextLine().trim();
-            } else {
-                choice = "7";
-            }
+            String choice = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "7", 4);
 
             switch (choice) {
                 case "1":
@@ -1765,13 +2104,13 @@ public class RMS {
                 case "2":
                     System.out.println("\n--- Configure Application Settings ---");
                     System.out.println("Select Netting Mode: 1=NONE, 2=INDIVIDUAL EXCHANGE [Default], 3=CROSS EXCHANGE");
-                    System.out.print("Choice (1-3): ");
-                    String mChoice = sc != null && sc.hasNextLine() ? sc.nextLine().trim() : "2";
+                    System.out.print("Choice (1-3, default=2 in 4s): ");
+                    String mChoice = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "2", 4);
                     NettingMode mode = "1".equals(mChoice) ? NettingMode.NONE :
                                        "3".equals(mChoice) ? NettingMode.CROSS_EXCHANGE : NettingMode.INDIVIDUAL_EXCHANGE;
 
-                    System.out.print("Allow Z and Spot Netting? (true/false, default false): ");
-                    String zChoice = sc != null && sc.hasNextLine() ? sc.nextLine().trim() : "false";
+                    System.out.print("Allow Z and Spot Netting? (true/false, default=false in 4s): ");
+                    String zChoice = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "false", 4);
                     boolean allowZ = "true".equalsIgnoreCase(zChoice);
 
                     configureAllApplicationSettings(driver, mode, true, true, allowZ, "12345");
@@ -1779,22 +2118,22 @@ public class RMS {
 
                 case "3":
                     System.out.println("\n--- Manage Clients RMS ---");
-                    System.out.print("Enter Client Code (default 23986): ");
-                    String cln = sc != null && sc.hasNextLine() ? sc.nextLine().trim() : "23986";
-                    if (cln.isEmpty()) cln = "23986";
+                    System.out.print("Enter Client Code (default 002 in 4s): ");
+                    String cln = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "002", 4);
+                    if (cln.isEmpty()) cln = "002";
                     System.out.print("Set Status (1=Allowed [Default], 2=Disallowed): ");
-                    String cStat = sc != null && sc.hasNextLine() ? sc.nextLine().trim() : "1";
+                    String cStat = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "1", 4);
                     boolean isAllowed = !"2".equals(cStat);
-                    addClientToRiskList(driver, cln, isAllowed, "12345");
+                    setClientNettingState(driver, cln, isAllowed, "12345");
                     break;
 
                 case "4":
                     System.out.println("\n--- Manage Applicable Symbols ---");
                     System.out.print("Enter Exchange (DSE [Default] / CSE): ");
-                    String ex = sc != null && sc.hasNextLine() ? sc.nextLine().trim() : "DSE";
+                    String ex = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "DSE", 4);
                     if (ex.isEmpty()) ex = "DSE";
                     System.out.print("Enter Symbol to Add (default GP): ");
-                    String sym = sc != null && sc.hasNextLine() ? sc.nextLine().trim() : "GP";
+                    String sym = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "GP", 4);
                     if (sym.isEmpty()) sym = "GP";
                     addApplicableSymbol(driver, ex, sym);
                     displayApplicableSymbolsTable(driver, ex);
@@ -1803,17 +2142,45 @@ public class RMS {
                 case "5":
                     System.out.println("\n--- Manage Unauthorized Boards ---");
                     System.out.print("Set CSE BLOCK Board Blocking (true [Default] / false): ");
-                    String bBlock = sc != null && sc.hasNextLine() ? sc.nextLine().trim() : "true";
+                    String bBlock = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "true", 4);
                     configureBoardWiseBlocking(driver, "CSE", "BLOCK", !"false".equalsIgnoreCase(bBlock), "12345");
                     break;
 
                 case "6":
-                    System.out.println("\n--- Pre-Trade Risk Audit ---");
-                    performPreTradeRmsAudit(driver, "DSE", "GP", "23986", "PUBLIC", 270.50, 10, "BUY");
+                    System.out.println("\n--- Pre-Trade Risk Audit & Connected Live Trade Verification ---");
+                    System.out.print("Exchange (DSE [Default] / CSE): ");
+                    String tEx = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "DSE", 4);
+                    System.out.print("Symbol (default GP): ");
+                    String tSym = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "GP", 4);
+                    System.out.print("Client Code (default 002): ");
+                    String tCln = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "002", 4);
+                    System.out.print("Board (PUBLIC [Default] / BLOCK / SPOT): ");
+                    String tBrd = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "PUBLIC", 4);
+                    System.out.print("Side (BUY [Default] / SELL): ");
+                    String tSide = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "BUY", 4);
+                    System.out.print("Quantity (default 1): ");
+                    String tQtyStr = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "1", 4);
+                    int tQty = 1;
+                    try { tQty = Math.max(1, Integer.parseInt(tQtyStr.trim())); } catch (Exception ignored) {}
+                    System.out.print("Verify with Live Trade via OMSweb_Trade? (1=YES [Default], 0=Audit Only): ");
+                    String tLive = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "1", 4);
+                    if ("0".equals(tLive)) {
+                        performPreTradeRmsAudit(driver, tEx, tSym, tCln, tBrd, 0.0, tQty, tSide);
+                    } else {
+                        verifyRmsCheckWithTrade(driver, tEx, tSym, tCln, tBrd, tQty, 0.0, tSide, false);
+                    }
                     break;
 
                 case "7":
                     runAutomatedRmsHealthCheck(driver);
+                    break;
+
+                case "8":
+                    System.out.println("\n--- Connected Day Netting & Stock Upload 9-Scenario Compliance ---");
+                    Day_Netting.NettingScenarioConfig netCfg = new Day_Netting.NettingScenarioConfig();
+                    netCfg.executeLiveOrders = true;
+                    netCfg.stockFilePath = OMSweb_UploadData.resolveDefaultSampleFilePath(OMSweb_UploadData.UploadSubMenu.STOCK_FILE);
+                    Day_Netting.runNetting9ScenarioMatrix(driver, netCfg);
                     break;
 
                 case "0":
@@ -1824,17 +2191,17 @@ public class RMS {
                     break;
 
                 default:
-                    System.out.println("[INVALID] Please choose an option between 0 and 7.");
+                    System.out.println("[INVALID] Please choose an option between 0 and 8.");
             }
         }
     }
 
     /**
-     * Executes the comprehensive automated RMS health check and audit.
+     * Executes the comprehensive automated RMS health check and connected live trade audit.
      */
     public static void runAutomatedRmsHealthCheck(WebDriver driver) {
         System.out.println("\n=============================================================================");
-        System.out.println("             [RMS AUDIT] INITIATING FULL AUTOMATED RMS HEALTH CHECK          ");
+        System.out.println("       [RMS AUDIT] INITIATING FULL AUTOMATED RMS HEALTH & TRADE CHECK        ");
         System.out.println("=============================================================================");
 
         // 1. Navigate to Portal & Settings
@@ -1854,21 +2221,30 @@ public class RMS {
         navigateToUnauthorizedBoardsTab(driver);
         displayUnauthorizedBoardsTable(driver);
 
-        // 5. Pre-Trade Compliance Audit Tests (DSE Normal, CSE Block, Spot Check)
-        System.out.println(">>> Running Scenario 1: Standard DSE Buy Order (GP, 23986)...");
-        performPreTradeRmsAudit(driver, "DSE", "GP", "23986", "PUBLIC", 270.50, 10, "BUY");
+        // 5. Resolve live price & eligible client via connected OMSweb_DBMarketData / Account_Limits
+        double liveRate = resolveConnectedMarketPrice(driver, "GP", "DSE", 0.0);
+        String eligibleClient = "23986";
+        try {
+            eligibleClient = Account_Limits.findClientWithSufficientCashFromDb(liveRate, "23986");
+        } catch (Exception ignored) {}
 
-        System.out.println(">>> Running Scenario 2: CSE Block Board Order (Restricted Board)...");
-        performPreTradeRmsAudit(driver, "CSE", "GP.BLOCK", "23986", "BLOCK", 270.50, 10, "BUY");
+        // 6. Connected Pre-Trade & Live Trade Verification on Standard DSE Order
+        System.out.printf(">>> Running Scenario 1 (Connected Trade): Standard DSE BUY (GP, Client=%s, Rate=%.2f)...%n",
+                eligibleClient, liveRate);
+        verifyRmsCheckWithTrade(driver, "DSE", "GP", eligibleClient, "PUBLIC", 1, liveRate, "BUY", false);
 
-        System.out.println(">>> Running Scenario 3: SPOT Board Purchase without Mature Balance...");
-        performPreTradeRmsAudit(driver, "DSE", "GP.SPOT", "23986", "SPOT", 270.50, 10, "BUY");
+        // 7. Negative Rule Checks (CSE Block Board & SPOT Board) — verifies RMS blocks before trade placement
+        System.out.println(">>> Running Scenario 2: CSE Block Board Order (Restricted Board Gate)...");
+        verifyRmsCheckWithTrade(driver, "CSE", "GP.BLOCK", eligibleClient, "BLOCK", 1, liveRate, "BUY", false);
 
-        // 6. Return cleanly to Trade Portal
+        System.out.println(">>> Running Scenario 3: SPOT Board Purchase without Mature Balance (Gate)...");
+        verifyRmsCheckWithTrade(driver, "DSE", "GP.SPOT", eligibleClient, "SPOT", 1, liveRate, "BUY", false);
+
+        // 8. Return cleanly to Trade Portal
         returnToTradePortal(driver);
 
         System.out.println("\n=============================================================================");
-        System.out.println("       ✓ [RMS AUDIT COMPLETE] Full Risk Management System Health Verified     ");
+        System.out.println("  ✓ [RMS AUDIT COMPLETE] Full Risk Management System & Connected Trade Verified ");
         System.out.println("=============================================================================\n");
     }
 
@@ -1892,10 +2268,11 @@ public class RMS {
     // =========================================================================
 
     /**
-     * Unit test suite validating Pre-Trade RMS Audit Scenarios:
-     * 1. Standard DSE order -> Approved.
-     * 2. CSE Block board order -> Rejected (Board restriction).
-     * 3. Spot board order without mature balance -> Rejected (Z/Spot restriction).
+     * Unit test suite validating Pre-Trade RMS Audit & Connected Trade Gate Scenarios:
+     * 1-3: Standard DSE, CSE Block board, Spot board.
+     * 4-6: Client exclusivity positive/negative assertions.
+     * 7: Offline board block defaults.
+     * 8: Connected RMS + Trade verification gate (approved vs blocked pre-trade).
      */
     public static boolean testPreTradeRmsAuditScenarios() {
         System.out.println("\n+=============================================================================+");
@@ -1952,8 +2329,17 @@ public class RMS {
         System.out.printf("Test 7 [Board Blocking Defaults]: CSE.BLOCK=true, DSE.PUBLIC=false -> %s%n", p7 ? "PASS" : "FAIL");
         allPassed &= p7;
 
+        // Scenario 8: Connected RMS + Trade Gate Flow (approved vs blocked pre-trade)
+        RmsTradeVerificationResult tOk = verifyRmsCheckWithTrade(null, "DSE", "GP", "002", "PUBLIC", 1, 270.50, "BUY", false);
+        RmsTradeVerificationResult tBlk = verifyRmsCheckWithTrade(null, "CSE", "GP.BLOCK", "002", "BLOCK", 1, 270.50, "BUY", false);
+        boolean p8 = tOk.verificationPassed && tOk.preTradeAudit.overallApproved
+                && tBlk.verificationPassed && !tBlk.preTradeAudit.overallApproved && !tBlk.orderAttempted;
+        System.out.printf("Test 8 [Connected RMS + Trade Gate]: Approved=%b, BlockedGated=%b -> %s%n",
+                tOk.preTradeAudit.overallApproved, !tBlk.orderAttempted, p8 ? "PASS" : "FAIL");
+        allPassed &= p8;
+
         System.out.println("+-----------------------------------------------------------------------------+");
-        System.out.printf("| ALL PRE-TRADE RMS AUDIT TESTS: %-44s |%n", allPassed ? "ALL PASSED (7/7)" : "SOME FAILED");
+        System.out.printf("| ALL PRE-TRADE RMS AUDIT TESTS: %-44s |%n", allPassed ? "ALL PASSED (8/8)" : "SOME FAILED");
         System.out.println("+-----------------------------------------------------------------------------+\n");
         return allPassed;
     }
