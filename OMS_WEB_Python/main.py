@@ -17,6 +17,7 @@ import oms_trade
 import oms_multi_order
 import oms_multiple_trade
 import oms_upload_data
+import oms_export_data
 import account_limits
 import position
 import client_portfolio
@@ -26,6 +27,7 @@ import widget_color
 import oms_dashboard
 import rms
 import day_netting
+import ui_testing
 import oms_test_runner
 
 
@@ -46,6 +48,8 @@ def _dispatch_mode(driver, mode: str) -> None:
         oms_multiple_trade.run_load_test(driver)
     elif mode == "upload":
         oms_upload_data.run_upload_console(driver)
+    elif mode == "export":
+        oms_export_data.run_export_console(driver)
     elif mode == "day-netting":
         day_netting.run_day_netting_console(driver)
     elif mode == "account-limits":
@@ -65,6 +69,8 @@ def _dispatch_mode(driver, mode: str) -> None:
         oms_dashboard.run_live_reflection_audit(driver)
     elif mode == "rms":
         rms.run_rms_console(driver)
+    elif mode == "ui-test":
+        ui_testing.run_ui_testing(existing_driver=driver)
     else:
         oms_trade.run_trade_workflow(driver)
 
@@ -72,8 +78,9 @@ def _dispatch_mode(driver, mode: str) -> None:
 def run_session_loop(driver, initial_mode: str = "") -> None:
     mode_map = {
         "1": "trade", "2": "multi-order", "3": "load-test", "4": "upload",
-        "5": "account-limits", "6": "day-netting", "7": "dashboard", "8": "rms",
-        "9": "db-ltp", "10": "position", "11": "portfolio", "12": "depth", "13": "terminal",
+        "5": "export", "6": "day-netting", "7": "dashboard", "8": "rms",
+        "9": "ui-test", "10": "account-limits", "11": "db-ltp",
+        "12": "position", "13": "portfolio", "14": "depth", "15": "terminal",
     }
     first_pass = bool(initial_mode)
     while True:
@@ -89,14 +96,14 @@ def run_session_loop(driver, initial_mode: str = "") -> None:
         print("  2. Multi-Order Execution & Real-time 6-Widget Audit")
         print("  3. High-Speed Multi-Trade & Load Testing Engine")
         print("  4. Upload File Engine (Client, Stock, Cash - Safe Guarded)")
-        print("  5. Account Limits & High-Cash Client Discovery")
+        print("  5. Export File Engine (Trade Files, EOD Price, Commission & Reports)")
         print("  6. Day Netting Engine (Scrip Netting, RMS Controls & 9-Scenario) [Default]")
         print("  7. Dashboard 12-Model Reflection & Live Audit")
         print("  8. RMS Risk Management Engine (qRMS + Connected Trade Gate)")
-        print("  9. View Live Public Board Symbols & LTPs from DB")
-        print("  10-13. Position / Portfolio / Market Depth / Order Terminal")
+        print("  9. Cross-Browser UI Testing Audit (6 Modules)")
+        print("  10. Account Limits | 11. DB LTPs | 12-15. Position/Portfolio/Depth/Terminal")
         print("  0. Exit Application")
-        choice = config.read_line_with_timeout("Enter Choice (0-13, default 6 in 5s): ", "6", 5.0)
+        choice = config.read_line_with_timeout("Enter Choice (0-15, default 6 in 5s): ", "6", 5.0)
         if choice in ("0", "exit", "quit"):
             break
         try:
@@ -113,9 +120,9 @@ def main() -> None:
     parser.add_argument(
         "--mode",
         choices=[
-            "trade", "multi-order", "load-test", "upload", "day-netting",
+            "trade", "multi-order", "load-test", "upload", "export", "day-netting",
             "account-limits", "position", "portfolio", "depth", "terminal",
-            "db-ltp", "dashboard", "rms", "test-runner",
+            "db-ltp", "dashboard", "rms", "ui-test", "test-runner",
         ],
         help="Directly launch a specific engine without prompt",
     )

@@ -164,6 +164,21 @@ def open_upload_data_menu(driver: Optional[webdriver.Chrome]) -> bool:
         return False
 
 
+def verify_sub_menu_present(driver: Optional[webdriver.Chrome], sub_menu: Optional[UploadSubMenu]) -> bool:
+    if not driver or not sub_menu:
+        return False
+    try:
+        return bool(driver.execute_script(
+            "var target = arguments[0].toLowerCase();"
+            "return Array.from(document.querySelectorAll('a, li, button, span')).some(function(el) {"
+            "  return (el.innerText || '').trim().toLowerCase() === target;"
+            "});",
+            sub_menu.display_name,
+        ))
+    except Exception:
+        return False
+
+
 def capture_menu_and_submenu_data(driver: Optional[webdriver.Chrome]) -> MenuData:
     res = MenuData()
     if not driver:

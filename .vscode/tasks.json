@@ -31,6 +31,13 @@
             "problemMatcher": []
         },
         {
+            "label": "python: run ui-testing offline check",
+            "type": "shell",
+            "command": "python ui_testing.py --test",
+            "options": { "cwd": "${workspaceFolder}/OMS_WEB_Python" },
+            "problemMatcher": []
+        },
+        {
             "label": "python: run main",
             "type": "shell",
             "command": "python main.py",

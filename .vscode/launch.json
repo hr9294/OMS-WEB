@@ -79,6 +79,35 @@
             "justMyCode": true
         },
         {
+            "name": "OMS Web Python: Export Data Engine",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/OMS_WEB_Python/main.py",
+            "cwd": "${workspaceFolder}/OMS_WEB_Python",
+            "args": ["--mode", "export"],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "OMS Web Python: Cross-Browser UI Testing",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/OMS_WEB_Python/ui_testing.py",
+            "cwd": "${workspaceFolder}/OMS_WEB_Python",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "OMS Web Python: UI Testing Offline Check",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/OMS_WEB_Python/ui_testing.py",
+            "cwd": "${workspaceFolder}/OMS_WEB_Python",
+            "args": ["--test"],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
             "name": "OMS Web Python: Standard Trade & 6-Widget Audit",
             "type": "debugpy",
             "request": "launch",
