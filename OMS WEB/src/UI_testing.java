@@ -13,7 +13,7 @@ import org.openqa.selenium.safari.SafariDriver;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 /**
- * UI_testing - Cross-Browser QA Suite connected to OMSwebmain, OMSweb_Login,
+ * UI_testing - Cross-Browser Test Suite connected to OMSwebmain, OMSweb_Login,
  * OMSweb_DashboardAudit, RMS, OMSweb_UploadData, OMSweb_ExportData, Day_Netting.
  */
 public class UI_testing {

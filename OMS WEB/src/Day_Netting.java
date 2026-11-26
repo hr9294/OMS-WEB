@@ -3284,9 +3284,9 @@ public class Day_Netting {
                 cseBuyQty, cseSellQty, dseSaleable, cseSaleable, totalHolding, dayNetted, matureDeducted, modeName);
     }
 
-    public static boolean testQaDayNettingScenarios() {
+    public static boolean testDayNettingScenarios() {
         System.out.println("\n+=============================================================================================================================+");
-        System.out.println("|                           QA DAY NETTING MULTI-EXCHANGE & TRANSITION TEST SUITE                             |");
+        System.out.println("|                             DAY NETTING MULTI-EXCHANGE & TRANSITION TEST SUITE                              |");
         System.out.println("+=============================================================================================================================+");
         boolean allPassed = true;
 
@@ -3462,7 +3462,7 @@ public class Day_Netting {
                 s4_step2.dayNettedQty, p4_2_netted ? "PASS" : "FAIL");
         allPassed &= (p4_1_dse && p4_1_cse && p4_1_tot && p4_1_neg && p4_2_dse && p4_2_cse && p4_2_tot && p4_2_netted);
         System.out.println("+-------------------------------------------------------------------------------------------------------------+");
-        System.out.printf("| ALL QA DAY NETTING SCENARIOS: %-78s |%n", allPassed ? "ALL PASSED (4/4 SCENARIOS, 25/25 ASSERTIONS)" : "SOME FAILED");
+        System.out.printf("| ALL DAY NETTING SCENARIOS: %-81s |%n", allPassed ? "ALL PASSED (4/4 SCENARIOS, 25/25 ASSERTIONS)" : "SOME FAILED");
         System.out.println("+=============================================================================================================+\n");
         return allPassed;
     }
@@ -4215,10 +4215,10 @@ public class Day_Netting {
         total++;
         boolean tSaleableMatrix = reportDayNettingSaleableRulesMatrix();
         if (tSaleableMatrix) passed++;
-        // 3. QA multi-exchange & transition suite
+        // 3. Multi-exchange & transition suite
         total++;
-        boolean tQa = testQaDayNettingScenarios();
-        if (tQa) passed++;
+        boolean tNetScen = testDayNettingScenarios();
+        if (tNetScen) passed++;
         // 4. NettingEligibilityContext truth table
         total++;
         boolean tElig = testEligibilityTruthTableOffline();
@@ -4488,15 +4488,15 @@ public class Day_Netting {
             System.out.println("  -> [TEST 6 FAILED] Exchange-Wise Saleable Mismatch.");
         }
 
-        // --- TEST 7: QA DAY NETTING COMPLIANCE SCENARIOS (1, 2, 3) ---
+        // --- TEST 7: DAY NETTING COMPLIANCE SCENARIOS (1, 2, 3) ---
         total++;
-        System.out.println("\n[TEST 7] QA Day Netting Scenarios (Both Exchanges, Excess Sell, NONE Mode)...");
-        boolean t7_qa = testQaDayNettingScenarios();
-        if (t7_qa) {
-            System.out.println("  -> [TEST 7 PASSED] All 3 QA Day Netting Scenarios Verified (17/17 Assertions RIGHT).");
+        System.out.println("\n[TEST 7] Day Netting Scenarios (Both Exchanges, Excess Sell, NONE Mode)...");
+        boolean t7_scen = testDayNettingScenarios();
+        if (t7_scen) {
+            System.out.println("  -> [TEST 7 PASSED] All 3 Day Netting Scenarios Verified (17/17 Assertions RIGHT).");
             passed++;
         } else {
-            System.out.println("  -> [TEST 7 FAILED] QA Day Netting Scenario Mismatch.");
+            System.out.println("  -> [TEST 7 FAILED] Day Netting Scenario Mismatch.");
         }
         System.out.println("\n=============================================================================");
         System.out.printf("   [TEST RUN COMPLETE] Passed: %d / %d Tests (100%% Operational Coverage)%n", passed, total);
@@ -4577,7 +4577,7 @@ public class Day_Netting {
         Netting6WidgetsUiSnapshot preTradeSnap = check6NettingWidgetsRealTimeUiData(
                 driver, "PRE-TRADE_BASELINE_" + targetMode.name() + "_" + targetExchange, cln, pubSym, targetExchange);
 
-        String tradeAction = "0".equals(tradeOpt) || "skip".equalsIgnoreCase(tradeOpt) ? "SKIP" : "QA_FLOW";
+        String tradeAction = "0".equals(tradeOpt) || "skip".equalsIgnoreCase(tradeOpt) ? "SKIP" : "LIVE_FLOW";
         int tradeQty = (targetMode == NettingMode.NONE) ? 25 :
                        (targetMode == NettingMode.INDIVIDUAL_EXCHANGE && "BOTH".equalsIgnoreCase(targetExchange)) ? 37 : 25;
         double defaultRate = 0.0;
@@ -4640,7 +4640,7 @@ public class Day_Netting {
             postTradeSnap = check6NettingWidgetsRealTimeUiData(driver, "POST-TRADE_REALTIME_" + targetMode.name() + "_" + targetExchange, cln, pubSym, targetExchange);
         } else {
             postTradeSnap = new Netting6WidgetsUiSnapshot();
-            postTradeSnap.stageName = "POST-TRADE_QA_AUDIT_" + targetMode.name() + "_" + targetExchange;
+            postTradeSnap.stageName = "POST-TRADE_AUDIT_" + targetMode.name() + "_" + targetExchange;
             postTradeSnap.targetClient = cln;
             postTradeSnap.targetSymbol = pubSym;
             postTradeSnap.portfolioDataDSE.putAll(preTradeSnap.portfolioDataDSE);
@@ -4880,7 +4880,7 @@ public class Day_Netting {
         System.out.println("  2. Multi-Mode Live Suite Only (None, Individual, Cross + 6-Widget Report & Comparison)");
         System.out.println("  3. UI Netting Indicators Audit Only (Depth, Watchlists, Order Window)");
         System.out.println("  4. 9-Scenario Compliance Matrix (Exclusivity, Post-Order Flips, Stock File)");
-        System.out.println("  5. QA Multi-Exchange & 5-Scope Automated Scrip Netting Test Suite");
+        System.out.println("  5. Multi-Exchange & 5-Scope Automated Scrip Netting Test Suite");
         System.out.println("  0. Back to Day Netting Menu");
         System.out.print("Enter Suite Choice (0-5, ENTER=1): ");
         String sub = isCi ? "1" : readLineWithTimeout(sc, "1", 0);
@@ -4904,7 +4904,7 @@ public class Day_Netting {
             run3in1UIIndicatorsAudit(driver, sym, cln);
         }
         if ("1".equals(sub) || "5".equals(sub)) {
-            testQaDayNettingScenarios();
+            testDayNettingScenarios();
             runAllNettingTests(driver);
         }
         if ("1".equals(sub) || "4".equals(sub)) {
@@ -4959,7 +4959,7 @@ public class Day_Netting {
                 runNormalNettingLiveAudit(driver, sc);
             } else if ("2".equals(choice)) {
                 runAllConfigureSettingsMenu(driver, sc);
-            } else if ("3".equals(choice) || "qa".equalsIgnoreCase(choice) || "suite".equalsIgnoreCase(choice) || "matrix".equalsIgnoreCase(choice)) {
+            } else if ("3".equals(choice) || "suite".equalsIgnoreCase(choice) || "matrix".equalsIgnoreCase(choice)) {
                 runDayNettingSuiteMenu(driver, sc);
             } else {
                 System.out.printf("[INVALID SELECTION] '%s' is not recognized. Please choose 0-3.%n", choice);
@@ -4976,14 +4976,14 @@ public class Day_Netting {
     }
 
     public static void main(String[] args) {
-        if (args != null && args.length > 0 && ("qa".equalsIgnoreCase(args[0]) || "test".equalsIgnoreCase(args[0]) || "fast".equalsIgnoreCase(args[0]))) {
+        if (args != null && args.length > 0 && ("test".equalsIgnoreCase(args[0]) || "fast".equalsIgnoreCase(args[0]))) {
             System.out.println("===============================================================================");
-            System.out.println("       ECLIPSE DIRECT RUNNER: QA DAY NETTING MULTI-EXCHANGE TEST SUITE        ");
+            System.out.println("       ECLIPSE DIRECT RUNNER: DAY NETTING MULTI-EXCHANGE TEST SUITE           ");
             System.out.println("===============================================================================");
-            boolean qaPassed = testQaDayNettingScenarios();
+            boolean suiteScenPassed = testDayNettingScenarios();
             boolean suitePassed = runAllNettingTests();
-            boolean passed = qaPassed && suitePassed;
-            System.out.printf("[ECLIPSE QA RESULT] %s%n", passed ? "SUCCESS (ALL SCENARIOS PASSED)" : "FAILED");
+            boolean passed = suiteScenPassed && suitePassed;
+            System.out.printf("[ECLIPSE RESULT] %s%n", passed ? "SUCCESS (ALL SCENARIOS PASSED)" : "FAILED");
             if (!passed) System.exit(1);
             return;
         }
@@ -4996,9 +4996,9 @@ public class Day_Netting {
         System.out.println("  2. Launch Live Browser Automation (devoms.quantbd.com)");
         System.out.print("Enter Choice (1-2, ENTER=1): ");
         String choice = readLineWithTimeout(sc, "1", 0);
-        if ("1".equals(choice) || choice.isEmpty() || "qa".equalsIgnoreCase(choice)) {
+        if ("1".equals(choice) || choice.isEmpty() || "test".equalsIgnoreCase(choice)) {
             System.out.println("\n[ECLIPSE RUNNER] Executing Multi-Exchange Audit Suite (Instruction-Wise)...");
-            boolean passed = testQaDayNettingScenarios();
+            boolean passed = testDayNettingScenarios();
             System.out.printf("[ECLIPSE RESULT] %s%n", passed ? "SUCCESS (ALL SCENARIOS PASSED)" : "FAILED");
             return;
         }

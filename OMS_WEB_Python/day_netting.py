@@ -1026,7 +1026,7 @@ def run_netting_9_scenario_matrix(driver: Optional[webdriver.Chrome], cfg: Optio
     return outcomes
 
 # =========================================================================
-# OFFLINE COMPLIANCE, QA & REGRESSION SUITES
+# OFFLINE COMPLIANCE & REGRESSION SUITES
 # =========================================================================
 
 def report_day_netting_saleable_rules_matrix() -> bool:
@@ -1050,8 +1050,8 @@ def report_day_netting_saleable_rules_matrix() -> bool:
     print(f"[SALEABLE RULES MATRIX] {passed}/{len(cases)} PASSED")
     return passed == len(cases)
 
-def test_qa_day_netting_scenarios() -> bool:
-    """4 Scenarios, 25 Assertions matching Day_Netting.java QA Suite."""
+def test_day_netting_scenarios() -> bool:
+    """4 Scenarios, 25 Assertions matching Day_Netting.java Suite."""
     s1_1 = calculate_day_netting_portfolio(NettingMode.INDIVIDUAL_EXCHANGE, True, True, True, True, 50, 25, 0, 0, 0)
     s1_2 = calculate_day_netting_portfolio(NettingMode.INDIVIDUAL_EXCHANGE, True, True, True, True, 50, 25, 0, 12, 0)
     s1_3 = calculate_day_netting_portfolio(NettingMode.INDIVIDUAL_EXCHANGE, True, True, True, True, 50, 25, 25, 12, 12)
@@ -1072,7 +1072,7 @@ def test_qa_day_netting_scenarios() -> bool:
         s4_2.dse_saleable_qty == 60, s4_2.cse_saleable_qty == 60, s4_2.total_holding_qty == 60, s4_2.day_netted_qty == 15,
     ]
     passed = all(assertions)
-    print(f"[QA DAY NETTING SUITE] {'ALL PASSED (4/4 SCENARIOS, 25/25+ ASSERTIONS)' if passed else 'SOME FAILED'}")
+    print(f"[DAY NETTING SUITE] {'ALL PASSED (4/4 SCENARIOS, 25/25+ ASSERTIONS)' if passed else 'SOME FAILED'}")
     return passed
 
 def run_all_netting_tests(driver: Optional[webdriver.Chrome] = None) -> bool:
@@ -1082,8 +1082,8 @@ def run_all_netting_tests(driver: Optional[webdriver.Chrome] = None) -> bool:
     results.append(rms.test_pre_trade_rms_audit_scenarios())
     # 2. Saleable rules matrix (8/8)
     results.append(report_day_netting_saleable_rules_matrix())
-    # 3. QA Multi-Exchange Suite
-    results.append(test_qa_day_netting_scenarios())
+    # 3. Multi-Exchange Suite
+    results.append(test_day_netting_scenarios())
     # 4. Eligibility Truth Table
     ok = is_netting_effective_for_trade(NettingEligibilityContext(NettingMode.INDIVIDUAL_EXCHANGE, True, True, True, True, True, "DSE", "PUBLIC"))
     neg = [
@@ -1270,11 +1270,11 @@ def _run_all_configure_settings_menu(driver: webdriver.Chrome) -> None:
 
 def _run_day_netting_suite_menu(driver: webdriver.Chrome) -> None:
     print("\n=== 3. DAY NETTING SUITE (NONE, INDIVIDUAL, CROSS), ALL WIDGETS REPORT & COMPLIANCE MATRIX ===")
-    print("  1. Full Suite (None + Individual + Cross + 6-Widget Report & Comparison + UI Audit + QA + 9-Scenario Matrix) [ENTER=Default]")
+    print("  1. Full Suite (None + Individual + Cross + 6-Widget Report & Comparison + UI Audit + 9-Scenario Matrix) [ENTER=Default]")
     print("  2. Multi-Mode Audit Only (None, Individual, Cross) + 6-Widget Report & Comparison")
     print("  3. UI Netting Indicators Audit (Depth, Watchlists, Order Window)")
     print("  4. 9-Scenario Compliance Matrix (Exclusivity, Post-Order Flips, Stock File)")
-    print("  5. QA Multi-Exchange & Offline 9-Block Suite")
+    print("  5. Multi-Exchange & Offline 9-Block Suite")
     print("  0. Back to Day Netting Menu")
     sub = "1" if config.IS_CI else config.read_line_with_timeout("Enter Suite Choice (0-5, ENTER=1): ", "1")
     if sub == "0":
@@ -1291,7 +1291,7 @@ def _run_day_netting_suite_menu(driver: webdriver.Chrome) -> None:
     if sub in ("1", "3"):
         print(f"UI Indicators -> Depth={verify_market_depth_netting_indicator(driver, sym)}, Watchlist={verify_default_netting_watchlist(driver, sym)}, ClientBlocked={verify_order_window_client_netting_blocked(driver, cln)}")
     if sub in ("1", "5"):
-        test_qa_day_netting_scenarios()
+        test_day_netting_scenarios()
         run_all_netting_tests(None)
     if sub in ("1", "4"):
         cfg = NettingScenarioConfig()
@@ -1328,8 +1328,8 @@ def run_day_netting_console(driver: webdriver.Chrome) -> None:
             break
 
 if __name__ == "__main__":
-    arg = sys.argv[1].strip().lower() if len(sys.argv) > 1 else "qa"
-    if arg in ("qa", "test", "fast"):
-        ok = test_qa_day_netting_scenarios() and run_all_netting_tests()
+    arg = sys.argv[1].strip().lower() if len(sys.argv) > 1 else "test"
+    if arg in ("test", "fast"):
+        ok = test_day_netting_scenarios() and run_all_netting_tests()
         sys.exit(0 if ok else 1)
     run_all_netting_tests()

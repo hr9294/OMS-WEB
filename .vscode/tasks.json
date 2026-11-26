@@ -17,9 +17,9 @@
             "problemMatcher": []
         },
         {
-            "label": "python: run day-netting qa",
+            "label": "python: run day-netting test",
             "type": "shell",
-            "command": "python day_netting.py qa",
+            "command": "python day_netting.py test",
             "options": { "cwd": "${workspaceFolder}/OMS_WEB_Python" },
             "problemMatcher": []
         },

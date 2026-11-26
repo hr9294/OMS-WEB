@@ -1,7 +1,7 @@
 """
 OMS-WEB Unified Automated Test Suite Runner (Python)
 Mirrors OMSweb_TestRunner.java (excluding RMS merge — delegates to rms.test_pre_trade_rms_audit_scenarios).
-Usage: python oms_test_runner.py [all|limits|core|6widget|widget|qa|netting|rms]
+Usage: python oms_test_runner.py [all|limits|core|6widget|widget|netting|rms]
 """
 import argparse
 import sys
@@ -54,8 +54,8 @@ def run_unified_tests(mode: str = "all") -> bool:
     run_all = m == "all"
     run_limits = run_all or m in ("limits", "core")
     run_widget = run_all or m in ("6widget", "widget")
-    run_qa = run_all or m in ("qa", "limits", "core")
-    run_netting = run_all or m in ("netting", "qa")
+    run_dn_scen = run_all or m in ("test", "limits", "core", "netting")
+    run_netting = run_all or m in ("netting", "test")
     run_rms = run_all or m in ("rms", "limits", "core")
     suites: List[Tuple[str, Callable[[], bool], str, str]] = []
     if run_limits:
@@ -68,8 +68,8 @@ def run_unified_tests(mode: str = "all") -> bool:
         suites.append(("Portfolio Extraction & Delta Audit", _test_portfolio_reflection, "Buy delta & saleable verified", "Portfolio delta mismatch"))
     if run_widget:
         suites.append(("6-Widget Audit & Layout Health", _test_6widget_audit, "Comparison tables & layout healthy", "6-Widget audit failed"))
-    if run_qa:
-        suites.append(("QA Day Netting Multi-Exchange (1-4)", day_netting.test_qa_day_netting_scenarios, "4/4 QA scenarios (25+ checks) passed", "QA netting mismatch"))
+    if run_dn_scen:
+        suites.append(("Day Netting Multi-Exchange (1-4)", day_netting.test_day_netting_scenarios, "4/4 scenarios (25+ checks) passed", "Day netting mismatch"))
     if run_netting:
         suites.append(("Day Netting 9-Scenario Compliance", lambda: day_netting.run_all_netting_tests(None), "All 9 offline blocks + matrix passed", "9-Scenario suite failed"))
     results: List[Tuple[str, bool, str]] = []
@@ -92,7 +92,7 @@ def run_unified_tests(mode: str = "all") -> bool:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OMS-WEB Unified Python Test Runner")
-    parser.add_argument("filter", nargs="?", default="all", help="all|limits|core|6widget|qa|netting|rms")
+    parser.add_argument("filter", nargs="?", default="all", help="all|limits|core|6widget|test|netting|rms")
     parser.add_argument("--mode", dest="mode_opt", help="Filter mode override")
     args = parser.parse_args()
     success = run_unified_tests(args.mode_opt or args.filter)

@@ -8,7 +8,7 @@ import java.util.function.BooleanSupplier;
  * Consolidated runner merging:
  *   - TestLimitsRunner         (Limits, Price Breach, RMS Audit, Order Terminal, Portfolio)
  *   - Test6WidgetAuditRunner   (6-Widget Comparison Table Rendering & Layout Health)
- *   - QaDayNettingEclipseRunner (QA Day Netting Multi-Exchange & 9-Scenario Compliance)
+ *   - DayNettingRunner         (Day Netting Multi-Exchange & 9-Scenario Compliance)
  *
  * Note: RMS.java remains an independent engine and is invoked via
  *       RMS.testPreTradeRmsAuditScenarios() without merging RMS into this runner.
@@ -29,8 +29,8 @@ public class OMSweb_TestRunner {
         boolean runAll = "all".equals(mode);
         boolean runLimits = runAll || "limits".equals(mode) || "core".equals(mode);
         boolean runWidget = runAll || "6widget".equals(mode) || "widget".equals(mode);
-        boolean runQa = runAll || "qa".equals(mode) || "limits".equals(mode) || "core".equals(mode);
-        boolean runNetting = runAll || "netting".equals(mode) || "qa".equals(mode);
+        boolean runDayNettingScen = runAll || "test".equals(mode) || "limits".equals(mode) || "core".equals(mode) || "netting".equals(mode);
+        boolean runNetting = runAll || "netting".equals(mode) || "test".equals(mode);
         boolean runRms = runAll || "rms".equals(mode) || "limits".equals(mode) || "core".equals(mode);
         List<TestResult> results = new ArrayList<>();
         if (runLimits) {
@@ -65,11 +65,11 @@ public class OMSweb_TestRunner {
                     "6-Widget audit or layout health validation failed",
                     OMSweb_TestRunner::test6WidgetComparisonAudit);
         }
-        if (runQa) {
-            executeSuite(results, "QA Day Netting Multi-Exchange (1-4)",
+        if (runDayNettingScen) {
+            executeSuite(results, "Day Netting Multi-Exchange (1-4)",
                     "Individual Both Exchanges, Sell > Buy, NONE Mode & CROSS Mode (25/25 assertions) verified",
-                    "QA Day Netting scenario verification mismatch",
-                    Day_Netting::testQaDayNettingScenarios);
+                    "Day Netting scenario verification mismatch",
+                    Day_Netting::testDayNettingScenarios);
         }
         if (runNetting) {
             executeSuite(results, "Day Netting 9-Scenario Compliance",

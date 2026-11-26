@@ -20,12 +20,12 @@
             "justMyCode": true
         },
         {
-            "name": "OMS Web Python: Day Netting Engine (QA Suite)",
+            "name": "OMS Web Python: Day Netting Engine (Test Suite)",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/OMS_WEB_Python/day_netting.py",
             "cwd": "${workspaceFolder}/OMS_WEB_Python",
-            "args": ["qa"],
+            "args": ["test"],
             "console": "integratedTerminal",
             "justMyCode": true
         },
