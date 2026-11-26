@@ -60,13 +60,15 @@ public class UI_testing {
             System.out.println("  4. Account (Profile, Password Validation & Eye Toggle)");
             System.out.println("  5. Trade Logs (FIX Order Logs, Filters & Table)");
             System.out.println("  6. Setting (Settings, Activity Logs & Responsive Check)");
-            System.out.println("  7. Run ALL 6 Pages (Full Cross-Browser Suite: Chrome, Firefox, Safari)");
+            System.out.println("  7. Run ALL 6 Pages (Choose Browser: Chrome, Firefox, Safari, or All)");
+            System.out.println("  8. Select Browser Target (Current / Chrome / Firefox / Safari / All)");
             System.out.println("  0. Return to Main Menu");
             String ch = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "7", 300);
             if ("0".equals(ch) || "back".equalsIgnoreCase(ch) || "exit".equalsIgnoreCase(ch)) break;
             if ("1".equals(ch)) {
                 Map<String, Object> r = testTargetPage(driver, js, "Chrome", TARGET_PAGES.get(0));
                 System.out.println("[Admin Dashboard Audit] " + toJson(r.get("functionalTests")));
+                System.out.println("[Best-Practice UI Audit] " + toJson(r.get("bestPracticeUiAudit")));
                 runInteractiveDashboardTradeCheck(driver, sc);
             } else if ("2".equals(ch)) {
                 runInteractiveRmsMenu(driver, js, sc);
@@ -76,13 +78,31 @@ public class UI_testing {
                 System.out.printf("[UI_testing | %s] nav=%s | loadMs=%s | jsErr=%s | httpFail=%s | overflow1366=%s%n",
                         TARGET_PAGES.get(idx).label, r.get("navMethod"), r.get("loadMs"),
                         r.get("jsErrorCount"), r.get("httpFailureCount"), r.get("overflowAt1366"));
-                System.out.println("  Details: " + toJson(r.get("functionalTests")));
-            } else if ("7".equals(ch)) {
-                main(new String[0]);
+                System.out.println("  Functional: " + toJson(r.get("functionalTests")));
+                System.out.println("  UI Best-Practice: " + toJson(r.get("bestPracticeUiAudit")));
+            } else if ("7".equals(ch) || "8".equals(ch)) {
+                runBrowserSelectionMenu(driver, sc);
             } else {
-                System.out.println("[INVALID] Choose 0-7.");
+                System.out.println("[INVALID] Choose 0-8.");
             }
         }
+    }
+
+    private static void runBrowserSelectionMenu(WebDriver activeDriver, Scanner sc) {
+        System.out.println("\n--- [Browser Target] Select Browser ---");
+        System.out.println("  1. Chrome (Fresh Browser)");
+        System.out.println("  2. Firefox (Fresh Browser)");
+        System.out.println("  3. Safari (macOS check / WebKit Audit)");
+        System.out.println("  4. All Browsers (Chrome + Firefox + Safari)");
+        System.out.println("  5. Current Active Chrome Session");
+        System.out.println("  0. Back");
+        String b = OMSwebmain.readLineWithIdleWatchdog(activeDriver, sc, "4", 300);
+        if ("0".equals(b)) return;
+        if ("1".equals(b)) System.out.println(toJson(runBrowserSuite("Chrome")));
+        else if ("2".equals(b)) System.out.println(toJson(runBrowserSuite("Firefox")));
+        else if ("3".equals(b)) System.out.println(toJson(probeSafariAvailability()));
+        else if ("5".equals(b)) System.out.println(toJson(executeSuiteOnDriver(activeDriver, "Chrome")));
+        else main(new String[0]);
     }
 
     private static void runInteractiveDashboardTradeCheck(WebDriver driver, Scanner sc) {
@@ -355,6 +375,7 @@ public class UI_testing {
             out.put("dayNettingUiHealth", "ERR: " + e.getMessage());
         }
         out.put("functionalTests", runModuleFunctionalTests(driver, js, browserName, tp.key));
+        out.put("bestPracticeUiAudit", runBestPracticeUiAudit(js));
         out.putAll(checkResponsive1366(driver, js, browserName, tp.key));
         List<String> jsErrs = (List<String>) js.executeScript("return window.__uiErrs || [];");
         List<String> conErrs = (List<String>) js.executeScript("return window.__uiConsoleErrs || [];");
@@ -567,6 +588,30 @@ public class UI_testing {
     }
 
     // --- Shared Audit & Utility Helpers ---
+    private static Object runBestPracticeUiAudit(JavascriptExecutor js) {
+        return js.executeScript(
+            "var imgsNoAlt=0, inputsNoLabel=0, btnsNoText=0, tinyFonts=0, noPointer=0, focusable=0, safeClicks=0, fixedOverlap=0;" +
+            "// TC-UI-01 Accessibility & Semantics\n" +
+            "document.querySelectorAll('img').forEach(function(i){ if(i.offsetParent!==null && !(i.getAttribute('alt')||'').trim()) imgsNoAlt++; });" +
+            "document.querySelectorAll('input:not([type=hidden]),select,textarea').forEach(function(el){ if(el.offsetParent!==null){ var id=el.id, lbl=id?document.querySelector('label[for=\"'+id+'\"]'):null; if(!lbl && !el.getAttribute('aria-label') && !el.getAttribute('placeholder')) inputsNoLabel++; } });" +
+            "document.querySelectorAll('button,a.btn').forEach(function(b){ if(b.offsetParent!==null){ var t=(b.innerText||b.getAttribute('aria-label')||b.getAttribute('title')||'').trim(); if(!t) btnsNoText++; var cs=getComputedStyle(b); if(cs.cursor!=='pointer' && !b.disabled) noPointer++; } });" +
+            "// TC-UI-04 Typography & Keyboard Focusability\n" +
+            "document.querySelectorAll('p,span,td,th,label,a,button').forEach(function(el){ if(el.offsetParent!==null && (el.innerText||'').trim()){ var fs=parseFloat(getComputedStyle(el).fontSize||'14'); if(fs<11) tinyFonts++; } });" +
+            "focusable = Array.from(document.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled]),[tabindex]')).filter(function(e){return e.offsetParent!==null;}).length;" +
+            "// TC-UI-03 Fixed-bar CTA overlap check\n" +
+            "var fixedBars = Array.from(document.querySelectorAll('*')).filter(function(e){ var cs=getComputedStyle(e); return (cs.position==='fixed'||cs.position==='sticky') && e.offsetHeight>0 && e.offsetHeight<120; });" +
+            "document.querySelectorAll('button.btn, .btn-primary').forEach(function(b){ if(b.offsetParent!==null){ var r=b.getBoundingClientRect(); fixedBars.forEach(function(fb){ var fr=fb.getBoundingClientRect(); if(r.left<fr.right && r.right>fr.left && r.top<fr.bottom && r.bottom>fr.top && !fb.contains(b)) fixedOverlap++; }); } });" +
+            "// TC-UI-02 Safe Click-All Sweep (tabs & non-destructive toggles, restores first tab)\n" +
+            "var tabs = Array.from(document.querySelectorAll('[role=tab],.nav-tabs .nav-link,.nav-pills .nav-link')).filter(function(t){return t.offsetParent!==null;});" +
+            "tabs.forEach(function(t){ try{ t.click(); safeClicks++; }catch(e){} });" +
+            "if (tabs.length > 0) try{ tabs[0].click(); }catch(e){}" +
+            "var safeBtns = Array.from(document.querySelectorAll('.dropdown-toggle,[data-bs-toggle=collapse],[data-toggle=collapse],th[data-sort],th.sorting')).filter(function(b){ return b.offsetParent!==null && !/(delete|remove|logout|sign out|save|upload|export|confirm|submit)/i.test(b.innerText||''); });" +
+            "safeBtns.slice(0,12).forEach(function(b){ try{ b.click(); safeClicks++; }catch(e){} });" +
+            "try{ document.body.click(); }catch(e){}" +
+            "return { imgsMissingAlt:imgsNoAlt, inputsMissingLabel:inputsNoLabel, buttonsWithoutText:btnsNoText, tinyFontsUnder11px:tinyFonts, missingPointerCursor:noPointer, focusableControls:focusable, fixedBarOverlaps:fixedOverlap, safeClicksExecuted:safeClicks };"
+        );
+    }
+
     private static Object discoverSidebarItems(JavascriptExecutor js) {
         return js.executeScript(
             "var items=[], seen={}, els=document.querySelectorAll('aside a,.sidebar a,nav a,[data-link],.nav-sidebar a,.menu-item a,.left-sidebar a,.sidebar li');" +

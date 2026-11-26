@@ -431,6 +431,10 @@ def _test_target_page(driver: Any, browser_name: str, tp: TargetPage, out_dir: s
     except Exception as exc:
         out["functionalTests"] = {"moduleError": str(exc)}
     try:
+        out["bestPracticeUiAudit"] = _run_best_practice_ui_audit(driver)
+    except Exception as exc:
+        out["bestPracticeUiAudit"] = {"auditError": str(exc)}
+    try:
         driver.set_window_size(1366, 768)
         time.sleep(0.45)
         resp = driver.execute_script(
@@ -641,23 +645,68 @@ def _run_rms_menu(driver: Any) -> None:
             print("[INVALID] Choose 0-8.")
 
 
+def _run_best_practice_ui_audit(driver: Any) -> Dict[str, Any]:
+    return driver.execute_script(
+        "var imgsNoAlt=0, inputsNoLabel=0, btnsNoText=0, tinyFonts=0, noPointer=0, focusable=0, safeClicks=0, fixedOverlap=0;"
+        "document.querySelectorAll('img').forEach(function(i){ if(i.offsetParent!==null && !(i.getAttribute('alt')||'').trim()) imgsNoAlt++; });"
+        "document.querySelectorAll('input:not([type=hidden]),select,textarea').forEach(function(el){ if(el.offsetParent!==null){ var id=el.id, lbl=id?document.querySelector('label[for=\"'+id+'\"]'):null; if(!lbl && !el.getAttribute('aria-label') && !el.getAttribute('placeholder')) inputsNoLabel++; } });"
+        "document.querySelectorAll('button,a.btn').forEach(function(b){ if(b.offsetParent!==null){ var t=(b.innerText||b.getAttribute('aria-label')||b.getAttribute('title')||'').trim(); if(!t) btnsNoText++; var cs=getComputedStyle(b); if(cs.cursor!=='pointer' && !b.disabled) noPointer++; } });"
+        "document.querySelectorAll('p,span,td,th,label,a,button').forEach(function(el){ if(el.offsetParent!==null && (el.innerText||'').trim()){ var fs=parseFloat(getComputedStyle(el).fontSize||'14'); if(fs<11) tinyFonts++; } });"
+        "focusable = Array.from(document.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled]),[tabindex]')).filter(function(e){return e.offsetParent!==null;}).length;"
+        "var fixedBars = Array.from(document.querySelectorAll('*')).filter(function(e){ var cs=getComputedStyle(e); return (cs.position==='fixed'||cs.position==='sticky') && e.offsetHeight>0 && e.offsetHeight<120; });"
+        "document.querySelectorAll('button.btn, .btn-primary').forEach(function(b){ if(b.offsetParent!==null){ var r=b.getBoundingClientRect(); fixedBars.forEach(function(fb){ var fr=fb.getBoundingClientRect(); if(r.left<fr.right && r.right>fr.left && r.top<fr.bottom && r.bottom>fr.top && !fb.contains(b)) fixedOverlap++; }); } });"
+        "var tabs = Array.from(document.querySelectorAll('[role=tab],.nav-tabs .nav-link,.nav-pills .nav-link')).filter(function(t){return t.offsetParent!==null;});"
+        "tabs.forEach(function(t){ try{ t.click(); safeClicks++; }catch(e){} });"
+        "if (tabs.length > 0) try{ tabs[0].click(); }catch(e){}"
+        "var safeBtns = Array.from(document.querySelectorAll('.dropdown-toggle,[data-bs-toggle=collapse],[data-toggle=collapse],th[data-sort],th.sorting')).filter(function(b){ return b.offsetParent!==null && !/(delete|remove|logout|sign out|save|upload|export|confirm|submit)/i.test(b.innerText||''); });"
+        "safeBtns.slice(0,12).forEach(function(b){ try{ b.click(); safeClicks++; }catch(e){} });"
+        "try{ document.body.click(); }catch(e){}"
+        "return { imgsMissingAlt:imgsNoAlt, inputsMissingLabel:inputsNoLabel, buttonsWithoutText:btnsNoText, tinyFontsUnder11px:tinyFonts, missingPointerCursor:noPointer, focusableControls:focusable, fixedBarOverlaps:fixedOverlap, safeClicksExecuted:safeClicks };"
+    )
+
+
+def _run_browser_selection_menu(driver: Any, out_dir: str) -> None:
+    print("\n--- [Browser Target] Select Browser ---")
+    print("  1. Chrome (Fresh Browser)")
+    print("  2. Firefox (Fresh Browser)")
+    print("  3. Safari (macOS check / WebKit Audit)")
+    print("  4. All Browsers (Chrome + Firefox + Safari)")
+    print("  5. Current Active Chrome Session")
+    print("  0. Back")
+    b = config.read_line_with_timeout("Enter Choice (0-5, ENTER=4): ", "4")
+    if b == "0":
+        return
+    if b == "1":
+        run_ui_testing(browsers=["Chrome"], out_dir=out_dir)
+    elif b == "2":
+        run_ui_testing(browsers=["Firefox"], out_dir=out_dir)
+    elif b == "3":
+        print(json.dumps(probe_safari_availability(), indent=2))
+    elif b == "5":
+        run_ui_testing(existing_driver=driver, out_dir=out_dir)
+    else:
+        run_ui_testing(out_dir=out_dir)
+
+
 def run_ui_testing_menu(driver: Any, out_dir: str = OUT_DIR) -> None:
     while True:
         print("\n=== [UI TESTING MENU] Select Page / Module ===")
         print("  1. Admin Dashboard (All Cards, Chg% Sign, Active/Inactive Users & Live Trade)")
-        print("  2. RMS (Select RMS Option: Client, User, Branch, Margin, Broker, Netting, Settings, Limits, Identity)")
+        print("  2. RMS (Select RMS Option: Client, User, Branch, Margin, Broker, Netting, Settings)")
         print("  3. File Manager")
         print("  4. Account")
         print("  5. Trade Logs (FIX Order Logs)")
         print("  6. Setting")
-        print("  7. Run ALL 6 Pages (Full Cross-Browser Suite)")
+        print("  7. Run ALL 6 Pages (Choose Browser: Chrome, Firefox, Safari, or All)")
+        print("  8. Select Browser Target (Chrome / Firefox / Safari / All / Current)")
         print("  0. Return to Main Menu")
-        choice = config.read_line_with_timeout("Enter Choice (0-7, ENTER=7): ", "7")
+        choice = config.read_line_with_timeout("Enter Choice (0-8, ENTER=7): ", "7")
         if choice in ("0", "back", "exit"):
             break
         if choice == "1":
             res = test_target_page(driver, "Chrome", TARGET_PAGES[0], out_dir=out_dir)
             print("[Admin Dashboard Audit]", json.dumps(res.get("functionalTests"), indent=2))
+            print("[Best-Practice UI Audit]", json.dumps(res.get("bestPracticeUiAudit"), indent=2))
             run_trade = config.read_line_with_timeout("Run live trade + pre/post Dashboard Reflection Audit? (1=YES / 0=NO, ENTER=0): ", "0", 10.0)
             if run_trade == "1":
                 oms_dashboard.run_live_reflection_audit(driver)
@@ -667,11 +716,12 @@ def run_ui_testing_menu(driver: Any, out_dir: str = OUT_DIR) -> None:
             tp = TARGET_PAGES[int(choice) - 1]
             res = test_target_page(driver, "Chrome", tp, out_dir=out_dir)
             print(f"[ui_testing | {tp.label}] nav={res.get('navMethod')} | loadMs={res.get('loadMs')} | jsErr={res.get('jsErrorCount')} | overflow1366={res.get('overflowAt1366')}")
-            print("  Details:", json.dumps(res.get("functionalTests"), indent=2))
-        elif choice == "7":
-            run_ui_testing(existing_driver=driver, out_dir=out_dir)
+            print("  Functional:", json.dumps(res.get("functionalTests"), indent=2))
+            print("  UI Best-Practice:", json.dumps(res.get("bestPracticeUiAudit"), indent=2))
+        elif choice in ("7", "8"):
+            _run_browser_selection_menu(driver, out_dir)
         else:
-            print("[INVALID] Choose 0-7.")
+            print("[INVALID] Choose 0-8.")
 
 
 def run_ui_testing(browsers: Optional[List[str]] = None, headless: bool = False, out_dir: str = OUT_DIR, existing_driver: Any = None) -> Dict[str, Any]:
