@@ -143,18 +143,21 @@ def find_client_with_sufficient_cash_from_db(
             return d
     return "23986"
 
+MIN_COUNTERPARTY_BUY_CASH = 50000.0
+
 def resolve_buy_client_excluding(
     required_cash: float, inputted_client: Optional[str] = None, exclude_clients: Optional[Any] = None
 ) -> str:
-    """Resolves counterparty BUY client from input or public.clients_cash DB, never matching exclude_clients."""
+    """Resolves counterparty BUY client from input or public.clients_cash DB (Cash >= 50,000), never matching exclude_clients."""
     excl_list = [exclude_clients] if isinstance(exclude_clients, str) else list(exclude_clients or [])
     excl = {str(e).strip().lower() for e in excl_list if str(e).strip()}
     if inputted_client and inputted_client.strip():
         trimmed = inputted_client.strip()
         if trimmed.lower() not in excl:
             return trimmed
-        print(f"[RULE] Counterparty BUY client {trimmed} cannot match SELL client {excl_list}! Selecting from public.clients_cash DB...")
-    return find_client_with_sufficient_cash_from_db(max(1.0, required_cash), exclude_clients=excl)
+        print(f"[RULE] Counterparty BUY client {trimmed} cannot match SELL client {excl_list}! Selecting Cash >= 50,000 client from public.clients_cash DB...")
+    min_cash = max(MIN_COUNTERPARTY_BUY_CASH, float(required_cash or 0.0))
+    return find_client_with_sufficient_cash_from_db(min_cash, exclude_clients=excl)
 
 def resolve_cash_limit(
     specified_cash_limit: Optional[float],

@@ -268,9 +268,11 @@ public class Account_Limits {
         return "23986";
     }
 
+    public static final double MIN_COUNTERPARTY_BUY_CASH = 50000.0;
+
     /**
      * Resolves a BUY client from inputted client (if non-empty and not in excludeClients)
-     * or from public.clients_cash DB, strictly ensuring BUY != SELL client(s).
+     * or from public.clients_cash DB with Cash >= 50,000 BDT, strictly ensuring BUY != SELL client(s).
      */
     public static String resolveBuyClientExcluding(double requiredCash, String inputtedClient, Collection<String> excludeClients) {
         Set<String> excl = new HashSet<>();
@@ -284,14 +286,11 @@ public class Account_Limits {
             if (!excl.contains(trimmed.toLowerCase())) {
                 return trimmed;
             }
-            System.out.printf("[RULE] Counterparty BUY client %s cannot equal SELL client %s! Selecting from public.clients_cash DB...%n",
+            System.out.printf("[RULE] Counterparty BUY client %s cannot equal SELL client %s! Selecting >= 50,000 BDT cash client from public.clients_cash DB...%n",
                     trimmed, excludeClients);
         }
-        String dbClient = findClientWithSufficientCashFromDb(Math.max(1.0, requiredCash), excl, null);
-        if (dbClient != null && !excl.contains(dbClient.trim().toLowerCase())) {
-            return dbClient.trim();
-        }
-        return findClientWithSufficientCashFromDb(0.0, excl, null);
+        double minCash = Math.max(MIN_COUNTERPARTY_BUY_CASH, requiredCash);
+        return findClientWithSufficientCashFromDb(minCash, excl, null);
     }
 
     public static String resolveBuyClientExcluding(double requiredCash, String inputtedClient, String excludeClient) {

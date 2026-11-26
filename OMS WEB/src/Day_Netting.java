@@ -4629,8 +4629,8 @@ public class Day_Netting {
         if (!"SKIP".equals(tradeAction)) {
             WebDriverWait tradeWait = new WebDriverWait(driver, Duration.ofSeconds(10));
             String cpSeller = Position.resolveSellClientExcluding(driver, tradeInstrument, 25, cln, orderEx);
-            String cpBuyer = Account_Limits.resolveBuyClientExcluding(tradeRate * 35.0, counterpartyBuyIn, cln);
-            System.out.printf("[NETTING COUNTERPARTIES] NettingClient=%s | Counterparty SELL(Position/DB)=%s | Counterparty BUY(input/clients_cash DB)=%s%n",
+            String cpBuyer = Account_Limits.resolveBuyClientExcluding(Math.max(Account_Limits.MIN_COUNTERPARTY_BUY_CASH, tradeRate * 35.0), counterpartyBuyIn, cln);
+            System.out.printf("[NETTING COUNTERPARTIES] NettingClient=%s | Counterparty SELL(Position/DB)=%s | Counterparty BUY(input/clients_cash >= 50,000 BDT)=%s%n",
                     cln, cpSeller, cpBuyer);
             if (targetMode == NettingMode.NONE) {
                 System.out.printf("%n>>> [EXECUTING NONE MODE: BUY 25 (%s) -> TRADE SELL (%s) on %s @ %.2f] <<<%n",
@@ -4726,7 +4726,7 @@ public class Day_Netting {
         String sym = readLineWithTimeout(sc, "GP", 0);
         System.out.print("Enter Target Client Code to Audit (ENTER=23986): ");
         String cln = readLineWithTimeout(sc, "23986", 0);
-        System.out.printf("Enter Counterparty BUY Client for Netting SELL matching (ENTER=auto from clients_cash DB, != %s): ", cln);
+        System.out.printf("Enter Counterparty BUY Client for Netting SELL matching (ENTER=auto from clients_cash DB >= 50,000 BDT, != %s): ", cln);
         String cpBuyIn = readLineWithTimeout(sc, "", 0);
         System.out.print("Select Trading Board (1=PUBLIC [ENTER=Default], 2=BLOCK, 3=SPOT): ");
         String brdChoice = readLineWithTimeout(sc, "1", 0);

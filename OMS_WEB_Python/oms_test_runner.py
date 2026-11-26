@@ -31,7 +31,8 @@ def _test_sell_client_resolution_excludes_buy() -> bool:
     # Multi-buy exclusion
     chosen_multi = position._select_best_holder(positions, 100, exclude_clients=["23986", "11310"])
     assert chosen_multi is not None and chosen_multi.client_code == "00463", f"Expected 00463, got {chosen_multi}"
-    # SELL-first / Day Netting counterparty BUY resolution from input or clients_cash DB (!= sell/netting client)
+    # SELL-first / Day Netting counterparty BUY resolution from input or clients_cash DB (Cash >= 50,000 BDT, != sell/netting client)
+    assert account_limits.MIN_COUNTERPARTY_BUY_CASH >= 50000.0
     cp_buy_default = account_limits.resolve_buy_client_excluding(10000.0, None, "23986")
     assert cp_buy_default and cp_buy_default != "23986", f"Expected BUY != 23986, got {cp_buy_default}"
     cp_buy_same = account_limits.resolve_buy_client_excluding(10000.0, "23986", "23986")

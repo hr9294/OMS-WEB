@@ -1183,8 +1183,8 @@ def _execute_normal_netting_flow(
     if run_trade:
         try:
             cp_seller = position.resolve_sell_client_excluding(driver, trade_inst, 25, cln, order_ex)
-            cp_buyer = account_limits.resolve_buy_client_excluding(rate * 35.0, opp_buy_client, cln)
-            print(f"[NETTING COUNTERPARTIES] NettingClient={cln} | Counterparty SELL(Position/DB)={cp_seller} | Counterparty BUY(input/clients_cash DB)={cp_buyer}")
+            cp_buyer = account_limits.resolve_buy_client_excluding(max(account_limits.MIN_COUNTERPARTY_BUY_CASH, rate * 35.0), opp_buy_client, cln)
+            print(f"[NETTING COUNTERPARTIES] NettingClient={cln} | Counterparty SELL(Position/DB)={cp_seller} | Counterparty BUY(input/clients_cash >= 50,000 BDT)={cp_buyer}")
             if mode == NettingMode.CROSS_EXCHANGE:
                 cp_seller_dse = position.resolve_sell_client_excluding(driver, trade_inst, 25, cln, "DSE")
                 _execute_paired_netting_leg(driver, "BUY", cln, cp_seller_dse, trade_inst, 25, rate, "DSE")
@@ -1222,7 +1222,7 @@ def _run_normal_netting_live_audit(driver: webdriver.Chrome) -> None:
     pwd = config.read_line_with_timeout("Password Auth (ENTER=12345): ", "12345")
     sym = config.read_line_with_timeout("Target Symbol (ENTER=GP): ", "GP") or "GP"
     cln = config.read_line_with_timeout("Target Client (ENTER=23986): ", "23986") or "23986"
-    opp_buy = config.read_line_with_timeout(f"Counterparty BUY Client for SELL matching (ENTER=auto from clients_cash DB, != {cln}): ", "")
+    opp_buy = config.read_line_with_timeout(f"Counterparty BUY Client for SELL matching (ENTER=auto from clients_cash DB >= 50,000 BDT, != {cln}): ", "")
     brd = config.read_line_with_timeout("Board (PUBLIC [ENTER=Default] / BLOCK / SPOT): ", "PUBLIC").upper() or "PUBLIC"
     run_trade = config.read_line_with_timeout("Execute Live Trade? (1=YES [ENTER=Default], 0=Audit Only): ", "1") != "0"
     _execute_normal_netting_flow(driver, mode, ex, sym, cln, brd, pwd, run_trade, opp_buy)
