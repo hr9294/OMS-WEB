@@ -68,10 +68,41 @@ def show_frontend_banner(driver: webdriver.Chrome, msg: str, border_color: str =
     except Exception:
         pass
 
+def open_widget_tab(driver: webdriver.Chrome, title_kw: str) -> bool:
+    if not driver or not title_kw:
+        return False
+    try:
+        ok = bool(driver.execute_script("""
+            var kw = (arguments[0] || '').toLowerCase().trim();
+            var tw = window.tradingwindow || window.myLayout;
+            if (tw && tw.root && tw.root.getItemsByType) {
+                var stacks = tw.root.getItemsByType('stack') || [];
+                for (var s = 0; s < stacks.length; s++) {
+                    var items = stacks[s].contentItems || [];
+                    for (var c = 0; c < items.length; c++) {
+                        var t = ((items[c].config && items[c].config.title) || '').toLowerCase().trim();
+                        if (t === kw || t.indexOf(kw) !== -1) {
+                            try { stacks[s].setActiveContentItem(items[c]); return true; } catch(e) {}
+                        }
+                    }
+                }
+            }
+            var tab = Array.from(document.querySelectorAll('.lm_tab')).find(function(t) {
+                return (t.getAttribute('title') || t.innerText || '').toLowerCase().indexOf(kw) !== -1;
+            });
+            if (tab) { (tab.querySelector('.lm_title') || tab).click(); return true; }
+            return false;
+        """, title_kw))
+        time.sleep(0.3)
+        return ok
+    except Exception:
+        return False
+
 def maximize_widget(driver: webdriver.Chrome, title_kw: str) -> bool:
     if not driver or not title_kw:
         return False
     try:
+        open_widget_tab(driver, title_kw)
         return bool(driver.execute_script("""
             var kw = (arguments[0] || '').toLowerCase();
             var tab = Array.from(document.querySelectorAll('.lm_tab')).find(function(t) {
@@ -457,9 +488,9 @@ def snapshot_current_ui_settings(driver: webdriver.Chrome) -> None:
 
                 var occ = document.getElementById('order_client_code');
                 var pci = document.getElementById('portfolio_code_input');
-                var lcc = document.getElementById('limit_client_code');
+                var lcc = document.getElementById('account_limit_code') || document.getElementById('limit_client_code');
                 var otc = document.getElementById('order_terminal_code');
-                var scc = document.getElementById('summary_client_code');
+                var scc = document.getElementById('order_summary_code') || document.getElementById('summary_client_code');
                 res.clientCode = (occ && occ.value) ? occ.value : ((pci && pci.value) ? pci.value : ((lcc && lcc.value) ? lcc.value : ((otc && otc.value) ? otc.value : ((scc && scc.value) ? scc.value : ''))));
 
                 var sel = document.querySelector('.chooseColor .selectedColor');
@@ -543,12 +574,18 @@ def propagate_client_code_to_all_widgets(
     try:
         driver.execute_script("""
             var code = arguments[0];
-            var inp = document.getElementById('limit_client_code') || document.querySelector('div.account-limit input, div[id*="limit"] input, div[id*="account"] input');
+            try { if (typeof system_username !== 'undefined' && system_username) localStorage.setItem(system_username + '_last_selected_client_code', code); } catch(e) {}
+            var inp = document.getElementById('account_limit_code') || document.querySelector('input[name="account_limit_code"], #limit_client_code, div.account-limit input, div[id*="limit"] input');
             if (inp) {
                 inp.value = code;
-                if (window.jQuery) { $(inp).trigger('input').trigger('change'); }
+                if (window.jQuery) { window.jQuery(inp).val(code).trigger('input').trigger('change'); }
+                else { inp.dispatchEvent(new Event('input', {bubbles:true})); inp.dispatchEvent(new Event('change', {bubbles:true})); }
+                if (typeof get_account_limit === 'function') { try { get_account_limit(); } catch(e) {} }
+                if (typeof get_client_code_data === 'function') { try { get_client_code_data(inp); } catch(e) {} }
             }
         """, clean_client)
+        import account_limits
+        account_limits.filter_by_client(driver, clean_client)
     except Exception:
         pass
 
@@ -1515,10 +1552,11 @@ def capture_6widgets_ui_snapshot(
 
     # 5. Account Limits (UI DOM - Summary & All Rows)
     try:
+        open_widget_tab(driver, "Account Limits")
         limits_script = """
         var summary = { rem_cash: '-', cash_day_order: '-', total_tx: '-' };
         var cashRows = [];
-        var cTable = document.getElementById('cash_table') || document.querySelector('table[id*=cash]');
+        var cTable = document.getElementById('account_cash_summary') || document.getElementById('cash_table') || document.querySelector('table[id*=cash]');
         if (cTable) {
             var rows = cTable.querySelectorAll('tbody tr');
             for (var i = 0; i < rows.length; i++) {
@@ -1541,7 +1579,7 @@ def capture_6widgets_ui_snapshot(
             }
         }
         var capRows = [];
-        var capTable = document.getElementById('capital_table') || document.querySelector('table[id*=capital]');
+        var capTable = document.getElementById('account_limit_summary') || document.getElementById('capital_table') || document.querySelector('table[id*=capital]');
         if (capTable) {
             var rows = capTable.querySelectorAll('tbody tr');
             for (var j = 0; j < rows.length; j++) {

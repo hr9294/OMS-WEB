@@ -187,29 +187,50 @@ def navigate_to_account_limits(driver: webdriver.Chrome) -> None:
         return
     try:
         driver.execute_script("""
-            var el = document.querySelector('a[data-link*="account_limit"], a[href*="limit"], .lm_tab[title*="Limit"]');
+            var tw = window.tradingwindow || window.myLayout;
+            if (tw && tw.root && tw.root.getItemsByType) {
+                var stacks = tw.root.getItemsByType('stack') || [];
+                for (var s = 0; s < stacks.length; s++) {
+                    var items = stacks[s].contentItems || [];
+                    for (var c = 0; c < items.length; c++) {
+                        var title = ((items[c].config && items[c].config.title) || '').toLowerCase();
+                        if (title.indexOf('account limit') !== -1 || title === 'limits') {
+                            try { stacks[s].setActiveContentItem(items[c]); return true; } catch(e) {}
+                        }
+                    }
+                }
+            }
+            var tab = Array.from(document.querySelectorAll('.lm_tab')).find(function(t) {
+                return (t.getAttribute('title') || t.innerText || '').toLowerCase().indexOf('account limit') !== -1;
+            });
+            if (tab) { (tab.querySelector('.lm_title') || tab).click(); return true; }
+            var el = document.querySelector('a[data-link*="account_limit"], a[href*="limit"]');
             if (el) { el.click(); return true; }
             return false;
         """)
-        time.sleep(0.5)
+        time.sleep(0.4)
     except Exception:
         pass
 
 def filter_by_client(driver: webdriver.Chrome, client_code: str) -> None:
     if not driver or not client_code:
         return
+    navigate_to_account_limits(driver)
+    clean_client = client_code.strip()
     try:
         driver.execute_script("""
             var code = arguments[0];
-            var inp = document.getElementById('account_limit_code') || document.getElementById('limit_client_code') ||
-                      document.querySelector('div.account-limit input, div[id*="limit"] input');
-            if (inp) {
-                inp.value = code;
-                if (window.jQuery) $(inp).val(code).trigger('input').trigger('change');
-                else { inp.dispatchEvent(new Event('input', {bubbles:true})); inp.dispatchEvent(new Event('change', {bubbles:true})); }
+            var al = document.getElementById('account_limit_code') ||
+                     document.querySelector('input[name="account_limit_code"], #limit_client_code, div.account-limit input, div[id*="limit"] input');
+            if (al) {
+                al.value = code;
+                if (window.jQuery) { window.jQuery(al).val(code).trigger('input').trigger('change'); }
+                else { al.dispatchEvent(new Event('input', {bubbles:true})); al.dispatchEvent(new Event('change', {bubbles:true})); }
+                if (typeof get_account_limit === 'function') { try { get_account_limit(); } catch(e) {} }
+                if (typeof get_client_code_data === 'function') { try { get_client_code_data(al); } catch(e) {} }
             }
-        """, client_code.strip())
-        time.sleep(0.4)
+        """, clean_client)
+        time.sleep(0.5)
     except Exception:
         pass
 
@@ -298,27 +319,41 @@ def get_ui_snapshot(driver: webdriver.Chrome, client_code: str) -> Dict[str, str
     if not driver:
         return ui_data
     try:
+        if client_code and client_code.strip():
+            filter_by_client(driver, client_code.strip())
+        else:
+            navigate_to_account_limits(driver)
         res = driver.execute_script("""
             var out = {};
-            var cTable = document.getElementById('cash_table') || document.querySelector('table[id*="cash"]');
+            var cTable = document.getElementById('account_cash_summary') || document.getElementById('cash_table') || document.querySelector('table[id*="cash"]');
             if (cTable) {
                 Array.from(cTable.querySelectorAll('tbody tr')).forEach(function(r) {
                     var c = r.querySelectorAll('td');
                     if (c.length >= 5 && c[0].innerText.toLowerCase().indexOf('cash') !== -1) {
+                        out.Initial_Limit = c[1].innerText.trim();
                         out.Remaining_Cash = c[2].innerText.trim();
                         out.Cash_Day_Order = c[3].innerText.trim();
                         out.Total_Transaction = c[4].innerText.trim();
+                        if (c[5]) out.Net_Transaction = c[5].innerText.trim();
                     }
                 });
             }
-            var capTable = document.getElementById('capital_table') || document.querySelector('table[id*="capital"]');
+            var capTable = document.getElementById('account_limit_summary') || document.getElementById('capital_table') || document.querySelector('table[id*="capital"]');
             if (capTable) {
                 Array.from(capTable.querySelectorAll('tbody tr')).forEach(function(r) {
                     var c = r.querySelectorAll('td');
                     if (c.length >= 4) {
                         var h = c[0].innerText.toLowerCase();
-                        if (h.indexOf('buy') !== -1) out.Buy_Exec_Value = c[2].innerText.trim();
-                        if (h.indexOf('sell') !== -1) out.Sell_Exec_Value = c[2].innerText.trim();
+                        if (h.indexOf('buy') !== -1) {
+                            out.Buy_Day_Order = c[2].innerText.trim();
+                            out.Buy_Exec_Value = c[3].innerText.trim();
+                            if (c[4]) out.Buy_Remaining = c[4].innerText.trim();
+                        }
+                        if (h.indexOf('sell') !== -1) {
+                            out.Sell_Day_Order = c[2].innerText.trim();
+                            out.Sell_Exec_Value = c[3].innerText.trim();
+                            if (c[4]) out.Sell_Remaining = c[4].innerText.trim();
+                        }
                     }
                 });
             }

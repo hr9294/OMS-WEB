@@ -3740,30 +3740,47 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		JavascriptExecutor js = (JavascriptExecutor) driver;
 		String script =
 			"var targetHex = arguments[0];" +
-			"var chooseColors = Array.from(document.querySelectorAll('.chooseColor'));" +
+			"var disabled = {'market sentiment':1,'advance decline':1,'top sectors':1,'sector gain':1,'corp. events':1,'index impact':1,'index chart':1,'time & sales ticker':1,'block vs public volume chart':1,'bulk order':1,'order execution':1,'stock info':1,'indexes':1};" +
+			"function normTitle(t) { var c = (t||'').replace(/[\\u2715\\u274c\\u00d7]/g,'').replace(/\\s+/g,' ').trim(); return c === 'Order Terminal' ? 'Order Terminal 1' : c; }" +
+			"var u = typeof system_username !== 'undefined' ? system_username : '', pg = typeof profile_page !== 'undefined' ? profile_page : '';" +
+			"var pidEl = document.querySelector('#profile li.profile-selected-li');" +
+			"var pid = (pidEl && pidEl.getAttribute('data-value')) || (typeof profile_pid !== 'undefined' ? profile_pid : '');" +
+			"var prefix = (u && pg && pid) ? (u + '_' + pg + '_' + pid + '_') : null;" +
+			"function pickOnStack(container, hex) {" +
+			"    var cc = container ? container.querySelector('.chooseColor') : null;" +
+			"    if (!cc) return false;" +
+			"    var li = Array.from(cc.querySelectorAll('ul.color-card li.color-item')).find(function(x) { var d = x.querySelector('[data-link-color]'); return d && (d.getAttribute('data-link-color')||'').toLowerCase() === hex.toLowerCase(); });" +
+			"    if (!li) return false;" +
+			"    if (window.$) window.$(li).trigger('click'); else li.click();" +
+			"    var sel = cc.querySelector('.selectedColor');" +
+			"    if (sel) { sel.style.backgroundColor = hex; var nl = sel.querySelector('.selected-no-link'); if (nl) nl.style.display = 'none'; }" +
+			"    return true;" +
+			"}" +
 			"var results = [];" +
-			"chooseColors.forEach(function(chooseDiv, index) {" +
-			"    var stack = chooseDiv.closest('.lm_stack');" +
-			"    var posTab = stack ? stack.querySelector('.lm_tab[title*=Position], .lm_tab .lm_title') : null;" +
-			"    var activeTab = stack ? stack.querySelector('.lm_tab.lm_active .lm_title, .lm_tab .lm_title') : null;" +
-			"    var title = activeTab ? activeTab.innerText.trim() : (posTab ? 'Position' : ('Widget ' + (index + 1)));" +
-			"    var items = Array.from(chooseDiv.querySelectorAll('ul.color-card li.color-item'));" +
-			"    var targetLi = items.find(function(li) {" +
-			"        var colorDiv = li.querySelector('[data-link-color]');" +
-			"        return colorDiv && colorDiv.getAttribute('data-link-color').toLowerCase() === targetHex.toLowerCase();" +
+			"Array.from(document.querySelectorAll('.lm_stack')).forEach(function(stack, sIdx) {" +
+			"    var tabs = Array.from(stack.querySelectorAll('.lm_header .lm_tab, .lm_tab'));" +
+			"    var origTab = stack.querySelector('.lm_header .lm_tab.lm_active, .lm_tab.lm_active') || tabs[0] || null;" +
+			"    tabs.forEach(function(tab) {" +
+			"        var tEl = tab.querySelector('.lm_title') || tab;" +
+			"        var title = normTitle(tEl.innerText || tab.getAttribute('title') || '');" +
+			"        if (!title || disabled[title.toLowerCase()]) return;" +
+			"        try { tEl.click(); } catch(e) { try { tab.click(); } catch(e2) {} }" +
+			"        var ok = pickOnStack(stack, targetHex);" +
+			"        if (ok && prefix) { try { localStorage.setItem(prefix + title + '_color', targetHex); } catch(e) {} }" +
+			"        results.push({ index: results.length + 1, title: title, success: ok, color: targetHex });" +
 			"    });" +
-			"    if (targetLi) {" +
-			"        if (window.$) {" +
-			"            window.$(targetLi).trigger('click');" +
-			"        } else {" +
-			"            targetLi.click();" +
-			"        }" +
-			"        var selectedDiv = chooseDiv.querySelector('.selectedColor');" +
-			"        results.push({ index: index + 1, title: title, success: true, color: selectedDiv ? selectedDiv.style.backgroundColor : '' });" +
-			"    } else {" +
-			"        results.push({ index: index + 1, title: title, success: false, color: '' });" +
+			"    if (origTab && !origTab.classList.contains('lm_active')) {" +
+			"        var oTitle = normTitle((origTab.querySelector('.lm_title') || origTab).innerText || '');" +
+			"        if (!disabled[oTitle.toLowerCase()]) { try { (origTab.querySelector('.lm_title') || origTab).click(); } catch(e) {} }" +
 			"    }" +
 			"});" +
+			"if (results.length === 0) {" +
+			"    Array.from(document.querySelectorAll('.chooseColor')).forEach(function(cc, idx) {" +
+			"        var st = cc.closest('.lm_stack'); var ok = pickOnStack(st || cc.parentElement, targetHex);" +
+			"        results.push({ index: idx + 1, title: 'Widget ' + (idx + 1), success: ok, color: targetHex });" +
+			"    });" +
+			"}" +
+			"try { if (typeof show_hide_no_link === 'function') show_hide_no_link(); var al = document.getElementById('account_limit_code'); if (al && al.value && typeof get_account_limit === 'function') get_account_limit(); } catch(e) {}" +
 			"return results;";
 		@SuppressWarnings("unchecked")
 		List<Map<String, Object>> results = (List<Map<String, Object>>) js.executeScript(script, targetHex);
