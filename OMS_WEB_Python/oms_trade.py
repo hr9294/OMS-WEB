@@ -982,7 +982,8 @@ def place_order(
     qty: int,
     rate: float,
     exchange: str = "DSE",
-    order_type: str = "Limit"
+    order_type: str = "Limit",
+    exclude_clients: Optional[Any] = None
 ) -> bool:
     """
     Submits a BUY or SELL order in the Order Entry Form.
@@ -993,16 +994,22 @@ def place_order(
     sym_clean = oms_price.clean_symbol(symbol)
     wait = WebDriverWait(driver, 6)
 
-    # Proactively check saleable quantity for SELL orders; shift to another client if insufficient
+    # Proactively check saleable quantity for SELL orders; shift to another client if insufficient or in exclude_clients
     if side_clean == "SELL":
         try:
             import position
-            best_seller = position.find_client_with_saleable(driver, sym_clean, qty, client_code, exchange)
+            best_seller = (
+                position.find_client_with_saleable_excluding(driver, sym_clean, qty, exchange=exchange, exclude_clients=exclude_clients)
+                if exclude_clients
+                else position.find_client_with_saleable(driver, sym_clean, qty, client_code, exchange)
+            )
             if best_seller and best_seller.client_code.lower() != str(client_code).lower():
-                print(f"  [AUTO-SHIFT: SALEABLE BALANCE] Client {client_code} has insufficient saleable shares! Shifting to Client {best_seller.client_code} (Saleable: {best_seller.saleable_qty:,.0f}). Continuing without closing code!")
+                print(f"  [AUTO-SHIFT: SALEABLE BALANCE] Shifting SELL from Client {client_code} -> {best_seller.client_code} (Saleable: {best_seller.saleable_qty:,.0f}).")
                 client_code = best_seller.client_code
                 if best_seller.saleable_qty < qty:
                     qty = int(max(1, best_seller.saleable_qty))
+            elif exclude_clients and str(client_code).strip().lower() in {str(e).strip().lower() for e in exclude_clients}:
+                client_code = position.resolve_sell_client_excluding(driver, sym_clean, qty, exclude_clients, exchange)
         except Exception:
             pass
 
@@ -1155,7 +1162,12 @@ def normal_trade_flow(driver: webdriver.Chrome, instrument: str) -> None:
         side_text = "SELL" if side_in == "2" else "BUY"
         ex_in = input("\nSelect Exchange (1=DSE [default] / 2=CSE / 3=Priority): ").strip()
         exchange = "CSE" if ex_in == "2" else ("Priority" if ex_in == "3" else "DSE")
-        client_code = input(f"Enter Client Code (default {DEFAULT_CLIENT_CODE}): ").strip() or DEFAULT_CLIENT_CODE
+        if side_text == "SELL":
+            import position
+            default_sell = position.resolve_sell_client_excluding(driver, instrument, 10, DEFAULT_CLIENT_CODE, exchange)
+            client_code = input(f"Enter SELL Client Code (from Position / Client_Position DB, default {default_sell}): ").strip() or default_sell
+        else:
+            client_code = input(f"Enter Client Code (default {DEFAULT_CLIENT_CODE}): ").strip() or DEFAULT_CLIENT_CODE
         if side_text == "BUY":
             audit_ch = input("\nDo you want to run 5-Stage BUY Lifecycle Audit across 6 widgets? (1=YES / 0=NO, default 0): ").strip()
             if audit_ch == "1":
@@ -1220,6 +1232,16 @@ def select_order_status(driver: webdriver.Chrome, instrument: str) -> None:
         # Place limit order far away then cancel in Terminal
         safe_price = ref_price * 0.7
         place_order(driver, "BUY", DEFAULT_CLIENT_CODE, instrument, 10, safe_price)
+    elif ch == "2":
+        import position
+        buy_c = input(f"Enter BUY Client Code (default {DEFAULT_CLIENT_CODE}): ").strip() or DEFAULT_CLIENT_CODE
+        default_sell = position.resolve_sell_client_excluding(driver, instrument, 10, buy_c, "DSE")
+        sell_c = input(f"Enter SELL Client Code (from Position / Client_Position DB, != {buy_c}, default {default_sell}): ").strip() or default_sell
+        if sell_c.lower() == buy_c.lower():
+            sell_c = default_sell
+        place_order(driver, "BUY", buy_c, instrument, 10, ref_price)
+        time.sleep(0.8)
+        place_order(driver, "SELL", sell_c, instrument, 10, ref_price, exclude_clients=[buy_c])
     else:
         # Default accepted
         safe_price = ref_price * 0.85
@@ -2034,19 +2056,11 @@ def run_sequential_buy_lifecycle_audit(
         ref_price = 100.0
     print(f"[PRICE ENGINE] Real-time reference LTP for {clean_sym}: {ref_price:.2f} BDT")
 
-    # Dynamic counterparty seller client with saleable verification:
+    # Dynamic counterparty seller client from Position / Client_Position DB, strictly excluding BUY client:
     seller = sell_client
-    if not seller:
-        try:
-            holders = position.get_clients_with_saleable(driver, clean_sym, ex)
-            valid_holders = [h for h in holders if h.client_code.strip() != buyer.strip() and h.saleable_qty >= 10]
-            if valid_holders:
-                seller = valid_holders[0].client_code
-                print(f"[AUTO-SHIFT COUNTERPARTY] Found Client {seller} with {valid_holders[0].saleable_qty:.0f} saleable shares.")
-            else:
-                seller = "11310"
-        except Exception:
-            seller = "11310"
+    if not seller or str(seller).strip().lower() == str(buyer).strip().lower():
+        seller = position.resolve_sell_client_excluding(driver, clean_sym, 10, buyer, ex)
+        print(f"[AUTO-SHIFT COUNTERPARTY] Resolved SELL Client {seller} for {clean_sym} (excluding BUY client {buyer}).")
 
     # [STEP 0] Baseline pre-trade 6-widget UI DOM snapshot (FIRST DATA)
     print("\n>>> [STEP 0/5] CAPTURING BASELINE PRE-TRADE REAL-TIME UI DATA ACROSS 6 WIDGETS...")

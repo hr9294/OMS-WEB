@@ -12,7 +12,26 @@ import client_portfolio
 import day_netting
 import oms_trade
 import order_terminal
+import position
 import rms
+
+
+def _test_sell_client_resolution_excludes_buy() -> bool:
+    """Verifies SELL client resolves from Position/Client_Position DB and never equals BUY client."""
+    positions = [
+        position.ClientPosition("23986", "GP", "DSE", 1000, 1000),
+        position.ClientPosition("11310", "GP", "DSE", 500, 500),
+        position.ClientPosition("00463", "GP", "DSE", 200, 200),
+    ]
+    chosen = position._select_best_holder(positions, 100, exclude_client="23986")
+    assert chosen is not None and chosen.client_code == "11310", f"Expected 11310, got {chosen}"
+    # Fallback when live Position widget returns empty or only BUY client
+    fb = position.resolve_sell_client_excluding(None, "GP", 10, ["23986", "11310"], "DSE")
+    assert fb not in ("23986", "11310"), f"Expected distinct SELL client, got {fb}"
+    # Multi-buy exclusion
+    chosen_multi = position._select_best_holder(positions, 100, exclude_clients=["23986", "11310"])
+    assert chosen_multi is not None and chosen_multi.client_code == "00463", f"Expected 00463, got {chosen_multi}"
+    return True
 
 def _test_order_terminal_reflection() -> bool:
     before = {"Order_ID": "ORD-1001", "Side": "BUY", "Status": "NEW", "Qty": "0", "Price": "0.0"}
@@ -61,6 +80,7 @@ def run_unified_tests(mode: str = "all") -> bool:
     if run_limits:
         suites.append(("Cash Limit 3-Tier Precedence", account_limits.test_resolve_cash_limit_scenarios, "5 hierarchy tiers verified", "Hierarchy mismatch"))
         suites.append(("Price Limit Breach & Clamping", oms_trade.test_price_limit_breach_clamping, "Clamping & regex verified (12/12)", "Clamping failure"))
+        suites.append(("SELL Client Exclusion & DB", _test_sell_client_resolution_excludes_buy, "SELL != BUY & Client_Position DB OK", "SELL exclusion failed"))
     if run_rms:
         suites.append(("RMS Pre-Trade Audit & Trade Gate", rms.test_pre_trade_rms_audit_scenarios, "8/8 RMS & Trade Gate scenarios passed", "RMS audit rule mismatch"))
     if run_limits:

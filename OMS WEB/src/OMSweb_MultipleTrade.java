@@ -8,13 +8,16 @@ import java.util.Properties;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Scanner;
+import java.util.Set;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.Keys;
@@ -614,20 +617,35 @@ public class OMSweb_MultipleTrade {
         System.out.println("\n[HFT DISCOVERY: 3. AUTO-DISCOVERING HOLDING CLIENTS FOR SELL SIDE]");
         System.out.println("Querying real portfolio holdings from backend without leaving Trade page...");
         Map<String, List<String>> sellClientsBySymbol = new LinkedHashMap<>();
+        activeBuyClients.clear();
+        Set<String> buySet = new HashSet<>();
+        for (String b : buyClients) {
+            if (b != null && !b.trim().isEmpty()) {
+                buySet.add(b.trim().toLowerCase(Locale.ROOT));
+                activeBuyClients.add(b.trim().toLowerCase(Locale.ROOT));
+            }
+        }
         int holderDiscLimit = Math.min(symbols.size(), 20);
         for (int i = 0; i < holderDiscLimit; i++) {
             String sym = symbols.get(i);
-            List<String> holders = fetchHoldingClientsForSymbol(driver, sym, activeExchange);
+            List<String> holders = new ArrayList<>();
+            for (String h : fetchHoldingClientsForSymbol(driver, sym, activeExchange)) {
+                if (!buySet.contains(h.trim().toLowerCase(Locale.ROOT))) holders.add(h);
+            }
+            if (holders.isEmpty()) holders.add(Position.resolveSellClientExcluding(driver, sym, 10, buyClients, activeExchange));
             sellClientsBySymbol.put(sym, holders);
-            System.out.printf("  ✔ %-10s -> Found %2d holding client(s) with saleable shares: %s%n",
+            System.out.printf("  ✔ %-10s -> Found %2d SELL client(s) (!= BUY) with saleable shares: %s%n",
                     sym, holders.size(), holders.subList(0, Math.min(5, holders.size())));
         }
         if (symbols.size() > holderDiscLimit) {
-            List<String> defaultSellers = Arrays.asList("00463", "00600", "00224", "08096", "11310", "12245", "14118");
+            List<String> defaultSellers = new ArrayList<>();
+            for (String fb : Arrays.asList("11310", "00463", "00600", "00224", "08096", "12245", "14118")) {
+                if (!buySet.contains(fb.toLowerCase(Locale.ROOT))) defaultSellers.add(fb);
+            }
             for (int i = holderDiscLimit; i < symbols.size(); i++) {
                 sellClientsBySymbol.put(symbols.get(i), defaultSellers);
             }
-            System.out.printf("  ✔ [%d more public symbols mapped instantly to verified holding accounts %s]%n",
+            System.out.printf("  ✔ [%d more public symbols mapped instantly to non-BUY holding accounts %s]%n",
                     symbols.size() - holderDiscLimit, defaultSellers);
         }
         // 4. HFT Simulation Strategy
@@ -837,18 +855,47 @@ public class OMSweb_MultipleTrade {
         return placeSingleOrderFast(driver, wait, js, order, null);
     }
 
+    private static final Set<String> activeBuyClients = Collections.synchronizedSet(new HashSet<>());
+
+    private static String pickDistinctSeller(List<String> sellers, String sym, Collection<String> excludeClients) {
+        Set<String> excl = new HashSet<>();
+        if (excludeClients != null) {
+            for (String e : excludeClients) {
+                if (e != null && !e.trim().isEmpty()) excl.add(e.trim().toLowerCase(Locale.ROOT));
+            }
+        }
+        if (sellers != null) {
+            for (String s : sellers) {
+                if (s != null && !s.trim().isEmpty() && !excl.contains(s.trim().toLowerCase(Locale.ROOT))) {
+                    return s.trim();
+                }
+            }
+        }
+        return Position.resolveSellClientExcluding(null, sym, 10, excl, activeExchange);
+    }
+
     public static boolean placeSingleOrderFast(WebDriver driver, WebDriverWait wait, JavascriptExecutor js, TradeOrder order, CircuitLimits limits) {
         try {
             OMSweb_Trade.ensureUIUnlocked(driver);
-            // Auto-shift SELL order to another client if current client has insufficient saleable quantity
+            // Auto-shift SELL order to another non-BUY holding client if current client lacks shares or matches a BUY client
             if (order.side == OrderSide.SELL) {
-                Position.ClientPosition bestSeller = Position.findClientWithSaleable(driver, order.symbol, order.quantity, order.clientCode, activeExchange);
+                boolean matchesBuy = order.clientCode != null && activeBuyClients.contains(order.clientCode.trim().toLowerCase(Locale.ROOT));
+                List<Position.ClientPosition> positions = Position.getPositions(driver, order.symbol, activeExchange);
+                Position.ClientPosition bestSeller = null;
+                for (Position.ClientPosition cp : positions) {
+                    if (cp.getClientCode() != null && !activeBuyClients.contains(cp.getClientCode().trim().toLowerCase(Locale.ROOT)) && cp.getSaleableQty() >= order.quantity) {
+                        if (cp.getClientCode().equalsIgnoreCase(order.clientCode)) { bestSeller = cp; break; }
+                        if (bestSeller == null) bestSeller = cp;
+                    }
+                }
                 if (bestSeller != null && !bestSeller.getClientCode().equalsIgnoreCase(order.clientCode)) {
-                    System.out.printf("  [AUTO-SHIFT] Client %s does not have %d saleable shares of %s. Shifting to Client %s (Saleable: %,.0f shares)...%n",
-                            order.clientCode, order.quantity, order.symbol, bestSeller.getClientCode(), bestSeller.getSaleableQty());
+                    System.out.printf("  [AUTO-SHIFT] Shifting SELL %s order from %s -> %s (Saleable: %,.0f)...%n",
+                            order.symbol, order.clientCode, bestSeller.getClientCode(), bestSeller.getSaleableQty());
                     order.clientCode = bestSeller.getClientCode();
-                    if (bestSeller.getSaleableQty() < order.quantity) {
-                        order.quantity = (int) Math.max(1, bestSeller.getSaleableQty());
+                } else if (matchesBuy || bestSeller == null) {
+                    String resolved = Position.resolveSellClientExcluding(driver, order.symbol, order.quantity, activeBuyClients, activeExchange);
+                    if (resolved != null && !resolved.equalsIgnoreCase(order.clientCode)) {
+                        order.clientCode = resolved;
                     }
                 }
             }
@@ -1016,8 +1063,11 @@ public class OMSweb_MultipleTrade {
                     String buyer3 = buyClients.get((buyIdx + 2) % buyClientCount);
                     buyIdx += 3;
                     List<String> sellers = sellClientsBySymbol.getOrDefault(sym, Collections.emptyList());
-                    String seller1 = (sellers != null && !sellers.isEmpty()) ? sellers.get(0) : "00463";
-                    String seller2 = (sellers != null && sellers.size() > 1) ? sellers.get(1) : (seller1.equals("00463") ? "00600" : "00463");
+                    String seller1 = pickDistinctSeller(sellers, sym, buyClients);
+                    List<String> excl2 = new ArrayList<>(buyClients);
+                    excl2.add(seller1);
+                    String seller2 = pickDistinctSeller(sellers, sym, excl2);
+                    if (seller2.equalsIgnoreCase(buyer2)) seller2 = seller1;
                     int pattern = (s + sweep) % 4;
                     switch (pattern) {
                         case 0:
@@ -1064,9 +1114,13 @@ public class OMSweb_MultipleTrade {
             String clientCode;
             if (side == OrderSide.BUY) {
                 clientCode = buyClients.get((i / 2) % buyClientCount);
+                activeBuyClients.add(clientCode.trim().toLowerCase(Locale.ROOT));
             } else {
                 List<String> sellers = sellClientsBySymbol.getOrDefault(symbol, Collections.emptyList());
-                clientCode = (sellers != null && !sellers.isEmpty()) ? sellers.get(0) : "00463";
+                String pairedBuyer = buyClients.get((i / 2) % buyClientCount);
+                List<String> excl = new ArrayList<>(buyClients);
+                excl.add(pairedBuyer);
+                clientCode = pickDistinctSeller(sellers, symbol, excl);
             }
             // Varied standard trading lot size (10, 15, 20 shares)
             int qty = 10 + ((i % 3) * 5);
@@ -1126,7 +1180,10 @@ public class OMSweb_MultipleTrade {
             System.out.printf("[WARN: HFT Holder Discovery] Failed querying API for %s: %s%n", cleanSym, e.getMessage());
         }
         if (clients.isEmpty()) {
-            clients.addAll(Arrays.asList("00463", "00600", "00224", "08096", "11310", "12245", "14118"));
+            clients.addAll(Position.getHoldersFromClientPositionDb(cleanSym, 1.0, null));
+        }
+        if (clients.isEmpty()) {
+            clients.addAll(Arrays.asList("11310", "00463", "00600", "00224", "08096", "12245", "14118"));
         }
         return clients;
     }

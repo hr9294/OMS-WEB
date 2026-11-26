@@ -2,6 +2,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -420,19 +421,35 @@ public class OMSweb_MultiOrderExecution {
     // 3. PIPELINE BUILDER (Manual BUY Entry + SELL from Position, 100% on Trade Page)
     // =========================================================================
     private static List<String> getPositionHoldingSellClients(WebDriver driver, String symbol, String exchange) {
+        return getPositionHoldingSellClients(driver, symbol, exchange, null);
+    }
+
+    private static List<String> getPositionHoldingSellClients(WebDriver driver, String symbol, String exchange, Collection<String> excludeClients) {
         List<String> sellClients = new ArrayList<>();
+        Set<String> excl = new HashSet<>();
+        if (excludeClients != null) {
+            for (String e : excludeClients) {
+                if (e != null && !e.trim().isEmpty()) excl.add(e.trim().toLowerCase());
+            }
+        }
         try {
             List<Position.ClientPosition> positions = Position.fetchPositionsFromApi(driver, symbol, exchange);
             if (positions != null && !positions.isEmpty()) {
                 for (Position.ClientPosition cp : positions) {
-                    if (cp.getSaleableQty() > 0 && !sellClients.contains(cp.getClientCode())) {
-                        sellClients.add(cp.getClientCode());
+                    String c = (cp.getClientCode() != null) ? cp.getClientCode().trim() : "";
+                    if (!c.isEmpty() && cp.getSaleableQty() > 0 && !excl.contains(c.toLowerCase()) && !sellClients.contains(c)) {
+                        sellClients.add(c);
                     }
                 }
             }
         } catch (Exception ignored) {}
         if (sellClients.isEmpty()) {
-            sellClients.addAll(Arrays.asList("00128", "00463", "00600", "00916", "01005", "01007", "01008", "01109", "11310"));
+            sellClients.addAll(Position.getHoldersFromClientPositionDb(symbol, 1.0, excludeClients));
+        }
+        if (sellClients.isEmpty()) {
+            for (String fb : Arrays.asList("11310", "00128", "00463", "00600", "00916", "01005", "01007", "01008", "01109")) {
+                if (!excl.contains(fb.toLowerCase())) sellClients.add(fb);
+            }
         }
         return sellClients;
     }
@@ -472,10 +489,16 @@ public class OMSweb_MultiOrderExecution {
             System.out.printf("\nEnter BUY Client Code(s) (single or comma-separated, default=%s): ", DEFAULT_BUY_CLIENTS.get(0));
             String buyIn = readLineWithTimeout(sc, DEFAULT_BUY_CLIENTS.get(0), 3).trim();
             List<String> buyClients = parseClientList(buyIn, DEFAULT_BUY_CLIENTS);
-            String defaultSell = !posHolders.isEmpty() ? posHolders.get(0) : "00128";
-            System.out.printf("Enter Opposite SELL Client Code (from Position) [default=%s]: ", defaultSell);
+            String defaultSell = Position.resolveSellClientExcluding(driver, symbol, 10, buyClients, exchange);
+            System.out.printf("Enter Opposite SELL Client Code (from Position / Client_Position DB, != BUY, default=%s): ", defaultSell);
             String sellIn = readLineWithTimeout(sc, defaultSell, 3).trim();
             String sellClient = sellIn.isEmpty() ? defaultSell : sellIn;
+            Set<String> buySet = new HashSet<>();
+            for (String b : buyClients) buySet.add(b.trim().toLowerCase());
+            if (buySet.contains(sellClient.trim().toLowerCase())) {
+                System.out.printf("[RULE] SELL client %s cannot match BUY client! Auto-resolving from Position / Client_Position DB -> %s%n", sellClient, defaultSell);
+                sellClient = defaultSell;
+            }
             setTradePageClientCode(driver, buyClients.get(0));
             int buyCount = (buyClients.size() == 1) ? 2 : Math.min(2, buyClients.size());
             int totalBuyQty = 0;
@@ -497,22 +520,25 @@ public class OMSweb_MultiOrderExecution {
                 }
                 queue.add(new OrderItem(itemCounter++, OrderSide.BUY, buyClient, symbol, qty, rate, false));
             }
-            // Verify if chosen sell client has sufficient saleable shares; if not, shift to another client!
-            Position.ClientPosition bestSeller = Position.findClientWithSaleable(driver, symbol, totalBuyQty, sellClient, exchange);
-            if (bestSeller != null) {
-                if (!bestSeller.getClientCode().equalsIgnoreCase(sellClient)) {
-                    System.out.printf("%n[AUTO-SHIFT: SALEABLE CHECK] Client %s does not have %d saleable shares of %s.%n",
-                            sellClient, totalBuyQty, symbol);
-                    System.out.printf("  -> Automatically shifting SELL order to Client %s (Saleable: %,.0f shares)%n",
-                            bestSeller.getClientCode(), bestSeller.getSaleableQty());
-                    sellClient = bestSeller.getClientCode();
+            // Verify SELL client has sufficient saleable shares and NEVER matches BUY clients
+            Position.ClientPosition bestSeller = null;
+            for (Position.ClientPosition cp : Position.getPositions(driver, symbol, exchange)) {
+                if (cp.getClientCode().equalsIgnoreCase(sellClient) && cp.getSaleableQty() >= totalBuyQty && !buySet.contains(cp.getClientCode().toLowerCase())) {
+                    bestSeller = cp;
+                    break;
                 }
-                if (bestSeller.getSaleableQty() < totalBuyQty) {
-                    int safeQty = (int) Math.max(1, bestSeller.getSaleableQty());
-                    System.out.printf("  -> [ADJUST] Adjusted Opposite SELL order quantity from %d to %,d (max available saleable for %s)%n",
-                            totalBuyQty, safeQty, sellClient);
-                    totalBuyQty = safeQty;
+            }
+            if (bestSeller == null) {
+                String resolvedSell = Position.resolveSellClientExcluding(driver, symbol, totalBuyQty, buyClients, exchange);
+                if (!resolvedSell.equalsIgnoreCase(sellClient)) {
+                    System.out.printf("%n[AUTO-SHIFT: SALEABLE / BUY-EXCLUSION CHECK] Shifting SELL order from %s -> %s%n", sellClient, resolvedSell);
+                    sellClient = resolvedSell;
                 }
+            } else if (bestSeller.getSaleableQty() < totalBuyQty) {
+                int safeQty = (int) Math.max(1, bestSeller.getSaleableQty());
+                System.out.printf("  -> [ADJUST] Adjusted Opposite SELL order quantity from %d to %,d (max available saleable for %s)%n",
+                        totalBuyQty, safeQty, sellClient);
+                totalBuyQty = safeQty;
             }
             // Opposite SELL order at UPPER price (> refPrice and well above the BUY orders)
             double sellRate = Math.round((refPrice + spreadDelta) * 100.0) / 100.0;
@@ -527,15 +553,18 @@ public class OMSweb_MultiOrderExecution {
             }
             queue.add(new OrderItem(itemCounter++, OrderSide.SELL, sellClient, symbol, totalBuyQty, sellRate, true));
         } else if (choice == 2) {
-            // Strategy 2: Multiple SELL orders (UPPER prices) + Opposite BUY order (DOWN price)
-            List<String> defaultSells = posHolders.subList(0, Math.min(3, posHolders.size()));
-            String defSellStr = String.join(", ", defaultSells);
-            System.out.printf("\nEnter SELL Client Code(s) (from Position, single or comma-separated) [default=%s]: ", defSellStr);
-            String sellIn = sc.nextLine().trim();
-            List<String> sellClients = parseClientList(sellIn, defaultSells);
-            System.out.printf("Enter Opposite BUY Client Code [default=%s]: ", DEFAULT_BUY_CLIENTS.get(0));
+            // Strategy 2: Opposite BUY client resolved first/checked so SELL clients never match BUY
+            System.out.printf("\nEnter BUY Client Code [default=%s]: ", DEFAULT_BUY_CLIENTS.get(0));
             String buyIn = sc.nextLine().trim();
             String buyClient = buyIn.isEmpty() ? DEFAULT_BUY_CLIENTS.get(0) : buyIn;
+            List<String> exclHolders = getPositionHoldingSellClients(driver, symbol, exchange, Collections.singletonList(buyClient));
+            List<String> defaultSells = exclHolders.subList(0, Math.min(3, exclHolders.size()));
+            String defSellStr = String.join(", ", defaultSells);
+            System.out.printf("Enter SELL Client Code(s) (from Position / Client_Position DB, != %s) [default=%s]: ", buyClient, defSellStr);
+            String sellIn = sc.nextLine().trim();
+            List<String> sellClients = parseClientList(sellIn, defaultSells);
+            sellClients.removeIf(s -> s.equalsIgnoreCase(buyClient));
+            if (sellClients.isEmpty()) sellClients.add(Position.resolveSellClientExcluding(driver, symbol, 10, buyClient, exchange));
             setTradePageClientCode(driver, sellClients.get(0));
             int sellCount = (sellClients.size() == 1) ? 3 : Math.min(3, sellClients.size());
             int totalSellQty = 0;
@@ -586,10 +615,23 @@ public class OMSweb_MultiOrderExecution {
                 queue.add(new OrderItem(itemCounter++, primarySide, client, symbol, q, r, false));
             }
             // Opposite order
-            String defaultOppClient = (oppSide == OrderSide.BUY) ? DEFAULT_BUY_CLIENTS.get(0) : posHolders.get(0);
+            String defaultOppClient = (oppSide == OrderSide.BUY)
+                    ? DEFAULT_BUY_CLIENTS.get(0)
+                    : Position.resolveSellClientExcluding(driver, symbol, Math.max(1, totalPrimaryQty),
+                            queue.stream().map(OrderItem::getClientCode).collect(java.util.stream.Collectors.toSet()), exchange);
             System.out.printf("Enter Opposite %s Client [%s]: ", oppSide, defaultOppClient);
             String ocInput = sc.nextLine().trim();
             String oppClient = ocInput.isEmpty() ? defaultOppClient : ocInput;
+            if (oppSide == OrderSide.SELL) {
+                Set<String> primaryBuyers = new HashSet<>();
+                for (OrderItem qi : queue) {
+                    if (qi.getSide() == OrderSide.BUY) primaryBuyers.add(qi.getClientCode().trim().toLowerCase());
+                }
+                if (primaryBuyers.contains(oppClient.trim().toLowerCase())) {
+                    System.out.printf("[RULE] Opposite SELL client %s cannot match BUY client! Using %s.%n", oppClient, defaultOppClient);
+                    oppClient = defaultOppClient;
+                }
+            }
             double defaultOppRate;
             if (oppSide == OrderSide.SELL) {
                 defaultOppRate = Math.round((refPrice + spreadDelta) * 100.0) / 100.0;
@@ -740,22 +782,37 @@ public class OMSweb_MultiOrderExecution {
     // =========================================================================
     private static List<OrderItem> placeOrdersOnTradePage(WebDriver driver, WebDriverWait wait, JavascriptExecutor js, List<OrderItem> queue, String exchange) {
         List<OrderItem> placed = new ArrayList<>();
+        Set<String> buyClientsInQueue = new HashSet<>();
+        for (OrderItem qItem : queue) {
+            if (qItem.getSide() == OrderSide.BUY && qItem.getClientCode() != null) {
+                buyClientsInQueue.add(qItem.getClientCode().trim().toLowerCase());
+            }
+        }
         OMSweb_Trade.navigateToTradePage(driver, wait);
         for (int i = 0; i < queue.size(); i++) {
             OrderItem item = queue.get(i);
             Instant start = Instant.now();
             OMSweb_Trade.ensureUIUnlocked(driver);
-            // If this is a SELL order, proactively check and auto-shift client if saleable balance is insufficient
+            // If this is a SELL order, ensure non-BUY client with saleable balance
             if (item.getSide() == OrderSide.SELL) {
-                Position.ClientPosition saleableCheck = Position.findClientWithSaleable(driver, item.getSymbol(), item.getQuantity(), item.getClientCode(), exchange);
-                if (saleableCheck != null && !saleableCheck.getClientCode().equalsIgnoreCase(item.getClientCode())) {
-                    String oldClient = item.getClientCode();
-                    item.setClientCode(saleableCheck.getClientCode());
-                    if (saleableCheck.getSaleableQty() < item.getQuantity()) {
-                        item.setQuantity((int) Math.max(1, saleableCheck.getSaleableQty()));
+                boolean collidesWithBuy = item.getClientCode() != null && buyClientsInQueue.contains(item.getClientCode().trim().toLowerCase());
+                String resolvedSell = Position.resolveSellClientExcluding(driver, item.getSymbol(), item.getQuantity(), buyClientsInQueue, exchange);
+                if (collidesWithBuy || (resolvedSell != null && !resolvedSell.isEmpty() && Position.findClientWithSaleableExcluding(driver, item.getSymbol(), item.getQuantity(), null, exchange) == null)) {
+                    if (!resolvedSell.equalsIgnoreCase(item.getClientCode())) {
+                        System.out.printf("  [AUTO-SHIFT: SALEABLE / BUY-EXCLUSION] Shifted SELL order %s -> %s.%n", item.getClientCode(), resolvedSell);
+                        item.setClientCode(resolvedSell);
                     }
-                    System.out.printf("  [AUTO-SHIFT: SALEABLE BALANCE] Client %s has insufficient saleable shares! Shifted SELL order to Client %s (Saleable: %,.0f, Order Qty: %d). Continuing without closing code!%n",
-                            oldClient, item.getClientCode(), saleableCheck.getSaleableQty(), item.getQuantity());
+                } else {
+                    Position.ClientPosition saleableCheck = Position.findClientWithSaleable(driver, item.getSymbol(), item.getQuantity(), item.getClientCode(), exchange);
+                    if (saleableCheck != null && !saleableCheck.getClientCode().equalsIgnoreCase(item.getClientCode()) && !buyClientsInQueue.contains(saleableCheck.getClientCode().trim().toLowerCase())) {
+                        String oldClient = item.getClientCode();
+                        item.setClientCode(saleableCheck.getClientCode());
+                        if (saleableCheck.getSaleableQty() < item.getQuantity()) {
+                            item.setQuantity((int) Math.max(1, saleableCheck.getSaleableQty()));
+                        }
+                        System.out.printf("  [AUTO-SHIFT: SALEABLE BALANCE] Client %s has insufficient saleable shares! Shifted SELL order to Client %s (Saleable: %,.0f, Order Qty: %d).%n",
+                                oldClient, item.getClientCode(), saleableCheck.getSaleableQty(), item.getQuantity());
+                    }
                 }
             }
             System.out.printf("%n>>> Placing Order [%d/%d]: %s...%n", (i + 1), queue.size(), item);

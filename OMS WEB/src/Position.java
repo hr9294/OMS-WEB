@@ -4,9 +4,10 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.time.Duration;
 import java.util.ArrayList;
-//import java.util.Collections;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -644,47 +645,73 @@ public class Position {
         return findClientWithSaleable(driver, symbol, requiredQty, null, exchange);
     }
 
-    /**
-     * Finds a client holding sufficient saleable shares for a symbol, strictly excluding excludeClient.
-     * Searches Position API and live DOM table.
-     */
-    public static ClientPosition findClientWithSaleableExcluding(WebDriver driver, String symbol, double requiredQty, String excludeClient, String exchange) {
-        List<ClientPosition> positions = fetchPositionsFromApi(driver, symbol, exchange);
-        if (positions == null || positions.isEmpty()) {
-            positions = extractFromDomTable(driver, cleanSymbol(symbol));
-        }
-        if (positions == null || positions.isEmpty()) {
-            return null;
-        }
-        ClientPosition maxSaleable = null;
-        ClientPosition qualifying = null;
-        for (ClientPosition cp : positions) {
-            if (excludeClient != null && cp.getClientCode().equalsIgnoreCase(excludeClient.trim())) {
-                continue;
-            }
-            if (maxSaleable == null || cp.getSaleableQty() > maxSaleable.getSaleableQty()) {
-                maxSaleable = cp;
-            }
-            if (cp.getSaleableQty() >= requiredQty && qualifying == null) {
-                qualifying = cp;
+    private static Set<String> normalizeExclusions(Collection<String> excludeClients) {
+        Set<String> excl = new HashSet<>();
+        if (excludeClients != null) {
+            for (String c : excludeClients) {
+                if (c != null && !c.trim().isEmpty()) {
+                    excl.add(c.trim().toLowerCase(Locale.ROOT));
+                }
             }
         }
-        if (qualifying != null) {
-            return qualifying;
-        }
-        return maxSaleable;
+        return excl;
     }
 
     /**
-     * Queries PostgreSQL database (qtraderdb) for a client holding sufficient shares of the target symbol,
-     * strictly excluding excludeClient.
+     * Finds a client holding sufficient saleable shares for a symbol, strictly excluding excludeClient.
+     * Searches Position API, live DOM table, and Client_Position DB fallback.
      */
-    public static String findHolderWithSufficientSharesFromDb(String symbol, double requiredQty, String excludeClient) {
+    public static ClientPosition findClientWithSaleableExcluding(WebDriver driver, String symbol, double requiredQty, String excludeClient, String exchange) {
+        List<ClientPosition> positions = (driver != null) ? fetchPositionsFromApi(driver, symbol, exchange) : null;
+        if (driver != null && (positions == null || positions.isEmpty())) {
+            positions = extractFromDomTable(driver, cleanSymbol(symbol));
+        }
+        String exclNorm = (excludeClient != null && !excludeClient.trim().isEmpty()) ? excludeClient.trim().toLowerCase(Locale.ROOT) : "";
+        if (positions != null && !positions.isEmpty()) {
+            ClientPosition maxSaleable = null;
+            ClientPosition qualifying = null;
+            for (ClientPosition cp : positions) {
+                if (!exclNorm.isEmpty() && cp.getClientCode().trim().toLowerCase(Locale.ROOT).equals(exclNorm)) {
+                    continue;
+                }
+                if (cp.getSaleableQty() > 0 && (maxSaleable == null || cp.getSaleableQty() > maxSaleable.getSaleableQty())) {
+                    maxSaleable = cp;
+                }
+                if (cp.getSaleableQty() >= requiredQty && qualifying == null) {
+                    qualifying = cp;
+                }
+            }
+            if (qualifying != null) {
+                return qualifying;
+            }
+            if (maxSaleable != null) {
+                return maxSaleable;
+            }
+        }
+        String dbHolder = findHolderWithSufficientSharesFromDb(symbol, requiredQty, excludeClient);
+        if (dbHolder != null && !dbHolder.isEmpty()) {
+            return new ClientPosition(cleanSymbol(symbol), dbHolder, requiredQty, requiredQty, 0, 0, 0, 0, 0, 0);
+        }
+        return null;
+    }
+
+    /**
+     * Queries PostgreSQL database (qtraderdb) preferring Client_Position table for holding clients,
+     * strictly excluding excludeClients.
+     */
+    public static List<String> getHoldersFromClientPositionDb(String symbol, double requiredQty, Collection<String> excludeClients) {
+        List<String> holders = new ArrayList<>();
         String cleanSym = cleanSymbol(symbol);
+        if (cleanSym.isEmpty()) return holders;
+        Set<String> excl = normalizeExclusions(excludeClients);
         String[] candidateQueries = {
-            "SELECT \"ClientCode\", COALESCE(saleable_qty, total_qty) AS saleable FROM public.clients_portfolio WHERE UPPER(symbol) = UPPER(?) AND COALESCE(saleable_qty, total_qty) >= ? " + (excludeClient != null && !excludeClient.trim().isEmpty() ? "AND \"ClientCode\" != ? " : "") + "ORDER BY saleable DESC LIMIT 1;",
-            "SELECT \"ClientCode\", COALESCE(saleable, qty) AS saleable FROM public.clients_share WHERE UPPER(symbol) = UPPER(?) AND COALESCE(saleable, qty) >= ? " + (excludeClient != null && !excludeClient.trim().isEmpty() ? "AND \"ClientCode\" != ? " : "") + "ORDER BY saleable DESC LIMIT 1;",
-            "SELECT client_code, COALESCE(saleable_qty, total_qty) AS saleable FROM public.client_portfolio WHERE UPPER(symbol) = UPPER(?) AND COALESCE(saleable_qty, total_qty) >= ? " + (excludeClient != null && !excludeClient.trim().isEmpty() ? "AND client_code != ? " : "") + "ORDER BY saleable DESC LIMIT 1;"
+            "SELECT \"ClientCode\" FROM public.\"Client_Position\" WHERE UPPER(symbol) = UPPER(?) AND COALESCE(saleable_qty, total_qty, qty, 0) >= ? ORDER BY COALESCE(saleable_qty, total_qty, qty, 0) DESC LIMIT 20;",
+            "SELECT client_code FROM public.\"Client_Position\" WHERE UPPER(symbol) = UPPER(?) AND COALESCE(saleable_qty, saleable, total_qty, qty, 0) >= ? ORDER BY COALESCE(saleable_qty, saleable, total_qty, qty, 0) DESC LIMIT 20;",
+            "SELECT \"ClientCode\" FROM public.client_position WHERE UPPER(symbol) = UPPER(?) AND COALESCE(saleable_qty, total_qty, qty, 0) >= ? ORDER BY COALESCE(saleable_qty, total_qty, qty, 0) DESC LIMIT 20;",
+            "SELECT client_code FROM public.client_position WHERE UPPER(symbol) = UPPER(?) AND COALESCE(saleable_qty, saleable, total_qty, qty, 0) >= ? ORDER BY COALESCE(saleable_qty, saleable, total_qty, qty, 0) DESC LIMIT 20;",
+            "SELECT \"ClientCode\" FROM public.clients_portfolio WHERE UPPER(symbol) = UPPER(?) AND COALESCE(saleable_qty, total_qty, 0) >= ? ORDER BY COALESCE(saleable_qty, total_qty, 0) DESC LIMIT 20;",
+            "SELECT \"ClientCode\" FROM public.clients_share WHERE UPPER(symbol) = UPPER(?) AND COALESCE(saleable, qty, 0) >= ? ORDER BY COALESCE(saleable, qty, 0) DESC LIMIT 20;",
+            "SELECT client_code FROM public.client_portfolio WHERE UPPER(symbol) = UPPER(?) AND COALESCE(saleable_qty, total_qty, 0) >= ? ORDER BY COALESCE(saleable_qty, total_qty, 0) DESC LIMIT 20;"
         };
         try (Connection conn = Account_Limits.getQtraderDbConnection()) {
             if (conn != null) {
@@ -692,22 +719,95 @@ public class Position {
                     try (PreparedStatement ps = conn.prepareStatement(sql)) {
                         ps.setString(1, cleanSym);
                         ps.setDouble(2, requiredQty);
-                        if (excludeClient != null && !excludeClient.trim().isEmpty()) {
-                            ps.setString(3, excludeClient.trim());
-                        }
                         try (ResultSet rs = ps.executeQuery()) {
-                            if (rs.next()) {
+                            while (rs.next()) {
                                 String code = rs.getString(1);
                                 if (code != null && !code.trim().isEmpty()) {
-                                    return code.trim();
+                                    String trimmed = code.trim();
+                                    if (!excl.contains(trimmed.toLowerCase(Locale.ROOT)) && !holders.contains(trimmed)) {
+                                        holders.add(trimmed);
+                                    }
                                 }
                             }
+                        }
+                        if (!holders.isEmpty()) {
+                            return holders;
                         }
                     } catch (Exception ignored) {}
                 }
             }
         } catch (Exception ignored) {}
+        return holders;
+    }
+
+    /**
+     * Queries PostgreSQL database (qtraderdb) for a client holding sufficient shares of the target symbol,
+     * strictly excluding excludeClient.
+     */
+    public static String findHolderWithSufficientSharesFromDb(String symbol, double requiredQty, String excludeClient) {
+        List<String> excl = (excludeClient != null && !excludeClient.trim().isEmpty())
+                ? java.util.Collections.singletonList(excludeClient.trim()) : null;
+        List<String> holders = getHoldersFromClientPositionDb(symbol, requiredQty, excl);
+        if (!holders.isEmpty()) {
+            return holders.get(0);
+        }
+        if (requiredQty > 1.0) {
+            holders = getHoldersFromClientPositionDb(symbol, 1.0, excl);
+            if (!holders.isEmpty()) return holders.get(0);
+        }
         return null;
+    }
+
+    /**
+     * Resolves a SELL client code from Position widget (API/DOM) or Client_Position DB,
+     * strictly excluding any BUY client(s) in excludeClients.
+     */
+    public static String resolveSellClientExcluding(WebDriver driver, String symbol, double requiredQty, Collection<String> excludeClients, String exchange) {
+        Set<String> excl = normalizeExclusions(excludeClients);
+        if (driver != null) {
+            List<ClientPosition> positions = fetchPositionsFromApi(driver, symbol, exchange);
+            if (positions == null || positions.isEmpty()) {
+                positions = extractFromDomTable(driver, cleanSymbol(symbol));
+            }
+            if (positions != null && !positions.isEmpty()) {
+                ClientPosition best = null;
+                for (ClientPosition cp : positions) {
+                    String c = (cp.getClientCode() != null) ? cp.getClientCode().trim() : "";
+                    if (c.isEmpty() || excl.contains(c.toLowerCase(Locale.ROOT)) || cp.getSaleableQty() <= 0) {
+                        continue;
+                    }
+                    if (cp.getSaleableQty() >= requiredQty) {
+                        return c;
+                    }
+                    if (best == null || cp.getSaleableQty() > best.getSaleableQty()) {
+                        best = cp;
+                    }
+                }
+                if (best != null) {
+                    return best.getClientCode().trim();
+                }
+            }
+        }
+        List<String> dbHolders = getHoldersFromClientPositionDb(symbol, requiredQty, excludeClients);
+        if (dbHolders.isEmpty() && requiredQty > 1.0) {
+            dbHolders = getHoldersFromClientPositionDb(symbol, 1.0, excludeClients);
+        }
+        if (!dbHolders.isEmpty()) {
+            return dbHolders.get(0);
+        }
+        String[] fallbackPool = {"11310", "00128", "00463", "00600", "00224", "34601"};
+        for (String fb : fallbackPool) {
+            if (!excl.contains(fb.toLowerCase(Locale.ROOT))) {
+                return fb;
+            }
+        }
+        return "11310";
+    }
+
+    public static String resolveSellClientExcluding(WebDriver driver, String symbol, double requiredQty, String excludeClient, String exchange) {
+        List<String> excl = (excludeClient != null && !excludeClient.trim().isEmpty())
+                ? java.util.Collections.singletonList(excludeClient.trim()) : null;
+        return resolveSellClientExcluding(driver, symbol, requiredQty, excl, exchange);
     }
 
     public static List<ClientPosition> extractFromDomTable(WebDriver driver, String cleanSym) {
@@ -901,15 +1001,17 @@ public class Position {
         List<ClientPosition> saleableClients = getClientsWithSaleable(driver, cleanSym, exchange);
         System.out.printf("[POSITION] Found %d client(s) with saleable shares for %s.%n", saleableClients.size(), cleanSym);
         if (saleableClients.isEmpty()) {
+            List<String> dbHolders = getHoldersFromClientPositionDb(cleanSym, 1.0, null);
+            String resolvedDefault = !dbHolders.isEmpty() ? dbHolders.get(0) : fallbackClient;
             System.out.println("[WARN: POSITION] No clients currently hold saleable shares for " + cleanSym + " in Position table.");
-            System.out.printf("Press Enter to keep current client [%s], or enter another client code: ", fallbackClient);
+            System.out.printf("Press Enter to keep resolved client [%s], or enter another client code: ", resolvedDefault);
             String manual = sc.nextLine().trim();
-            String chosen = manual.isEmpty() ? fallbackClient : manual;
+            String chosen = manual.isEmpty() ? resolvedDefault : manual;
             List<ClientPosition> fallbackList = new ArrayList<>();
             for (String c : chosen.split("[,\\s]+")) {
                 if (!c.trim().isEmpty()) fallbackList.add(new ClientPosition(cleanSym, c.trim(), 0, 0, 0, 0, 0, 0, 0, 0));
             }
-            if (fallbackList.isEmpty()) fallbackList.add(new ClientPosition(cleanSym, fallbackClient, 0, 0, 0, 0, 0, 0, 0, 0));
+            if (fallbackList.isEmpty()) fallbackList.add(new ClientPosition(cleanSym, resolvedDefault, 0, 0, 0, 0, 0, 0, 0, 0));
             return fallbackList;
         }
         // Preview top holding clients

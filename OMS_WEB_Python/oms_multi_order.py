@@ -71,31 +71,25 @@ def set_trade_page_client_code(driver: webdriver.Chrome, client_code: str) -> No
     except Exception:
         pass
 
-def get_position_holding_sell_clients(driver: webdriver.Chrome, symbol: str, exchange: str) -> List[str]:
-    """Fetches real holding clients with saleable shares for SELL side directly from Position API (no page switching)."""
+def get_position_holding_sell_clients(
+    driver: webdriver.Chrome, symbol: str, exchange: str, exclude_clients: Optional[List[str]] = None
+) -> List[str]:
+    """Fetches holding clients with saleable shares from Position API/DOM or Client_Position DB, excluding exclude_clients."""
     sell_clients: List[str] = []
+    excl = {str(e).strip().lower() for e in (exclude_clients or []) if str(e).strip()}
     try:
-        script = """
-        var cb = arguments[arguments.length - 1];
-        var sym = arguments[0];
-        var ex = arguments[1];
-        var url = '/shared/getsymbolclient/?page=1&per_page=100&symbol=' + encodeURIComponent(sym) + '&clientcode=&exchange=' + encodeURIComponent(ex);
-        fetch(url, { credentials: 'include' })
-        .then(function(r) { return r.json(); })
-        .then(function(d) { cb(d); })
-        .catch(function(e) { cb({ error: e.toString() }); });
-        """
-        res = driver.execute_async_script(script, symbol, exchange)
-        if isinstance(res, dict) and "data" in res and isinstance(res["data"], list):
-            for item in res["data"]:
-                code = str(item.get("client_code", "")).strip()
-                qty = float(item.get("qty", 0) or 0)
-                if code and qty > 0 and code not in sell_clients:
-                    sell_clients.append(code)
+        for cp in position.get_positions(driver, symbol, exchange):
+            code = str(cp.client_code or "").strip()
+            if code and cp.saleable_qty > 0 and code.lower() not in excl and code not in sell_clients:
+                sell_clients.append(code)
     except Exception:
         pass
     if not sell_clients:
-        sell_clients = ["00463", "00600", "00916", "01005", "01007", "01008", "01109", "11310"]
+        sell_clients.extend(position.get_holders_from_db(symbol, 1.0, exclude_clients=excl))
+    if not sell_clients:
+        for fb in ("11310", "00128", "00463", "00600", "00916", "01005", "01007", "01008", "01109"):
+            if fb.lower() not in excl:
+                sell_clients.append(fb)
     return sell_clients
 
 def build_order_queue(
@@ -125,9 +119,13 @@ def build_order_queue(
         # Strategy 1: Multiple BUY orders (DOWN prices < P) + Opposite SELL order (UPPER price > P)
         buy_in = input(f"\nEnter BUY Client Code(s) (single or comma-separated, default={DEFAULT_BUY_CLIENTS[0]}): ").strip()
         buy_clients = parse_client_list(buy_in, DEFAULT_BUY_CLIENTS)
-        default_sell = pos_holders[0]
-        sell_in = input(f"Enter Opposite SELL Client Code (from Position) [default={default_sell}]: ").strip()
+        default_sell = position.resolve_sell_client_excluding(driver, symbol, 10, buy_clients, exchange)
+        sell_in = input(f"Enter Opposite SELL Client Code (from Position / Client_Position DB, != BUY, default={default_sell}): ").strip()
         sell_client = sell_in or default_sell
+        buy_set = {b.strip().lower() for b in buy_clients}
+        if sell_client.strip().lower() in buy_set:
+            print(f"[RULE] SELL client {sell_client} cannot match BUY client! Using {default_sell}.")
+            sell_client = default_sell
         set_trade_page_client_code(driver, buy_clients[0])
         buy_count = 3 if len(buy_clients) == 1 else min(3, len(buy_clients))
         total_buy_qty = 0
@@ -140,29 +138,35 @@ def build_order_queue(
             queue.append(OrderItem(item_counter, "BUY", buy_client, symbol, qty, rate, False))
             item_counter += 1
 
-        # Verify if chosen sell client has sufficient saleable shares; if not, shift to another client!
-        best_seller = position.find_client_with_saleable(driver, symbol, total_buy_qty, sell_client, exchange)
-        if best_seller:
-            if best_seller.client_code.lower() != sell_client.lower():
-                print(f"\n[AUTO-SHIFT: SALEABLE CHECK] Client {sell_client} does not have {total_buy_qty} saleable shares of {symbol}.")
-                print(f"  -> Automatically shifting SELL order to Client {best_seller.client_code} (Saleable: {best_seller.saleable_qty:,.0f} shares)")
+        # Verify SELL client has saleable shares and NEVER equals BUY clients
+        resolved_sell = position.resolve_sell_client_excluding(driver, symbol, total_buy_qty, buy_clients, exchange)
+        best_seller = position.find_client_with_saleable_excluding(driver, symbol, total_buy_qty, exchange=exchange, exclude_clients=buy_clients)
+        if best_seller and best_seller.client_code.lower() != sell_client.lower() and sell_client.strip().lower() not in buy_set:
+            # Prefer user's chosen sell_client only if it holds >= total_buy_qty
+            holders_map = {p.client_code.strip().lower(): p for p in position.get_positions(driver, symbol, exchange)}
+            chosen = holders_map.get(sell_client.strip().lower())
+            if not chosen or chosen.saleable_qty < total_buy_qty:
+                print(f"\n[AUTO-SHIFT: SALEABLE CHECK] Shifting SELL {sell_client} -> {best_seller.client_code} (Saleable: {best_seller.saleable_qty:,.0f})")
                 sell_client = best_seller.client_code
-            if best_seller.saleable_qty < total_buy_qty:
-                safe_qty = int(max(1, best_seller.saleable_qty))
-                print(f"  -> [ADJUST] Adjusted Opposite SELL order quantity from {total_buy_qty} to {safe_qty:,} (max available saleable for {sell_client})")
-                total_buy_qty = safe_qty
+            if chosen and chosen.saleable_qty < total_buy_qty and best_seller.saleable_qty < total_buy_qty:
+                total_buy_qty = int(max(1, best_seller.saleable_qty))
+        elif sell_client.strip().lower() in buy_set:
+            sell_client = resolved_sell
 
         # Opposite SELL order at UPPER price (> ref_price)
         sell_rate = round(ref_price + spread_delta, 2)
         queue.append(OrderItem(item_counter, "SELL", sell_client, symbol, total_buy_qty, sell_rate, True))
     elif choice == 2:
-        # Strategy 2: Multiple SELL orders (UPPER prices > P) + Opposite BUY order (DOWN price < P)
-        default_sells = pos_holders[:min(3, len(pos_holders))]
-        def_sell_str = ", ".join(default_sells)
-        sell_in = input(f"\nEnter SELL Client Code(s) (from Position, single or comma-separated) [default={def_sell_str}]: ").strip()
-        sell_clients = parse_client_list(sell_in, default_sells)
-        buy_in = input(f"Enter Opposite BUY Client Code [default={DEFAULT_BUY_CLIENTS[0]}]: ").strip()
+        # Strategy 2: Collect BUY client first so SELL clients never match BUY
+        buy_in = input(f"\nEnter Opposite BUY Client Code [default={DEFAULT_BUY_CLIENTS[0]}]: ").strip()
         buy_client = buy_in or DEFAULT_BUY_CLIENTS[0]
+        excl_holders = get_position_holding_sell_clients(driver, symbol, exchange, exclude_clients=[buy_client])
+        default_sells = excl_holders[:min(3, len(excl_holders))]
+        def_sell_str = ", ".join(default_sells)
+        sell_in = input(f"Enter SELL Client Code(s) (from Position / Client_Position DB, != {buy_client}) [default={def_sell_str}]: ").strip()
+        sell_clients = [s for s in parse_client_list(sell_in, default_sells) if s.strip().lower() != buy_client.strip().lower()]
+        if not sell_clients:
+            sell_clients = [position.resolve_sell_client_excluding(driver, symbol, 10, [buy_client], exchange)]
         set_trade_page_client_code(driver, sell_clients[0])
         sell_count = 3 if len(sell_clients) == 1 else min(3, len(sell_clients))
         total_sell_qty = 0
@@ -202,9 +206,16 @@ def build_order_queue(
             rate = float(r_in) if r_in else default_rate
             queue.append(OrderItem(item_counter, p_side, client, symbol, qty, rate, False))
             item_counter += 1
-        default_opp = DEFAULT_BUY_CLIENTS[0] if opp_side == "BUY" else pos_holders[0]
+        default_opp = DEFAULT_BUY_CLIENTS[0] if opp_side == "BUY" else position.resolve_sell_client_excluding(
+            driver, symbol, max(1, total_qty), [q.client_code for q in queue if q.side == "BUY"], exchange
+        )
         opp_in = input(f"Enter Opposite {opp_side} Client [{default_opp}]: ").strip()
         opp_client = opp_in or default_opp
+        if opp_side == "SELL":
+            primary_buyers = {q.client_code.strip().lower() for q in queue if q.side == "BUY"}
+            if opp_client.strip().lower() in primary_buyers:
+                print(f"[RULE] Opposite SELL client {opp_client} cannot match BUY client! Using {default_opp}.")
+                opp_client = default_opp
         default_opp_rate = round(ref_price + spread_delta, 2) if opp_side == "SELL" else max(0.10, round(ref_price - spread_delta, 2))
         or_in = input(f"Enter Opposite {opp_side} Rate (default {default_opp_rate:.2f}): ").strip()
         opp_rate = float(or_in) if or_in else default_opp_rate
@@ -294,17 +305,24 @@ def run_multi_order_pipeline(driver: webdriver.Chrome) -> None:
     oms_trade.navigate_to_trade_page(driver)
     placed_count = 0
     placed_orders = []
+    buy_clients_in_queue = {q.client_code.strip().lower() for q in order_queue if q.side.upper() == "BUY" and q.client_code}
     for idx, item in enumerate(order_queue, 1):
         print(f"\n--- Placed Order [{idx}/{len(order_queue)}] ---")
         oms_trade.ensure_ui_unlocked(driver)
         if item.side.upper() == "SELL":
-            saleable_check = position.find_client_with_saleable(driver, item.symbol, item.quantity, item.client_code, exchange)
-            if saleable_check and saleable_check.client_code.lower() != item.client_code.lower():
-                old_c = item.client_code
-                item.client_code = saleable_check.client_code
-                if saleable_check.saleable_qty < item.quantity:
+            saleable_check = position.find_client_with_saleable_excluding(
+                driver, item.symbol, item.quantity, exchange=exchange, exclude_clients=buy_clients_in_queue
+            )
+            if (item.client_code.strip().lower() in buy_clients_in_queue) or (
+                saleable_check and saleable_check.client_code.lower() != item.client_code.lower()
+            ):
+                resolved = saleable_check.client_code if saleable_check else position.resolve_sell_client_excluding(
+                    driver, item.symbol, item.quantity, buy_clients_in_queue, exchange
+                )
+                print(f"  [AUTO-SHIFT: SALEABLE / BUY-EXCLUSION] Shifted SELL {item.client_code} -> {resolved}")
+                item.client_code = resolved
+                if saleable_check and saleable_check.saleable_qty < item.quantity:
                     item.quantity = int(max(1, saleable_check.saleable_qty))
-                print(f"  [AUTO-SHIFT: SALEABLE BALANCE] Client {old_c} has insufficient saleable shares! Shifted SELL order to Client {item.client_code} (Saleable: {saleable_check.saleable_qty:,.0f}, Order Qty: {item.quantity}). Continuing without closing code!")
         try:
             ok = oms_trade.place_order(
                 driver=driver,

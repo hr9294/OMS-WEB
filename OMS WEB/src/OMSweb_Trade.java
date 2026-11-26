@@ -687,15 +687,9 @@ public class OMSweb_Trade {
 		}
 		String clientCode = "23986";
 		if (isSell) {
-			Position.ClientPosition holdingClient = Position.findClientWithSaleable(driver, instrument, 1, "CSE");
-			if (holdingClient != null && !holdingClient.getClientCode().isEmpty()) {
-				clientCode = holdingClient.getClientCode();
-				System.out.printf("[POSITION] Selected holding client %s with %,.0f saleable shares of %s on CSE.%n",
-						clientCode, holdingClient.getSaleableQty(), instrument);
-			} else {
-				System.out.print("Enter SELL Client Code (default 23986): ");
-				clientCode = readLineWithTimeout(sc, "23986", 3);
-			}
+			clientCode = Position.resolveSellClientExcluding(driver, instrument, 1, (String) null, "CSE");
+			System.out.printf("[POSITION / Client_Position DB] Selected SELL holding client %s for %s on CSE.%n",
+					clientCode, instrument);
 		} else {
 			System.out.print("Enter BUY Client Code (default 23986): ");
 			clientCode = readLineWithTimeout(sc, "23986", 3);
@@ -1099,7 +1093,7 @@ public class OMSweb_Trade {
 							positionMap.put(cp.getClientCode(), cp);
 						}
 					} else {
-						clientCodes.add("23986");
+						clientCodes.add(Position.resolveSellClientExcluding(driver, instrument, 1, "23986", snapshotExchange));
 					}
 				}
 				System.out.println("[SELL CLIENTS] Selected Client Code(s): " + clientCodes);
@@ -2727,9 +2721,9 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		WebElement buyBtn = driver.findElement(By.xpath("//div[@title='Place BUY Order']"));
 		buyBtn.click();
 		Thread.sleep(200);
-		System.out.print("Enter BUY client code (default 10009): ");
+		System.out.print("Enter BUY client code (default 23986): ");
 		String buyClientCode = sc.nextLine();
-		if (buyClientCode.trim().isEmpty()) buyClientCode = "10009";
+		if (buyClientCode.trim().isEmpty()) buyClientCode = "23986";
 		fillOrderFields(driver, wait, instrument, buyQty, buyClientCode);
 		enterRateAndSubmit(driver, wait, sc, instrument, "BUY");
 		confirmOrder(driver, wait, sc);
@@ -2737,9 +2731,15 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		WebElement sellBtn = driver.findElement(By.xpath("//div[@title='Place SELL Order']"));
 		sellBtn.click();
 		Thread.sleep(200);
-		System.out.print("Enter SELL client code (different from buy, default 11310): ");
-		String sellClientCode = sc.nextLine();
-		if (sellClientCode.trim().isEmpty()) sellClientCode = "11310";
+		int reqSellQty = 1;
+		try { reqSellQty = Integer.parseInt(sellQty.trim()); } catch (Exception ignored) {}
+		String defaultSell = Position.resolveSellClientExcluding(driver, instrument, reqSellQty, buyClientCode, "DSE");
+		System.out.printf("Enter SELL client code (from Position / Client_Position DB, != %s, default %s): ", buyClientCode, defaultSell);
+		String sellClientCode = sc.nextLine().trim();
+		if (sellClientCode.isEmpty() || sellClientCode.equalsIgnoreCase(buyClientCode.trim())) {
+			if (!sellClientCode.isEmpty()) System.out.printf("[RULE] SELL client cannot match BUY client %s. Using %s.%n", buyClientCode, defaultSell);
+			sellClientCode = defaultSell;
+		}
 		fillOrderFields(driver, wait, instrument, sellQty, sellClientCode);
 		enterRateAndSubmit(driver, wait, sc, instrument, "SELL");
 		confirmOrder(driver, wait, sc);
@@ -2767,9 +2767,9 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		WebElement buyBtn = driver.findElement(By.xpath("//div[@title='Place BUY Order']"));
 		buyBtn.click();
 		Thread.sleep(200);
-		System.out.print("Enter BUY client code (default 10009): ");
+		System.out.print("Enter BUY client code (default 23986): ");
 		String buyClientCode = sc.nextLine();
-		if (buyClientCode.trim().isEmpty()) buyClientCode = "10009";
+		if (buyClientCode.trim().isEmpty()) buyClientCode = "23986";
 		fillOrderFields(driver, wait, instrument, qty, buyClientCode);
 		enterRateAndSubmit(driver, wait, sc, instrument, "BUY");
 		confirmOrder(driver, wait, sc);
@@ -2777,9 +2777,15 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		WebElement sellBtn = driver.findElement(By.xpath("//div[@title='Place SELL Order']"));
 		sellBtn.click();
 		Thread.sleep(200);
-		System.out.print("Enter SELL client code (default 11310): ");
-		String sellClientCode = sc.nextLine();
-		if (sellClientCode.trim().isEmpty()) sellClientCode = "11310";
+		int reqSellQty = 1;
+		try { reqSellQty = Integer.parseInt(qty.trim()); } catch (Exception ignored) {}
+		String defaultSell = Position.resolveSellClientExcluding(driver, instrument, reqSellQty, buyClientCode, "DSE");
+		System.out.printf("Enter SELL client code (from Position / Client_Position DB, != %s, default %s): ", buyClientCode, defaultSell);
+		String sellClientCode = sc.nextLine().trim();
+		if (sellClientCode.isEmpty() || sellClientCode.equalsIgnoreCase(buyClientCode.trim())) {
+			if (!sellClientCode.isEmpty()) System.out.printf("[RULE] SELL client cannot match BUY client %s. Using %s.%n", buyClientCode, defaultSell);
+			sellClientCode = defaultSell;
+		}
 		fillOrderFields(driver, wait, instrument, qty, sellClientCode);
 		enterRateAndSubmit(driver, wait, sc, instrument, "SELL");
 		confirmOrder(driver, wait, sc);
@@ -5221,17 +5227,12 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		double acceptedRate = safeAcceptedRate;
 		System.out.printf("[PRICE ENGINE] Real-time non-executing accepted price for %s: %.2f BDT (LTP=%.2f, Bid=%.2f, Ask=%.2f, SL=%.2f)%n",
 				cleanSym, acceptedRate, ltp, bestBid, bestAsk, slCircuit);
-		// Dynamic counterparty seller client with saleable verification:
+		// Dynamic counterparty seller client from Position / Client_Position DB, strictly excluding BUY client:
 		String seller = sellClient;
-		if (seller == null || seller.trim().isEmpty()) {
-			Position.ClientPosition saleableHolder = Position.findClientWithSaleable(driver, cleanSym, 10, buyer, ex);
-			if (saleableHolder != null && !saleableHolder.getClientCode().equalsIgnoreCase(buyer)) {
-				seller = saleableHolder.getClientCode();
-				System.out.printf("[AUTO-SHIFT COUNTERPARTY] Found Client %s with %.0f saleable shares of %s for matching executions.%n",
-						seller, saleableHolder.getSaleableQty(), cleanSym);
-			} else {
-				seller = "11310";
-			}
+		if (seller == null || seller.trim().isEmpty() || seller.trim().equalsIgnoreCase(buyer.trim())) {
+			seller = Position.resolveSellClientExcluding(driver, cleanSym, 10, buyer, ex);
+			System.out.printf("[AUTO-SHIFT COUNTERPARTY] Resolved SELL Client %s for %s (excluding BUY client %s).%n",
+					seller, cleanSym, buyer);
 		}
 
 		// ---------------------------------------------------------------------
@@ -5587,17 +5588,16 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			System.out.printf("[DB CLIENT CASH] Verified buyer %s has cash BDT %,.2f (>= required BDT %,.2f) from public.clients_cash table.%n",
 					buyClient, buyCashRec.getCash(), reqBuyCash);
 		}
-		// Proactively resolve holding seller client with verified saleable shares from Position
-		String autoSellClient = "11310";
-		try {
-			Position.ClientPosition holder = Position.findClientWithSaleable(driver, symbol, 10, buyClient, "DSE");
-			if (holder != null && !holder.getClientCode().isEmpty()) {
-				autoSellClient = holder.getClientCode();
-			}
-		} catch (Exception ignored) {}
-		System.out.printf("Enter SELL Client Code (default %s): ", autoSellClient);
+		// Resolve holding seller client from Position / Client_Position DB, strictly excluding BUY client
+		String autoSellClient = Position.resolveSellClientExcluding(driver, symbol, 10, buyClient, "DSE");
+		System.out.printf("Enter SELL Client Code (from Position / Client_Position DB, != %s, default %s): ", buyClient, autoSellClient);
 		String sellClient = readLineWithTimeout(sc, autoSellClient, 4);
-		if (sellClient == null || sellClient.trim().isEmpty()) sellClient = autoSellClient;
+		if (sellClient == null || sellClient.trim().isEmpty() || sellClient.trim().equalsIgnoreCase(buyClient.trim())) {
+			if (sellClient != null && !sellClient.trim().isEmpty()) {
+				System.out.printf("[RULE] SELL client cannot equal BUY client %s. Auto-using %s.%n", buyClient, autoSellClient);
+			}
+			sellClient = autoSellClient;
+		}
 		System.out.print("Enter Quantity (default 10): ");
 		String qtyInput = readLineWithTimeout(sc, "10", 4);
 		int qty = 10;
@@ -6313,11 +6313,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			System.out.printf("[DB CLIENT CASH] DSE Buyer %s verified with %,.2f BDT cash (>= required %,.2f BDT) from public.clients_cash table.%n",
 					dseBuyer, dseBuyerCash.getCash(), dseRequiredCash);
 		}
-		String dseSeller = "11310";
-		try {
-			Position.ClientPosition holder = Position.findClientWithSaleable(driver, dseSymbol, 10, dseBuyer, "DSE");
-			if (holder != null && !holder.getClientCode().isEmpty()) dseSeller = holder.getClientCode();
-		} catch (Exception ignored) {}
+		String dseSeller = Position.resolveSellClientExcluding(driver, dseSymbol, 10, dseBuyer, "DSE");
 		System.out.printf("[DSE SETUP] Symbol: %s | Rate: %.2f | BUY Client: %s | SELL Client: %s | Qty: 10%n",
 				dseSymbol, dseRate, dseBuyer, dseSeller);
 		System.out.println("  -> [DSE 1/2] Placing Normal BUY Order...");
@@ -6374,13 +6370,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			System.out.printf("[DB CLIENT CASH] CSE Buyer %s verified with %,.2f BDT cash (>= required %,.2f BDT) from public.clients_cash table.%n",
 					cseBuyer, cseBuyerCash.getCash(), cseRequiredCash);
 		}
-		String cseSeller = "00128";
-		try {
-			Position.ClientPosition cseHolder = Position.findClientWithSaleable(driver, cseSymbol, 10, cseBuyer, "CSE");
-			if (cseHolder != null && !cseHolder.getClientCode().isEmpty()) {
-				cseSeller = cseHolder.getClientCode();
-			}
-		} catch (Exception ignored) {}
+		String cseSeller = Position.resolveSellClientExcluding(driver, cseSymbol, 10, cseBuyer, "CSE");
 		System.out.printf("[CSE SETUP] Symbol: %s | Rate: %.2f | BUY Client: %s | SELL Client: %s | Qty: 10%n",
 				cseSymbol, cseRate, cseBuyer, cseSeller);
 		System.out.println("  -> [CSE 1/2] Placing Normal BUY Order on CSE...");

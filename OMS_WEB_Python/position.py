@@ -5,7 +5,7 @@ and DB/API/DOM position resolution.
 """
 import json
 import time
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Iterable, Set
 from selenium import webdriver
 import oms_price
 from config import get_qtrader_db_connection
@@ -159,15 +159,23 @@ def get_clients_with_saleable(driver: webdriver.Chrome, symbol: str, exchange: s
     return [p for p in get_positions(driver, symbol, exchange) if p.saleable_qty > 0]
 
 def prompt_or_select_clients_for_sell(
-    driver: webdriver.Chrome, symbol: str, exchange: str = "DSE", default_client: str = "23986"
+    driver: webdriver.Chrome, symbol: str, exchange: str = "DSE", default_client: str = "23986",
+    exclude_client: Optional[str] = None
 ) -> List[ClientPosition]:
-    holdings = get_clients_with_saleable(driver, symbol, exchange)
+    excl = exclude_client.strip().lower() if exclude_client else ""
+    holdings = [p for p in get_clients_with_saleable(driver, symbol, exchange)
+                if not excl or p.client_code.strip().lower() != excl]
     if holdings:
         print(f"\n[POSITION] Found {len(holdings)} client(s) holding saleable {symbol}:")
         for idx, h in enumerate(holdings, 1):
             print(f"  {idx}. {h}")
         return holdings
-    print(f"[POSITION] No saleable holders for {symbol}. Fallback: {default_client}.")
+    db_holders = get_holders_from_db(symbol, 1.0, [exclude_client] if exclude_client else None)
+    if db_holders:
+        print(f"[Client_Position DB] Found holding client(s) for {symbol}: {db_holders[:5]}")
+        return [ClientPosition(c, oms_price.clean_symbol(symbol), exchange, 1, 1) for c in db_holders]
+    fb = resolve_sell_client_excluding(driver, symbol, 1.0, [exclude_client] if exclude_client else None, exchange) or default_client
+    print(f"[POSITION] No saleable holders for {symbol}. Fallback: {fb}.")
     return []
 
 def get_snapshot(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -> Dict[str, str]:
@@ -180,12 +188,23 @@ def get_snapshot(driver: webdriver.Chrome, symbol: str, exchange: str = "DSE") -
         "saleable_shares": f"{sum(p.saleable_qty for p in positions):,.0f}",
     }
 
+def _normalize_exclusions(exclude_client: Optional[str] = None, exclude_clients: Optional[Iterable[str]] = None) -> Set[str]:
+    excl: Set[str] = set()
+    if exclude_client and exclude_client.strip():
+        excl.add(exclude_client.strip().lower())
+    if exclude_clients:
+        for c in exclude_clients:
+            if c and str(c).strip():
+                excl.add(str(c).strip().lower())
+    return excl
+
 def _select_best_holder(
-    positions: List[ClientPosition], required_qty: float, preferred_client: Optional[str] = None, exclude_client: Optional[str] = None
+    positions: List[ClientPosition], required_qty: float, preferred_client: Optional[str] = None,
+    exclude_client: Optional[str] = None, exclude_clients: Optional[Iterable[str]] = None
 ) -> Optional[ClientPosition]:
-    excl = exclude_client.strip().lower() if exclude_client else ""
+    excl = _normalize_exclusions(exclude_client, exclude_clients)
     pref = preferred_client.strip().lower() if preferred_client else ""
-    candidates = [p for p in positions if not excl or p.client_code.strip().lower() != excl]
+    candidates = [p for p in positions if p.saleable_qty > 0 and p.client_code.strip().lower() not in excl]
     if not candidates:
         return None
     for cp in candidates:
@@ -201,35 +220,84 @@ def find_client_with_saleable(
 ) -> Optional[ClientPosition]:
     return _select_best_holder(get_positions(driver, symbol, exchange), required_qty, preferred_client=preferred_client)
 
-def find_client_with_saleable_excluding(
-    driver: webdriver.Chrome, symbol: str, required_qty: float, exclude_client: Optional[str], exchange: str = "DSE"
-) -> Optional[ClientPosition]:
-    return _select_best_holder(get_positions(driver, symbol, exchange), required_qty, exclude_client=exclude_client)
-
-def find_holder_with_sufficient_shares_from_db(symbol: str, required_qty: float, exclude_client: Optional[str] = None) -> Optional[str]:
+def get_holders_from_db(
+    symbol: str, required_qty: float = 1.0, exclude_clients: Optional[Iterable[str]] = None, limit: int = 20
+) -> List[str]:
+    """Queries Client_Position and legacy portfolio tables in PostgreSQL, excluding given clients."""
     clean_sym = oms_price.clean_symbol(symbol)
     if not clean_sym:
-        return None
+        return []
+    excl = _normalize_exclusions(exclude_clients=exclude_clients)
     conn = get_qtrader_db_connection()
     if not conn:
-        return None
+        return []
+    candidate_sqls = [
+        'SELECT "ClientCode" FROM public."Client_Position" WHERE UPPER(symbol) = UPPER(%s) AND COALESCE(saleable_qty, total_qty, qty, 0) >= %s ORDER BY COALESCE(saleable_qty, total_qty, qty, 0) DESC LIMIT %s;',
+        'SELECT client_code FROM public."Client_Position" WHERE UPPER(symbol) = UPPER(%s) AND COALESCE(saleable_qty, saleable, total_qty, qty, 0) >= %s ORDER BY COALESCE(saleable_qty, saleable, total_qty, qty, 0) DESC LIMIT %s;',
+        'SELECT "ClientCode" FROM public.client_position WHERE UPPER(symbol) = UPPER(%s) AND COALESCE(saleable_qty, total_qty, qty, 0) >= %s ORDER BY COALESCE(saleable_qty, total_qty, qty, 0) DESC LIMIT %s;',
+        'SELECT client_code FROM public.client_position WHERE UPPER(symbol) = UPPER(%s) AND COALESCE(saleable_qty, saleable, total_qty, qty, 0) >= %s ORDER BY COALESCE(saleable_qty, saleable, total_qty, qty, 0) DESC LIMIT %s;',
+        'SELECT "ClientCode" FROM public.clients_portfolio WHERE UPPER(symbol) = UPPER(%s) AND COALESCE(saleable_qty, total_qty, 0) >= %s ORDER BY COALESCE(saleable_qty, total_qty, 0) DESC LIMIT %s;',
+        'SELECT "ClientCode" FROM public.clients_share WHERE UPPER(symbol) = UPPER(%s) AND COALESCE(saleable, qty, 0) >= %s ORDER BY COALESCE(saleable, qty, 0) DESC LIMIT %s;',
+        'SELECT client_code FROM public.client_portfolio WHERE UPPER(symbol) = UPPER(%s) AND COALESCE(saleable_qty, total_qty, 0) >= %s ORDER BY COALESCE(saleable_qty, total_qty, 0) DESC LIMIT %s;',
+    ]
+    holders: List[str] = []
     try:
-        excl = exclude_client.strip() if exclude_client else ""
-        sql = (
-            'SELECT "ClientCode" FROM public.clients_portfolio WHERE UPPER(symbol) = UPPER(%s) '
-            'AND COALESCE(saleable_qty, total_qty, 0) >= %s '
-            + ('AND "ClientCode" != %s ' if excl else '')
-            + 'ORDER BY COALESCE(saleable_qty, total_qty, 0) DESC LIMIT 1;'
-        )
-        with conn.cursor() as cur:
-            params = (clean_sym, required_qty, excl) if excl else (clean_sym, required_qty)
-            cur.execute(sql, params)
-            row = cur.fetchone()
-            return str(row[0]).strip() if row else None
-    except Exception:
-        return None
+        for sql in candidate_sqls:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(sql, (clean_sym, required_qty, limit))
+                    for row in cur.fetchall() or []:
+                        code = str(row[0]).strip() if row and row[0] else ""
+                        if code and code.lower() not in excl and code not in holders:
+                            holders.append(code)
+                if holders:
+                    return holders
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+        return holders
     finally:
         try:
             conn.close()
         except Exception:
             pass
+
+def find_holder_with_sufficient_shares_from_db(symbol: str, required_qty: float, exclude_client: Optional[str] = None) -> Optional[str]:
+    excl = [exclude_client] if exclude_client else None
+    holders = get_holders_from_db(symbol, required_qty, exclude_clients=excl, limit=20)
+    if not holders and required_qty > 1.0:
+        holders = get_holders_from_db(symbol, 1.0, exclude_clients=excl, limit=20)
+    return holders[0] if holders else None
+
+def find_client_with_saleable_excluding(
+    driver: Optional[webdriver.Chrome], symbol: str, required_qty: float,
+    exclude_client: Optional[str] = None, exchange: str = "DSE",
+    exclude_clients: Optional[Iterable[str]] = None
+) -> Optional[ClientPosition]:
+    positions = get_positions(driver, symbol, exchange) if driver else []
+    best = _select_best_holder(positions, required_qty, exclude_client=exclude_client, exclude_clients=exclude_clients)
+    if best:
+        return best
+    excl = _normalize_exclusions(exclude_client, exclude_clients)
+    db_holders = get_holders_from_db(symbol, required_qty, exclude_clients=excl, limit=10)
+    if not db_holders and required_qty > 1.0:
+        db_holders = get_holders_from_db(symbol, 1.0, exclude_clients=excl, limit=10)
+    if db_holders:
+        return ClientPosition(db_holders[0], oms_price.clean_symbol(symbol), exchange, required_qty, required_qty)
+    return None
+
+def resolve_sell_client_excluding(
+    driver: Optional[webdriver.Chrome], symbol: str, required_qty: float = 1.0,
+    exclude_clients: Optional[Any] = None, exchange: str = "DSE"
+) -> str:
+    excl_list = [exclude_clients] if isinstance(exclude_clients, str) else list(exclude_clients or [])
+    excl = _normalize_exclusions(exclude_clients=excl_list)
+    cp = find_client_with_saleable_excluding(driver, symbol, required_qty, exchange=exchange, exclude_clients=excl)
+    if cp and cp.client_code and cp.client_code.strip().lower() not in excl:
+        return cp.client_code.strip()
+    for fb in ("11310", "00128", "00463", "00600", "00224", "34601"):
+        if fb.lower() not in excl:
+            return fb
+    return "11310"

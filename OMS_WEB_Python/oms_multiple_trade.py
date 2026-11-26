@@ -35,6 +35,7 @@ from config import DEFAULT_SYMBOL, SEED_CLIENT_CODES
 import widget_color
 import oms_price
 import oms_trade
+import position
 
 # Database Connection Settings (Primary: 192.168.155.22:5445 | Secondary Fallback: 10.20.8.29:5445)
 PRIMARY_MARKETDATA_DB_URI = "postgresql+psycopg2://marketdata:pass4321@192.168.155.22:5445/marketdb"
@@ -287,9 +288,10 @@ def fetch_holding_clients_for_symbol(driver: webdriver.Chrome, symbol: str, exch
     except Exception as e:
         print(f"[WARN: HFT Seller Discovery] Failed querying holdings for {clean_sym}: {e}")
     if not clients:
-
-        # Fallback to verified accounts
-        clients = ["00463", "00600", "00224", "08096", "11310", "12245", "14118"]
+        clients.extend(position.get_holders_from_db(clean_sym, 1.0))
+    if not clients:
+        # Fallback to verified non-buyer accounts
+        clients = ["11310", "00463", "00600", "00224", "08096", "12245", "14118"]
     return clients
 
 def fetch_price_safely(driver: webdriver.Chrome, symbol: str) -> float:
@@ -757,8 +759,12 @@ def build_hft_pipeline(
                 buyer3 = buy_clients[(buy_idx + 2) % buy_count]
                 buy_idx += 3
                 sellers = sell_clients_by_symbol.get(sym, [])
-                seller1 = sellers[0] if sellers else "00463"
-                seller2 = sellers[1] if len(sellers) > 1 else ("00600" if seller1 == "00463" else "00463")
+                excl1 = {str(b).strip().lower() for b in buy_clients}
+                seller1 = next((s for s in sellers if s and s.strip().lower() not in excl1), None) or position.resolve_sell_client_excluding(None, sym, 10, excl1, "DSE")
+                excl2 = excl1 | {seller1.strip().lower()}
+                seller2 = next((s for s in sellers if s and s.strip().lower() not in excl2), None) or position.resolve_sell_client_excluding(None, sym, 10, excl2, "DSE")
+                if seller2.strip().lower() == str(buyer2).strip().lower():
+                    seller2 = seller1
                 pattern = (s + sweep) % 4
                 if pattern == 0:
 
@@ -807,7 +813,13 @@ def build_hft_pipeline(
             client_code = buy_clients[(i // 2) % buy_count]
         else:
             sellers = sell_clients_by_symbol.get(symbol, [])
-            client_code = sellers[(i // 2) % len(sellers)] if sellers else "00463"
+            excl = {str(b).strip().lower() for b in buy_clients}
+            valid_sellers = [s for s in sellers if s and s.strip().lower() not in excl]
+            client_code = (
+                valid_sellers[(i // 2) % len(valid_sellers)]
+                if valid_sellers
+                else position.resolve_sell_client_excluding(None, symbol, 10, excl, "DSE")
+            )
 
         # Standard trading lot size (10, 15, 20 shares)
         qty = 10 + ((i % 3) * 5)
@@ -905,14 +917,17 @@ def run_load_test(driver: webdriver.Chrome) -> None:
     print("\n[HFT DISCOVERY: 3. AUTO-DISCOVERING HOLDING CLIENTS FOR SELL SIDE]")
     print("Querying real portfolio holdings from backend without leaving Trade page...")
     sell_clients_by_symbol: Dict[str, List[str]] = {}
-    default_sellers = ["00463", "00600", "00224", "08096", "11310", "12245", "14118"]
+    buy_excl = {str(b).strip().lower() for b in buy_clients}
+    default_sellers = [c for c in ("11310", "00463", "00600", "00224", "08096", "12245", "14118") if c.lower() not in buy_excl]
     holder_disc_limit = min(len(symbols), 20)
     for i in range(holder_disc_limit):
         sym = symbols[i]
-        holders = fetch_holding_clients_for_symbol(driver, sym, "DSE")
+        holders = [h for h in fetch_holding_clients_for_symbol(driver, sym, "DSE") if h.strip().lower() not in buy_excl]
+        if not holders:
+            holders = [position.resolve_sell_client_excluding(driver, sym, 10, buy_excl, "DSE")]
         sell_clients_by_symbol[sym] = holders
         sample_preview = holders[:min(5, len(holders))]
-        print(f"  ✔ {sym:<10} -> Found {len(holders):2d} holding client(s) with saleable shares: {sample_preview}")
+        print(f"  ✔ {sym:<10} -> Found {len(holders):2d} SELL client(s) (!= BUY) with saleable shares: {sample_preview}")
     if len(symbols) > holder_disc_limit:
         for i in range(holder_disc_limit, len(symbols)):
             sell_clients_by_symbol[symbols[i]] = default_sellers
