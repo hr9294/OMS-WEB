@@ -4904,17 +4904,22 @@ public class Day_Netting {
         System.out.println("\n-----------------------------------------------------------------------------");
         System.out.println("  3. DAY NETTING SUITE (NONE, INDIVIDUAL, CROSS), 6-WIDGET REPORT & MATRIX   ");
         System.out.println("-----------------------------------------------------------------------------");
+        System.out.println("Select Netting Mode: 1=None | 2=Individual Exchange [ENTER=Default] | 3=Cross Exchange");
+        System.out.print("Enter Mode Choice (1-3, ENTER=2): ");
+        String suiteModeChoice = readLineWithTimeout(sc, "2", 0);
+        NettingMode selectedMode = "1".equals(suiteModeChoice) || "none".equalsIgnoreCase(suiteModeChoice) ? NettingMode.NONE :
+                                   ("3".equals(suiteModeChoice) || "cross".equalsIgnoreCase(suiteModeChoice) ? NettingMode.CROSS_EXCHANGE : NettingMode.INDIVIDUAL_EXCHANGE);
         System.out.print("Target Symbol (ENTER=GP): ");
         String sym = readLineWithTimeout(sc, "GP", 0);
         System.out.print("Target Client (ENTER=23986): ");
         String cln = readLineWithTimeout(sc, "23986", 0);
+        System.out.printf("Enter Counterparty BUY Client for Netting SELL matching (ENTER=auto from clients_cash DB >= 50,000 BDT, != %s): ", cln);
+        String cpBuyIn = readLineWithTimeout(sc, "", 0);
         System.out.print("Execute Live Mode Trades? (ENTER=Execute Flow, 0=Skip Trade): ");
         String tradeOpt = readLineWithTimeout(sc, "5", 0);
 
-        for (NettingMode mode : new NettingMode[] { NettingMode.NONE, NettingMode.INDIVIDUAL_EXCHANGE, NettingMode.CROSS_EXCHANGE }) {
-            String ex = (mode == NettingMode.NONE) ? "DSE" : "BOTH";
-            executeNormalNettingFlow(driver, mode, ex, "12345", sym, cln, "PUBLIC", tradeOpt);
-        }
+        String ex = (selectedMode == NettingMode.NONE) ? "DSE" : "BOTH";
+        executeNormalNettingFlow(driver, selectedMode, ex, "12345", sym, cln, "PUBLIC", tradeOpt, cpBuyIn);
         printApplicabilityVerificationReport(checkSelectedApplicability(driver, "DSE", sym, cln, "PUBLIC"));
         run3in1UIIndicatorsAudit(driver, sym, cln);
         testDayNettingScenarios();
