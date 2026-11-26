@@ -153,8 +153,8 @@ public class OMSwebmain {
         System.out.println("  4. Upload File Engine (User Choice File Upload: Client, Stock, Cash, etc.)");
         System.out.println("  5. Export File Engine (Trade Files, EOD Price, Commission & Reports)");
         System.out.println("  6. Day Netting Engine (Scrip Netting, RMS Controls & UI Audit)");
-        System.out.println("  7. Dashboard Reflection Audit (12-Model Verification, Live Trade & Diff Comparison)");
-        System.out.println("  8. RMS Risk Management Engine (qRMS Settings, Clients RMS, Scrip Controls & Board Restrictions)");
+        System.out.println("  7. RMS Risk Management Engine (qRMS Settings, Clients RMS, Scrip Controls & Board Restrictions)");
+        System.out.println("  8. UI Testing Suite (Admin Dashboard, RMS, File Manager, Account, Trade Logs, Setting)");
         System.out.println("  0. Exit Application");
     }
 
@@ -209,12 +209,12 @@ public class OMSwebmain {
             } else if ("6".equals(engChoice) || "netting".equalsIgnoreCase(engChoice) || "daynetting".equalsIgnoreCase(engChoice)) {
                 System.out.println("\n[UFTFAST OMS] Executing Action 6: Day Netting Engine (Scrip Netting Suite)...");
                 Day_Netting.main(driver, sc);
-            } else if ("7".equals(engChoice) || "dashboard".equalsIgnoreCase(engChoice) || "audit".equalsIgnoreCase(engChoice)) {
-                System.out.println("\n[UFTFAST OMS] Executing Action 7: Dashboard Reflection Audit (12 Models)...");
-                OMSweb_DashboardAudit.main(driver, sc);
-            } else if ("8".equals(engChoice) || "rms".equalsIgnoreCase(engChoice) || "qrms".equalsIgnoreCase(engChoice)) {
-                System.out.println("\n[UFTFAST OMS] Executing Action 8: RMS Risk Management Engine...");
+            } else if ("7".equals(engChoice) || "rms".equalsIgnoreCase(engChoice) || "qrms".equalsIgnoreCase(engChoice)) {
+                System.out.println("\n[UFTFAST OMS] Executing Action 7: RMS Risk Management Engine...");
                 RMS.main(driver, sc);
+            } else if ("8".equals(engChoice) || "ui".equalsIgnoreCase(engChoice) || "uitest".equalsIgnoreCase(engChoice) || "dashboard".equalsIgnoreCase(engChoice)) {
+                System.out.println("\n[UFTFAST OMS] Executing Action 8: UI Testing Suite...");
+                UI_testing.main(driver, sc);
             } else if ("CSE".equalsIgnoreCase(engChoice)) {
                 System.out.println("\n[UFTFAST OMS] Executing Normal Trade for CSE...");
                 OMSweb_Trade.activeExchange = "CSE";

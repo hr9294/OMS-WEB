@@ -142,12 +142,26 @@ def _navigate_to_page(driver: Any, tp: TargetPage) -> str:
     )
     return str(clicked)
 
+def _verify_chg_sign(today_str: str, yest_str: str, chg_str: str) -> str:
+    t = oms_dashboard.parse_num_safe(today_str)
+    y = oms_dashboard.parse_num_safe(yest_str)
+    c = oms_dashboard.parse_num_safe(chg_str)
+    if t > y:
+        return "PASS(+)" if c >= 0 else f"FAIL(expected +, got {chg_str})"
+    if t < y:
+        return "PASS(-)" if c <= 0 else f"FAIL(expected -, got {chg_str})"
+    return "PASS(0)"
+
+
 def _test_admin_dashboard(driver: Any, browser_name: str) -> Dict[str, Any]:
     oms_dashboard.wait_for_dashboard_ready(driver, timeout_seconds=8)
     snap = oms_dashboard.capture_snapshot(driver, browser_name)
     tv = oms_dashboard.parse_num_safe(snap["turnover"]["big_value"])
     buy = oms_dashboard.parse_num_safe(snap["buy_value"]["big_value"])
     sell = oms_dashboard.parse_num_safe(snap["sell_value"]["big_value"])
+    tr = oms_dashboard.parse_num_safe(snap["trades"]["big_count"])
+    bt = oms_dashboard.parse_num_safe(snap["buy_trades"]["big_count"])
+    st = oms_dashboard.parse_num_safe(snap["sell_trades"]["big_count"])
     active = snap["active_users"]
     tab_test = driver.execute_script(
         "var tabs = Array.from(document.querySelectorAll('[role=tab], .nav-tabs .nav-link, .nav-pills .nav-link')).filter(function(t){ return t.offsetParent !== null; });"
@@ -159,12 +173,23 @@ def _test_admin_dashboard(driver: Any, browser_name: str) -> Dict[str, Any]:
         "buyValue": snap["buy_value"]["big_value"],
         "sellValue": snap["sell_value"]["big_value"],
         "turnoverMatchesBuyPlusSell": abs(tv - (buy + sell)) <= 1.0 or tv == 0.0,
+        "tradesCount": snap["trades"]["big_count"],
+        "buyTradesCount": snap["buy_trades"]["big_count"],
+        "sellTradesCount": snap["sell_trades"]["big_count"],
+        "tradesMatchesBuyPlusSell": abs(tr - (bt + st)) <= 0.1,
         "brokerLimitDseUsed": snap["broker_limit"]["dse_used"],
         "brokerLimitCseUsed": snap["broker_limit"]["cse_used"],
-        "tradesCount": snap["trades"]["big_count"],
         "activeUsersOnline": active["users_online"],
+        "activeUsersOffline": active["users_offline"],
         "activeUsersTotal": active["users_total"],
+        "activeUsersSumOk": (active["users_online"] + active["users_offline"]) == active["users_total"],
         "roleTotalsSum": active["dealers_total"] + active["clients_total"] + active["associates_total"],
+        "chgSignTurnoverDse": _verify_chg_sign(snap["turnover"]["dse_today"], snap["turnover"]["dse_yesterday"], snap["turnover"]["dse_change"]),
+        "chgSignBuyValDse": _verify_chg_sign(snap["buy_value"]["dse_today"], snap["buy_value"]["dse_yesterday"], snap["buy_value"]["dse_change"]),
+        "chgSignSellValDse": _verify_chg_sign(snap["sell_value"]["dse_today"], snap["sell_value"]["dse_yesterday"], snap["sell_value"]["dse_change"]),
+        "chgSignTradesDse": _verify_chg_sign(snap["trades"]["dse_today"], snap["trades"]["dse_yesterday"], snap["trades"]["dse_change"]),
+        "chgSignBuyTradesDse": _verify_chg_sign(snap["buy_trades"]["dse_today"], snap["buy_trades"]["dse_yesterday"], snap["buy_trades"]["dse_change"]),
+        "chgSignSellTradesDse": _verify_chg_sign(snap["sell_trades"]["dse_today"], snap["sell_trades"]["dse_yesterday"], snap["sell_trades"]["dse_change"]),
         "mostTradedStocksRows": len(snap["most_traded_stocks"]),
         "exchangeContributionRows": len(snap["exchange_contribution"]),
         "topDealersRows": len(snap["top_dealers"]),
@@ -537,6 +562,69 @@ def run_browser_suite(browser_name: str, headless: bool = False, out_dir: str = 
                 drv.quit()
             except Exception:
                 pass
+
+def _run_rms_menu(driver: Any) -> None:
+    rms_opts = ("Client", "User", "Branch", "Margin", "Broker", "Netting", "Settings", "Limits", "Identity")
+    while True:
+        print("\n--- [RMS UI Testing] Select RMS Option ---")
+        for i, name in enumerate(rms_opts, 1):
+            print(f"  {i}. {name}")
+        print("  10. Run ALL RMS Options")
+        print("  0. Back to UI Testing Menu")
+        choice = config.read_line_with_timeout("Enter Choice (0-10, ENTER=10): ", "10")
+        if choice in ("0", "back", "exit"):
+            break
+        _navigate_to_page(driver, TARGET_PAGES[1])
+        time.sleep(1.5)
+        if choice == "10":
+            print("[RMS Full Audit]", json.dumps(_test_rms_module(driver, "Chrome"), indent=2))
+            continue
+        if choice.isdigit() and 1 <= int(choice) <= len(rms_opts):
+            tab = rms_opts[int(choice) - 1]
+            res = driver.execute_script(
+                "var name=arguments[0].toLowerCase();"
+                "var el=Array.from(document.querySelectorAll('[role=tab],.nav-tabs .nav-link,.nav-pills .nav-link,a,button'))"
+                ".find(function(t){return t.offsetParent!==null && (t.innerText||'').trim().toLowerCase()===name;});"
+                "if(!el) return 'TAB_NOT_FOUND:'+name; el.click(); return 'CLICKED:'+name;", tab
+            )
+            time.sleep(0.8)
+            print(f"[RMS | {tab}] {res} | uiHealth={day_netting.verify_ui_layout_health(driver)}")
+        else:
+            print("[INVALID] Choose 0-10.")
+
+
+def run_ui_testing_menu(driver: Any, out_dir: str = OUT_DIR) -> None:
+    while True:
+        print("\n=== [UI TESTING MENU] Select Page / Module ===")
+        print("  1. Admin Dashboard (All Cards, Chg% Sign, Active/Inactive Users & Live Trade)")
+        print("  2. RMS (Select RMS Option: Client, User, Branch, Margin, Broker, Netting, Settings, Limits, Identity)")
+        print("  3. File Manager")
+        print("  4. Account")
+        print("  5. Trade Logs (FIX Order Logs)")
+        print("  6. Setting")
+        print("  7. Run ALL 6 Pages (Full Cross-Browser Suite)")
+        print("  0. Return to Main Menu")
+        choice = config.read_line_with_timeout("Enter Choice (0-7, ENTER=7): ", "7")
+        if choice in ("0", "back", "exit"):
+            break
+        if choice == "1":
+            res = test_target_page(driver, "Chrome", TARGET_PAGES[0], out_dir=out_dir)
+            print("[Admin Dashboard Audit]", json.dumps(res.get("functionalTests"), indent=2))
+            run_trade = config.read_line_with_timeout("Run live trade + pre/post Dashboard Reflection Audit? (1=YES / 0=NO, ENTER=0): ", "0", 10.0)
+            if run_trade == "1":
+                oms_dashboard.run_live_reflection_audit(driver)
+        elif choice == "2":
+            _run_rms_menu(driver)
+        elif choice in ("3", "4", "5", "6"):
+            tp = TARGET_PAGES[int(choice) - 1]
+            res = test_target_page(driver, "Chrome", tp, out_dir=out_dir)
+            print(f"[ui_testing | {tp.label}] nav={res.get('navMethod')} | loadMs={res.get('loadMs')} | jsErr={res.get('jsErrorCount')} | overflow1366={res.get('overflowAt1366')}")
+            print("  Details:", json.dumps(res.get("functionalTests"), indent=2))
+        elif choice == "7":
+            run_ui_testing(existing_driver=driver, out_dir=out_dir)
+        else:
+            print("[INVALID] Choose 0-7.")
+
 
 def run_ui_testing(browsers: Optional[List[str]] = None, headless: bool = False, out_dir: str = OUT_DIR, existing_driver: Any = None) -> Dict[str, Any]:
     print("=========================================================================")

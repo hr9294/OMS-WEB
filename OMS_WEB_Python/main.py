@@ -68,16 +68,16 @@ def _dispatch_mode(driver, mode: str) -> None:
     elif mode == "rms":
         rms.run_rms_console(driver)
     elif mode == "ui-test":
-        ui_testing.run_ui_testing(existing_driver=driver)
+        ui_testing.run_ui_testing_menu(driver)
     else:
         oms_trade.run_trade_workflow(driver)
 
 def run_session_loop(driver, initial_mode: str = "") -> None:
     mode_map = {
         "1": "trade", "2": "multi-order", "3": "load-test", "4": "upload",
-        "5": "export", "6": "day-netting", "7": "dashboard", "8": "rms",
-        "9": "ui-test", "10": "account-limits", "11": "db-ltp",
-        "12": "position", "13": "portfolio", "14": "depth", "15": "terminal",
+        "5": "export", "6": "day-netting", "7": "rms", "8": "ui-test",
+        "9": "account-limits", "10": "db-ltp", "11": "position",
+        "12": "portfolio", "13": "depth", "14": "terminal",
     }
     first_pass = bool(initial_mode)
     while True:
@@ -94,12 +94,11 @@ def run_session_loop(driver, initial_mode: str = "") -> None:
         print("  4. Upload File Engine (Client, Stock, Cash - Safe Guarded)")
         print("  5. Export File Engine (Trade Files, EOD Price, Commission & Reports)")
         print("  6. Day Netting Engine (Scrip Netting, RMS Controls & 9-Scenario) [Default]")
-        print("  7. Dashboard 12-Model Reflection & Live Audit")
-        print("  8. RMS Risk Management Engine (qRMS + Connected Trade Gate)")
-        print("  9. Cross-Browser UI Testing Audit (6 Modules)")
-        print("  10. Account Limits | 11. DB LTPs | 12-15. Position/Portfolio/Depth/Terminal")
+        print("  7. RMS Risk Management Engine (qRMS + Connected Trade Gate)")
+        print("  8. UI Testing Suite (Admin Dashboard, RMS, File Manager, Account, Trade Logs, Setting)")
+        print("  9. Account Limits | 10. DB LTPs | 11-14. Position/Portfolio/Depth/Terminal")
         print("  0. Exit Application")
-        choice = config.read_line_with_timeout("Enter Choice (0-15, ENTER=6): ", "6")
+        choice = config.read_line_with_timeout("Enter Choice (0-14, ENTER=6): ", "6")
         if choice in ("0", "exit", "quit"):
             break
         try:

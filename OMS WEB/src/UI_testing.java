@@ -47,6 +47,88 @@ public class UI_testing {
         "  var os=XMLHttpRequest.prototype.send; XMLHttpRequest.prototype.send=function(){ var s=this; this.addEventListener('load',function(){ if(s.status>=400) window.__uiHttpFails.push('XHR '+s.status+' '+(s.__reqUrl||'')); }); this.addEventListener('error',function(){ window.__uiHttpFails.push('XHR_ERR '+(s.__reqUrl||'')); }); return os.apply(this,arguments); };" +
         "}";
 
+    public static void main(WebDriver driver, Scanner sc) {
+        Logger.getLogger("org.openqa.selenium").setLevel(Level.SEVERE);
+        JavascriptExecutor js = (JavascriptExecutor) driver;
+        while (true) {
+            System.out.println("\n=================================================================");
+            System.out.println("  [UI TESTING MENU] Select Page / Module to Test");
+            System.out.println("=================================================================");
+            System.out.println("  1. Admin Dashboard (All Cards, Chg% Sign, Active/Inactive Users & Live Trade)");
+            System.out.println("  2. RMS (Select RMS Option: Client, User, Branch, Margin, Broker, Netting, Settings, Limits, Identity)");
+            System.out.println("  3. File Manager (Upload/Export Sub-Menus & History)");
+            System.out.println("  4. Account (Profile, Password Validation & Eye Toggle)");
+            System.out.println("  5. Trade Logs (FIX Order Logs, Filters & Table)");
+            System.out.println("  6. Setting (Settings, Activity Logs & Responsive Check)");
+            System.out.println("  7. Run ALL 6 Pages (Full Cross-Browser Suite: Chrome, Firefox, Safari)");
+            System.out.println("  0. Return to Main Menu");
+            String ch = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "7", 300);
+            if ("0".equals(ch) || "back".equalsIgnoreCase(ch) || "exit".equalsIgnoreCase(ch)) break;
+            if ("1".equals(ch)) {
+                Map<String, Object> r = testTargetPage(driver, js, "Chrome", TARGET_PAGES.get(0));
+                System.out.println("[Admin Dashboard Audit] " + toJson(r.get("functionalTests")));
+                runInteractiveDashboardTradeCheck(driver, sc);
+            } else if ("2".equals(ch)) {
+                runInteractiveRmsMenu(driver, js, sc);
+            } else if ("3".equals(ch) || "4".equals(ch) || "5".equals(ch) || "6".equals(ch)) {
+                int idx = Integer.parseInt(ch) - 1;
+                Map<String, Object> r = testTargetPage(driver, js, "Chrome", TARGET_PAGES.get(idx));
+                System.out.printf("[UI_testing | %s] nav=%s | loadMs=%s | jsErr=%s | httpFail=%s | overflow1366=%s%n",
+                        TARGET_PAGES.get(idx).label, r.get("navMethod"), r.get("loadMs"),
+                        r.get("jsErrorCount"), r.get("httpFailureCount"), r.get("overflowAt1366"));
+                System.out.println("  Details: " + toJson(r.get("functionalTests")));
+            } else if ("7".equals(ch)) {
+                main(new String[0]);
+            } else {
+                System.out.println("[INVALID] Choose 0-7.");
+            }
+        }
+    }
+
+    private static void runInteractiveDashboardTradeCheck(WebDriver driver, Scanner sc) {
+        System.out.print("Run live trade + pre/post Dashboard Reflection Audit? (1=YES / 0=NO, ENTER=0): ");
+        String ans = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "0", 120);
+        if ("1".equals(ans) || "yes".equalsIgnoreCase(ans)) {
+            OMSweb_DashboardAudit.runLiveReflectionAudit(driver, sc);
+        }
+    }
+
+    private static void runInteractiveRmsMenu(WebDriver driver, JavascriptExecutor js, Scanner sc) {
+        String[] rmsOpts = {"Client", "User", "Branch", "Margin", "Broker", "Netting", "Settings", "Limits", "Identity"};
+        while (true) {
+            System.out.println("\n--- [RMS UI Testing] Select RMS Option ---");
+            for (int i = 0; i < rmsOpts.length; i++) {
+                System.out.printf("  %d. %s%n", i + 1, rmsOpts[i]);
+            }
+            System.out.println("  10. Run ALL RMS Options");
+            System.out.println("  0. Back to UI Testing Menu");
+            String c = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "10", 300);
+            if ("0".equals(c) || "back".equalsIgnoreCase(c)) break;
+            navigateToPage(driver, js, TARGET_PAGES.get(1));
+            sleepMs(1500);
+            if ("10".equals(c)) {
+                System.out.println("[RMS Full Audit] " + toJson(testRmsModule(driver, js)));
+                continue;
+            }
+            try {
+                int idx = Integer.parseInt(c) - 1;
+                if (idx >= 0 && idx < rmsOpts.length) {
+                    String tab = rmsOpts[idx];
+                    Object res = js.executeScript(
+                        "var name=arguments[0].toLowerCase();" +
+                        "var el=Array.from(document.querySelectorAll('[role=tab],.nav-tabs .nav-link,.nav-pills .nav-link,a,button')).find(function(t){return t.offsetParent!==null && (t.innerText||'').trim().toLowerCase()===name;});" +
+                        "if(!el) return 'TAB_NOT_FOUND:'+name; el.click(); return 'CLICKED:'+name;", tab);
+                    sleepMs(800);
+                    System.out.println("[RMS | " + tab + "] " + res + " | uiHealth=" + Day_Netting.verifyUiLayoutHealth(driver));
+                } else {
+                    System.out.println("[INVALID] Choose 0-10.");
+                }
+            } catch (NumberFormatException e) {
+                System.out.println("[INVALID] Choose 0-10.");
+            }
+        }
+    }
+
     public static void main(String[] args) {
         Logger.getLogger("org.openqa.selenium").setLevel(Level.SEVERE);
         System.out.println("=== UI_testing | Full Cross-Browser Suite (Connected to OMS WEB Classes) ===");
@@ -274,12 +356,24 @@ public class UI_testing {
         double turnover = OMSweb_DashboardAudit.parseNumSafe(snap.turnover.bigValue);
         double buyVal = OMSweb_DashboardAudit.parseNumSafe(snap.buyValue.bigValue);
         double sellVal = OMSweb_DashboardAudit.parseNumSafe(snap.sellValue.bigValue);
+        double trades = OMSweb_DashboardAudit.parseNumSafe(snap.trades.bigCount);
+        double buyTrades = OMSweb_DashboardAudit.parseNumSafe(snap.buyTrades.bigCount);
+        double sellTrades = OMSweb_DashboardAudit.parseNumSafe(snap.sellTrades.bigCount);
         m.put("turnover", snap.turnover.bigValue); m.put("buyValue", snap.buyValue.bigValue); m.put("sellValue", snap.sellValue.bigValue);
         m.put("turnoverMatchesBuyPlusSell", Math.abs(turnover - (buyVal + sellVal)) <= 1.0 || turnover == 0.0);
+        m.put("tradesCount", snap.trades.bigCount); m.put("buyTradesCount", snap.buyTrades.bigCount); m.put("sellTradesCount", snap.sellTrades.bigCount);
+        m.put("tradesMatchesBuyPlusSell", Math.abs(trades - (buyTrades + sellTrades)) <= 0.1);
         m.put("brokerLimitDseUsed", snap.brokerLimit.dseUsed); m.put("brokerLimitCseUsed", snap.brokerLimit.cseUsed);
-        m.put("tradesCount", snap.trades.bigCount);
-        m.put("activeUsersOnline", snap.activeUsers.usersOnline); m.put("activeUsersTotal", snap.activeUsers.usersTotal);
+        m.put("activeUsersOnline", snap.activeUsers.usersOnline); m.put("activeUsersOffline", snap.activeUsers.usersOffline);
+        m.put("activeUsersTotal", snap.activeUsers.usersTotal);
+        m.put("activeUsersSumOk", (snap.activeUsers.usersOnline + snap.activeUsers.usersOffline) == snap.activeUsers.usersTotal);
         m.put("roleTotalsSum", snap.activeUsers.dealersTotal + snap.activeUsers.clientsTotal + snap.activeUsers.associatesTotal);
+        m.put("chgSignTurnoverDse", verifyChgSign(snap.turnover.dseToday, snap.turnover.dseYesterday, snap.turnover.dseChange));
+        m.put("chgSignBuyValDse", verifyChgSign(snap.buyValue.dseToday, snap.buyValue.dseYesterday, snap.buyValue.dseChange));
+        m.put("chgSignSellValDse", verifyChgSign(snap.sellValue.dseToday, snap.sellValue.dseYesterday, snap.sellValue.dseChange));
+        m.put("chgSignTradesDse", verifyChgSign(snap.trades.dseToday, snap.trades.dseYesterday, snap.trades.dseChange));
+        m.put("chgSignBuyTradesDse", verifyChgSign(snap.buyTrades.dseToday, snap.buyTrades.dseYesterday, snap.buyTrades.dseChange));
+        m.put("chgSignSellTradesDse", verifyChgSign(snap.sellTrades.dseToday, snap.sellTrades.dseYesterday, snap.sellTrades.dseChange));
         m.put("mostTradedStocksRows", snap.mostTradedStocks.size()); m.put("exchangeContributionRows", snap.exchangeContribution.size());
         m.put("topDealersRows", snap.topDealers.size()); m.put("topAssociatesRows", snap.topAssociates.size());
         m.put("mostTradedClientsRows", snap.mostTradedClients.size());
@@ -406,6 +500,15 @@ public class UI_testing {
         try { js.executeScript("var tab=Array.from(document.querySelectorAll('[role=tab],.nav-tabs .nav-link,.nav-pills .nav-link,a,button')).find(function(el){return el.offsetParent!==null&&/^settings$/i.test((el.innerText||'').trim());}); if(tab) tab.click();"); } catch (Exception ignored) {}
         m.put("activityLogsTabTest", act + "|" + actC);
         return m;
+    }
+
+    private static String verifyChgSign(String todayStr, String yestStr, String chgStr) {
+        double t = OMSweb_DashboardAudit.parseNumSafe(todayStr);
+        double y = OMSweb_DashboardAudit.parseNumSafe(yestStr);
+        double c = OMSweb_DashboardAudit.parseNumSafe(chgStr);
+        if (t > y) return c >= 0 ? "PASS(+)" : "FAIL(expected +, got " + chgStr + ")";
+        if (t < y) return c <= 0 ? "PASS(-)" : "FAIL(expected -, got " + chgStr + ")";
+        return "PASS(0)";
     }
 
     // --- Shared Audit & Utility Helpers ---
