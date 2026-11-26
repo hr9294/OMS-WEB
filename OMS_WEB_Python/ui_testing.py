@@ -563,34 +563,82 @@ def run_browser_suite(browser_name: str, headless: bool = False, out_dir: str = 
             except Exception:
                 pass
 
-def _run_rms_menu(driver: Any) -> None:
-    rms_opts = ("Client", "User", "Branch", "Margin", "Broker", "Netting", "Settings", "Limits", "Identity")
+def _click_rms_tab(driver: Any, name: str) -> str:
+    return str(driver.execute_script(
+        "var name=arguments[0].toLowerCase();"
+        "var el=Array.from(document.querySelectorAll('[role=tab],.nav-tabs .nav-link,.nav-pills .nav-link,a,button'))"
+        ".find(function(t){return t.offsetParent!==null && (t.innerText||'').replace(/\\s+/g,' ').trim().toLowerCase()===name;});"
+        "if(!el) return 'TAB_NOT_FOUND:'+name; el.click(); return 'CLICKED:'+name;", name
+    ))
+
+
+def _verify_rms_subtab(driver: Any, sub_name: str) -> str:
+    clk = _click_rms_tab(driver, sub_name)
+    time.sleep(0.7)
+    stats = driver.execute_script(
+        "var tbl=Array.from(document.querySelectorAll('table')).filter(function(t){return t.offsetParent!==null;}).length;"
+        "var inp=Array.from(document.querySelectorAll('input:not([type=hidden]),select')).filter(function(i){return i.offsetParent!==null;}).length;"
+        "var btn=Array.from(document.querySelectorAll('button')).filter(function(b){return b.offsetParent!==null;}).length;"
+        "return 'tables='+tbl+',inputs='+inp+',buttons='+btn;"
+    )
+    return f"{clk} | {stats} | uiHealth={day_netting.verify_ui_layout_health(driver)}"
+
+
+def _run_rms_sub_menu(driver: Any, parent: str, opts: tuple[str, ...]) -> None:
     while True:
-        print("\n--- [RMS UI Testing] Select RMS Option ---")
-        for i, name in enumerate(rms_opts, 1):
+        print(f"\n--- [RMS -> {parent}] Select Sub-Option ---")
+        for i, name in enumerate(opts, 1):
             print(f"  {i}. {name}")
-        print("  10. Run ALL RMS Options")
+        all_choice = len(opts) + 1
+        print(f"  {all_choice}. All {parent} Options")
+        print("  0. Back to RMS Menu")
+        s = config.read_line_with_timeout(f"Enter Choice (0-{all_choice}, ENTER={all_choice}): ", str(all_choice))
+        if s in ("0", "back", "exit"):
+            break
+        if s == str(all_choice):
+            for sub in opts:
+                print(f"  -> {sub}: {_verify_rms_subtab(driver, sub)}")
+        elif s.isdigit() and 1 <= int(s) <= len(opts):
+            sub = opts[int(s) - 1]
+            print(f"  -> {sub}: {_verify_rms_subtab(driver, sub)}")
+        else:
+            print(f"[INVALID] Choose 0-{all_choice}.")
+
+
+def _run_rms_menu(driver: Any) -> None:
+    rms_sections: tuple[tuple[str, tuple[str, ...]], ...] = (
+        ("Client", ("Limits", "Identity")),
+        ("User", ("Identity", "Limits", "Connections")),
+        ("Branch", ("Limits", "Identity", "Teams")),
+        ("Margin", ("Boardwise Setup", "Categorywise Setup", "Instrumentwise Setup", "Clientwise Setup",
+                    "FDR PP Adjustment", "Force Sell", "Marginable Securities", "Applicable Marginable Securities",
+                    "Marginable Client", "Settings")),
+        ("Broker", ("Limits", "Ticker Restriction", "Ticker Group", "Client Group", "User Group",
+                    "Assigned Watchlist", "Reports", "Circuit Breaker Rules", "Password Policy", "Offline Order Settings")),
+        ("Netting", ("Applicable Symbol", "Clients RMS", "Unauthorized Boards/Market")),
+        ("Settings", ("Application Settings", "Email Template Settings", "SMS Template Settings", "Trade File Settings")),
+    )
+    while True:
+        print("\n--- [RMS UI Testing] Select RMS Section ---")
+        for i, (sec, subs) in enumerate(rms_sections, 1):
+            print(f"  {i}. {sec} ({len(subs)} options)")
+        print("  8. Run ALL RMS Options")
         print("  0. Back to UI Testing Menu")
-        choice = config.read_line_with_timeout("Enter Choice (0-10, ENTER=10): ", "10")
+        choice = config.read_line_with_timeout("Enter Choice (0-8, ENTER=8): ", "8")
         if choice in ("0", "back", "exit"):
             break
         _navigate_to_page(driver, TARGET_PAGES[1])
         time.sleep(1.5)
-        if choice == "10":
+        if choice == "8":
             print("[RMS Full Audit]", json.dumps(_test_rms_module(driver, "Chrome"), indent=2))
             continue
-        if choice.isdigit() and 1 <= int(choice) <= len(rms_opts):
-            tab = rms_opts[int(choice) - 1]
-            res = driver.execute_script(
-                "var name=arguments[0].toLowerCase();"
-                "var el=Array.from(document.querySelectorAll('[role=tab],.nav-tabs .nav-link,.nav-pills .nav-link,a,button'))"
-                ".find(function(t){return t.offsetParent!==null && (t.innerText||'').trim().toLowerCase()===name;});"
-                "if(!el) return 'TAB_NOT_FOUND:'+name; el.click(); return 'CLICKED:'+name;", tab
-            )
+        if choice.isdigit() and 1 <= int(choice) <= len(rms_sections):
+            sec, subs = rms_sections[int(choice) - 1]
+            _click_rms_tab(driver, sec)
             time.sleep(0.8)
-            print(f"[RMS | {tab}] {res} | uiHealth={day_netting.verify_ui_layout_health(driver)}")
+            _run_rms_sub_menu(driver, sec, subs)
         else:
-            print("[INVALID] Choose 0-10.")
+            print("[INVALID] Choose 0-8.")
 
 
 def run_ui_testing_menu(driver: Any, out_dir: str = OUT_DIR) -> None:

@@ -94,39 +94,94 @@ public class UI_testing {
     }
 
     private static void runInteractiveRmsMenu(WebDriver driver, JavascriptExecutor js, Scanner sc) {
-        String[] rmsOpts = {"Client", "User", "Branch", "Margin", "Broker", "Netting", "Settings", "Limits", "Identity"};
+        String[] topTabs = {"Client", "User", "Branch", "Margin", "Broker", "Netting", "Settings"};
+        String[][] subTabs = {
+            {"Limits", "Identity"},
+            {"Identity", "Limits", "Connections"},
+            {"Limits", "Identity", "Teams"},
+            {"Boardwise Setup", "Categorywise Setup", "Instrumentwise Setup", "Clientwise Setup",
+             "FDR PP Adjustment", "Force Sell", "Marginable Securities", "Applicable Marginable Securities",
+             "Marginable Client", "Settings"},
+            {"Limits", "Ticker Restriction", "Ticker Group", "Client Group", "User Group",
+             "Assigned Watchlist", "Reports", "Circuit Breaker Rules", "Password Policy", "Offline Order Settings"},
+            {"Applicable Symbol", "Clients RMS", "Unauthorized Boards/Market"},
+            {"Application Settings", "Email Template Settings", "SMS Template Settings", "Trade File Settings"}
+        };
         while (true) {
-            System.out.println("\n--- [RMS UI Testing] Select RMS Option ---");
-            for (int i = 0; i < rmsOpts.length; i++) {
-                System.out.printf("  %d. %s%n", i + 1, rmsOpts[i]);
+            System.out.println("\n--- [RMS UI Testing] Select RMS Section ---");
+            for (int i = 0; i < topTabs.length; i++) {
+                System.out.printf("  %d. %s (%d options)%n", i + 1, topTabs[i], subTabs[i].length);
             }
-            System.out.println("  10. Run ALL RMS Options");
+            System.out.println("  8. Run ALL RMS Options");
             System.out.println("  0. Back to UI Testing Menu");
-            String c = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "10", 300);
+            String c = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "8", 300);
             if ("0".equals(c) || "back".equalsIgnoreCase(c)) break;
             navigateToPage(driver, js, TARGET_PAGES.get(1));
             sleepMs(1500);
-            if ("10".equals(c)) {
+            if ("8".equals(c)) {
                 System.out.println("[RMS Full Audit] " + toJson(testRmsModule(driver, js)));
                 continue;
             }
             try {
                 int idx = Integer.parseInt(c) - 1;
-                if (idx >= 0 && idx < rmsOpts.length) {
-                    String tab = rmsOpts[idx];
-                    Object res = js.executeScript(
-                        "var name=arguments[0].toLowerCase();" +
-                        "var el=Array.from(document.querySelectorAll('[role=tab],.nav-tabs .nav-link,.nav-pills .nav-link,a,button')).find(function(t){return t.offsetParent!==null && (t.innerText||'').trim().toLowerCase()===name;});" +
-                        "if(!el) return 'TAB_NOT_FOUND:'+name; el.click(); return 'CLICKED:'+name;", tab);
+                if (idx >= 0 && idx < topTabs.length) {
+                    clickRmsTab(js, topTabs[idx]);
                     sleepMs(800);
-                    System.out.println("[RMS | " + tab + "] " + res + " | uiHealth=" + Day_Netting.verifyUiLayoutHealth(driver));
+                    runRmsSubMenu(driver, js, sc, topTabs[idx], subTabs[idx]);
                 } else {
-                    System.out.println("[INVALID] Choose 0-10.");
+                    System.out.println("[INVALID] Choose 0-8.");
                 }
             } catch (NumberFormatException e) {
-                System.out.println("[INVALID] Choose 0-10.");
+                System.out.println("[INVALID] Choose 0-8.");
             }
         }
+    }
+
+    private static void runRmsSubMenu(WebDriver driver, JavascriptExecutor js, Scanner sc, String parent, String[] opts) {
+        while (true) {
+            System.out.printf("%n--- [RMS -> %s] Select Sub-Option ---%n", parent);
+            for (int i = 0; i < opts.length; i++) {
+                System.out.printf("  %d. %s%n", i + 1, opts[i]);
+            }
+            int allChoice = opts.length + 1;
+            System.out.printf("  %d. All %s Options%n", allChoice, parent);
+            System.out.println("  0. Back to RMS Menu");
+            String s = OMSwebmain.readLineWithIdleWatchdog(driver, sc, String.valueOf(allChoice), 300);
+            if ("0".equals(s) || "back".equalsIgnoreCase(s)) break;
+            try {
+                int sel = Integer.parseInt(s);
+                if (sel == allChoice) {
+                    for (String sub : opts) {
+                        System.out.println("  -> " + sub + ": " + verifyRmsSubTab(driver, js, sub));
+                    }
+                } else if (sel >= 1 && sel <= opts.length) {
+                    String sub = opts[sel - 1];
+                    System.out.println("  -> " + sub + ": " + verifyRmsSubTab(driver, js, sub));
+                } else {
+                    System.out.println("[INVALID] Choose 0-" + allChoice + ".");
+                }
+            } catch (NumberFormatException e) {
+                System.out.println("[INVALID] Choose 0-" + allChoice + ".");
+            }
+        }
+    }
+
+    private static String clickRmsTab(JavascriptExecutor js, String name) {
+        return String.valueOf(js.executeScript(
+            "var name=arguments[0].toLowerCase();" +
+            "var el=Array.from(document.querySelectorAll('[role=tab],.nav-tabs .nav-link,.nav-pills .nav-link,a,button')).find(function(t){return t.offsetParent!==null && (t.innerText||'').replace(/\\s+/g,' ').trim().toLowerCase()===name;});" +
+            "if(!el) return 'TAB_NOT_FOUND:'+name; el.click(); return 'CLICKED:'+name;", name));
+    }
+
+    private static String verifyRmsSubTab(WebDriver driver, JavascriptExecutor js, String subName) {
+        String clk = clickRmsTab(js, subName);
+        sleepMs(700);
+        Object stats = js.executeScript(
+            "var tbl=Array.from(document.querySelectorAll('table')).filter(function(t){return t.offsetParent!==null;}).length;" +
+            "var inp=Array.from(document.querySelectorAll('input:not([type=hidden]),select')).filter(function(i){return i.offsetParent!==null;}).length;" +
+            "var btn=Array.from(document.querySelectorAll('button')).filter(function(b){return b.offsetParent!==null;}).length;" +
+            "return 'tables='+tbl+',inputs='+inp+',buttons='+btn;");
+        return clk + " | " + stats + " | uiHealth=" + Day_Netting.verifyUiLayoutHealth(driver);
     }
 
     public static void main(String[] args) {
