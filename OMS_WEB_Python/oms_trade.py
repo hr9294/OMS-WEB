@@ -1233,15 +1233,25 @@ def select_order_status(driver: webdriver.Chrome, instrument: str) -> None:
         safe_price = ref_price * 0.7
         place_order(driver, "BUY", DEFAULT_CLIENT_CODE, instrument, 10, safe_price)
     elif ch == "2":
-        import position
-        buy_c = input(f"Enter BUY Client Code (default {DEFAULT_CLIENT_CODE}): ").strip() or DEFAULT_CLIENT_CODE
-        default_sell = position.resolve_sell_client_excluding(driver, instrument, 10, buy_c, "DSE")
-        sell_c = input(f"Enter SELL Client Code (from Position / Client_Position DB, != {buy_c}, default {default_sell}): ").strip() or default_sell
-        if sell_c.lower() == buy_c.lower():
-            sell_c = default_sell
-        place_order(driver, "BUY", buy_c, instrument, 10, ref_price)
-        time.sleep(0.8)
-        place_order(driver, "SELL", sell_c, instrument, 10, ref_price, exclude_clients=[buy_c])
+        import position, account_limits
+        first_side = input("First order side? (1=BUY first [default], 2=SELL first): ").strip()
+        if first_side == "2":
+            default_sell = position.resolve_sell_client_excluding(driver, instrument, 10, None, "DSE")
+            sell_c = input(f"Enter SELL Client Code (from Position / Client_Position DB, default {default_sell}): ").strip() or default_sell
+            raw_buy = input(f"Enter counterparty BUY Client Code (input or clients_cash DB, != {sell_c}): ").strip()
+            buy_c = account_limits.resolve_buy_client_excluding(10.0 * max(1.0, ref_price), raw_buy, sell_c)
+            place_order(driver, "SELL", sell_c, instrument, 10, ref_price)
+            time.sleep(0.8)
+            place_order(driver, "BUY", buy_c, instrument, 10, ref_price)
+        else:
+            buy_c = input(f"Enter BUY Client Code (default {DEFAULT_CLIENT_CODE}): ").strip() or DEFAULT_CLIENT_CODE
+            default_sell = position.resolve_sell_client_excluding(driver, instrument, 10, buy_c, "DSE")
+            sell_c = input(f"Enter SELL Client Code (from Position / Client_Position DB, != {buy_c}, default {default_sell}): ").strip() or default_sell
+            if sell_c.lower() == buy_c.lower():
+                sell_c = default_sell
+            place_order(driver, "BUY", buy_c, instrument, 10, ref_price)
+            time.sleep(0.8)
+            place_order(driver, "SELL", sell_c, instrument, 10, ref_price, exclude_clients=[buy_c])
     else:
         # Default accepted
         safe_price = ref_price * 0.85

@@ -8,8 +8,10 @@ import sys
 import time
 from typing import List, Dict, Optional
 from selenium import webdriver
+import account_limits
 import config
 import oms_price
+import position
 import rms
 
 NettingMode = rms.NettingMode
@@ -1146,9 +1148,22 @@ def run_all_netting_tests(driver: Optional[webdriver.Chrome] = None) -> bool:
         run_netting_9_scenario_matrix(driver, NettingScenarioConfig())
     return passed == len(results)
 
+def _execute_paired_netting_leg(
+    driver: webdriver.Chrome, primary_side: str, netting_client: str, cp_client: str,
+    instrument: str, qty: int, rate: float, exchange: str
+) -> None:
+    import oms_trade
+    cp_side = "SELL" if primary_side.upper() == "BUY" else "BUY"
+    print(f"  -> [NETTING {primary_side}] Client={netting_client} | {instrument} x {qty} @ {rate:.2f} ({exchange}) ==> [TRADE COUNTERPARTY {cp_side}] Client={cp_client}")
+    oms_trade.submit_single_order_attempt(driver, primary_side, netting_client, instrument, qty, rate, exchange)
+    time.sleep(0.9)
+    oms_trade.submit_single_order_attempt(driver, cp_side, cp_client, instrument, qty, rate, exchange)
+    time.sleep(1.0)
+
+
 def _execute_normal_netting_flow(
     driver: webdriver.Chrome, mode: NettingMode, ex: str, sym: str, cln: str, brd: str,
-    pwd: str = "12345", run_trade: bool = True,
+    pwd: str = "12345", run_trade: bool = True, opp_buy_client: str = ""
 ) -> tuple[bool, Netting6WidgetsUiSnapshot, Netting6WidgetsUiSnapshot]:
     """Configures mode/exchange in qRMS, captures pre/post 6-widget live data & comparison."""
     dse_en = mode != NettingMode.NONE and ex in ("DSE", "BOTH")
@@ -1167,16 +1182,25 @@ def _execute_normal_netting_flow(
     rate = oms_price.fetch_price_ltp_or_ycp(driver, sym, order_ex) or 266.90
     if run_trade:
         try:
+            cp_seller = position.resolve_sell_client_excluding(driver, trade_inst, 25, cln, order_ex)
+            cp_buyer = account_limits.resolve_buy_client_excluding(rate * 35.0, opp_buy_client, cln)
+            print(f"[NETTING COUNTERPARTIES] NettingClient={cln} | Counterparty SELL(Position/DB)={cp_seller} | Counterparty BUY(input/clients_cash DB)={cp_buyer}")
             if mode == NettingMode.CROSS_EXCHANGE:
-                oms_trade.submit_single_order_attempt(driver, "BUY", cln, trade_inst, 25, rate, "DSE")
-                time.sleep(1.0)
-                oms_trade.submit_single_order_attempt(driver, "SELL", cln, trade_inst, 15, rate, "CSE")
-            elif mode == NettingMode.INDIVIDUAL_EXCHANGE and ex == "BOTH":
-                oms_trade.submit_single_order_attempt(driver, "BUY", cln, trade_inst, 25, rate, "DSE")
-                time.sleep(1.0)
-                oms_trade.submit_single_order_attempt(driver, "BUY", cln, trade_inst, 12, rate, "CSE")
+                cp_seller_dse = position.resolve_sell_client_excluding(driver, trade_inst, 25, cln, "DSE")
+                _execute_paired_netting_leg(driver, "BUY", cln, cp_seller_dse, trade_inst, 25, rate, "DSE")
+                _execute_paired_netting_leg(driver, "SELL", cln, cp_buyer, trade_inst, 15, rate, "CSE")
+            elif mode == NettingMode.INDIVIDUAL_EXCHANGE:
+                cp_seller_dse = position.resolve_sell_client_excluding(driver, trade_inst, 25, cln, "DSE")
+                _execute_paired_netting_leg(driver, "BUY", cln, cp_seller_dse, trade_inst, 25, rate, "DSE")
+                if ex == "BOTH":
+                    cp_seller_cse = position.resolve_sell_client_excluding(driver, trade_inst, 12, cln, "CSE")
+                    _execute_paired_netting_leg(driver, "BUY", cln, cp_seller_cse, trade_inst, 12, rate, "CSE")
+                _execute_paired_netting_leg(driver, "SELL", cln, cp_buyer, trade_inst, 25, rate, "DSE")
+                if ex == "BOTH":
+                    _execute_paired_netting_leg(driver, "SELL", cln, cp_buyer, trade_inst, 12, rate, "CSE")
+                _execute_paired_netting_leg(driver, "SELL", cln, cp_buyer, trade_inst, 35, rate, "DSE")
             else:
-                oms_trade.submit_single_order_attempt(driver, "BUY", cln, trade_inst, 25, rate, order_ex)
+                _execute_paired_netting_leg(driver, "BUY", cln, cp_seller, trade_inst, 25, rate, order_ex)
         except Exception:
             pass
     post_snap = check_6_netting_widgets_real_time_ui_data(driver, f"POST_{mode.name}_{ex}", cln, pub_sym, ex)
@@ -1198,9 +1222,10 @@ def _run_normal_netting_live_audit(driver: webdriver.Chrome) -> None:
     pwd = config.read_line_with_timeout("Password Auth (ENTER=12345): ", "12345")
     sym = config.read_line_with_timeout("Target Symbol (ENTER=GP): ", "GP") or "GP"
     cln = config.read_line_with_timeout("Target Client (ENTER=23986): ", "23986") or "23986"
+    opp_buy = config.read_line_with_timeout(f"Counterparty BUY Client for SELL matching (ENTER=auto from clients_cash DB, != {cln}): ", "")
     brd = config.read_line_with_timeout("Board (PUBLIC [ENTER=Default] / BLOCK / SPOT): ", "PUBLIC").upper() or "PUBLIC"
     run_trade = config.read_line_with_timeout("Execute Live Trade? (1=YES [ENTER=Default], 0=Audit Only): ", "1") != "0"
-    _execute_normal_netting_flow(driver, mode, ex, sym, cln, brd, pwd, run_trade)
+    _execute_normal_netting_flow(driver, mode, ex, sym, cln, brd, pwd, run_trade, opp_buy)
 
 
 def _run_all_configure_settings_menu(driver: webdriver.Chrome) -> None:

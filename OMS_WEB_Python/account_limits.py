@@ -107,26 +107,28 @@ def fetch_client_cash_from_db(client_code: str) -> float:
     return rec.cash if rec else 0.0
 
 def find_client_with_sufficient_cash_from_db(
-    required_cash: float, exclude_client: Optional[str] = None, fallback_client: Optional[str] = None
+    required_cash: float, exclude_client: Optional[str] = None, fallback_client: Optional[str] = None,
+    exclude_clients: Optional[Any] = None
 ) -> str:
     conn = get_qtrader_db_connection()
-    excl = exclude_client.strip() if exclude_client else ""
+    excl = {str(e).strip().lower() for e in (exclude_clients or []) if str(e).strip()}
+    if exclude_client and str(exclude_client).strip():
+        excl.add(str(exclude_client).strip().lower())
     if conn:
         sql = (
             'SELECT c."ClientCode", c."Cash" FROM public.clients_cash c '
             'JOIN public.clients_active a ON c."ClientCode" = a."ClientCode" '
             'WHERE c."Cash" >= %s '
-            + ('AND c."ClientCode" != %s ' if excl else '')
-            + 'AND a."BOID" IS NOT NULL AND LENGTH(TRIM(CAST(a."BOID" AS text))) >= 8 '
-            'ORDER BY c."Cash" DESC LIMIT 1;'
+            'AND a."BOID" IS NOT NULL AND LENGTH(TRIM(CAST(a."BOID" AS text))) >= 8 '
+            'ORDER BY c."Cash" DESC LIMIT 25;'
         )
         try:
             with conn.cursor() as cur:
-                params = (required_cash, excl) if excl else (required_cash,)
-                cur.execute(sql, params)
-                row = cur.fetchone()
-                if row and row[0]:
-                    return str(row[0]).strip()
+                cur.execute(sql, (required_cash,))
+                for row in cur.fetchall() or []:
+                    code = str(row[0]).strip() if row and row[0] else ""
+                    if code and code.lower() not in excl:
+                        return code
         except Exception as e:
             print(f"[DB CLIENT CASH WARN] Sufficient cash search failed: {e}")
         finally:
@@ -134,12 +136,25 @@ def find_client_with_sufficient_cash_from_db(
                 conn.close()
             except Exception:
                 pass
-    if fallback_client and fallback_client.strip() and fallback_client.strip().lower() != excl.lower():
+    if fallback_client and fallback_client.strip() and fallback_client.strip().lower() not in excl:
         return fallback_client.strip()
     for d in ["23986", "34601", "34649", "15740", "00224", "39187", "00516", "00916", "08096"]:
-        if d.lower() != excl.lower():
+        if d.lower() not in excl:
             return d
     return "23986"
+
+def resolve_buy_client_excluding(
+    required_cash: float, inputted_client: Optional[str] = None, exclude_clients: Optional[Any] = None
+) -> str:
+    """Resolves counterparty BUY client from input or public.clients_cash DB, never matching exclude_clients."""
+    excl_list = [exclude_clients] if isinstance(exclude_clients, str) else list(exclude_clients or [])
+    excl = {str(e).strip().lower() for e in excl_list if str(e).strip()}
+    if inputted_client and inputted_client.strip():
+        trimmed = inputted_client.strip()
+        if trimmed.lower() not in excl:
+            return trimmed
+        print(f"[RULE] Counterparty BUY client {trimmed} cannot match SELL client {excl_list}! Selecting from public.clients_cash DB...")
+    return find_client_with_sufficient_cash_from_db(max(1.0, required_cash), exclude_clients=excl)
 
 def resolve_cash_limit(
     specified_cash_limit: Optional[float],

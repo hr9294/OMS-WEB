@@ -671,7 +671,13 @@ public class OMSweb_Trade {
 		return band;
 	}
 
+	private static String lastCseTradeClient = "";
+
 	public static boolean executeSingleCseTrade(WebDriver driver, Scanner sc, String sideText, String requestedSymbol) throws InterruptedException {
+		return executeSingleCseTrade(driver, sc, sideText, requestedSymbol, null);
+	}
+
+	public static boolean executeSingleCseTrade(WebDriver driver, Scanner sc, String sideText, String requestedSymbol, String excludeClient) throws InterruptedException {
 		WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
 		activeExchange = "CSE";
 		if (!isAlreadyOnTradePage(driver)) {
@@ -687,13 +693,18 @@ public class OMSweb_Trade {
 		}
 		String clientCode = "23986";
 		if (isSell) {
-			clientCode = Position.resolveSellClientExcluding(driver, instrument, 1, (String) null, "CSE");
-			System.out.printf("[POSITION / Client_Position DB] Selected SELL holding client %s for %s on CSE.%n",
-					clientCode, instrument);
+			clientCode = Position.resolveSellClientExcluding(driver, instrument, 1, excludeClient, "CSE");
+			System.out.printf("[POSITION / Client_Position DB] Selected SELL holding client %s for %s on CSE (excluded=%s).%n",
+					clientCode, instrument, excludeClient != null ? excludeClient : "none");
 		} else {
-			System.out.print("Enter BUY Client Code (default 23986): ");
-			clientCode = readLineWithTimeout(sc, "23986", 3);
+			String defBuy = (excludeClient != null && !excludeClient.trim().isEmpty())
+					? Account_Limits.resolveBuyClientExcluding(0.0, null, excludeClient)
+					: "23986";
+			System.out.printf("Enter BUY Client Code (default %s): ", defBuy);
+			String rawBuy = readLineWithTimeout(sc, defBuy, 3);
+			clientCode = Account_Limits.resolveBuyClientExcluding(0.0, rawBuy, excludeClient);
 		}
+		lastCseTradeClient = clientCode;
 		System.out.print("Enter " + sideText + " Quantity (default 10): ");
 		String qStr = readLineWithTimeout(sc, "10", 3);
 		int tradeQty = 10;
@@ -885,10 +896,11 @@ public class OMSweb_Trade {
 			// Default 1: BOTH BUY and SELL
 			String chosenSymbol = Position.promptAndSelectCseTradeableSymbol(driver, sc, "BOTH BUY & SELL", "BBS");
 			System.out.printf("%n>>> [STAGE 1/2] EXECUTING CSE BUY ORDER FOR %s...%n", chosenSymbol);
-			executeSingleCseTrade(driver, sc, "BUY", chosenSymbol);
+			executeSingleCseTrade(driver, sc, "BUY", chosenSymbol, null);
+			String cseBuyUsed = lastCseTradeClient;
 			Thread.sleep(1500);
-			System.out.printf("%n>>> [STAGE 2/2] EXECUTING CSE SELL ORDER FOR %s...%n", chosenSymbol);
-			executeSingleCseTrade(driver, sc, "SELL", chosenSymbol);
+			System.out.printf("%n>>> [STAGE 2/2] EXECUTING CSE SELL ORDER FOR %s (excluding BUY %s)...%n", chosenSymbol, cseBuyUsed);
+			executeSingleCseTrade(driver, sc, "SELL", chosenSymbol, cseBuyUsed);
 		}
 		System.out.println("\nNormal Trade execution on CSE completed successfully!");
 	}
@@ -2762,39 +2774,70 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		if (!isAlreadyOnTradePage(driver)) {
 			navigateToTradePage(driver, wait);
 		}
-		System.out.print("Enter qty for the filled test: ");
-		String qty = sc.nextLine();
-		WebElement buyBtn = driver.findElement(By.xpath("//div[@title='Place BUY Order']"));
-		buyBtn.click();
-		Thread.sleep(200);
-		System.out.print("Enter BUY client code (default 23986): ");
-		String buyClientCode = sc.nextLine();
-		if (buyClientCode.trim().isEmpty()) buyClientCode = "23986";
-		fillOrderFields(driver, wait, instrument, qty, buyClientCode);
-		enterRateAndSubmit(driver, wait, sc, instrument, "BUY");
-		confirmOrder(driver, wait, sc);
-		Thread.sleep(2000);
-		WebElement sellBtn = driver.findElement(By.xpath("//div[@title='Place SELL Order']"));
-		sellBtn.click();
-		Thread.sleep(200);
-		int reqSellQty = 1;
-		try { reqSellQty = Integer.parseInt(qty.trim()); } catch (Exception ignored) {}
-		String defaultSell = Position.resolveSellClientExcluding(driver, instrument, reqSellQty, buyClientCode, "DSE");
-		System.out.printf("Enter SELL client code (from Position / Client_Position DB, != %s, default %s): ", buyClientCode, defaultSell);
-		String sellClientCode = sc.nextLine().trim();
-		if (sellClientCode.isEmpty() || sellClientCode.equalsIgnoreCase(buyClientCode.trim())) {
-			if (!sellClientCode.isEmpty()) System.out.printf("[RULE] SELL client cannot match BUY client %s. Using %s.%n", buyClientCode, defaultSell);
-			sellClientCode = defaultSell;
+		System.out.print("First order side? (1=BUY first [default] / 2=SELL first): ");
+		String firstOrderSide = sc.nextLine().trim();
+		System.out.print("Enter qty for the filled test (default 10): ");
+		String qty = sc.nextLine().trim();
+		if (qty.isEmpty()) qty = "10";
+		int reqQty = 10;
+		try { reqQty = Integer.parseInt(qty); } catch (Exception ignored) {}
+		String trackedClient = "";
+		if ("2".equals(firstOrderSide)) {
+			// SELL first from Position / Client_Position DB -> Counterparty BUY from input or clients_cash DB (!= SELL)
+			driver.findElement(By.xpath("//div[@title='Place SELL Order']")).click();
+			Thread.sleep(200);
+			String defSell = Position.resolveSellClientExcluding(driver, instrument, reqQty, (String) null, "DSE");
+			System.out.printf("Enter SELL client code (from Position / Client_Position DB, default %s): ", defSell);
+			String sellClientCode = sc.nextLine().trim();
+			if (sellClientCode.isEmpty()) sellClientCode = defSell;
+			fillOrderFields(driver, wait, instrument, qty, sellClientCode);
+			enterRateAndSubmit(driver, wait, sc, instrument, "SELL");
+			double sellRate = getEnteredRate(driver);
+			confirmOrder(driver, wait, sc);
+			Thread.sleep(1500);
+			driver.findElement(By.xpath("//div[@title='Place BUY Order']")).click();
+			Thread.sleep(200);
+			double estCash = Math.max(1000.0, reqQty * (sellRate > 0 ? sellRate : 100.0));
+			String defBuy = Account_Limits.resolveBuyClientExcluding(estCash, null, sellClientCode);
+			System.out.printf("Enter counterparty BUY client code (input or clients_cash DB, != %s, default %s): ", sellClientCode, defBuy);
+			String rawBuy = sc.nextLine().trim();
+			String buyClientCode = Account_Limits.resolveBuyClientExcluding(estCash, rawBuy, sellClientCode);
+			fillOrderFields(driver, wait, instrument, qty, buyClientCode);
+			enterRateAndSubmit(driver, wait, sc, instrument, "BUY");
+			confirmOrder(driver, wait, sc);
+			trackedClient = sellClientCode;
+			System.out.printf("Filled test (SELL-first): SELL=%s (Position/DB), BUY=%s (input/clients_cash DB).%n", sellClientCode, buyClientCode);
+		} else {
+			// BUY first (default 23986 / input) -> Counterparty SELL from Position / Client_Position DB (!= BUY)
+			driver.findElement(By.xpath("//div[@title='Place BUY Order']")).click();
+			Thread.sleep(200);
+			System.out.print("Enter BUY client code (default 23986): ");
+			String buyClientCode = sc.nextLine().trim();
+			if (buyClientCode.isEmpty()) buyClientCode = "23986";
+			fillOrderFields(driver, wait, instrument, qty, buyClientCode);
+			enterRateAndSubmit(driver, wait, sc, instrument, "BUY");
+			confirmOrder(driver, wait, sc);
+			Thread.sleep(2000);
+			driver.findElement(By.xpath("//div[@title='Place SELL Order']")).click();
+			Thread.sleep(200);
+			String defaultSell = Position.resolveSellClientExcluding(driver, instrument, reqQty, buyClientCode, "DSE");
+			System.out.printf("Enter SELL client code (from Position / Client_Position DB, != %s, default %s): ", buyClientCode, defaultSell);
+			String sellClientCode = sc.nextLine().trim();
+			if (sellClientCode.isEmpty() || sellClientCode.equalsIgnoreCase(buyClientCode)) {
+				if (!sellClientCode.isEmpty()) System.out.printf("[RULE] SELL client cannot match BUY client %s. Using %s.%n", buyClientCode, defaultSell);
+				sellClientCode = defaultSell;
+			}
+			fillOrderFields(driver, wait, instrument, qty, sellClientCode);
+			enterRateAndSubmit(driver, wait, sc, instrument, "SELL");
+			confirmOrder(driver, wait, sc);
+			trackedClient = sellClientCode;
+			System.out.println("Filled test: BUY & SELL placed with different client codes.");
 		}
-		fillOrderFields(driver, wait, instrument, qty, sellClientCode);
-		enterRateAndSubmit(driver, wait, sc, instrument, "SELL");
-		confirmOrder(driver, wait, sc);
-		System.out.println("Filled test: BUY & SELL placed with different client codes.");
 		// Click order in Order Terminal
 		Thread.sleep(1000);
 		Order_Terminal.navigateToOrderTerminal(driver);
 		Order_Terminal.refresh(driver);
-		Order_Terminal.clickOrderRow(driver, null, sellClientCode, instrument);
+		Order_Terminal.clickOrderRow(driver, null, trackedClient, instrument);
 		System.out.print("\nDo you want to select an Order Status type now? (1=YES / 0=NO, then ENTER): ");
 		if (sc.nextLine().trim().equals("1")) {
 			selectOrderStatus(driver, wait, sc, instrument);

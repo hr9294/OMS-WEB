@@ -157,18 +157,17 @@ def build_order_queue(
         sell_rate = round(ref_price + spread_delta, 2)
         queue.append(OrderItem(item_counter, "SELL", sell_client, symbol, total_buy_qty, sell_rate, True))
     elif choice == 2:
-        # Strategy 2: Collect BUY client first so SELL clients never match BUY
-        buy_in = input(f"\nEnter Opposite BUY Client Code [default={DEFAULT_BUY_CLIENTS[0]}]: ").strip()
-        buy_client = buy_in or DEFAULT_BUY_CLIENTS[0]
-        excl_holders = get_position_holding_sell_clients(driver, symbol, exchange, exclude_clients=[buy_client])
-        default_sells = excl_holders[:min(3, len(excl_holders))]
+        # Strategy 2: SELL orders FIRST (Position / Client_Position DB) -> Opposite BUY (input or clients_cash DB, != SELL)
+        default_sells = pos_holders[:min(3, len(pos_holders))]
         def_sell_str = ", ".join(default_sells)
-        sell_in = input(f"Enter SELL Client Code(s) (from Position / Client_Position DB, != {buy_client}) [default={def_sell_str}]: ").strip()
-        sell_clients = [s for s in parse_client_list(sell_in, default_sells) if s.strip().lower() != buy_client.strip().lower()]
-        if not sell_clients:
-            sell_clients = [position.resolve_sell_client_excluding(driver, symbol, 10, [buy_client], exchange)]
-        set_trade_page_client_code(driver, sell_clients[0])
+        sell_in = input(f"\nEnter SELL Client Code(s) (from Position / Client_Position DB) [default={def_sell_str}]: ").strip()
+        sell_clients = parse_client_list(sell_in, default_sells)
         sell_count = 3 if len(sell_clients) == 1 else min(3, len(sell_clients))
+        est_qty = sell_count * 10
+        def_opp_buy = account_limits.resolve_buy_client_excluding(est_qty * max(1.0, ref_price), None, sell_clients)
+        buy_in = input(f"Enter Opposite BUY Client Code (input or clients_cash DB, != SELL) [default={def_opp_buy}]: ").strip()
+        buy_client = account_limits.resolve_buy_client_excluding(est_qty * max(1.0, ref_price), buy_in, sell_clients)
+        set_trade_page_client_code(driver, sell_clients[0])
         total_sell_qty = 0
         for i in range(sell_count):
             sell_client = sell_clients[i % len(sell_clients)]
@@ -206,12 +205,17 @@ def build_order_queue(
             rate = float(r_in) if r_in else default_rate
             queue.append(OrderItem(item_counter, p_side, client, symbol, qty, rate, False))
             item_counter += 1
-        default_opp = DEFAULT_BUY_CLIENTS[0] if opp_side == "BUY" else position.resolve_sell_client_excluding(
-            driver, symbol, max(1, total_qty), [q.client_code for q in queue if q.side == "BUY"], exchange
+        primary_clients = [q.client_code for q in queue]
+        default_opp = (
+            account_limits.resolve_buy_client_excluding(max(1, total_qty) * max(1.0, ref_price), None, primary_clients)
+            if opp_side == "BUY"
+            else position.resolve_sell_client_excluding(driver, symbol, max(1, total_qty), primary_clients, exchange)
         )
         opp_in = input(f"Enter Opposite {opp_side} Client [{default_opp}]: ").strip()
-        opp_client = opp_in or default_opp
-        if opp_side == "SELL":
+        if opp_side == "BUY":
+            opp_client = account_limits.resolve_buy_client_excluding(max(1, total_qty) * max(1.0, ref_price), opp_in, primary_clients)
+        else:
+            opp_client = opp_in or default_opp
             primary_buyers = {q.client_code.strip().lower() for q in queue if q.side == "BUY"}
             if opp_client.strip().lower() in primary_buyers:
                 print(f"[RULE] Opposite SELL client {opp_client} cannot match BUY client! Using {default_opp}.")

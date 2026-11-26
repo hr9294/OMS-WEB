@@ -4543,9 +4543,27 @@ public class Day_Netting {
         return readLineWithIdleWatchdog(driver, sc, "1", Math.max(300, idleSeconds));
     }
 
+    private static void executePairedNettingLeg(
+            WebDriver driver, WebDriverWait wait, String primarySide, String nettingClient,
+            String counterpartyClient, String instrument, int qty, double rate, String exchange) throws InterruptedException {
+        String cpSide = "BUY".equalsIgnoreCase(primarySide) ? "SELL" : "BUY";
+        System.out.printf("  -> [NETTING %s] Client=%s | %s x %d @ %.2f (%s)  ==>  [TRADE COUNTERPARTY %s] Client=%s%n",
+                primarySide, nettingClient, instrument, qty, rate, exchange, cpSide, counterpartyClient);
+        OMSweb_Trade.submitSingleOrderAttempt(driver, wait, primarySide, nettingClient, instrument, qty, rate, exchange);
+        Thread.sleep(900);
+        OMSweb_Trade.submitSingleOrderAttempt(driver, wait, cpSide, counterpartyClient, instrument, qty, rate, exchange);
+        Thread.sleep(1000);
+    }
+
     private static void executeNormalNettingFlow(
             WebDriver driver, NettingMode targetMode, String targetExchange,
             String pwd, String sym, String cln, String board, String tradeOpt) throws InterruptedException {
+        executeNormalNettingFlow(driver, targetMode, targetExchange, pwd, sym, cln, board, tradeOpt, "");
+    }
+
+    private static void executeNormalNettingFlow(
+            WebDriver driver, NettingMode targetMode, String targetExchange,
+            String pwd, String sym, String cln, String board, String tradeOpt, String counterpartyBuyIn) throws InterruptedException {
         boolean allowZSpot = false;
         boolean dseNetting = (targetMode != NettingMode.NONE) && ("DSE".equals(targetExchange) || "BOTH".equals(targetExchange));
         boolean cseNetting = (targetMode != NettingMode.NONE) && ("CSE".equals(targetExchange) || "BOTH".equals(targetExchange));
@@ -4609,28 +4627,36 @@ public class Day_Netting {
         String orderEx = "BOTH".equalsIgnoreCase(targetExchange) ? "DSE" : targetExchange;
 
         if (!"SKIP".equals(tradeAction)) {
+            WebDriverWait tradeWait = new WebDriverWait(driver, Duration.ofSeconds(10));
+            String cpSeller = Position.resolveSellClientExcluding(driver, tradeInstrument, 25, cln, orderEx);
+            String cpBuyer = Account_Limits.resolveBuyClientExcluding(tradeRate * 35.0, counterpartyBuyIn, cln);
+            System.out.printf("[NETTING COUNTERPARTIES] NettingClient=%s | Counterparty SELL(Position/DB)=%s | Counterparty BUY(input/clients_cash DB)=%s%n",
+                    cln, cpSeller, cpBuyer);
             if (targetMode == NettingMode.NONE) {
-                System.out.printf("%n>>> [EXECUTING NONE MODE: BUY 25 %s on %s @ %.2f] <<<%n", tradeInstrument, orderEx, tradeRate);
-                OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, 25, tradeRate, orderEx);
-                Thread.sleep(1500);
+                System.out.printf("%n>>> [EXECUTING NONE MODE: BUY 25 (%s) -> TRADE SELL (%s) on %s @ %.2f] <<<%n",
+                        cln, cpSeller, orderEx, tradeRate);
+                executePairedNettingLeg(driver, tradeWait, "BUY", cln, cpSeller, tradeInstrument, 25, tradeRate, orderEx);
             } else if (targetMode == NettingMode.CROSS_EXCHANGE) {
-                System.out.printf("%n>>> [EXECUTING CROSS EXCHANGE: DSE BUY 25, CSE SELL 15 @ %.2f] <<<%n", tradeRate);
-                OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, 25, tradeRate, "DSE");
-                Thread.sleep(2000);
-                OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, 15, tradeRate, "CSE");
-                Thread.sleep(1500);
+                String cpSellerDse = Position.resolveSellClientExcluding(driver, tradeInstrument, 25, cln, "DSE");
+                System.out.printf("%n>>> [EXECUTING CROSS EXCHANGE: DSE BUY 25 (%s -> SELL %s), then CSE SELL 15 (%s -> BUY %s) @ %.2f] <<<%n",
+                        cln, cpSellerDse, cln, cpBuyer, tradeRate);
+                executePairedNettingLeg(driver, tradeWait, "BUY", cln, cpSellerDse, tradeInstrument, 25, tradeRate, "DSE");
+                executePairedNettingLeg(driver, tradeWait, "SELL", cln, cpBuyer, tradeInstrument, 15, tradeRate, "CSE");
             } else {
-                System.out.printf("%n>>> [EXECUTING INDIVIDUAL EXCHANGE: DSE BUY 25, CSE BUY 12, SELLS, EXCESS 35 @ %.2f] <<<%n", tradeRate);
-                OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, 25, tradeRate, "DSE");
-                Thread.sleep(2000);
-                OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, 12, tradeRate, "CSE");
-                Thread.sleep(2000);
-                OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, 25, tradeRate, "DSE");
-                Thread.sleep(2000);
-                OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, 12, tradeRate, "CSE");
-                Thread.sleep(2000);
-                OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, 35, tradeRate, "DSE");
-                Thread.sleep(1500);
+                String cpSellerDse = Position.resolveSellClientExcluding(driver, tradeInstrument, 25, cln, "DSE");
+                System.out.printf("%n>>> [EXECUTING INDIVIDUAL EXCHANGE: BUY (%s -> SELL %s), then SELL (%s -> BUY %s) @ %.2f] <<<%n",
+                        cln, cpSellerDse, cln, cpBuyer, tradeRate);
+                executePairedNettingLeg(driver, tradeWait, "BUY", cln, cpSellerDse, tradeInstrument, 25, tradeRate, "DSE");
+                if ("BOTH".equalsIgnoreCase(targetExchange)) {
+                    String cpSellerCse = Position.resolveSellClientExcluding(driver, tradeInstrument, 12, cln, "CSE");
+                    executePairedNettingLeg(driver, tradeWait, "BUY", cln, cpSellerCse, tradeInstrument, 12, tradeRate, "CSE");
+                }
+                // Netting SELL by the same client who placed BUY previously -> Counterparty BUY from input / clients_cash DB (!= cln)
+                executePairedNettingLeg(driver, tradeWait, "SELL", cln, cpBuyer, tradeInstrument, 25, tradeRate, "DSE");
+                if ("BOTH".equalsIgnoreCase(targetExchange)) {
+                    executePairedNettingLeg(driver, tradeWait, "SELL", cln, cpBuyer, tradeInstrument, 12, tradeRate, "CSE");
+                }
+                executePairedNettingLeg(driver, tradeWait, "SELL", cln, cpBuyer, tradeInstrument, 35, tradeRate, "DSE");
             }
         }
 
@@ -4700,13 +4726,15 @@ public class Day_Netting {
         String sym = readLineWithTimeout(sc, "GP", 0);
         System.out.print("Enter Target Client Code to Audit (ENTER=23986): ");
         String cln = readLineWithTimeout(sc, "23986", 0);
+        System.out.printf("Enter Counterparty BUY Client for Netting SELL matching (ENTER=auto from clients_cash DB, != %s): ", cln);
+        String cpBuyIn = readLineWithTimeout(sc, "", 0);
         System.out.print("Select Trading Board (1=PUBLIC [ENTER=Default], 2=BLOCK, 3=SPOT): ");
         String brdChoice = readLineWithTimeout(sc, "1", 0);
         String board = "2".equals(brdChoice) || "block".equalsIgnoreCase(brdChoice) ? "BLOCK" :
                        ("3".equals(brdChoice) || "spot".equalsIgnoreCase(brdChoice) ? "SPOT" : "PUBLIC");
         System.out.print("Trade Action (ENTER=Execute Flow, 0=Skip Trade): ");
         String tradeOpt = readLineWithTimeout(sc, "5", 0);
-        executeNormalNettingFlow(driver, targetMode, targetExchange, pwd, sym, cln, board, tradeOpt);
+        executeNormalNettingFlow(driver, targetMode, targetExchange, pwd, sym, cln, board, tradeOpt, cpBuyIn);
     }
 
     private static void runAllConfigureSettingsMenu(WebDriver driver, Scanner sc) throws InterruptedException {

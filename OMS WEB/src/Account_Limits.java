@@ -206,7 +206,7 @@ public class Account_Limits {
      * Finds an active buyer client code with Cash >= requiredCash from PostgreSQL public.clients_cash.
      */
     public static String findClientWithSufficientCashFromDb(double requiredCash, String fallbackClient) {
-        return findClientWithSufficientCashFromDb(requiredCash, null, fallbackClient);
+        return findClientWithSufficientCashFromDb(requiredCash, (String) null, fallbackClient);
     }
 
     /**
@@ -214,27 +214,41 @@ public class Account_Limits {
      * strictly excluding a specific client code (e.g. to ensure Buyer != Seller in dual trades).
      */
     public static String findClientWithSufficientCashFromDb(double requiredCash, String excludeClient, String fallbackClient) {
+        List<String> excl = (excludeClient != null && !excludeClient.trim().isEmpty())
+                ? Collections.singletonList(excludeClient.trim()) : Collections.emptyList();
+        return findClientWithSufficientCashFromDb(requiredCash, excl, fallbackClient);
+    }
+
+    /**
+     * Finds an active buyer client code with Cash >= requiredCash from PostgreSQL public.clients_cash,
+     * strictly excluding all client codes in excludeClients.
+     */
+    public static String findClientWithSufficientCashFromDb(double requiredCash, Collection<String> excludeClients, String fallbackClient) {
+        Set<String> excl = new HashSet<>();
+        if (excludeClients != null) {
+            for (String e : excludeClients) {
+                if (e != null && !e.trim().isEmpty()) excl.add(e.trim().toLowerCase());
+            }
+        }
         String sql = "SELECT c.\"ClientCode\", c.\"Cash\", c.mature_balance, a.\"Name\", a.\"BOID\" " +
                      "FROM public.clients_cash c " +
                      "JOIN public.clients_active a ON c.\"ClientCode\" = a.\"ClientCode\" " +
                      "WHERE c.\"Cash\" >= ? " +
-                     (excludeClient != null && !excludeClient.trim().isEmpty() ? "AND c.\"ClientCode\" != ? " : "") +
                      "AND a.\"BOID\" IS NOT NULL AND LENGTH(TRIM(CAST(a.\"BOID\" AS text))) >= 8 " +
-                     "ORDER BY c.\"Cash\" DESC LIMIT 1;";
+                     "ORDER BY c.\"Cash\" DESC LIMIT 25;";
         try (Connection conn = getQtraderDbConnection()) {
             if (conn != null) {
                 try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
                     pstmt.setDouble(1, requiredCash);
-                    if (excludeClient != null && !excludeClient.trim().isEmpty()) {
-                        pstmt.setString(2, excludeClient.trim());
-                    }
                     try (ResultSet rs = pstmt.executeQuery()) {
-                        if (rs.next()) {
+                        while (rs.next()) {
                             String found = rs.getString("ClientCode");
-                            double cash = rs.getDouble("Cash");
-                            System.out.printf("[DB CLIENT CASH] Selected eligible buyer %s with %,.2f BDT cash (required: %,.2f BDT, excluded: %s) from public.clients_cash%n",
-                                    found, cash, requiredCash, excludeClient != null ? excludeClient : "none");
-                            return found;
+                            if (found != null && !found.trim().isEmpty() && !excl.contains(found.trim().toLowerCase())) {
+                                double cash = rs.getDouble("Cash");
+                                System.out.printf("[DB CLIENT CASH] Selected eligible buyer %s with %,.2f BDT cash (required: %,.2f BDT, excluded: %s) from public.clients_cash%n",
+                                        found.trim(), cash, requiredCash, excl.isEmpty() ? "none" : excl);
+                                return found.trim();
+                            }
                         }
                     }
                 }
@@ -242,16 +256,48 @@ public class Account_Limits {
         } catch (Exception e) {
             System.out.printf("[DB CLIENT CASH WARN] Sufficient cash search failed: %s%n", e.getMessage());
         }
-        if (fallbackClient != null && !fallbackClient.trim().isEmpty() && (excludeClient == null || !fallbackClient.equalsIgnoreCase(excludeClient.trim()))) {
+        if (fallbackClient != null && !fallbackClient.trim().isEmpty() && !excl.contains(fallbackClient.trim().toLowerCase())) {
             return fallbackClient.trim();
         }
         String[] defaultPool = { "23986", "34601", "34649", "15740", "00224", "39187", "00516", "00916", "08096" };
         for (String d : defaultPool) {
-            if (excludeClient == null || !d.equalsIgnoreCase(excludeClient.trim())) {
+            if (!excl.contains(d.toLowerCase())) {
                 return d;
             }
         }
         return "23986";
+    }
+
+    /**
+     * Resolves a BUY client from inputted client (if non-empty and not in excludeClients)
+     * or from public.clients_cash DB, strictly ensuring BUY != SELL client(s).
+     */
+    public static String resolveBuyClientExcluding(double requiredCash, String inputtedClient, Collection<String> excludeClients) {
+        Set<String> excl = new HashSet<>();
+        if (excludeClients != null) {
+            for (String e : excludeClients) {
+                if (e != null && !e.trim().isEmpty()) excl.add(e.trim().toLowerCase());
+            }
+        }
+        if (inputtedClient != null && !inputtedClient.trim().isEmpty()) {
+            String trimmed = inputtedClient.trim();
+            if (!excl.contains(trimmed.toLowerCase())) {
+                return trimmed;
+            }
+            System.out.printf("[RULE] Counterparty BUY client %s cannot equal SELL client %s! Selecting from public.clients_cash DB...%n",
+                    trimmed, excludeClients);
+        }
+        String dbClient = findClientWithSufficientCashFromDb(Math.max(1.0, requiredCash), excl, null);
+        if (dbClient != null && !excl.contains(dbClient.trim().toLowerCase())) {
+            return dbClient.trim();
+        }
+        return findClientWithSufficientCashFromDb(0.0, excl, null);
+    }
+
+    public static String resolveBuyClientExcluding(double requiredCash, String inputtedClient, String excludeClient) {
+        List<String> excl = (excludeClient != null && !excludeClient.trim().isEmpty())
+                ? Collections.singletonList(excludeClient.trim()) : Collections.emptyList();
+        return resolveBuyClientExcluding(requiredCash, inputtedClient, excl);
     }
 
     /**

@@ -553,21 +553,20 @@ public class OMSweb_MultiOrderExecution {
             }
             queue.add(new OrderItem(itemCounter++, OrderSide.SELL, sellClient, symbol, totalBuyQty, sellRate, true));
         } else if (choice == 2) {
-            // Strategy 2: Opposite BUY client resolved first/checked so SELL clients never match BUY
-            System.out.printf("\nEnter BUY Client Code [default=%s]: ", DEFAULT_BUY_CLIENTS.get(0));
-            String buyIn = sc.nextLine().trim();
-            String buyClient = buyIn.isEmpty() ? DEFAULT_BUY_CLIENTS.get(0) : buyIn;
-            List<String> exclHolders = getPositionHoldingSellClients(driver, symbol, exchange, Collections.singletonList(buyClient));
-            List<String> defaultSells = exclHolders.subList(0, Math.min(3, exclHolders.size()));
+            // Strategy 2: SELL orders FIRST (from Position / Client_Position DB) -> Opposite BUY (from input or clients_cash DB, != SELL)
+            List<String> defaultSells = posHolders.subList(0, Math.min(3, posHolders.size()));
             String defSellStr = String.join(", ", defaultSells);
-            System.out.printf("Enter SELL Client Code(s) (from Position / Client_Position DB, != %s) [default=%s]: ", buyClient, defSellStr);
+            System.out.printf("\nEnter SELL Client Code(s) (from Position / Client_Position DB) [default=%s]: ", defSellStr);
             String sellIn = sc.nextLine().trim();
             List<String> sellClients = parseClientList(sellIn, defaultSells);
-            sellClients.removeIf(s -> s.equalsIgnoreCase(buyClient));
-            if (sellClients.isEmpty()) sellClients.add(Position.resolveSellClientExcluding(driver, symbol, 10, buyClient, exchange));
-            setTradePageClientCode(driver, sellClients.get(0));
             int sellCount = (sellClients.size() == 1) ? 3 : Math.min(3, sellClients.size());
-            int totalSellQty = 0;
+            int totalSellQty = sellCount * 10;
+            String defOppBuy = Account_Limits.resolveBuyClientExcluding(totalSellQty * refPrice, null, sellClients);
+            System.out.printf("Enter Opposite BUY Client Code (input or clients_cash DB, != SELL) [default=%s]: ", defOppBuy);
+            String buyIn = sc.nextLine().trim();
+            String buyClient = Account_Limits.resolveBuyClientExcluding(totalSellQty * refPrice, buyIn, sellClients);
+            setTradePageClientCode(driver, sellClients.get(0));
+            totalSellQty = 0;
             for (int i = 0; i < sellCount; i++) {
                 String sellClient = sellClients.get(i % sellClients.size());
                 int qty = 10;
@@ -615,23 +614,20 @@ public class OMSweb_MultiOrderExecution {
                 queue.add(new OrderItem(itemCounter++, primarySide, client, symbol, q, r, false));
             }
             // Opposite order
+            Set<String> primaryClients = queue.stream().map(OrderItem::getClientCode).collect(java.util.stream.Collectors.toSet());
             String defaultOppClient = (oppSide == OrderSide.BUY)
-                    ? DEFAULT_BUY_CLIENTS.get(0)
-                    : Position.resolveSellClientExcluding(driver, symbol, Math.max(1, totalPrimaryQty),
-                            queue.stream().map(OrderItem::getClientCode).collect(java.util.stream.Collectors.toSet()), exchange);
+                    ? Account_Limits.resolveBuyClientExcluding(Math.max(1, totalPrimaryQty) * refPrice, null, primaryClients)
+                    : Position.resolveSellClientExcluding(driver, symbol, Math.max(1, totalPrimaryQty), primaryClients, exchange);
             System.out.printf("Enter Opposite %s Client [%s]: ", oppSide, defaultOppClient);
             String ocInput = sc.nextLine().trim();
-            String oppClient = ocInput.isEmpty() ? defaultOppClient : ocInput;
-            if (oppSide == OrderSide.SELL) {
-                Set<String> primaryBuyers = new HashSet<>();
-                for (OrderItem qi : queue) {
-                    if (qi.getSide() == OrderSide.BUY) primaryBuyers.add(qi.getClientCode().trim().toLowerCase());
-                }
-                if (primaryBuyers.contains(oppClient.trim().toLowerCase())) {
-                    System.out.printf("[RULE] Opposite SELL client %s cannot match BUY client! Using %s.%n", oppClient, defaultOppClient);
-                    oppClient = defaultOppClient;
-                }
+            String oppClientRaw = (oppSide == OrderSide.BUY)
+                    ? Account_Limits.resolveBuyClientExcluding(Math.max(1, totalPrimaryQty) * refPrice, ocInput, primaryClients)
+                    : (ocInput.isEmpty() ? defaultOppClient : ocInput);
+            if (oppSide == OrderSide.SELL && primaryClients.stream().anyMatch(c -> c.equalsIgnoreCase(oppClientRaw))) {
+                System.out.printf("[RULE] Opposite SELL client %s cannot match BUY client! Using %s.%n", oppClientRaw, defaultOppClient);
             }
+            String oppClient = (oppSide == OrderSide.SELL && primaryClients.stream().anyMatch(c -> c.equalsIgnoreCase(oppClientRaw)))
+                    ? defaultOppClient : oppClientRaw;
             double defaultOppRate;
             if (oppSide == OrderSide.SELL) {
                 defaultOppRate = Math.round((refPrice + spreadDelta) * 100.0) / 100.0;
