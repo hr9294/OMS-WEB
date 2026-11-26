@@ -1066,6 +1066,16 @@ def run_load_test(driver: webdriver.Chrome) -> None:
                 qty=order.qty,
                 rate=rate_to_use
             )
+            if not ok:
+                rej = oms_trade.extract_rejection_order_price_info(driver, order.client_code, order.symbol)
+                if rej.has_suggested_price():
+                    print(f"  [SUGGESTED PRICE RETRY] Order #{current_order_num} rejected for price -> retrying @ suggested {rej.suggested_price:.2f}")
+                    oms_trade.dismiss_rejection_alert(driver)
+                    rate_to_use = rej.suggested_price
+                    ok = oms_trade.place_order(
+                        driver=driver, side=order.side, client_code=order.client_code,
+                        symbol=order.symbol, qty=order.qty, rate=rate_to_use
+                    )
             latency = (time.time() - order_start) * 1000.0
             if ok:
                 order.mark_success(latency)

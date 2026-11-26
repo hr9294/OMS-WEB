@@ -872,6 +872,19 @@ public class OMSweb_MultiOrderExecution {
                     if (confirmed) break;
                     Thread.sleep(40);
                 }
+                OMSweb_Trade.RejectionOrderPriceInfo rej = OMSweb_Trade.extractRejectionOrderPriceInfo(driver, item.getClientCode(), item.getSymbol());
+                if (rej.hasSuggestedPrice() && Math.abs(rej.suggestedPrice - item.getRate()) > 0.001) {
+                    System.out.printf("  [SUGGESTED PRICE RETRY] Order #%d rejected for price -> retrying @ suggested %.2f%n", item.getId(), rej.suggestedPrice);
+                    OMSweb_Trade.dismissRejectionAlert(driver);
+                    try {
+                        js.executeScript(
+                            "var r=document.getElementById('limit_order_rate'); if(r){ r.value=arguments[0]; $(r).trigger('input').trigger('change'); }" +
+                            "var b=document.querySelector('.order_submit_btn, div.form-submit-btn-holder button'); if(b){ $(b).prop('disabled',false).removeAttr('disabled'); b.click(); }",
+                            String.format(java.util.Locale.US, "%.2f", rej.suggestedPrice));
+                        Thread.sleep(300);
+                        js.executeScript("var c=document.getElementById('cnfirmConfirmBtn')||document.querySelector('.jconfirm-buttons button.btn-success'); if(c) c.click();");
+                    } catch (Exception ignored) {}
+                }
                 long elapsed = Duration.between(start, Instant.now()).toMillis();
                 System.out.printf("✔ Order #%d Submitted successfully in %d ms (%s %s x %d @ %.2f)%n",
                         item.getId(), elapsed, item.getSide(), item.getClientCode(), item.getQuantity(), item.getRate());

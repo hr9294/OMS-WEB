@@ -315,6 +315,16 @@ def run_multi_order_pipeline(driver: webdriver.Chrome) -> None:
                 rate=item.rate,
                 exchange=exchange
             )
+            if not ok:
+                rej = oms_trade.extract_rejection_order_price_info(driver, item.client_code, item.symbol)
+                if rej.has_suggested_price():
+                    print(f"  [SUGGESTED PRICE RETRY] Order #{idx} rejected for price -> retrying @ suggested {rej.suggested_price:.2f}")
+                    oms_trade.dismiss_rejection_alert(driver)
+                    item.rate = rej.suggested_price
+                    ok = oms_trade.place_order(
+                        driver=driver, side=item.side, client_code=item.client_code,
+                        symbol=item.symbol, qty=item.quantity, rate=item.rate, exchange=exchange
+                    )
             if ok:
                 placed_count += 1
                 placed_orders.append({"client_code": item.client_code, "side": item.side, "symbol": item.symbol, "qty": item.quantity, "rate": item.rate})

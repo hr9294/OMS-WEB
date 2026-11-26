@@ -753,6 +753,16 @@ public class OMSweb_MultipleTrade {
             try {
                 CircuitLimits limits = symbolCircuits.get(order.symbol);
                 boolean ok = placeSingleOrderFast(driver, wait, js, order, limits);
+                if (!ok) {
+                    OMSweb_Trade.RejectionOrderPriceInfo rej = OMSweb_Trade.extractRejectionOrderPriceInfo(driver, order.clientCode, order.symbol);
+                    if (rej.hasSuggestedPrice()) {
+                        System.out.printf("  [SUGGESTED PRICE RETRY] Order #%d rejected for price -> retrying @ suggested %.2f%n", currentOrderNum, rej.suggestedPrice);
+                        OMSweb_Trade.dismissRejectionAlert(driver);
+                        TradeOrder retryOrder = new TradeOrder(currentOrderNum, order.side, order.clientCode,
+                                order.symbol, order.quantity, rej.suggestedPrice, order.refLtp, order.expectedStatus);
+                        ok = placeSingleOrderFast(driver, wait, js, retryOrder, limits);
+                    }
+                }
                 long latency = Duration.between(orderStart, Instant.now()).toMillis();
                 if (ok) {
                     order.markSuccess(latency);
