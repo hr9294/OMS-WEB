@@ -1270,36 +1270,23 @@ def _run_all_configure_settings_menu(driver: webdriver.Chrome) -> None:
 
 def _run_day_netting_suite_menu(driver: webdriver.Chrome) -> None:
     print("\n=== 3. DAY NETTING SUITE (NONE, INDIVIDUAL, CROSS), ALL WIDGETS REPORT & COMPLIANCE MATRIX ===")
-    print("  1. Full Suite (None + Individual + Cross + 6-Widget Report & Comparison + UI Audit + 9-Scenario Matrix) [ENTER=Default]")
-    print("  2. Multi-Mode Audit Only (None, Individual, Cross) + 6-Widget Report & Comparison")
-    print("  3. UI Netting Indicators Audit (Depth, Watchlists, Order Window)")
-    print("  4. 9-Scenario Compliance Matrix (Exclusivity, Post-Order Flips, Stock File)")
-    print("  5. Multi-Exchange & Offline 9-Block Suite")
-    print("  0. Back to Day Netting Menu")
-    sub = "1" if config.IS_CI else config.read_line_with_timeout("Enter Suite Choice (0-5, ENTER=1): ", "1")
-    if sub == "0":
-        return
     sym = config.read_line_with_timeout("Target Symbol (ENTER=GP): ", "GP") or "GP"
     cln = config.read_line_with_timeout("Target Client (ENTER=23986): ", "23986") or "23986"
-    if sub in ("1", "2"):
-        run_live = config.read_line_with_timeout("Execute Live Mode Orders? (1=YES [ENTER=Default], 0=Snapshot Only): ", "1") != "0"
-        score = {}
-        for mode, ex in ((NettingMode.NONE, "DSE"), (NettingMode.INDIVIDUAL_EXCHANGE, "BOTH"), (NettingMode.CROSS_EXCHANGE, "BOTH")):
-            ok, _, _ = _execute_normal_netting_flow(driver, mode, ex, sym, cln, "PUBLIC", "12345", run_live)
-            score[mode.name] = "PASS" if ok else "CHECK"
-        print(f"\n[MULTI-MODE 6-WIDGET COMPARISON SCORECARD] {score}")
-    if sub in ("1", "3"):
-        print(f"UI Indicators -> Depth={verify_market_depth_netting_indicator(driver, sym)}, Watchlist={verify_default_netting_watchlist(driver, sym)}, ClientBlocked={verify_order_window_client_netting_blocked(driver, cln)}")
-    if sub in ("1", "5"):
-        test_day_netting_scenarios()
-        run_all_netting_tests(None)
-    if sub in ("1", "4"):
-        cfg = NettingScenarioConfig()
-        cfg.primary_client = config.read_line_with_timeout("Matrix Primary Client (ENTER=002): ", "002") or "002"
-        cfg.other_clients = [x.strip() for x in config.read_line_with_timeout("Matrix Other Clients (ENTER=23986): ", "23986").split(",") if x.strip()]
-        cfg.symbol = sym
-        cfg.exchange = config.read_line_with_timeout("Matrix Exchange (DSE/CSE/BOTH, ENTER=BOTH): ", "BOTH").upper() or "BOTH"
-        run_netting_9_scenario_matrix(driver, cfg)
+    run_live = config.read_line_with_timeout("Execute Live Mode Orders? (1=YES [ENTER=Default], 0=Snapshot Only): ", "1") != "0"
+    score = {}
+    for mode, ex in ((NettingMode.NONE, "DSE"), (NettingMode.INDIVIDUAL_EXCHANGE, "BOTH"), (NettingMode.CROSS_EXCHANGE, "BOTH")):
+        ok, _, _ = _execute_normal_netting_flow(driver, mode, ex, sym, cln, "PUBLIC", "12345", run_live)
+        score[mode.name] = "PASS" if ok else "CHECK"
+    print(f"\n[MULTI-MODE 6-WIDGET COMPARISON SCORECARD] {score}")
+    print(f"UI Indicators -> Depth={verify_market_depth_netting_indicator(driver, sym)}, Watchlist={verify_default_netting_watchlist(driver, sym)}, ClientBlocked={verify_order_window_client_netting_blocked(driver, cln)}")
+    test_day_netting_scenarios()
+    run_all_netting_tests(None)
+    cfg = NettingScenarioConfig()
+    cfg.primary_client = config.read_line_with_timeout("Matrix Primary Client (ENTER=002): ", "002") or "002"
+    cfg.other_clients = [x.strip() for x in config.read_line_with_timeout("Matrix Other Clients (ENTER=23986): ", "23986").split(",") if x.strip()]
+    cfg.symbol = sym
+    cfg.exchange = config.read_line_with_timeout("Matrix Exchange (DSE/CSE/BOTH, ENTER=BOTH): ", "BOTH").upper() or "BOTH"
+    run_netting_9_scenario_matrix(driver, cfg)
 
 
 def run_day_netting_console(driver: webdriver.Chrome) -> None:

@@ -4874,60 +4874,43 @@ public class Day_Netting {
 
     private static void runDayNettingSuiteMenu(WebDriver driver, Scanner sc) throws InterruptedException {
         System.out.println("\n-----------------------------------------------------------------------------");
-        System.out.println("  3. DAY NETTING SUITE (NONE, INDIVIDUAL, CROSS), REPORT & COMPLIANCE MATRIX ");
+        System.out.println("  3. DAY NETTING SUITE (NONE, INDIVIDUAL, CROSS), 6-WIDGET REPORT & MATRIX   ");
         System.out.println("-----------------------------------------------------------------------------");
-        System.out.println("  1. Full All-in-One Suite (None + Individual + Cross + 6-Widget Report & Comparison + UI Audit + Compliance Matrix) [ENTER=Default]");
-        System.out.println("  2. Multi-Mode Live Suite Only (None, Individual, Cross + 6-Widget Report & Comparison)");
-        System.out.println("  3. UI Netting Indicators Audit Only (Depth, Watchlists, Order Window)");
-        System.out.println("  4. 9-Scenario Compliance Matrix (Exclusivity, Post-Order Flips, Stock File)");
-        System.out.println("  5. Multi-Exchange & 5-Scope Automated Scrip Netting Test Suite");
-        System.out.println("  0. Back to Day Netting Menu");
-        System.out.print("Enter Suite Choice (0-5, ENTER=1): ");
-        String sub = isCi ? "1" : readLineWithTimeout(sc, "1", 0);
-        if ("0".equals(sub) || "exit".equalsIgnoreCase(sub)) return;
-
         System.out.print("Target Symbol (ENTER=GP): ");
         String sym = readLineWithTimeout(sc, "GP", 0);
         System.out.print("Target Client (ENTER=23986): ");
         String cln = readLineWithTimeout(sc, "23986", 0);
+        System.out.print("Execute Live Mode Trades? (ENTER=Execute Flow, 0=Skip Trade): ");
+        String tradeOpt = readLineWithTimeout(sc, "5", 0);
 
-        if ("1".equals(sub) || "2".equals(sub)) {
-            System.out.print("Execute Live Mode Trades? (ENTER=Execute Flow, 0=Skip Trade): ");
-            String tradeOpt = readLineWithTimeout(sc, "5", 0);
-            for (NettingMode mode : new NettingMode[] { NettingMode.NONE, NettingMode.INDIVIDUAL_EXCHANGE, NettingMode.CROSS_EXCHANGE }) {
-                String ex = (mode == NettingMode.NONE) ? "DSE" : "BOTH";
-                executeNormalNettingFlow(driver, mode, ex, "12345", sym, cln, "PUBLIC", tradeOpt);
-            }
+        for (NettingMode mode : new NettingMode[] { NettingMode.NONE, NettingMode.INDIVIDUAL_EXCHANGE, NettingMode.CROSS_EXCHANGE }) {
+            String ex = (mode == NettingMode.NONE) ? "DSE" : "BOTH";
+            executeNormalNettingFlow(driver, mode, ex, "12345", sym, cln, "PUBLIC", tradeOpt);
         }
-        if ("1".equals(sub) || "3".equals(sub)) {
-            printApplicabilityVerificationReport(checkSelectedApplicability(driver, "DSE", sym, cln, "PUBLIC"));
-            run3in1UIIndicatorsAudit(driver, sym, cln);
+        printApplicabilityVerificationReport(checkSelectedApplicability(driver, "DSE", sym, cln, "PUBLIC"));
+        run3in1UIIndicatorsAudit(driver, sym, cln);
+        testDayNettingScenarios();
+        runAllNettingTests(null);
+
+        NettingScenarioConfig cfg = new NettingScenarioConfig();
+        System.out.print("Matrix Client 1 (ENTER=002): ");
+        cfg.primaryClient = readLineWithTimeout(sc, "002", 0);
+        System.out.print("Matrix Other Clients comma-separated (ENTER=23986): ");
+        String otherCsv = readLineWithTimeout(sc, "23986", 0);
+        cfg.otherClients = new ArrayList<>();
+        for (String part : otherCsv.split(",")) {
+            if (!part.trim().isEmpty()) cfg.otherClients.add(part.trim());
         }
-        if ("1".equals(sub) || "5".equals(sub)) {
-            testDayNettingScenarios();
-            runAllNettingTests(driver);
-        }
-        if ("1".equals(sub) || "4".equals(sub)) {
-            NettingScenarioConfig cfg = new NettingScenarioConfig();
-            System.out.print("Matrix Client 1 (ENTER=002): ");
-            cfg.primaryClient = readLineWithTimeout(sc, "002", 0);
-            System.out.print("Matrix Other Clients comma-separated (ENTER=23986): ");
-            String otherCsv = readLineWithTimeout(sc, "23986", 0);
-            cfg.otherClients = new ArrayList<>();
-            for (String part : otherCsv.split(",")) {
-                if (!part.trim().isEmpty()) cfg.otherClients.add(part.trim());
-            }
-            cfg.symbol = sym;
-            System.out.print("Matrix Exchange (DSE / CSE / BOTH, ENTER=BOTH): ");
-            cfg.exchange = readLineWithTimeout(sc, "BOTH", 0);
-            System.out.print("Matrix RMS Password (ENTER=12345): ");
-            cfg.rmsPassword = readLineWithTimeout(sc, "12345", 0);
-            System.out.print("Stock File Path for Scenarios 7-9 (ENTER=blank): ");
-            cfg.stockFilePath = readLineWithTimeout(sc, "", 0);
-            System.out.print("Allow Live Stock Upload? (1=YES, 0=NO [Dry-Run, ENTER=0]): ");
-            cfg.allowLiveStockUpload = "1".equals(readLineWithTimeout(sc, "0", 0));
-            runNetting9ScenarioMatrix(driver, cfg);
-        }
+        cfg.symbol = sym;
+        System.out.print("Matrix Exchange (DSE / CSE / BOTH, ENTER=BOTH): ");
+        cfg.exchange = readLineWithTimeout(sc, "BOTH", 0);
+        System.out.print("Matrix RMS Password (ENTER=12345): ");
+        cfg.rmsPassword = readLineWithTimeout(sc, "12345", 0);
+        System.out.print("Stock File Path for Scenarios 7-9 (ENTER=blank): ");
+        cfg.stockFilePath = readLineWithTimeout(sc, "", 0);
+        System.out.print("Allow Live Stock Upload? (1=YES, 0=NO [Dry-Run, ENTER=0]): ");
+        cfg.allowLiveStockUpload = "1".equals(readLineWithTimeout(sc, "0", 0));
+        runNetting9ScenarioMatrix(driver, cfg);
     }
 
     public static void main(WebDriver driver, Scanner sc) throws InterruptedException {
