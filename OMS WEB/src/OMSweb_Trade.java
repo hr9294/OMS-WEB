@@ -46,7 +46,8 @@ public class OMSweb_Trade {
 				|| "true".equalsIgnoreCase(System.getenv("HEADLESS"))
 				|| "true".equalsIgnoreCase(System.getenv("DOCKER_MODE"))
 				|| "true".equalsIgnoreCase(System.getenv("AUTOMATE_MODE"))
-				|| "true".equalsIgnoreCase(System.getProperty("AUTOMATE_MODE"));
+				|| "true".equalsIgnoreCase(System.getProperty("AUTOMATE_MODE"))
+                || "true".equalsIgnoreCase(System.getenv("AUTO_DEFAULT"));
 	}
 
 	public static String readLineWithTimeout(Scanner sc, String defaultVal, int timeoutSeconds) {
@@ -79,25 +80,17 @@ public class OMSweb_Trade {
 	}
 
 	public static String readLineWithAutoTimeout(Scanner sc, String defaultVal, int timeoutSeconds) {
-		if (sc == null) {
+		if (sc == null || isAutomatedMode() || "true".equalsIgnoreCase(System.getenv("AUTO_DEFAULT"))) {
 			System.out.println(" [Auto-selected: " + defaultVal + "]");
 			return defaultVal;
 		}
 		try {
-			long end = System.currentTimeMillis() + (timeoutSeconds * 1000L);
-			while (System.currentTimeMillis() < end) {
-				if (System.in.available() > 0 && sc.hasNextLine()) {
-					String res = sc.nextLine().trim();
-					return res.isEmpty() ? defaultVal : res;
-				}
-				Thread.sleep(50);
+			if (sc.hasNextLine()) {
+				String res = sc.nextLine().trim();
+				return res.isEmpty() || "default".equalsIgnoreCase(res) || "auto".equalsIgnoreCase(res) ? defaultVal : res;
 			}
-			System.out.println(" [Auto-selected: " + defaultVal + "]");
-			return defaultVal;
-		} catch (Exception e) {
-			System.out.println(" [Auto-selected: " + defaultVal + "]");
-			return defaultVal;
-		}
+		} catch (Exception ignored) {}
+		return defaultVal;
 	}
 
 	public static void showFrontendBanner(WebDriver driver, String msg, String borderColor) {
@@ -700,14 +693,14 @@ public class OMSweb_Trade {
 				System.out.printf("[POSITION] Selected holding client %s with %,.0f saleable shares of %s on CSE.%n",
 						clientCode, holdingClient.getSaleableQty(), instrument);
 			} else {
-				System.out.print("Enter SELL Client Code (default 23986 in 3s): ");
+				System.out.print("Enter SELL Client Code (default 23986): ");
 				clientCode = readLineWithTimeout(sc, "23986", 3);
 			}
 		} else {
-			System.out.print("Enter BUY Client Code (default 23986 in 3s): ");
+			System.out.print("Enter BUY Client Code (default 23986): ");
 			clientCode = readLineWithTimeout(sc, "23986", 3);
 		}
-		System.out.print("Enter " + sideText + " Quantity (default 10 in 3s): ");
+		System.out.print("Enter " + sideText + " Quantity (default 10): ");
 		String qStr = readLineWithTimeout(sc, "10", 3);
 		int tradeQty = 10;
 		try { tradeQty = Integer.parseInt(qStr); } catch (Exception ignored) {}
@@ -881,7 +874,7 @@ public class OMSweb_Trade {
 		System.out.println("2. BUY Order Only");
 		System.out.println("3. SELL Order Only");
 		System.out.println("4. MULTIPLE ORDERS / MULTIPLE TRADE on CSE");
-		System.out.print("Enter choice (1=BOTH / 2=BUY / 3=SELL / 4=MULTI, default=1 in 3s): ");
+		System.out.print("Enter choice (1=BOTH / 2=BUY / 3=SELL / 4=MULTI, default=1): ");
 		String sideInput = readLineWithTimeout(sc, "1", 3);
 		if ("4".equals(sideInput) || "MULTI".equalsIgnoreCase(sideInput) || "MULTIPLE".equalsIgnoreCase(sideInput)) {
 			System.out.println("\n>>> EXECUTING CSE MULTIPLE ORDERS / MULTIPLE TRADE...");
@@ -929,14 +922,14 @@ public class OMSweb_Trade {
 		System.out.println("  2. DSE Normal Trade Only");
 		System.out.println("  3. CSE Normal Trade Only");
 		System.out.println("  0. Return to Main Menu");
-		System.out.print("Enter choice (1=BOTH / 2=DSE / 3=CSE / 0=Main Menu, default=1 in 4s): ");
+		System.out.print("Enter choice (1=BOTH / 2=DSE / 3=CSE / 0=Main Menu, default=1): ");
 		String modeChoice = readLineWithTimeout(sc, "1", 4);
 		if ("0".equals(modeChoice) || "exit".equalsIgnoreCase(modeChoice)) {
 			System.out.println("[NORMAL TRADE] Returning to Main Menu...");
 			return;
 		} else if ("2".equals(modeChoice) || "DSE".equalsIgnoreCase(modeChoice)) {
 			activeExchange = "DSE";
-			System.out.print("\nEnter DSE Symbol (default GP in 4s): ");
+			System.out.print("\nEnter DSE Symbol (default GP): ");
 			String instrument = readLineWithTimeout(sc, "GP", 4);
 			if (instrument.isEmpty()) instrument = "GP";
 			normalTradeFlow(driver, wait, sc, cleanSymbol(instrument));
@@ -1010,7 +1003,7 @@ public class OMSweb_Trade {
 			// ---------- 1. Choose Buy or Sell FIRST (1=BUY, 2=SELL) ----------
 			System.out.println("\nFor BUY, Please Enter: 1");
 			System.out.println("For SELL, Please Enter: 2");
-			System.out.print("Please Enter your choice (1=BUY / 2=SELL, default 1 in 4s): ");
+			System.out.print("Please Enter your choice (1=BUY / 2=SELL, default 1): ");
 			String sideInput = readLineWithTimeout(sc, "1", 4);
 			int int_side = 1;
 			try {
@@ -1025,7 +1018,7 @@ public class OMSweb_Trade {
 			System.out.println("1. DSE (default)");
 			System.out.println("2. CSE");
 			System.out.println("3. Priority Order");
-			System.out.print("Please Enter your choice (1-3, or DSE/CSE/Priority, default 1 in 4s): ");
+			System.out.print("Please Enter your choice (1-3, or DSE/CSE/Priority, default 1): ");
 			String exInput = readLineWithTimeout(sc, "1", 4);
 			String exchange = "DSE";
 			boolean isPriorityOrder = false;
@@ -1050,7 +1043,7 @@ public class OMSweb_Trade {
 			List<String> clientCodes = new ArrayList<>();
 			Map<String, Position.ClientPosition> positionMap = new HashMap<>();
 			if (int_side == 1) { // BUY
-				System.out.print("\nEnter Client Code (default 23986 in 4s): ");
+				System.out.print("\nEnter Client Code (default 23986): ");
 				String input = readLineWithTimeout(sc, "23986", 4);
 				if (input.isEmpty()) {
 					clientCodes.add("23986");
@@ -1075,7 +1068,7 @@ public class OMSweb_Trade {
 						}
 					} catch (Exception ignored) {}
 				}
-				System.out.print("\nDo you want to run 5-Stage BUY Lifecycle Audit across 6 widgets? (1=YES / 0=NO, default 0 in 4s): ");
+				System.out.print("\nDo you want to run 5-Stage BUY Lifecycle Audit across 6 widgets? (1=YES / 0=NO, default 0): ");
 				String auditChoice = readLineWithTimeout(sc, "0", 4);
 				if (auditChoice.equals("1")) {
 					runSequentialBuyLifecycleAudit(driver, wait, sc, instrument, snapshotExchange, clientCodes.get(0), null);
@@ -1087,7 +1080,7 @@ public class OMSweb_Trade {
 					continue;
 				}
 			} else { // SELL
-				System.out.print("\nEnter Client Code (default from Position in 4s): ");
+				System.out.print("\nEnter Client Code (default from Position): ");
 				String input = readLineWithTimeout(sc, "", 4);
 				if (!input.isEmpty()) {
 					for (String code : input.split("[,\\s]+")) {
@@ -1248,13 +1241,13 @@ public class OMSweb_Trade {
 			}
 
 			// ---------- After confirmation, ask to select an Order Status type ----------
-			System.out.print("\nDo you want to select an Order Status type now? (1=YES / 0=NO, default 0 in 4s): ");
+			System.out.print("\nDo you want to select an Order Status type now? (1=YES / 0=NO, default 0): ");
 			if ("1".equals(readLineWithTimeout(sc, "0", 4))) {
 				selectOrderStatus(driver, wait, sc, instrument);
 			}
 
 			// ---------- Ask if user wants to trade again ----------
-			System.out.print("Do you want to trade again? (1=YES / 0=NO, default=0 in 4s): ");
+			System.out.print("Do you want to trade again? (1=YES / 0=NO, default=0): ");
 			String tradeAgainInput = readLineWithTimeout(sc, "0", 4);
 			if (!tradeAgainInput.equals("1") && !tradeAgainInput.equalsIgnoreCase("y") && !tradeAgainInput.equalsIgnoreCase("yes")) {
 				keepTrading = false;
@@ -3258,7 +3251,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		try {
 			rateInput = driver.findElement(By.id("limit_order_rate"));
 		} catch (Exception ignored) {}
-		System.out.print("Enter " + side + " Rate manually (auto-fetching in 4s): ");
+		System.out.print("Enter " + side + " Rate manually (auto-fetching): ");
 		String rate = readLineWithTimeout(sc, "", 4);
 		double parsedRate = 0.0;
 		if (rate.isEmpty()) {
@@ -3710,7 +3703,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		System.out.println("\n=== Widget Color Link ===");
 		System.out.println("1.Turquoise (Default) 2.Yellow 3.Orange");
 		System.out.println("4.Green 5.Red 6.Pink");
-		System.out.print("Enter choice (1-6, default 1 [Turquoise] in 2s): ");
+		System.out.print("Enter choice (1-6, ENTER=1 [Turquoise]): ");
 		String input = readLineWithAutoTimeout(sc, "1", 2);
 		if (input.isEmpty()) input = "1";
 		int colorChoice;
@@ -5563,7 +5556,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		System.out.println("\n=======================================================");
 		System.out.println("  NORMAL TRADE ENGINE (BUY & SELL) + TRADE FILE EXPORT ");
 		System.out.println("=======================================================");
-		System.out.print("Enter Symbol for Normal Trade (default GP in 4s): ");
+		System.out.print("Enter Symbol for Normal Trade (default GP): ");
 		String symbol = readLineWithTimeout(sc, "GP", 4);
 		if (symbol == null || symbol.trim().isEmpty()) symbol = "GP";
 		symbol = cleanSymbol(symbol);
@@ -5576,7 +5569,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 			RejectionOrderPriceInfo onScreenRej = extractRejectionOrderPriceInfo(driver, null, symbol);
 			if (onScreenRej.hasSuggestedPrice()) ltp = onScreenRej.suggestedPrice;
 		}
-		System.out.print("Enter BUY Client Code (default 23986 in 4s): ");
+		System.out.print("Enter BUY Client Code (default 23986): ");
 		String buyClient = readLineWithTimeout(sc, "23986", 4);
 		if (buyClient == null || buyClient.trim().isEmpty()) buyClient = "23986";
 		// [DB CLIENT CASH] Verify buyer cash from public.clients_cash table
@@ -5602,10 +5595,10 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 				autoSellClient = holder.getClientCode();
 			}
 		} catch (Exception ignored) {}
-		System.out.printf("Enter SELL Client Code (default %s in 4s): ", autoSellClient);
+		System.out.printf("Enter SELL Client Code (default %s): ", autoSellClient);
 		String sellClient = readLineWithTimeout(sc, autoSellClient, 4);
 		if (sellClient == null || sellClient.trim().isEmpty()) sellClient = autoSellClient;
-		System.out.print("Enter Quantity (default 10 in 4s): ");
+		System.out.print("Enter Quantity (default 10): ");
 		String qtyInput = readLineWithTimeout(sc, "10", 4);
 		int qty = 10;
 		try { qty = Integer.parseInt(qtyInput.trim()); } catch (Exception ignored) {}
@@ -5624,7 +5617,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		Map<String, String> sellOrder = fetchTerminalOrderForAction(driver, sellClient, symbol, "accept");
 		printActionOrderTerminalTable("NORMAL TRADE [SELL ACCEPTED]", sellOrder);
 		// 3. Right-Click Execute at Market
-		System.out.print("\nExecute orders at market in Order Terminal to trigger match? (1=YES / 0=NO, default 1 in 4s): ");
+		System.out.print("\nExecute orders at market in Order Terminal to trigger match? (1=YES / 0=NO, default 1): ");
 		String matchChoice = readLineWithTimeout(sc, "1", 4);
 		if ("1".equals(matchChoice)) {
 			try {
@@ -6293,7 +6286,7 @@ public static void restoreTradePageState(WebDriver driver, String symbol, String
 		System.out.println("\n>>> [STAGE 1/3] EXECUTING NORMAL TRADE ON DSE GATEWAY...");
 		activeExchange = "DSE";
 		String dseSymbol = "GP";
-		System.out.print("Enter DSE Symbol (default GP in 4s): ");
+		System.out.print("Enter DSE Symbol (default GP): ");
 		String symInp = readLineWithTimeout(sc, "GP", 4);
 		if (symInp != null && !symInp.trim().isEmpty()) dseSymbol = cleanSymbol(symInp);
 		Market_Watch.connectWidget(driver, dseSymbol, "DSE");

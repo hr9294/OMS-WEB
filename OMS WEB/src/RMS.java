@@ -1985,8 +1985,8 @@ public class RMS {
             System.out.println("  7. Full Automated RMS Health Check & Connected Live Trade Audit");
             System.out.println("  8. Run Connected Day Netting & Stock Upload 9-Scenario Matrix (Day_Netting)");
             System.out.println("  0. Return to Main Menu");
-            System.out.print("Enter Choice (1-8, 0=Return, default=7 in 4s): ");
-            String choice = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "7", 4);
+            System.out.print("Enter Choice (1-8, 0=Return, ENTER=7): ");
+            String choice = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "7", 300);
             switch (choice) {
                 case "1":
                     navigateToRmsPortal(driver);
@@ -1998,19 +1998,19 @@ public class RMS {
                 case "2":
                     System.out.println("\n--- Configure Application Settings ---");
                     System.out.println("Select Netting Mode: 1=NONE, 2=INDIVIDUAL EXCHANGE [Default], 3=CROSS EXCHANGE");
-                    System.out.print("Choice (1-3, default=2 in 4s): ");
-                    String mChoice = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "2", 4);
+                    System.out.print("Choice (1-3, ENTER=2): ");
+                    String mChoice = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "2", 300);
                     NettingMode mode = "1".equals(mChoice) ? NettingMode.NONE :
                                        "3".equals(mChoice) ? NettingMode.CROSS_EXCHANGE : NettingMode.INDIVIDUAL_EXCHANGE;
-                    System.out.print("Allow Z and Spot Netting? (true/false, default=false in 4s): ");
-                    String zChoice = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "false", 4);
+                    System.out.print("Allow Z and Spot Netting? (true/false, ENTER=false): ");
+                    String zChoice = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "false", 300);
                     boolean allowZ = "true".equalsIgnoreCase(zChoice);
                     configureAllApplicationSettings(driver, mode, true, true, allowZ, "12345");
                     break;
                 case "3":
                     System.out.println("\n--- Manage Clients RMS ---");
-                    System.out.print("Enter Client Code (default 002 in 4s): ");
-                    String cln = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "002", 4);
+                    System.out.print("Enter Client Code (ENTER=002): ");
+                    String cln = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "002", 300);
                     if (cln.isEmpty()) cln = "002";
                     System.out.print("Set Status (1=Allowed [Default], 2=Disallowed): ");
                     String cStat = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "1", 4);

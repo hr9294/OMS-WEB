@@ -2,6 +2,7 @@
 OMS-WEB Automation Suite - Configuration & Settings
 """
 import os
+import re
 import socket
 import sys
 import time
@@ -12,6 +13,7 @@ IS_CI = any(
     os.environ.get(k, "").strip().lower() == "true"
     for k in ("CI", "HEADLESS", "DOCKER_MODE", "AUTOMATE_MODE")
 )
+AUTO_DEFAULT = IS_CI or os.environ.get("AUTO_DEFAULT", "").strip().lower() == "true"
 IS_HEADLESS = any(
     os.environ.get(k, "").strip().lower() == "true"
     for k in ("CI", "HEADLESS")
@@ -119,48 +121,22 @@ def get_marketdata_db_connection() -> Optional[Any]:
         MKT_DB_PORT, MKT_DB_NAME, MKT_DB_USER, MKT_DB_PASS,
     )
 
-def read_line_with_timeout(prompt: str, default_val: str = "", timeout_sec: float = 4.0) -> str:
+def read_line_with_timeout(prompt: str, default_val: str = "", timeout_sec: float = 0.0) -> str:
     """
-    Non-blocking console prompt that auto-defaults after timeout_sec or immediately in CI/non-TTY.
-    Uses msvcrt on Windows interactive terminals so it never hangs pytest or automated sessions.
+    Console prompt with NO default countdown timer in manual mode.
+    Waits cleanly until the user enters input (ENTER / 'default' accepts default_val).
+    Auto-selects default_val immediately only when CI / AUTO_DEFAULT / non-TTY is active.
     """
-    if prompt:
-        print(prompt, end="", flush=True)
-    if IS_CI or not sys.stdin or not sys.stdin.isatty():
-        print(f" [Auto-selected default: {default_val}]")
+    clean_prompt = re.sub(r"\s+in\s+\d+(?:\.\d+)?s\b", "", prompt or "", flags=re.IGNORECASE)
+    if AUTO_DEFAULT or not sys.stdin or not sys.stdin.isatty():
+        if clean_prompt:
+            print(f"{clean_prompt} [Auto-selected default: {default_val}]")
         return default_val
     try:
-        if os.name == "nt":
-            import msvcrt
-            buf = []
-            end = time.time() + max(0.2, timeout_sec)
-            while time.time() < end:
-                if msvcrt.kbhit():
-                    ch = msvcrt.getwch()
-                    if ch in ("\r", "\n"):
-                        print()
-                        val = "".join(buf).strip()
-                        return val if val else default_val
-                    elif ch == "\x08":  # Backspace
-                        if buf:
-                            buf.pop()
-                            print("\b \b", end="", flush=True)
-                    elif ch == "\x03":
-                        raise KeyboardInterrupt
-                    else:
-                        buf.append(ch)
-                        print(ch, end="", flush=True)
-                time.sleep(0.05)
-            print(f"\n [Auto-selected default: {default_val}]")
+        val = input(clean_prompt).strip()
+        if not val or val.lower() in ("default", "auto"):
             return default_val
-        else:
-            import select
-            r, _, _ = select.select([sys.stdin], [], [], max(0.2, timeout_sec))
-            if r:
-                val = sys.stdin.readline().strip()
-                return val if val else default_val
-            print(f"\n [Auto-selected default: {default_val}]")
-            return default_val
+        return val
     except KeyboardInterrupt:
         raise
     except Exception:

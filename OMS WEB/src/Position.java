@@ -82,7 +82,7 @@ public class Position {
         System.out.println("\n=== Position Widget Color Link ===");
         System.out.println("1.Turquoise (Default) 2.Yellow 3.Orange");
         System.out.println("4.Green      5.Red     6.Pink");
-        System.out.print("Enter choice (1-6, default 1 [Turquoise] in 2s): ");
+        System.out.print("Enter choice (1-6, ENTER=1 [Turquoise]): ");
         String input = readLineWithAutoTimeout(sc, "1", 2);
         if (input.isEmpty()) input = "1";
         int colorChoice;
@@ -1453,7 +1453,8 @@ public class Position {
                 || "true".equalsIgnoreCase(System.getenv("HEADLESS"))
                 || "true".equalsIgnoreCase(System.getenv("DOCKER_MODE"))
                 || "true".equalsIgnoreCase(System.getenv("AUTOMATE_MODE"))
-                || "true".equalsIgnoreCase(System.getProperty("AUTOMATE_MODE"));
+                || "true".equalsIgnoreCase(System.getProperty("AUTOMATE_MODE"))
+                || "true".equalsIgnoreCase(System.getenv("AUTO_DEFAULT"));
     }
 
     public static String readLineWithTimeout(Scanner sc, String defaultVal, int timeoutSeconds) {
@@ -1485,25 +1486,17 @@ public class Position {
     }
 
     public static String readLineWithAutoTimeout(Scanner sc, String defaultVal, int timeoutSeconds) {
-        if (sc == null) {
+        if (sc == null || isAutomatedMode() || "true".equalsIgnoreCase(System.getenv("AUTO_DEFAULT"))) {
             System.out.println(" [Auto-selected: " + defaultVal + "]");
             return defaultVal;
         }
         try {
-            long end = System.currentTimeMillis() + (timeoutSeconds * 1000L);
-            while (System.currentTimeMillis() < end) {
-                if (System.in.available() > 0 && sc.hasNextLine()) {
-                    String res = sc.nextLine().trim();
-                    return res.isEmpty() ? defaultVal : res;
-                }
-                Thread.sleep(50);
+            if (sc.hasNextLine()) {
+                String res = sc.nextLine().trim();
+                return res.isEmpty() || "default".equalsIgnoreCase(res) || "auto".equalsIgnoreCase(res) ? defaultVal : res;
             }
-            System.out.println(" [Auto-selected: " + defaultVal + "]");
-            return defaultVal;
-        } catch (Exception e) {
-            System.out.println(" [Auto-selected: " + defaultVal + "]");
-            return defaultVal;
-        }
+        } catch (Exception ignored) {}
+        return defaultVal;
     }
 
     /**
@@ -1534,7 +1527,7 @@ public class Position {
         System.out.printf("  - Enter row # (1-%d)%n", Math.min(20, symbols.size()));
         System.out.printf("  - Or enter symbol name directly (e.g. %s)%n", recSym);
         System.out.printf("  - Or press ENTER to accept recommended [#1: %s]%n", recSym);
-        System.out.print("Enter Choice (default #" + recSym + " in 3s): ");
+        System.out.print("Enter Choice (default #" + recSym + "): ");
         String choice = readLineWithTimeout(sc, recSym, 3).toUpperCase();
         String chosenSym = recSym;
         if (!choice.isEmpty()) {

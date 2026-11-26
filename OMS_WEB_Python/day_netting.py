@@ -1146,6 +1146,162 @@ def run_all_netting_tests(driver: Optional[webdriver.Chrome] = None) -> bool:
         run_netting_9_scenario_matrix(driver, NettingScenarioConfig())
     return passed == len(results)
 
+def _execute_normal_netting_flow(
+    driver: webdriver.Chrome, mode: NettingMode, ex: str, sym: str, cln: str, brd: str,
+    pwd: str = "12345", run_trade: bool = True,
+) -> tuple[bool, Netting6WidgetsUiSnapshot, Netting6WidgetsUiSnapshot]:
+    """Configures mode/exchange in qRMS, captures pre/post 6-widget live data & comparison."""
+    dse_en = mode != NettingMode.NONE and ex in ("DSE", "BOTH")
+    cse_en = mode != NettingMode.NONE and ex in ("CSE", "BOTH")
+    rms.configure_all_application_settings(driver, mode, dse_en, cse_en, False, pwd)
+    rep = check_selected_applicability(driver, ex, sym, cln, brd)
+    print(f"[APPLICABILITY] {rep.overall_verdict}")
+    import oms_trade
+    oms_trade.insert_global_symbol_and_select_public(driver, sym)
+    pub_sym = oms_price.to_public_symbol(sym)
+    oms_trade.propagate_client_code_to_all_widgets(driver, cln, pub_sym)
+    pre_snap = check_6_netting_widgets_real_time_ui_data(driver, f"PRE_{mode.name}_{ex}", cln, pub_sym, ex)
+    order_ex = "DSE" if ex == "BOTH" else ex
+    trade_inst = oms_price.to_board_symbol(sym, brd)
+    qty = 25 if mode == NettingMode.NONE else 37 if (mode == NettingMode.INDIVIDUAL_EXCHANGE and ex == "BOTH") else 25
+    rate = oms_price.fetch_price_ltp_or_ycp(driver, sym, order_ex) or 266.90
+    if run_trade:
+        try:
+            if mode == NettingMode.CROSS_EXCHANGE:
+                oms_trade.submit_single_order_attempt(driver, "BUY", cln, trade_inst, 25, rate, "DSE")
+                time.sleep(1.0)
+                oms_trade.submit_single_order_attempt(driver, "SELL", cln, trade_inst, 15, rate, "CSE")
+            elif mode == NettingMode.INDIVIDUAL_EXCHANGE and ex == "BOTH":
+                oms_trade.submit_single_order_attempt(driver, "BUY", cln, trade_inst, 25, rate, "DSE")
+                time.sleep(1.0)
+                oms_trade.submit_single_order_attempt(driver, "BUY", cln, trade_inst, 12, rate, "CSE")
+            else:
+                oms_trade.submit_single_order_attempt(driver, "BUY", cln, trade_inst, 25, rate, order_ex)
+        except Exception:
+            pass
+    post_snap = check_6_netting_widgets_real_time_ui_data(driver, f"POST_{mode.name}_{ex}", cln, pub_sym, ex)
+    post_snap.day_netting_mode = mode.name
+    post_snap.traded_exchange = ex
+    post_snap.trade_qty = qty
+    compare_and_report_netting_widgets(pre_snap, post_snap, f"6-WIDGET LIVE REPORT ({mode.name} - {ex})", driver)
+    audit = audit_day_netting_saleable_compliance(pre_snap, post_snap)
+    ok = audit.dse_total_right and audit.dse_saleable_right and audit.cse_total_right and audit.cse_saleable_right
+    return ok, pre_snap, post_snap
+
+
+def _run_normal_netting_live_audit(driver: webdriver.Chrome) -> None:
+    print("\n--- 1. NORMAL NETTING & 6-WIDGET LIVE REPORT & COMPARISON ---")
+    mc = config.read_line_with_timeout("Mode (1=NONE, 2=INDIVIDUAL [ENTER=Default], 3=CROSS): ", "2")
+    mode = NettingMode.NONE if mc == "1" else (NettingMode.CROSS_EXCHANGE if mc == "3" else NettingMode.INDIVIDUAL_EXCHANGE)
+    ec = config.read_line_with_timeout("Exchange (1=DSE [ENTER=Default], 2=CSE, 3=BOTH): ", "1")
+    ex = "CSE" if ec == "2" else ("BOTH" if ec == "3" else "DSE")
+    pwd = config.read_line_with_timeout("Password Auth (ENTER=12345): ", "12345")
+    sym = config.read_line_with_timeout("Target Symbol (ENTER=GP): ", "GP") or "GP"
+    cln = config.read_line_with_timeout("Target Client (ENTER=23986): ", "23986") or "23986"
+    brd = config.read_line_with_timeout("Board (PUBLIC [ENTER=Default] / BLOCK / SPOT): ", "PUBLIC").upper() or "PUBLIC"
+    run_trade = config.read_line_with_timeout("Execute Live Trade? (1=YES [ENTER=Default], 0=Audit Only): ", "1") != "0"
+    _execute_normal_netting_flow(driver, mode, ex, sym, cln, brd, pwd, run_trade)
+
+
+def _run_all_configure_settings_menu(driver: webdriver.Chrome) -> None:
+    rms.navigate_to_rms_portal(driver)
+    while True:
+        rms.display_application_settings_table(driver)
+        print("\n=== ALL CONFIGURE SETTINGS (RMS & NETTING SETTINGS) ===")
+        print("  1. Netting Mode & Z/Spot Toggle (None / Individual / Cross)")
+        print("  2. Exchange Netting Toggle (DSE / CSE)")
+        print("  3. Applicable Symbols (Add / View)")
+        print("  4. Clients RMS Eligibility & Exclusivity (Allow / Disallow / Exclusive Rule)")
+        print("  5. Market / Board Restrictions (Block / Unblock Board or Spot)")
+        print("  6. View Full RMS Status & Verify Symbol/Client/Board Applicability")
+        print("  7. Guided Configure All Settings (Mode -> Exchange -> Z/Spot -> Board -> Client -> Symbol)")
+        print("  0. Back to Day Netting Menu")
+        sub = "6" if config.IS_CI else config.read_line_with_timeout("Enter Setting Choice (0-7, ENTER=6): ", "6")
+        if sub == "0":
+            break
+        if sub in ("1", "7"):
+            mc = config.read_line_with_timeout("Netting Mode (1=NONE, 2=INDIVIDUAL [ENTER=Default], 3=CROSS): ", "2")
+            mode = NettingMode.NONE if mc == "1" else (NettingMode.CROSS_EXCHANGE if mc == "3" else NettingMode.INDIVIDUAL_EXCHANGE)
+            ec = config.read_line_with_timeout("Exchange Scope (1=DSE, 2=CSE, 3=BOTH [ENTER=Default]): ", "3")
+            zc = config.read_line_with_timeout("Allow Z/Spot? (1=YES, 0=NO [ENTER=Default]): ", "0") == "1"
+            pwd = config.read_line_with_timeout("Password Auth (ENTER=12345): ", "12345")
+            rms.configure_all_application_settings(driver, mode, ec in ("1", "3"), ec in ("2", "3"), zc, pwd)
+        if sub in ("2",):
+            ec = config.read_line_with_timeout("Exchange (1=DSE, 2=CSE, 3=BOTH [ENTER=Default]): ", "3")
+            en = config.read_line_with_timeout("Enable Netting? (1=YES [ENTER=Default], 2=NO): ", "1") != "2"
+            pwd = config.read_line_with_timeout("Password Auth (ENTER=12345): ", "12345")
+            cur = rms.fetch_application_settings(driver)
+            rms.configure_all_application_settings(
+                driver, cur.day_netting_mode,
+                en if ec in ("1", "3") else cur.is_dse_day_netting_enabled,
+                en if ec in ("2", "3") else cur.is_cse_day_netting_enabled,
+                cur.allow_z_and_spot_netting, pwd,
+            )
+        if sub in ("3", "7"):
+            ex = config.read_line_with_timeout("Applicable Symbol Exchange (DSE [ENTER=Default] / CSE): ", "DSE").upper() or "DSE"
+            sym = config.read_line_with_timeout("Symbol to Add (ENTER=GP): ", "GP").upper() or "GP"
+            rms.add_applicable_symbol(driver, ex, sym)
+            rms.display_applicable_symbols_table(driver, ex)
+        if sub in ("4", "7"):
+            cln = config.read_line_with_timeout("Primary Client (ENTER=002): ", "002") or "002"
+            alw = config.read_line_with_timeout("Status (1=Allowed [ENTER=Default], 2=Disallowed): ", "1") != "2"
+            others_raw = config.read_line_with_timeout("Other Exclusive Clients comma-sep (blank=skip): ", "")
+            pwd = config.read_line_with_timeout("Password Auth (ENTER=12345): ", "12345")
+            if others_raw:
+                rms.apply_client_exclusivity_rule(driver, cln, alw, [x.strip() for x in others_raw.split(",") if x.strip()], pwd)
+            else:
+                rms.set_client_netting_state(driver, cln, alw, pwd)
+        if sub in ("5", "7"):
+            ex = config.read_line_with_timeout("Board Exchange (CSE [ENTER=Default] / DSE): ", "CSE").upper() or "CSE"
+            tag = config.read_line_with_timeout("Board Tag (BLOCK [ENTER=Default] / SPOT): ", "BLOCK").upper() or "BLOCK"
+            blk = config.read_line_with_timeout("Block? (1=YES [ENTER=Default], 2=NO): ", "1") != "2"
+            pwd = config.read_line_with_timeout("Password Auth (ENTER=12345): ", "12345")
+            rms.configure_board_wise_blocking(driver, ex, tag, blk, pwd)
+        if sub in ("6", "7"):
+            rms.display_clients_rms_table(driver, True)
+            rms.display_unauthorized_boards_table(driver)
+            sym = config.read_line_with_timeout("Check Symbol (ENTER=GP): ", "GP") or "GP"
+            cln = config.read_line_with_timeout("Check Client (ENTER=23986): ", "23986") or "23986"
+            brd = config.read_line_with_timeout("Check Board (ENTER=PUBLIC): ", "PUBLIC").upper() or "PUBLIC"
+            print(check_selected_applicability(driver, "DSE", sym, cln, brd).overall_verdict)
+        if config.IS_CI:
+            break
+
+
+def _run_day_netting_suite_menu(driver: webdriver.Chrome) -> None:
+    print("\n=== 3. DAY NETTING SUITE (NONE, INDIVIDUAL, CROSS), ALL WIDGETS REPORT & COMPLIANCE MATRIX ===")
+    print("  1. Full Suite (None + Individual + Cross + 6-Widget Report & Comparison + UI Audit + QA + 9-Scenario Matrix) [ENTER=Default]")
+    print("  2. Multi-Mode Audit Only (None, Individual, Cross) + 6-Widget Report & Comparison")
+    print("  3. UI Netting Indicators Audit (Depth, Watchlists, Order Window)")
+    print("  4. 9-Scenario Compliance Matrix (Exclusivity, Post-Order Flips, Stock File)")
+    print("  5. QA Multi-Exchange & Offline 9-Block Suite")
+    print("  0. Back to Day Netting Menu")
+    sub = "1" if config.IS_CI else config.read_line_with_timeout("Enter Suite Choice (0-5, ENTER=1): ", "1")
+    if sub == "0":
+        return
+    sym = config.read_line_with_timeout("Target Symbol (ENTER=GP): ", "GP") or "GP"
+    cln = config.read_line_with_timeout("Target Client (ENTER=23986): ", "23986") or "23986"
+    if sub in ("1", "2"):
+        run_live = config.read_line_with_timeout("Execute Live Mode Orders? (1=YES [ENTER=Default], 0=Snapshot Only): ", "1") != "0"
+        score = {}
+        for mode, ex in ((NettingMode.NONE, "DSE"), (NettingMode.INDIVIDUAL_EXCHANGE, "BOTH"), (NettingMode.CROSS_EXCHANGE, "BOTH")):
+            ok, _, _ = _execute_normal_netting_flow(driver, mode, ex, sym, cln, "PUBLIC", "12345", run_live)
+            score[mode.name] = "PASS" if ok else "CHECK"
+        print(f"\n[MULTI-MODE 6-WIDGET COMPARISON SCORECARD] {score}")
+    if sub in ("1", "3"):
+        print(f"UI Indicators -> Depth={verify_market_depth_netting_indicator(driver, sym)}, Watchlist={verify_default_netting_watchlist(driver, sym)}, ClientBlocked={verify_order_window_client_netting_blocked(driver, cln)}")
+    if sub in ("1", "5"):
+        test_qa_day_netting_scenarios()
+        run_all_netting_tests(None)
+    if sub in ("1", "4"):
+        cfg = NettingScenarioConfig()
+        cfg.primary_client = config.read_line_with_timeout("Matrix Primary Client (ENTER=002): ", "002") or "002"
+        cfg.other_clients = [x.strip() for x in config.read_line_with_timeout("Matrix Other Clients (ENTER=23986): ", "23986").split(",") if x.strip()]
+        cfg.symbol = sym
+        cfg.exchange = config.read_line_with_timeout("Matrix Exchange (DSE/CSE/BOTH, ENTER=BOTH): ", "BOTH").upper() or "BOTH"
+        run_netting_9_scenario_matrix(driver, cfg)
+
+
 def run_day_netting_console(driver: webdriver.Chrome) -> None:
     if not driver:
         run_all_netting_tests()
@@ -1153,78 +1309,21 @@ def run_day_netting_console(driver: webdriver.Chrome) -> None:
     rms.navigate_to_rms_portal(driver)
     while True:
         print("\n=== DAY NETTING (SCRIP NETTING) ENGINE ===")
-        print("  1. Configure Netting Mode & 6-Widget Live Trade Audit [Default]")
-        print("  2. Configure Exchange Netting (DSE/CSE)")
-        print("  3. Upload / Manage Applicable Symbols")
-        print("  4. Configure Client Netting Eligibility (Allow/Block/Exclusive)")
-        print("  5. Configure Market / Board Restrictions")
-        print("  6. Run UI Netting Indicators Audit")
-        print("  7. Run Full Automated Scrip Netting Test Suite")
-        print("  8. Verify Symbol, Client & Board Applicability")
-        print("  9. Run QA Day Netting Suite (Offline 25/25)")
-        print("  10. Run 9-Scenario Compliance Matrix (Exclusivity, Flips, Stock File)")
+        print("  1. Normal Netting & 6 Widgets Live Report & Comparison")
+        print("  2. All Configure Settings (RMS & Netting Settings)")
+        print("  3. Day Netting Suite (None, Individual, Cross), All Widgets Report & Comparison & Compliance Matrix")
         print("  0. Return to Main Menu")
-        ch = "1" if config.IS_CI else config.read_line_with_timeout("Enter Choice (0-10, default 1 in 4s): ", "1", 4.0)
+        ch = "1" if config.IS_CI else config.read_line_with_timeout("Enter Choice (0-3, ENTER=1): ", "1")
         if ch == "0":
             break
         elif ch == "1":
-            mc = config.read_line_with_timeout("Mode (1=NONE, 2=INDIVIDUAL [Default], 3=CROSS): ", "2", 4.0)
-            mode = NettingMode.NONE if mc == "1" else (NettingMode.CROSS_EXCHANGE if mc == "3" else NettingMode.INDIVIDUAL_EXCHANGE)
-            ec = config.read_line_with_timeout("Exchange (1=DSE [Default], 2=CSE, 3=BOTH): ", "1", 4.0)
-            ex = "CSE" if ec == "2" else ("BOTH" if ec == "3" else "DSE")
-            dse_en = mode != NettingMode.NONE and ex in ("DSE", "BOTH")
-            cse_en = mode != NettingMode.NONE and ex in ("CSE", "BOTH")
-            rms.configure_all_application_settings(driver, mode, dse_en, cse_en, False, "12345")
-            sym = config.read_line_with_timeout("Target Symbol (default GP): ", "GP", 4.0) or "GP"
-            cln = config.read_line_with_timeout("Target Client (default 23986): ", "23986", 4.0) or "23986"
-            brd = config.read_line_with_timeout("Board (PUBLIC [Default] / BLOCK / SPOT): ", "PUBLIC", 4.0).upper() or "PUBLIC"
-            rep = check_selected_applicability(driver, ex, sym, cln, brd)
-            print(f"[APPLICABILITY] {rep.overall_verdict}")
-            base = capture_saleable_baseline(driver, f"PRE_{mode.name}_{ex}", cln, sym)
-            import oms_trade
-            rate = oms_price.fetch_price_ltp_or_ycp(driver, sym, "DSE" if ex == "BOTH" else ex) or 266.90
-            try:
-                oms_trade.submit_single_order_attempt(driver, "BUY", cln, oms_price.to_board_symbol(sym, brd), 25, rate, "DSE" if ex == "BOTH" else ex)
-            except Exception:
-                pass
-            print_saleable_delta_report(capture_saleable_delta(driver, base, f"POST_{mode.name}_{ex}"))
+            _run_normal_netting_live_audit(driver)
         elif ch == "2":
-            ec = config.read_line_with_timeout("Exchange (1=DSE, 2=CSE, 3=BOTH [Default]): ", "3", 4.0)
-            en = config.read_line_with_timeout("Enable? (1=YES [Default], 2=NO): ", "1", 4.0) != "2"
-            d_en = en if ec in ("1", "3") else True
-            c_en = en if ec in ("2", "3") else True
-            rms.configure_all_application_settings(driver, NettingMode.INDIVIDUAL_EXCHANGE, d_en, c_en, False, "12345")
+            _run_all_configure_settings_menu(driver)
         elif ch == "3":
-            ex = config.read_line_with_timeout("Exchange (DSE [Default] / CSE): ", "DSE", 4.0).upper() or "DSE"
-            sym = config.read_line_with_timeout("Symbol to Add (default GP): ", "GP", 4.0).upper() or "GP"
-            rms.add_applicable_symbol(driver, ex, sym)
-        elif ch == "4":
-            cln = config.read_line_with_timeout("Primary Client (default 002): ", "002", 4.0) or "002"
-            alw = config.read_line_with_timeout("Status (1=Allowed [Default], 2=Disallowed): ", "1", 4.0) != "2"
-            rms.set_client_netting_state(driver, cln, alw, "12345")
-        elif ch == "5":
-            ex = config.read_line_with_timeout("Exchange (CSE [Default] / DSE): ", "CSE", 4.0).upper() or "CSE"
-            blk = config.read_line_with_timeout("Block? (1=YES [Default], 2=NO): ", "1", 4.0) != "2"
-            rms.configure_board_wise_blocking(driver, ex, "BLOCK", blk, "12345")
-        elif ch == "6":
-            sym = config.read_line_with_timeout("Symbol (default GP): ", "GP", 4.0) or "GP"
-            cln = config.read_line_with_timeout("Client (default 23986): ", "23986", 4.0) or "23986"
-            print(f"Depth={verify_market_depth_netting_indicator(driver, sym)}, Watchlist={verify_default_netting_watchlist(driver, sym)}, Blocked={verify_order_window_client_netting_blocked(driver, cln)}")
-        elif ch == "7":
-            run_all_netting_tests(driver)
-        elif ch == "8":
-            sym = config.read_line_with_timeout("Symbol (default GP): ", "GP", 4.0) or "GP"
-            cln = config.read_line_with_timeout("Client (default 23986): ", "23986", 4.0) or "23986"
-            print(check_selected_applicability(driver, "DSE", sym, cln, "PUBLIC").overall_verdict)
-        elif ch == "9":
-            test_qa_day_netting_scenarios()
-        elif ch == "10":
-            cfg = NettingScenarioConfig()
-            cfg.primary_client = config.read_line_with_timeout("Client 1 (default 002): ", "002", 4.0)
-            cfg.other_clients = [x.strip() for x in config.read_line_with_timeout("Others (default 23986): ", "23986", 4.0).split(",") if x.strip()]
-            cfg.symbol = config.read_line_with_timeout("Symbol (default GP): ", "GP", 4.0)
-            cfg.exchange = config.read_line_with_timeout("Exchange (DSE/CSE/BOTH, default BOTH): ", "BOTH", 4.0)
-            run_netting_9_scenario_matrix(driver, cfg)
+            _run_day_netting_suite_menu(driver)
+        else:
+            print(f"[INVALID] '{ch}' not recognized. Choose 0-3.")
         if config.IS_CI:
             break
 

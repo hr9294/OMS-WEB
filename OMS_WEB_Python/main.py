@@ -99,7 +99,7 @@ def run_session_loop(driver, initial_mode: str = "") -> None:
         print("  9. Cross-Browser UI Testing Audit (6 Modules)")
         print("  10. Account Limits | 11. DB LTPs | 12-15. Position/Portfolio/Depth/Terminal")
         print("  0. Exit Application")
-        choice = config.read_line_with_timeout("Enter Choice (0-15, default 6 in 5s): ", "6", 5.0)
+        choice = config.read_line_with_timeout("Enter Choice (0-15, ENTER=6): ", "6")
         if choice in ("0", "exit", "quit"):
             break
         try:

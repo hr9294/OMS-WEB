@@ -434,7 +434,8 @@ public class OMSweb_MultipleTrade {
                 || "true".equalsIgnoreCase(System.getenv("HEADLESS"))
                 || "true".equalsIgnoreCase(System.getenv("DOCKER_MODE"))
                 || "true".equalsIgnoreCase(System.getenv("AUTOMATE_MODE"))
-                || "true".equalsIgnoreCase(System.getProperty("AUTOMATE_MODE"));
+                || "true".equalsIgnoreCase(System.getProperty("AUTOMATE_MODE"))
+                || "true".equalsIgnoreCase(System.getenv("AUTO_DEFAULT"));
     }
 
     public static String readLineWithTimeout(Scanner sc, String defaultVal, int timeoutSeconds) {
@@ -527,7 +528,7 @@ public class OMSweb_MultipleTrade {
         System.out.println("\n[HFT CONFIG: 0. EXCHANGE ROUTING]");
         System.out.println("  1. DSE (Dhaka Stock Exchange)");
         System.out.println("  2. CSE (Chittagong Stock Exchange - Multiple Orders Execution) [Default]");
-        System.out.print("Select Exchange (1=DSE / 2=CSE, default=2 in 3s): ");
+        System.out.print("Select Exchange (1=DSE / 2=CSE, default=2): ");
         String exChoice = readLineWithTimeout(sc, "2", 3);
         activeExchange = ("1".equals(exChoice) || exChoice.equalsIgnoreCase("DSE")) ? "DSE" : "CSE";
         System.out.printf(">> [ACTIVE EXCHANGE] %s Gateway Selected%n", activeExchange);

@@ -124,7 +124,8 @@ public class OMSweb_MultiOrderExecution {
                 || "true".equalsIgnoreCase(System.getenv("HEADLESS"))
                 || "true".equalsIgnoreCase(System.getenv("DOCKER_MODE"))
                 || "true".equalsIgnoreCase(System.getenv("AUTOMATE_MODE"))
-                || "true".equalsIgnoreCase(System.getProperty("AUTOMATE_MODE"));
+                || "true".equalsIgnoreCase(System.getProperty("AUTOMATE_MODE"))
+                || "true".equalsIgnoreCase(System.getenv("AUTO_DEFAULT"));
     }
 
     public static String readLineWithTimeout(Scanner sc, String defaultVal, int timeoutSeconds) {
@@ -226,7 +227,7 @@ public class OMSweb_MultiOrderExecution {
         System.out.println("\nSelect Multi-Order Execution Strategy for CSE:");
         System.out.println("  1. Multiple BUY orders + Opposite SELL order (Matched Trading) [Default]");
         System.out.println("  2. Multiple SELL orders + Opposite BUY order");
-        System.out.print("Enter Choice (1 or 2, default=1 in 3s): ");
+        System.out.print("Enter Choice (1 or 2, default=1): ");
         String choiceStr = readLineWithTimeout(sc, "1", 3).trim();
         int choice = choiceStr.isEmpty() ? 1 : Integer.parseInt(choiceStr);
         boolean differentPrices = false; // On CSE, maintaining valid rate within session bounds
@@ -291,12 +292,12 @@ public class OMSweb_MultiOrderExecution {
         if (!OMSweb_Trade.isWidgetColorConfigured) {
             OMSweb_Trade.runWidgetColorSelection(driver, sc);
         }
-        System.out.print("Enter Exchange (DSE / CSE, default=CSE in 3s): ");
+        System.out.print("Enter Exchange (DSE / CSE, default=CSE): ");
         String exInput = readLineWithTimeout(sc, "CSE", 3).trim().toUpperCase();
         String exchange = (exInput.equalsIgnoreCase("CSE") || exInput.equals("2")) ? "CSE" : "DSE";
         // Manual input of target symbol (with numeric guardrail)
         String defaultSym = "CSE".equalsIgnoreCase(exchange) ? "BBS" : "GP";
-        System.out.print("\nEnter Target Symbol (default=" + defaultSym + " in 3s): ");
+        System.out.print("\nEnter Target Symbol (default=" + defaultSym + "): ");
         String symInput = readLineWithTimeout(sc, defaultSym, 3).trim();
         String symbol = cleanSymbol(symInput);
         if (symbol.isEmpty() || symbol.matches("\\d+")) {
@@ -334,10 +335,10 @@ public class OMSweb_MultiOrderExecution {
         System.out.println("  1. Multiple BUY orders (Down Prices) + Opposite SELL order (Upper Price) [Default]");
         System.out.println("  2. Multiple SELL orders (Upper Prices) + Opposite BUY order (Down Price)");
         System.out.println("  3. Custom Interactive Order Queue");
-        System.out.print("Enter Choice (1, 2, or 3, default=1 in 3s): ");
+        System.out.print("Enter Choice (1, 2, or 3, default=1): ");
         String choiceStr = readLineWithTimeout(sc, "1", 3).trim();
         int choice = choiceStr.isEmpty() ? 1 : Integer.parseInt(choiceStr);
-        System.out.print("\nPrice Variation for Orders: (1=Same Price / 2=Different Prices, default=1 in 3s): ");
+        System.out.print("\nPrice Variation for Orders: (1=Same Price / 2=Different Prices, default=1): ");
         String priceVarStr = readLineWithTimeout(sc, "1", 3).trim();
         boolean differentPrices = priceVarStr.equals("2");
         // Build the Order Queue
@@ -348,7 +349,7 @@ public class OMSweb_MultiOrderExecution {
         }
         // Display Planned Order Pipeline
         printPlannedQueue(orderQueue);
-        System.out.print("\nProceed to execute this pipeline? (1=YES / 0=NO, default=1 in 3s): ");
+        System.out.print("\nProceed to execute this pipeline? (1=YES / 0=NO, default=1): ");
         String proceedInput = readLineWithTimeout(sc, "1", 3).trim();
         if (proceedInput.equalsIgnoreCase("0") || proceedInput.equalsIgnoreCase("n") || proceedInput.equalsIgnoreCase("no")) {
             System.out.println("Operation aborted by user.");
@@ -468,11 +469,11 @@ public class OMSweb_MultiOrderExecution {
         int itemCounter = 1;
         if (choice == 1) {
             // Strategy 1: Multiple BUY orders (DOWN prices) + Opposite SELL order (UPPER price)
-            System.out.printf("\nEnter BUY Client Code(s) (single or comma-separated, default=%s in 3s): ", DEFAULT_BUY_CLIENTS.get(0));
+            System.out.printf("\nEnter BUY Client Code(s) (single or comma-separated, default=%s): ", DEFAULT_BUY_CLIENTS.get(0));
             String buyIn = readLineWithTimeout(sc, DEFAULT_BUY_CLIENTS.get(0), 3).trim();
             List<String> buyClients = parseClientList(buyIn, DEFAULT_BUY_CLIENTS);
             String defaultSell = !posHolders.isEmpty() ? posHolders.get(0) : "00128";
-            System.out.printf("Enter Opposite SELL Client Code (from Position) [default=%s in 3s]: ", defaultSell);
+            System.out.printf("Enter Opposite SELL Client Code (from Position) [default=%s]: ", defaultSell);
             String sellIn = readLineWithTimeout(sc, defaultSell, 3).trim();
             String sellClient = sellIn.isEmpty() ? defaultSell : sellIn;
             setTradePageClientCode(driver, buyClients.get(0));

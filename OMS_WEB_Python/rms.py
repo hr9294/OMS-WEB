@@ -1428,7 +1428,7 @@ def run_rms_console(driver: webdriver.Chrome) -> None:
         print("  7. Full Automated RMS Health Check & Connected Trade [Default]")
         print("  8. Run Connected Day Netting & Upload 9-Scenario Matrix")
         print("  0. Return to Main Menu")
-        choice = read_line_with_timeout("Enter Choice (0-8, default 7 in 4s): ", "7", 4.0)
+        choice = read_line_with_timeout("Enter Choice (0-8, ENTER=7): ", "7")
         if choice == "1":
             navigate_to_rms_portal(driver)
             display_application_settings_table(driver)

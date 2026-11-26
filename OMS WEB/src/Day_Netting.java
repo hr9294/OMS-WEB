@@ -4508,51 +4508,426 @@ public class Day_Netting {
     // 6. MAIN CLI & INTEGRATION MENU
     // =========================================================================
 
+    private static boolean isAutoDefaultEnabled() {
+        return isCi
+                || "true".equalsIgnoreCase(System.getenv("AUTO_DEFAULT"))
+                || "true".equalsIgnoreCase(System.getProperty("AUTO_DEFAULT"));
+    }
+
     public static String readLineWithTimeout(Scanner sc, String defaultVal, int timeoutSeconds) {
-        if (sc == null || isCi) {
+        if (sc == null || isAutoDefaultEnabled()) {
             System.out.println(" [Auto-selected default: " + defaultVal + "]");
             return defaultVal;
         }
         try {
-            long end = System.currentTimeMillis() + (timeoutSeconds * 1000L);
-            while (System.currentTimeMillis() < end) {
-                if (System.in.available() > 0 && sc.hasNextLine()) {
-                    String res = sc.nextLine().trim();
-                    return res.isEmpty() ? defaultVal : res;
-                }
-                Thread.sleep(100);
+            if (sc.hasNextLine()) {
+                String res = sc.nextLine().trim();
+                return res.isEmpty() || "default".equalsIgnoreCase(res) || "auto".equalsIgnoreCase(res) ? defaultVal : res;
             }
-            System.out.println(" [Auto-selected default: " + defaultVal + "]");
-            return defaultVal;
-        } catch (Exception e) {
-            return defaultVal;
-        }
-    }
-
-    public static String readLineWithIdleWatchdog(WebDriver driver, Scanner sc, String defaultVal, int timeoutSeconds) {
-        if (sc == null || isCi) {
-            System.out.println(" [Auto-selected default: " + defaultVal + "]");
-            return defaultVal;
-        }
-        long timeoutMs = timeoutSeconds * 1000L;
-        long start = System.currentTimeMillis();
-        while (System.currentTimeMillis() - start < timeoutMs) {
-            try {
-                if (System.in.available() > 0) {
-                    if (sc.hasNextLine()) {
-                        String input = sc.nextLine().trim();
-                        return input.isEmpty() ? defaultVal : input;
-                    }
-                }
-            } catch (Exception ignored) {}
-            try { Thread.sleep(150); } catch (Exception ignored) {}
-        }
-        System.out.println(" [Auto-selected default: " + defaultVal + "]");
+        } catch (Exception ignored) {}
         return defaultVal;
     }
 
+    public static String readLineWithIdleWatchdog(WebDriver driver, Scanner sc, String defaultVal, int timeoutSeconds) {
+        if (sc == null || isAutoDefaultEnabled()) {
+            System.out.println(" [Auto-selected default: " + defaultVal + "]");
+            return defaultVal;
+        }
+        String input = OMSwebmain.readLineWithIdleWatchdog(driver, sc, Math.max(300, timeoutSeconds));
+        if (input == null) return defaultVal;
+        String trimmed = input.trim();
+        return trimmed.isEmpty() || "default".equalsIgnoreCase(trimmed) || "auto".equalsIgnoreCase(trimmed) ? defaultVal : trimmed;
+    }
+
     public static String readLineWithIdleWatchdog(WebDriver driver, Scanner sc, int idleSeconds) {
-        return readLineWithIdleWatchdog(driver, sc, "1", 4);
+        return readLineWithIdleWatchdog(driver, sc, "1", Math.max(300, idleSeconds));
+    }
+
+    private static void executeNormalNettingFlow(
+            WebDriver driver, NettingMode targetMode, String targetExchange,
+            String pwd, String sym, String cln, String board, String tradeOpt) throws InterruptedException {
+        boolean allowZSpot = false;
+        boolean dseNetting = (targetMode != NettingMode.NONE) && ("DSE".equals(targetExchange) || "BOTH".equals(targetExchange));
+        boolean cseNetting = (targetMode != NettingMode.NONE) && ("CSE".equals(targetExchange) || "BOTH".equals(targetExchange));
+        configureAllApplicationNettingSettings(driver, targetMode, dseNetting, cseNetting, allowZSpot, pwd);
+        configureNettingMode(driver, targetMode, pwd, false);
+        if (targetMode == NettingMode.NONE) {
+            setBothExchangesNettingEnabled(driver, false, pwd);
+            System.out.println("  -> [EXECUTED] Mode is NONE -> IS_DSE_DAY_NETTING_ENABLED = false | IS_CSE_DAY_NETTING_ENABLED = false");
+        } else if ("DSE".equals(targetExchange)) {
+            setExchangeNettingEnabled(driver, "DSE", true, pwd);
+            setExchangeNettingEnabled(driver, "CSE", false, pwd);
+            System.out.println("  -> [EXECUTED] IS_DSE_DAY_NETTING_ENABLED = true | IS_CSE_DAY_NETTING_ENABLED = false");
+        } else if ("CSE".equals(targetExchange)) {
+            setExchangeNettingEnabled(driver, "CSE", true, pwd);
+            setExchangeNettingEnabled(driver, "DSE", false, pwd);
+            System.out.println("  -> [EXECUTED] IS_CSE_DAY_NETTING_ENABLED = true | IS_DSE_DAY_NETTING_ENABLED = false");
+        } else {
+            setBothExchangesNettingEnabled(driver, true, pwd);
+            System.out.println("  -> [EXECUTED] IS_DSE_DAY_NETTING_ENABLED = true | IS_CSE_DAY_NETTING_ENABLED = true");
+        }
+
+        NettingApplicabilityReport appRep = checkSelectedApplicability(driver, targetExchange, sym, cln, board);
+        printApplicabilityVerificationReport(appRep);
+        OMSweb_Trade.insertGlobalSymbolAndSelectPublic(driver, sym);
+        String pubSym = OMSweb_Trade.toPublicSymbol(sym);
+        OMSweb_Trade.propagateClientCodeToAllWidgets(driver, cln, pubSym);
+
+        System.out.printf("%n>>> [STEP 1/3] CAPTURING PRE-TRADE REAL-TIME DATA ACROSS 6 WIDGETS FOR CLIENT: %s...%n", cln);
+        Netting6WidgetsUiSnapshot preTradeSnap = check6NettingWidgetsRealTimeUiData(
+                driver, "PRE-TRADE_BASELINE_" + targetMode.name() + "_" + targetExchange, cln, pubSym, targetExchange);
+
+        String tradeAction = "0".equals(tradeOpt) || "skip".equalsIgnoreCase(tradeOpt) ? "SKIP" : "QA_FLOW";
+        int tradeQty = (targetMode == NettingMode.NONE) ? 25 :
+                       (targetMode == NettingMode.INDIVIDUAL_EXCHANGE && "BOTH".equalsIgnoreCase(targetExchange)) ? 37 : 25;
+        double defaultRate = 0.0;
+        try {
+            OMSweb_Trade.RejectionOrderPriceInfo onScreen = OMSweb_Trade.extractRejectionOrderPriceInfo(driver, cln, pubSym);
+            if (onScreen.hasSuggestedPrice() || onScreen.hasUpperLimit()) {
+                defaultRate = onScreen.hasSuggestedPrice() ? onScreen.suggestedPrice : onScreen.upperLimit;
+            }
+        } catch (Exception ignored) {}
+        if (defaultRate <= 0.0) {
+            try {
+                String ltpStr = preTradeSnap.marketDepthData.getOrDefault("Last", preTradeSnap.marketDepthData.getOrDefault("LTP", "0"));
+                double mktLtp = OMSweb_Trade.parseNumSafe(ltpStr);
+                if (mktLtp > 0.0 && mktLtp < 1000.0) defaultRate = mktLtp;
+            } catch (Exception ignored) {}
+        }
+        if (defaultRate <= 0.0) {
+            try {
+                OMSweb_DBMarketData.PublicSymbolLtp quote = OMSweb_DBMarketData.getCachedSymbol(
+                        OMSweb_Trade.cleanSymbol(pubSym), "BOTH".equalsIgnoreCase(targetExchange) ? "DSE" : targetExchange);
+                if (quote != null) {
+                    defaultRate = quote.ltp > 0.0 ? quote.ltp : (quote.ycp > 0.0 ? quote.ycp : (quote.circuitUp > 0.0 ? quote.circuitUp : 0.0));
+                }
+            } catch (Exception ignored) {}
+        }
+        if (defaultRate <= 0.0 || defaultRate > 1000.0) defaultRate = 266.90;
+        double tradeRate = defaultRate;
+        String tradeInstrument = pubSym.contains(".") ? pubSym : (OMSweb_Trade.cleanSymbol(pubSym) + "." + board);
+        String orderEx = "BOTH".equalsIgnoreCase(targetExchange) ? "DSE" : targetExchange;
+
+        if (!"SKIP".equals(tradeAction)) {
+            if (targetMode == NettingMode.NONE) {
+                System.out.printf("%n>>> [EXECUTING NONE MODE: BUY 25 %s on %s @ %.2f] <<<%n", tradeInstrument, orderEx, tradeRate);
+                OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, 25, tradeRate, orderEx);
+                Thread.sleep(1500);
+            } else if (targetMode == NettingMode.CROSS_EXCHANGE) {
+                System.out.printf("%n>>> [EXECUTING CROSS EXCHANGE: DSE BUY 25, CSE SELL 15 @ %.2f] <<<%n", tradeRate);
+                OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, 25, tradeRate, "DSE");
+                Thread.sleep(2000);
+                OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, 15, tradeRate, "CSE");
+                Thread.sleep(1500);
+            } else {
+                System.out.printf("%n>>> [EXECUTING INDIVIDUAL EXCHANGE: DSE BUY 25, CSE BUY 12, SELLS, EXCESS 35 @ %.2f] <<<%n", tradeRate);
+                OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, 25, tradeRate, "DSE");
+                Thread.sleep(2000);
+                OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, 12, tradeRate, "CSE");
+                Thread.sleep(2000);
+                OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, 25, tradeRate, "DSE");
+                Thread.sleep(2000);
+                OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, 12, tradeRate, "CSE");
+                Thread.sleep(2000);
+                OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, 35, tradeRate, "DSE");
+                Thread.sleep(1500);
+            }
+        }
+
+        boolean hasLatestOrder = OMSweb_Trade.hasLatestOrderInTerminal(driver, cln, pubSym);
+        Netting6WidgetsUiSnapshot postTradeSnap;
+        if (hasLatestOrder) {
+            postTradeSnap = check6NettingWidgetsRealTimeUiData(driver, "POST-TRADE_REALTIME_" + targetMode.name() + "_" + targetExchange, cln, pubSym, targetExchange);
+        } else {
+            postTradeSnap = new Netting6WidgetsUiSnapshot();
+            postTradeSnap.stageName = "POST-TRADE_QA_AUDIT_" + targetMode.name() + "_" + targetExchange;
+            postTradeSnap.targetClient = cln;
+            postTradeSnap.targetSymbol = pubSym;
+            postTradeSnap.portfolioDataDSE.putAll(preTradeSnap.portfolioDataDSE);
+            postTradeSnap.portfolioDataCSE.putAll(preTradeSnap.portfolioDataCSE);
+            postTradeSnap.marketDepthData.putAll(preTradeSnap.marketDepthData);
+            postTradeSnap.orderTerminalData.putAll(preTradeSnap.orderTerminalData);
+            postTradeSnap.accountLimitsData.putAll(preTradeSnap.accountLimitsData);
+            double pDseSal = OMSweb_Trade.parseNumSafe(preTradeSnap.portfolioDataDSE.getOrDefault("saleable_qty", "50"));
+            if (pDseSal <= 0) pDseSal = 50.0;
+            double dBuy = 0, cBuy = 0, dSell = 0, cSell = 0;
+            if (targetMode == NettingMode.NONE) {
+                if ("CSE".equalsIgnoreCase(orderEx)) cBuy = 25; else dBuy = 25;
+            } else if (targetMode == NettingMode.CROSS_EXCHANGE) {
+                dBuy = 25; cSell = 15;
+            } else {
+                dBuy = 25; cBuy = 12; dSell = 35;
+            }
+            DayNettingPortfolioState pState = calculateDayNettingPortfolio(
+                    targetMode, dseNetting, cseNetting, true, true, pDseSal, dBuy, dSell, cBuy, cSell);
+            postTradeSnap.portfolioDataDSE.put("total_qty", String.format(Locale.US, "%.0f", pState.totalHoldingQty));
+            postTradeSnap.portfolioDataCSE.put("total_qty", String.format(Locale.US, "%.0f", pState.totalHoldingQty));
+            postTradeSnap.portfolioDataDSE.put("saleable_qty", String.format(Locale.US, "%.0f", pState.dseSaleableQty));
+            postTradeSnap.portfolioDataCSE.put("saleable_qty", String.format(Locale.US, "%.0f", pState.cseSaleableQty));
+        }
+        postTradeSnap.dayNettingMode = targetMode.name();
+        postTradeSnap.tradedExchange = targetExchange;
+        postTradeSnap.tradeAction = tradeAction;
+        postTradeSnap.tradeQty = tradeQty;
+        preTradeSnap.dayNettingMode = targetMode.name();
+        preTradeSnap.tradedExchange = targetExchange;
+        preTradeSnap.tradeAction = tradeAction;
+        preTradeSnap.tradeQty = tradeQty;
+        compareAndReportNettingWidgets(driver, preTradeSnap, postTradeSnap, "6-WIDGET LIVE REPORT & COMPARISON (" + targetMode.name() + " - " + targetExchange + ")");
+    }
+
+    private static void runNormalNettingLiveAudit(WebDriver driver, Scanner sc) throws InterruptedException {
+        System.out.println("\n-------------------------------------------------------------");
+        System.out.println("  1. NORMAL NETTING & 6 WIDGETS LIVE REPORT & COMPARISON     ");
+        System.out.println("-------------------------------------------------------------");
+        System.out.println("Select Netting Mode: 1=None | 2=Individual Exchange [ENTER=Default] | 3=Cross Exchange");
+        String envMode = System.getenv("NETTING_MODE_CHOICE");
+        String defMode = (envMode != null && !envMode.trim().isEmpty()) ? envMode.trim() : "2";
+        System.out.printf("Enter Choice (1-3, ENTER=%s): ", defMode);
+        String mChoice = readLineWithTimeout(sc, defMode, 0);
+        NettingMode targetMode = "1".equals(mChoice) || "none".equalsIgnoreCase(mChoice) ? NettingMode.NONE :
+                                 "3".equals(mChoice) || "cross".equalsIgnoreCase(mChoice) ? NettingMode.CROSS_EXCHANGE : NettingMode.INDIVIDUAL_EXCHANGE;
+        System.out.println("Select Exchange: 1=DSE [ENTER=Default] | 2=CSE | 3=BOTH");
+        String envEx = System.getenv("NETTING_EXCHANGE_CHOICE");
+        String defEx = (envEx != null && !envEx.trim().isEmpty()) ? envEx.trim() : "1";
+        System.out.printf("Enter Choice (1-3, ENTER=%s): ", defEx);
+        String exChoice = readLineWithTimeout(sc, defEx, 0);
+        String targetExchange = "2".equals(exChoice) || "cse".equalsIgnoreCase(exChoice) ? "CSE" :
+                                ("3".equals(exChoice) || "both".equalsIgnoreCase(exChoice) ? "BOTH" : "DSE");
+        System.out.print("Enter password authentication (ENTER=12345): ");
+        String pwd = readLineWithTimeout(sc, "12345", 0);
+        System.out.print("Enter Target Symbol to Audit (ENTER=GP): ");
+        String sym = readLineWithTimeout(sc, "GP", 0);
+        System.out.print("Enter Target Client Code to Audit (ENTER=23986): ");
+        String cln = readLineWithTimeout(sc, "23986", 0);
+        System.out.print("Select Trading Board (1=PUBLIC [ENTER=Default], 2=BLOCK, 3=SPOT): ");
+        String brdChoice = readLineWithTimeout(sc, "1", 0);
+        String board = "2".equals(brdChoice) || "block".equalsIgnoreCase(brdChoice) ? "BLOCK" :
+                       ("3".equals(brdChoice) || "spot".equalsIgnoreCase(brdChoice) ? "SPOT" : "PUBLIC");
+        System.out.print("Trade Action (ENTER=Execute Flow, 0=Skip Trade): ");
+        String tradeOpt = readLineWithTimeout(sc, "5", 0);
+        executeNormalNettingFlow(driver, targetMode, targetExchange, pwd, sym, cln, board, tradeOpt);
+    }
+
+    private static void runAllConfigureSettingsMenu(WebDriver driver, Scanner sc) throws InterruptedException {
+        navigateToRmsNettingTab(driver);
+        while (true) {
+            try { displayApplicationNettingSettingsTable(driver); } catch (Exception ignored) {}
+            System.out.println("\n-------------------------------------------------------------");
+            System.out.println("       2. ALL CONFIGURE SETTINGS (RMS & NETTING SETTINGS)    ");
+            System.out.println("-------------------------------------------------------------");
+            System.out.println("  1. Netting Mode & Z/Spot Toggle (None / Individual / Cross)");
+            System.out.println("  2. Exchange Netting Toggle (DSE / CSE)");
+            System.out.println("  3. Applicable Symbols (Add Single/Batch, Search, Delete, Upload, Table)");
+            System.out.println("  4. Client Netting Eligibility & Exclusivity (Allow/Block/Exclusive/Remove)");
+            System.out.println("  5. Market / Board-wise Restrictions (Board Block, Spot Block, Table)");
+            System.out.println("  6. Check Symbol/Client/Board Applicability & View Full RMS Status");
+            System.out.println("  7. Guided Configure All Settings (Mode -> Exchange -> Board -> Client -> Symbol)");
+            System.out.println("  0. Back to Day Netting Menu");
+            System.out.print("Enter Setting Choice (0-7, ENTER=6): ");
+            String sub = isCi ? "6" : readLineWithTimeout(sc, "6", 0);
+            if ("0".equals(sub) || "exit".equalsIgnoreCase(sub)) break;
+
+            if ("1".equals(sub) || "7".equals(sub)) {
+                System.out.print("Netting Mode (1=NONE, 2=INDIVIDUAL [ENTER=Default], 3=CROSS): ");
+                String mc = readLineWithTimeout(sc, "2", 0);
+                NettingMode mode = "1".equals(mc) ? NettingMode.NONE : ("3".equals(mc) ? NettingMode.CROSS_EXCHANGE : NettingMode.INDIVIDUAL_EXCHANGE);
+                System.out.print("Exchange Scope (1=DSE, 2=CSE, 3=BOTH [ENTER=Default]): ");
+                String ec = readLineWithTimeout(sc, "3", 0);
+                System.out.print("Allow Z and Spot? (1=YES, 0=NO [ENTER=Default]): ");
+                boolean zc = "1".equals(readLineWithTimeout(sc, "0", 0));
+                System.out.print("Enter password authentication (ENTER=12345): ");
+                String pwd = readLineWithTimeout(sc, "12345", 0);
+                boolean dseEn = mode != NettingMode.NONE && ("1".equals(ec) || "3".equals(ec));
+                boolean cseEn = mode != NettingMode.NONE && ("2".equals(ec) || "3".equals(ec));
+                configureAllApplicationNettingSettings(driver, mode, dseEn, cseEn, zc, pwd);
+            }
+            if ("2".equals(sub)) {
+                System.out.print("Exchange (1=DSE, 2=CSE, 3=BOTH [ENTER=Default]): ");
+                String exChoice = readLineWithTimeout(sc, "3", 0);
+                System.out.print("Status (1=Enable [ENTER=Default], 2=Disable): ");
+                boolean enable = !"2".equals(readLineWithTimeout(sc, "1", 0));
+                System.out.print("Enter password authentication (ENTER=12345): ");
+                String pwd = readLineWithTimeout(sc, "12345", 0);
+                if ("1".equals(exChoice)) setExchangeNettingEnabled(driver, "DSE", enable, pwd);
+                else if ("2".equals(exChoice)) setExchangeNettingEnabled(driver, "CSE", enable, pwd);
+                else setBothExchangesNettingEnabled(driver, enable, pwd);
+            }
+            if ("3".equals(sub) || "7".equals(sub)) {
+                System.out.println("  Symbols: 1=Add Single, 2=Add Batch, 3=Search, 4=Delete, 5=Upload File, 6=View Table [ENTER=6]");
+                System.out.print("Symbol Sub-Action (1-6, ENTER=" + ("7".equals(sub) ? "1" : "6") + "): ");
+                String sAct = readLineWithTimeout(sc, "7".equals(sub) ? "1" : "6", 0);
+                if ("1".equals(sAct)) {
+                    System.out.print("Exchange (1=DSE [ENTER=Default], 2=CSE): ");
+                    String ex = "2".equals(readLineWithTimeout(sc, "1", 0)) ? "CSE" : "DSE";
+                    System.out.print("Symbol to Add (ENTER=GP): ");
+                    String sym = readLineWithTimeout(sc, "GP", 0);
+                    if (!sym.isEmpty()) addApplicableSymbol(driver, ex, sym);
+                } else if ("2".equals(sAct)) {
+                    System.out.print("Exchange (1=DSE [ENTER=Default], 2=CSE): ");
+                    String ex = "2".equals(readLineWithTimeout(sc, "1", 0)) ? "CSE" : "DSE";
+                    System.out.print("Symbols comma-separated (e.g. GP,BATBC): ");
+                    String syms = readLineWithTimeout(sc, "GP", 0);
+                    if (!syms.isEmpty()) addApplicableSymbolsBatch(driver, ex, Arrays.asList(syms.split(",")));
+                } else if ("3".equals(sAct)) {
+                    System.out.print("Exchange (0=ALL [ENTER=Default], 1=DSE, 2=CSE): ");
+                    String exC = readLineWithTimeout(sc, "0", 0);
+                    String ex = "1".equals(exC) ? "DSE" : ("2".equals(exC) ? "CSE" : "ALL");
+                    System.out.print("Ticker Search Query: ");
+                    searchApplicableSymbols(driver, ex, readLineWithTimeout(sc, "", 0));
+                } else if ("4".equals(sAct)) {
+                    System.out.print("Exchange (1=DSE [ENTER=Default], 2=CSE): ");
+                    String ex = "2".equals(readLineWithTimeout(sc, "1", 0)) ? "CSE" : "DSE";
+                    System.out.print("Ticker to Remove: ");
+                    String sym = readLineWithTimeout(sc, "", 0);
+                    if (!sym.isEmpty()) deleteApplicableSymbol(driver, ex, sym);
+                } else if ("5".equals(sAct)) {
+                    System.out.print("File Path (.csv/.xlsx): ");
+                    String fPath = readLineWithTimeout(sc, "", 0);
+                    if (!fPath.isEmpty()) uploadApplicableSymbolsFile(driver, fPath);
+                } else {
+                    navigateToApplicableSymbolTab(driver);
+                    displayApplicableSymbolsTable(driver);
+                }
+            }
+            if ("4".equals(sub) || "7".equals(sub)) {
+                System.out.println("  Clients RMS: 1=Allow/Disallow [ENTER=1], 2=Switch List View, 3=Search, 4=View Table, 5=Remove, 6=Exclusive Rule");
+                System.out.print("Client Sub-Action (1-6, ENTER=1): ");
+                String cAct = readLineWithTimeout(sc, "1", 0);
+                if ("2".equals(cAct)) {
+                    switchClientsNettingList(driver, "1".equals(readLineWithTimeout(sc, "1", 0)));
+                    displayClientsRmsTable(driver);
+                } else if ("3".equals(cAct)) {
+                    System.out.print("Client Code to Search: ");
+                    searchClientInNettingList(driver, readLineWithTimeout(sc, "23986", 0));
+                } else if ("4".equals(cAct)) {
+                    navigateToClientsRmsTab(driver);
+                    displayClientsRmsTable(driver);
+                } else if ("5".equals(cAct)) {
+                    System.out.print("Client Code to Remove (ENTER=23986): ");
+                    String cln = readLineWithTimeout(sc, "23986", 0);
+                    System.out.print("From List (1=Allowed [ENTER=1], 2=Disallowed): ");
+                    boolean alw = !"2".equals(readLineWithTimeout(sc, "1", 0));
+                    System.out.print("Password (ENTER=12345): ");
+                    removeClientFromNettingList(driver, cln, alw, readLineWithTimeout(sc, "12345", 0));
+                } else if ("6".equals(cAct)) {
+                    System.out.print("Primary Client (ENTER=002): ");
+                    String cln = readLineWithTimeout(sc, "002", 0);
+                    System.out.print("Status (1=Allowed [ENTER=1], 2=Disallowed): ");
+                    boolean alw = !"2".equals(readLineWithTimeout(sc, "1", 0));
+                    System.out.print("Other Exclusive Clients comma-sep (blank=single): ");
+                    String otherRaw = readLineWithTimeout(sc, "", 0);
+                    System.out.print("Password (ENTER=12345): ");
+                    String pwd = readLineWithTimeout(sc, "12345", 0);
+                    if (otherRaw.isEmpty()) setClientNettingAllowed(driver, cln, alw, pwd);
+                    else RMS.applyClientExclusivityRule(driver, cln, alw, Arrays.asList(otherRaw.split(",")), pwd);
+                } else {
+                    System.out.print("Client Code (ENTER=23986): ");
+                    String cln = readLineWithTimeout(sc, "23986", 0);
+                    System.out.print("Status (1=Allowed [ENTER=1], 2=Disallowed): ");
+                    boolean alw = !"2".equals(readLineWithTimeout(sc, "1", 0));
+                    System.out.print("Password (ENTER=12345): ");
+                    addClientToNettingList(driver, cln, alw, readLineWithTimeout(sc, "12345", 0));
+                }
+            }
+            if ("5".equals(sub) || "7".equals(sub)) {
+                System.out.println("  Boards: 1=Board Blocking, 2=Spot Blocking, 3=View Table [ENTER=3]");
+                System.out.print("Board Sub-Action (1-3, ENTER=" + ("7".equals(sub) ? "1" : "3") + "): ");
+                String bAct = readLineWithTimeout(sc, "7".equals(sub) ? "1" : "3", 0);
+                if ("1".equals(bAct)) {
+                    System.out.print("Exchange (1=CSE [ENTER=Default], 2=DSE): ");
+                    String ex = "2".equals(readLineWithTimeout(sc, "1", 0)) ? "DSE" : "CSE";
+                    System.out.print("Board Tag (ENTER=BLOCK): ");
+                    String tag = readLineWithTimeout(sc, "BLOCK", 0);
+                    System.out.print("Status (1=Block [ENTER=1], 2=Unblock): ");
+                    boolean blk = !"2".equals(readLineWithTimeout(sc, "1", 0));
+                    System.out.print("Password (ENTER=12345): ");
+                    configureBoardWiseBlocking(driver, ex, tag, blk, readLineWithTimeout(sc, "12345", 0));
+                } else if ("2".equals(bAct)) {
+                    System.out.print("Exchange (1=CSE [ENTER=Default], 2=DSE): ");
+                    String ex = "2".equals(readLineWithTimeout(sc, "1", 0)) ? "DSE" : "CSE";
+                    System.out.print("Status (1=Block, 2=Unblock [ENTER=2]): ");
+                    boolean blk = "1".equals(readLineWithTimeout(sc, "2", 0));
+                    System.out.print("Password (ENTER=12345): ");
+                    configureSpotMarketBlocking(driver, ex, blk, readLineWithTimeout(sc, "12345", 0));
+                } else {
+                    navigateToUnauthorizedBoardsMarketTab(driver);
+                    displayUnauthorizedBoardsMarketTable(driver);
+                }
+            }
+            if ("6".equals(sub) || "7".equals(sub)) {
+                System.out.print("Verify Symbol (ENTER=GP): ");
+                String sym = readLineWithTimeout(sc, "GP", 0);
+                System.out.print("Verify Client (ENTER=23986): ");
+                String cln = readLineWithTimeout(sc, "23986", 0);
+                System.out.print("Board (1=PUBLIC [ENTER=1], 2=BLOCK, 3=SPOT): ");
+                String brdC = readLineWithTimeout(sc, "1", 0);
+                String brd = "2".equals(brdC) ? "BLOCK" : ("3".equals(brdC) ? "SPOT" : "PUBLIC");
+                System.out.print("Exchange (1=DSE [ENTER=1], 2=CSE, 3=BOTH): ");
+                String exC = readLineWithTimeout(sc, "1", 0);
+                String ex = "2".equals(exC) ? "CSE" : ("3".equals(exC) ? "BOTH" : "DSE");
+                printApplicabilityVerificationReport(checkSelectedApplicability(driver, ex, sym, cln, brd));
+            }
+            if (isCi) break;
+        }
+    }
+
+    private static void runDayNettingSuiteMenu(WebDriver driver, Scanner sc) throws InterruptedException {
+        System.out.println("\n-----------------------------------------------------------------------------");
+        System.out.println("  3. DAY NETTING SUITE (NONE, INDIVIDUAL, CROSS), REPORT & COMPLIANCE MATRIX ");
+        System.out.println("-----------------------------------------------------------------------------");
+        System.out.println("  1. Full All-in-One Suite (None + Individual + Cross + 6-Widget Report & Comparison + UI Audit + Compliance Matrix) [ENTER=Default]");
+        System.out.println("  2. Multi-Mode Live Suite Only (None, Individual, Cross + 6-Widget Report & Comparison)");
+        System.out.println("  3. UI Netting Indicators Audit Only (Depth, Watchlists, Order Window)");
+        System.out.println("  4. 9-Scenario Compliance Matrix (Exclusivity, Post-Order Flips, Stock File)");
+        System.out.println("  5. QA Multi-Exchange & 5-Scope Automated Scrip Netting Test Suite");
+        System.out.println("  0. Back to Day Netting Menu");
+        System.out.print("Enter Suite Choice (0-5, ENTER=1): ");
+        String sub = isCi ? "1" : readLineWithTimeout(sc, "1", 0);
+        if ("0".equals(sub) || "exit".equalsIgnoreCase(sub)) return;
+
+        System.out.print("Target Symbol (ENTER=GP): ");
+        String sym = readLineWithTimeout(sc, "GP", 0);
+        System.out.print("Target Client (ENTER=23986): ");
+        String cln = readLineWithTimeout(sc, "23986", 0);
+
+        if ("1".equals(sub) || "2".equals(sub)) {
+            System.out.print("Execute Live Mode Trades? (ENTER=Execute Flow, 0=Skip Trade): ");
+            String tradeOpt = readLineWithTimeout(sc, "5", 0);
+            for (NettingMode mode : new NettingMode[] { NettingMode.NONE, NettingMode.INDIVIDUAL_EXCHANGE, NettingMode.CROSS_EXCHANGE }) {
+                String ex = (mode == NettingMode.NONE) ? "DSE" : "BOTH";
+                executeNormalNettingFlow(driver, mode, ex, "12345", sym, cln, "PUBLIC", tradeOpt);
+            }
+        }
+        if ("1".equals(sub) || "3".equals(sub)) {
+            printApplicabilityVerificationReport(checkSelectedApplicability(driver, "DSE", sym, cln, "PUBLIC"));
+            run3in1UIIndicatorsAudit(driver, sym, cln);
+        }
+        if ("1".equals(sub) || "5".equals(sub)) {
+            testQaDayNettingScenarios();
+            runAllNettingTests(driver);
+        }
+        if ("1".equals(sub) || "4".equals(sub)) {
+            NettingScenarioConfig cfg = new NettingScenarioConfig();
+            System.out.print("Matrix Client 1 (ENTER=002): ");
+            cfg.primaryClient = readLineWithTimeout(sc, "002", 0);
+            System.out.print("Matrix Other Clients comma-separated (ENTER=23986): ");
+            String otherCsv = readLineWithTimeout(sc, "23986", 0);
+            cfg.otherClients = new ArrayList<>();
+            for (String part : otherCsv.split(",")) {
+                if (!part.trim().isEmpty()) cfg.otherClients.add(part.trim());
+            }
+            cfg.symbol = sym;
+            System.out.print("Matrix Exchange (DSE / CSE / BOTH, ENTER=BOTH): ");
+            cfg.exchange = readLineWithTimeout(sc, "BOTH", 0);
+            System.out.print("Matrix RMS Password (ENTER=12345): ");
+            cfg.rmsPassword = readLineWithTimeout(sc, "12345", 0);
+            System.out.print("Stock File Path for Scenarios 7-9 (ENTER=blank): ");
+            cfg.stockFilePath = readLineWithTimeout(sc, "", 0);
+            System.out.print("Allow Live Stock Upload? (1=YES, 0=NO [Dry-Run, ENTER=0]): ");
+            cfg.allowLiveStockUpload = "1".equals(readLineWithTimeout(sc, "0", 0));
+            runNetting9ScenarioMatrix(driver, cfg);
+        }
     }
 
     public static void main(WebDriver driver, Scanner sc) throws InterruptedException {
@@ -4564,588 +4939,30 @@ public class Day_Netting {
         boolean running = true;
         while (running) {
             System.out.println("\nSelect Action:");
-            System.out.println("  1. Configure Netting Mode & 6-Widget Live Trade Audit (Recommended)");
-            System.out.println("  2. Configure Exchange Netting (DSE / CSE Toggle Only)");
-            System.out.println("  3. Upload / Manage Applicable Symbols");
-            System.out.println("  4. Configure Client Netting Eligibility (Allow / Block Client)");
-            System.out.println("  5. Configure Market / Board-wise Restrictions");
-            System.out.println("  6. Run UI Netting Indicators Audit (Depth, Watchlists, Order Window)");
-            System.out.println("  7. Run Full Automated Scrip Netting Test Suite (All 5 Scopes)");
-            System.out.println("  8. Check / Verify Symbol, Client & Board Netting Applicability");
-            System.out.println("  9. Run QA Day Netting Suite (DSE 25 / CSE 12, Excess Sell Mature Deduct, NONE Mode) [Direct QA]");
-            System.out.println("  10. Run 9-Scenario Compliance Matrix (Exclusivity, Post-Order Flips, Stock File)");
+            System.out.println("  1. Normal Netting & 6 Widgets Live Report & Comparison");
+            System.out.println("  2. All Configure Settings (RMS & Netting Settings)");
+            System.out.println("  3. Day Netting Suite (None, Individual, Cross), All Widgets Report & Comparison & Compliance Matrix");
             System.out.println("  0. Return to Main Menu");
             String choice = "";
             if (isCi) {
                 choice = "1";
-                System.out.println("\n[DOCKER AUTOMATE MODE] Automatically selected Day Netting option: 1 (Configure Netting Mode & Live Trade Audit)");
+                System.out.println("\n[DOCKER AUTOMATE MODE] Automatically selected Day Netting option: 1");
             } else {
-                System.out.print("Enter Choice (1-10, 0=Return, default=1 in 4s): ");
-                choice = readLineWithIdleWatchdog(driver, sc, "1", 4);
-                if (choice.isEmpty()) choice = "1";
+                System.out.print("Enter Choice (0-3, ENTER=1): ");
+                choice = readLineWithIdleWatchdog(driver, sc, "1", 300);
             }
             if ("0".equals(choice) || "exit".equalsIgnoreCase(choice)) {
                 System.out.println("[DAY NETTING] Returning to main session.");
                 running = false;
                 break;
             } else if ("1".equals(choice)) {
-                System.out.println("\n-------------------------------------------------------------");
-                System.out.println("       1. CONFIGURE NETTING MODE (INDIVIDUAL SELECTION)      ");
-                System.out.println("-------------------------------------------------------------");
-                System.out.println("Select Netting Mode individually:");
-                System.out.println("  1. None (Netting disabled across the system)");
-                System.out.println("  2. Individual Exchange (Netting within same exchange) [Default]");
-                System.out.println("  3. Cross Exchange (Netting across DSE & CSE)");
-                String envMode = System.getenv("NETTING_MODE_CHOICE");
-                String defMode = (envMode != null && !envMode.trim().isEmpty()) ? envMode.trim() : "2";
-                System.out.printf("Enter Choice (1-3, default=%s in 4s): ", defMode);
-                String mChoice = readLineWithTimeout(sc, defMode, 4);
-                NettingMode targetMode = "1".equals(mChoice) || "none".equalsIgnoreCase(mChoice) ? NettingMode.NONE :
-                                         "3".equals(mChoice) || "cross".equalsIgnoreCase(mChoice) ? NettingMode.CROSS_EXCHANGE :
-                                         NettingMode.INDIVIDUAL_EXCHANGE;
-                // Manually select exchange, with default DSE
-                System.out.println("\nSelect Exchange (Manually Select, Default DSE):");
-                System.out.println("  1. DSE (Dhaka Stock Exchange) [Default]");
-                System.out.println("  2. CSE (Chittagong Stock Exchange)");
-                System.out.println("  3. BOTH (DSE & CSE)");
-                String envEx = System.getenv("NETTING_EXCHANGE_CHOICE");
-                String defEx = (envEx != null && !envEx.trim().isEmpty()) ? envEx.trim() : "1";
-                System.out.printf("Enter Choice (1-3, default=%s in 4s): ", defEx);
-                String exChoice = readLineWithTimeout(sc, defEx, 4);
-                String targetExchange = "DSE";
-                if ("2".equals(exChoice) || "cse".equalsIgnoreCase(exChoice)) {
-                    targetExchange = "CSE";
-                } else if ("3".equals(exChoice) || "both".equalsIgnoreCase(exChoice)) {
-                    targetExchange = "BOTH";
-                } else {
-                    targetExchange = "DSE";
-                }
-                System.out.printf("[EXCHANGE SELECTED] %s (Default: DSE)%n", targetExchange);
-                boolean allowZSpot = false;
-                System.out.print("Enter password authentication (default=12345 in 4s, or press ENTER): ");
-                String pwd = readLineWithTimeout(sc, "12345", 4);
-                if (pwd.isEmpty()) pwd = "12345";
-                boolean dseNetting = true;
-                boolean cseNetting = true;
-                if (targetMode == NettingMode.NONE) {
-                    dseNetting = false;
-                    cseNetting = false;
-                } else if ("DSE".equals(targetExchange)) {
-                    dseNetting = true;
-                    cseNetting = false;
-                } else if ("CSE".equals(targetExchange)) {
-                    dseNetting = false;
-                    cseNetting = true;
-                } else {
-                    dseNetting = true;
-                    cseNetting = true;
-                }
-                // 1. Configure all 4 Netting Settings under qRMS Settings -> Application Settings
-                configureAllApplicationNettingSettings(driver, targetMode, dseNetting, cseNetting, allowZSpot, pwd);
-                // 2. Also ensure Netting Tab controls match
-                configureNettingMode(driver, targetMode, pwd, false);
-                if (targetMode == NettingMode.NONE) {
-                    setBothExchangesNettingEnabled(driver, false, pwd);
-                    System.out.println("  -> [EXECUTED] Mode is NONE -> IS_DSE_DAY_NETTING_ENABLED = false | IS_CSE_DAY_NETTING_ENABLED = false");
-                } else if ("DSE".equals(targetExchange)) {
-                    setExchangeNettingEnabled(driver, "DSE", true, pwd);
-                    setExchangeNettingEnabled(driver, "CSE", false, pwd);
-                    System.out.println("  -> [EXECUTED] IS_DSE_DAY_NETTING_ENABLED = true | IS_CSE_DAY_NETTING_ENABLED = false");
-                } else if ("CSE".equals(targetExchange)) {
-                    setExchangeNettingEnabled(driver, "CSE", true, pwd);
-                    setExchangeNettingEnabled(driver, "DSE", false, pwd);
-                    System.out.println("  -> [EXECUTED] IS_CSE_DAY_NETTING_ENABLED = true | IS_DSE_DAY_NETTING_ENABLED = false");
-                } else {
-                    setBothExchangesNettingEnabled(driver, true, pwd);
-                    System.out.println("  -> [EXECUTED] IS_DSE_DAY_NETTING_ENABLED = true | IS_CSE_DAY_NETTING_ENABLED = true");
-                }
-                // 3. Real-Time UI Data Reflection, Pre-Trade Capture, Trade Execution & Post-Trade Comparison
-                System.out.println("\n>>> [REAL-TIME 6-WIDGET UI DATA AUDIT & TRADE VERIFICATION] <<<");
-                System.out.print("Enter Target Symbol to Audit (default=GP in 4s, press ENTER): ");
-                String sym = readLineWithTimeout(sc, "GP", 4);
-                if (sym.isEmpty()) sym = "GP";
-                System.out.print("Enter Target Client Code to Audit (default=23986 in 4s, press ENTER): ");
-                String cln = readLineWithTimeout(sc, "23986", 4);
-                if (cln.isEmpty()) cln = "23986";
-                System.out.println("\nSelect Trading Board (1=PUBLIC [Default], 2=BLOCK, 3=SPOT): ");
-                System.out.print("Enter Choice (1-3, default=1 [PUBLIC] in 4s): ");
-                String brdChoice = readLineWithTimeout(sc, "1", 4);
-                String board = "2".equals(brdChoice) || "block".equalsIgnoreCase(brdChoice) ? "BLOCK" :
-                               "3".equals(brdChoice) || "spot".equalsIgnoreCase(brdChoice) ? "SPOT" : "PUBLIC";
-                // Verify Applicability of selected Symbol, Client, and Board before trade execution!
-                NettingApplicabilityReport appRep = checkSelectedApplicability(driver, targetExchange, sym, cln, board);
-                printApplicabilityVerificationReport(appRep);
-                // Step 0: Insert global symbol and select Public symbol from dropdown list (e.g. GP.PUBLIC)
-                OMSweb_Trade.insertGlobalSymbolAndSelectPublic(driver, sym);
-                sym = OMSweb_Trade.toPublicSymbol(sym);
-                // Step 1: Reflect client code across all widgets
-                OMSweb_Trade.propagateClientCodeToAllWidgets(driver, cln, sym);
-                // Step 2: Capture Pre-Trade Baseline Snapshot across all 6 widgets
-                System.out.printf("%n>>> [STEP 1/3] CAPTURING PRE-TRADE REAL-TIME DATA ACROSS 6 WIDGETS FOR CLIENT: %s...%n", cln);
-                Netting6WidgetsUiSnapshot preTradeSnap = check6NettingWidgetsRealTimeUiData(driver, "PRE-TRADE_BASELINE_" + targetMode.name() + "_" + targetExchange, cln, sym, targetExchange);
-                // Step 3: Execute Live Trade to verify real-time widget updates
-                System.out.printf("%n=============================================================================%n");
-                System.out.printf(">>> [STEP 2/3] EXECUTE TRADE TO VERIFY LIVE REAL-TIME WIDGET UPDATES%n");
-                System.out.printf("    Client: %s | Symbol: %s | Board: %s | Mode: %s%n", cln, sym, board, targetMode.name());
-                System.out.printf("=============================================================================%n");
-                String defaultTradeOpt = "5";
-                if (targetMode == NettingMode.NONE) {
-                    System.out.println("Mode: NONE -> Trade: DSE BUY 25 (Verify Total increases, Saleable DOES NOT ADD)");
-                } else if (targetMode == NettingMode.CROSS_EXCHANGE) {
-                    System.out.println("Mode: CROSS EXCHANGE -> Trade: DSE BUY 25 (Reflects BOTH), CSE SELL 15 (Debits BOTH)");
-                } else {
-                    System.out.println("Mode: INDIVIDUAL EXCHANGE -> Trade: DSE BUY 25, CSE BUY 12, Sells, Excess SELL 35 (Debits BOTH)");
-                }
-                System.out.println("Options: [ENTER / 5 = Execute Mode Flow (Default), 0 = Skip Trade]");
-                System.out.print("Enter Choice (default=5 in 4s): ");
-                String tradeOpt = readLineWithTimeout(sc, defaultTradeOpt, 4);
-                if (tradeOpt.isEmpty()) tradeOpt = defaultTradeOpt;
-                String tradeAction = "0".equals(tradeOpt) || "skip".equalsIgnoreCase(tradeOpt) ? "SKIP" : "QA_FLOW";
-                int tradeQty = (targetMode == NettingMode.NONE) ? 25 :
-                               (targetMode == NettingMode.INDIVIDUAL_EXCHANGE && "BOTH".equalsIgnoreCase(targetExchange)) ? 37 : 25;
-                double defaultRate = 0.0;
-                // First check on-screen error tooltip/toast: HIGHEST PRIORITY per user request!
-                try {
-                    OMSweb_Trade.RejectionOrderPriceInfo onScreen = OMSweb_Trade.extractRejectionOrderPriceInfo(driver, cln, sym);
-                    if (onScreen.hasSuggestedPrice() || onScreen.hasUpperLimit()) {
-                        defaultRate = onScreen.hasSuggestedPrice() ? onScreen.suggestedPrice : onScreen.upperLimit;
-                        System.out.printf("  -> [INITIAL RATE RESOLUTION] Using suggested price from rejection error message: %.2f%n", defaultRate);
-                    }
-                } catch (Exception ignored) {}
-                // Fallback to Market Depth LTP only if no on-screen error message
-                if (defaultRate <= 0.0) {
-                    try {
-                        String ltpStr = preTradeSnap.marketDepthData.getOrDefault("Last", preTradeSnap.marketDepthData.getOrDefault("LTP", "0"));
-                        double mktLtp = OMSweb_Trade.parseNumSafe(ltpStr);
-                        if (mktLtp > 0.0 && mktLtp < 1000.0) {
-                            defaultRate = mktLtp;
-                        }
-                    } catch (Exception ignored) {}
-                }
-                if (defaultRate <= 0.0) {
-                    try {
-                        OMSweb_DBMarketData.PublicSymbolLtp quote = OMSweb_DBMarketData.getCachedSymbol(OMSweb_Trade.cleanSymbol(sym), "BOTH".equalsIgnoreCase(targetExchange) ? "DSE" : targetExchange);
-                        if (quote != null) {
-                            defaultRate = quote.ltp > 0.0 ? quote.ltp : (quote.ycp > 0.0 ? quote.ycp : (quote.circuitUp > 0.0 ? quote.circuitUp : 0.0));
-                            if (defaultRate > 0.0) {
-                                System.out.printf("  -> [INITIAL RATE RESOLUTION] Fetched DB Market Quote rate: %.2f%n", defaultRate);
-                            }
-                        }
-                    } catch (Exception ignored) {}
-                }
-                if (defaultRate > 1000.0) {
-                    System.out.printf("  [PRICE SANITY] Rate %.2f exceeds realistic scrip limits. Clamping to base acceptable rate 266.90 for %s.%n", defaultRate, sym);
-                    defaultRate = 266.90;
-                }
-                if (defaultRate <= 0.0) {
-                    defaultRate = 266.90;
-                }
-                double tradeRate = defaultRate;
-                String tradeInstrument = sym.contains(".") ? sym : ("PUBLIC".equalsIgnoreCase(board) ? (sym + ".PUBLIC") : (sym + "." + board));
-                String orderEx = "BOTH".equalsIgnoreCase(targetExchange) ? "DSE" : targetExchange;
-                if (!"SKIP".equals(tradeAction)) {
-                    if (targetMode == NettingMode.NONE) {
-                        System.out.println("\n>>> [EXECUTING NONE MODE NETTING TEST: BUY 25] <<<");
-                        System.out.printf("  -> Placing BUY Order: 25 shares of %s on %s @ %.2f...%n", tradeInstrument, orderEx, tradeRate);
-                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, 25, tradeRate, orderEx);
-                        Thread.sleep(1500);
-                    } else if (targetMode == NettingMode.CROSS_EXCHANGE) {
-                        System.out.println("\n>>> [EXECUTING CROSS EXCHANGE NETTING TEST: DSE BUY 25, CSE SELL 15] <<<");
-                        System.out.printf("  -> Leg 1: Placing BUY Order: 25 shares of %s on DSE @ %.2f (Reflects on BOTH DSE & CSE)...%n", tradeInstrument, tradeRate);
-                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, 25, tradeRate, "DSE");
-                        Thread.sleep(2000);
-                        System.out.printf("  -> Leg 2: Placing SELL Order: 15 shares of %s on CSE @ %.2f (Debits BOTH DSE & CSE)...%n", tradeInstrument, tradeRate);
-                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, 15, tradeRate, "CSE");
-                        Thread.sleep(1500);
-                    } else {
-                        // INDIVIDUAL EXCHANGE
-                        System.out.println("\n>>> [EXECUTING INDIVIDUAL EXCHANGE NETTING TEST: DSE 25, CSE 12, SELLS, EXCESS 35] <<<");
-                        System.out.printf("  -> Step 1: Placing DSE BUY Order: 25 shares of %s @ %.2f...%n", tradeInstrument, tradeRate);
-                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, 25, tradeRate, "DSE");
-                        Thread.sleep(2000);
-                        System.out.printf("  -> Step 2: Placing CSE BUY Order: 12 shares of %s @ %.2f...%n", tradeInstrument, tradeRate);
-                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "BUY", cln, tradeInstrument, 12, tradeRate, "CSE");
-                        Thread.sleep(2000);
-                        System.out.printf("  -> Step 3: Placing DSE SELL Order: 25 shares of %s (Liquidation from DSE saleable)...%n", tradeInstrument);
-                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, 25, tradeRate, "DSE");
-                        Thread.sleep(2000);
-                        System.out.printf("  -> Step 4: Placing CSE SELL Order: 12 shares of %s (Liquidation from CSE saleable)...%n", tradeInstrument);
-                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, 12, tradeRate, "CSE");
-                        Thread.sleep(2000);
-                        System.out.printf("  -> Step 5: Excess SELL Check: Placing DSE SELL Order for 35 shares (25 day-bought + 10 mature deducted on BOTH)...%n");
-                        OMSweb_Trade.submitSingleOrderAttempt(driver, new WebDriverWait(driver, Duration.ofSeconds(10)), "SELL", cln, tradeInstrument, 35, tradeRate, "DSE");
-                        Thread.sleep(1500);
-                    }
-                }
-                // User requirement: after trade happen check order terminal to any latest order exits or not if not no need to take snapshot and compare the data . for comparing data show result (pass ,fail, remarks)
-                boolean hasLatestOrder = OMSweb_Trade.hasLatestOrderInTerminal(driver, cln, sym);
-                Netting6WidgetsUiSnapshot postTradeSnap = null;
-                if (hasLatestOrder) {
-                    System.out.printf("%n[ORDER TERMINAL CHECK] Latest order confirmed in Order Terminal for %s (%s)! Capturing post-trade snapshots and performing 6-widget comparison...%n", sym, cln);
-                    postTradeSnap = check6NettingWidgetsRealTimeUiData(driver, "POST-TRADE_REALTIME_" + targetMode.name() + "_" + targetExchange, cln, sym, targetExchange);
-                } else {
-                    System.out.printf("%n[ORDER TERMINAL / QA EVALUATION] Running Mode-Specific QA Transition & Audit for %s (%s)...%n", targetMode.name(), targetExchange);
-                    postTradeSnap = new Netting6WidgetsUiSnapshot();
-                    postTradeSnap.stageName = "POST-TRADE_QA_AUDIT_" + targetMode.name() + "_" + targetExchange;
-                    postTradeSnap.targetClient = cln;
-                    postTradeSnap.targetSymbol = sym;
-                    postTradeSnap.portfolioDataDSE.putAll(preTradeSnap.portfolioDataDSE);
-                    postTradeSnap.portfolioDataCSE.putAll(preTradeSnap.portfolioDataCSE);
-                    postTradeSnap.marketDepthData.putAll(preTradeSnap.marketDepthData);
-                    postTradeSnap.orderTerminalData.putAll(preTradeSnap.orderTerminalData);
-                    postTradeSnap.accountLimitsData.putAll(preTradeSnap.accountLimitsData);
-                    double pDseSal = OMSweb_Trade.parseNumSafe(preTradeSnap.portfolioDataDSE.getOrDefault("saleable_qty", "50"));
-                    if (pDseSal <= 0) pDseSal = 50.0;
-                    double dBuy = 0, cBuy = 0, dSell = 0, cSell = 0;
-                    if (targetMode == NettingMode.NONE) {
-                        if ("CSE".equalsIgnoreCase(orderEx)) {
-                            cBuy = (tradeQty > 0) ? tradeQty : 25;
-                        } else {
-                            dBuy = (tradeQty > 0) ? tradeQty : 25;
-                        }
-                    } else if (targetMode == NettingMode.CROSS_EXCHANGE) {
-                        dBuy = 25;
-                        cSell = 15;
-                    } else {
-                        // INDIVIDUAL
-                        dBuy = 25;
-                        cBuy = 12;
-                        dSell = 35; // Includes excess sell mature test
-                    }
-                    DayNettingPortfolioState pState = calculateDayNettingPortfolio(
-                            targetMode, dseNetting, cseNetting, true, true,
-                            pDseSal, dBuy, dSell, cBuy, cSell);
-                    postTradeSnap.portfolioDataDSE.put("total_qty", String.format(Locale.US, "%.0f", pState.totalHoldingQty));
-                    postTradeSnap.portfolioDataCSE.put("total_qty", String.format(Locale.US, "%.0f", pState.totalHoldingQty));
-                    postTradeSnap.portfolioDataDSE.put("saleable_qty", String.format(Locale.US, "%.0f", pState.dseSaleableQty));
-                    postTradeSnap.portfolioDataCSE.put("saleable_qty", String.format(Locale.US, "%.0f", pState.cseSaleableQty));
-                }
-                postTradeSnap.dayNettingMode = targetMode.name();
-                postTradeSnap.tradedExchange = targetExchange;
-                postTradeSnap.tradeAction = tradeAction;
-                postTradeSnap.tradeQty = tradeQty;
-                preTradeSnap.dayNettingMode = targetMode.name();
-                preTradeSnap.tradedExchange = targetExchange;
-                preTradeSnap.tradeAction = tradeAction;
-                preTradeSnap.tradeQty = tradeQty;
-                // Step 5: Compare Pre-Trade vs Post-Trade & Render Widget-Wise Results
-                compareAndReportNettingWidgets(driver, preTradeSnap, postTradeSnap, "DAY NETTING UI AUDIT (" + targetMode.name() + " - " + targetExchange + ")");
-                // Mode-Specific Compliance Verification Summary & Scorecard
-                System.out.println("\n+=============================================================================================================+");
-                System.out.printf("| QA DAY NETTING MODE-SPECIFIC COMPLIANCE VERIFICATION: %-44s |%n", targetMode.name());
-                System.out.println("+=============================================================================================================+");
-                if (targetMode == NettingMode.NONE) {
-                    System.out.println("  [NONE MODE VERIFICATION]");
-                    System.out.println("  * Rule: Client Netting = ENABLED | Symbol Netting = ENABLED | System Netting Mode = NONE");
-                    System.out.println("  * Check 1 [Total Holding Qty Increases]: PASS [RIGHT] (Trade registered in holding)");
-                    System.out.println("  * Check 2 [DSE Saleable DOES NOT ADD]: PASS [RIGHT] (Remains mature holding, un-matured T+2)");
-                    System.out.println("  * Check 3 [CSE Saleable DOES NOT ADD]: PASS [RIGHT] (Remains mature holding, un-matured T+2)");
-                    System.out.println("  * Check 4 [Day Netted Qty is ZERO]: PASS [RIGHT] (Intraday netting disabled)");
-                    System.out.println("  * Negative Check [Saleable != Prev + Buy]: PASS [WRONG Prevented]");
-                    System.out.println("  -> VERDICT: NONE MODE 100% RIGHT (PASS) - Intraday saleable expansion blocked as required.");
-                } else if (targetMode == NettingMode.CROSS_EXCHANGE) {
-                    System.out.println("  [CROSS EXCHANGE MODE VERIFICATION]");
-                    System.out.println("  * Rule: Trade from ANY exchange reflects on saleable in BOTH exchanges.");
-                    System.out.println("  * Check 1 [Trade on Any Exchange Reflects on BOTH]: PASS [RIGHT] (DSE Saleable & CSE Saleable updated equally)");
-                    System.out.println("  * Check 2 [Consolidated Total Holding]: PASS [RIGHT] (Increases across both exchanges)");
-                    System.out.println("  * Check 3 [Cross Liquidation from Any Exchange]: PASS [RIGHT] (Sell on either exchange debits both)");
-                    System.out.println("  * Negative Check [CSE Saleable != Prev on DSE Buy]: PASS [WRONG Prevented] (Cross reflection verified)");
-                    System.out.println("  -> VERDICT: CROSS EXCHANGE 100% RIGHT (PASS) - Unified multi-exchange saleable pool verified.");
-                } else {
-                    System.out.println("  [INDIVIDUAL EXCHANGE MODE VERIFICATION]");
-                    System.out.println("  * Rule: Netting strictly isolated within respective exchange; shared mature holding debited on excess sell.");
-                    System.out.println("  * Check 1 [DSE Buy Reflects DSE Only]: PASS [RIGHT] (DSE Saleable = Prev + New, CSE Saleable unchanged)");
-                    System.out.println("  * Check 2 [CSE Buy Reflects CSE Only]: PASS [RIGHT] (CSE Saleable = Prev + New, DSE Saleable unchanged)");
-                    System.out.println("  * Check 3 [Consolidated Total (+37)]: PASS [RIGHT] (Increases across both exchanges)");
-                    System.out.println("  * Check 4 [Respective Sells Liquidate]: PASS [RIGHT] (DSE Sell 25 nets DSE, CSE Sell 12 nets CSE)");
-                    System.out.println("  * Check 5 [Excess Sell Deducts BOTH Exchanges]: PASS [RIGHT] (Sell 35 > 25 debits common mature on BOTH)");
-                    System.out.println("  * Negative Check 1 [CSE != DSE on DSE Buy]: PASS [WRONG Prevented]");
-                    System.out.println("  * Negative Check 2 [Mature Leak Prevented on Excess]: PASS [WRONG Prevented]");
-                    System.out.println("  -> VERDICT: INDIVIDUAL EXCHANGE 100% RIGHT (PASS) - Full exchange isolation & shared mature debit verified.");
-                }
-                System.out.println("+=============================================================================================================+\n");
-                System.out.println("[ACTION COMPLETE] Netting Mode, Exchange Netting, Trade Execution, and Widget-Wise Comparison finished successfully.");
-                System.out.print("\nDo you want to run another Day Netting action? (1=YES / 0=Exit to Main Session, default=0 in 4s): ");
-                String again = readLineWithTimeout(sc, "0", 4);
-                if (!"1".equals(again) && !"yes".equalsIgnoreCase(again) && !"y".equalsIgnoreCase(again)) {
-                    running = false;
-                    break;
-                }
+                runNormalNettingLiveAudit(driver, sc);
             } else if ("2".equals(choice)) {
-                System.out.println("\n-------------------------------------------------------------");
-                System.out.println("     2. CONFIGURE EXCHANGE NETTING (INDIVIDUAL SELECTION)    ");
-                System.out.println("-------------------------------------------------------------");
-                System.out.println("Select Target Exchange individually:");
-                System.out.println("  1. DSE (Dhaka Stock Exchange)");
-                System.out.println("  2. CSE (Chittagong Stock Exchange)");
-                System.out.println("  3. BOTH (DSE & CSE)");
-                System.out.print("Enter Choice (1-3, default=3): ");
-                String exChoice = sc.nextLine().trim();
-                if (exChoice.isEmpty()) exChoice = "3";
-                System.out.println("\nSelect Netting Status:");
-                System.out.println("  1. Enable Netting (True)");
-                System.out.println("  2. Disable Netting (False)");
-                System.out.print("Enter Choice (1-2, default=1): ");
-                String stChoice = sc.nextLine().trim();
-                boolean enable = !"2".equals(stChoice) && !"disable".equalsIgnoreCase(stChoice) && !"false".equalsIgnoreCase(stChoice);
-                System.out.print("Enter password authentication (default=12345, or press ENTER): ");
-                String pwd = sc.nextLine().trim();
-                if ("1".equals(exChoice) || "dse".equalsIgnoreCase(exChoice)) {
-                    setExchangeNettingEnabled(driver, "DSE", enable, pwd);
-                } else if ("2".equals(exChoice) || "cse".equalsIgnoreCase(exChoice)) {
-                    setExchangeNettingEnabled(driver, "CSE", enable, pwd);
-                } else {
-                    setBothExchangesNettingEnabled(driver, enable, pwd);
-                }
-                displayApplicationNettingSettingsTable(driver);
-            } else if ("3".equals(choice)) {
-                System.out.println("\n-------------------------------------------------------------");
-                System.out.println("        3. UPLOAD / MANAGE APPLICABLE SYMBOLS (RMS)          ");
-                System.out.println("-------------------------------------------------------------");
-                System.out.println("Select Action:");
-                System.out.println("  1. Add Single Symbol (Modal: Exchange + Symbol)");
-                System.out.println("  2. Add Multiple Symbols (Batch Comma-Separated)");
-                System.out.println("  3. Search / Filter Symbols (ALL / DSE / CSE, Ticker Query)");
-                System.out.println("  4. Delete / Remove Applicable Symbol (Action Red X)");
-                System.out.println("  5. Upload Applicable Symbols File (.csv/.xlsx)");
-                System.out.println("  6. Display Current Applicable Symbols Table [Default]");
-                System.out.print("Enter Sub-Action (1-6, default=6): ");
-                String sub = sc.nextLine().trim();
-                if ("1".equals(sub)) {
-                    System.out.print("Enter Exchange (1=DSE [default], 2=CSE): ");
-                    String exC = sc.nextLine().trim();
-                    String ex = "2".equals(exC) || "cse".equalsIgnoreCase(exC) ? "CSE" : "DSE";
-                    System.out.print("Enter Symbol to Add (e.g. 1JANATAMF): ");
-                    String sym = sc.nextLine().trim();
-                    if (!sym.isEmpty()) addApplicableSymbol(driver, ex, sym);
-                    displayApplicableSymbolsTable(driver);
-                } else if ("2".equals(sub)) {
-                    System.out.print("Enter Exchange (1=DSE [default], 2=CSE): ");
-                    String exC = sc.nextLine().trim();
-                    String ex = "2".equals(exC) || "cse".equalsIgnoreCase(exC) ? "CSE" : "DSE";
-                    System.out.print("Enter Symbols comma-separated (e.g. GP,BATBC,BEXIMCO): ");
-                    String syms = sc.nextLine().trim();
-                    if (!syms.isEmpty()) {
-                        List<String> list = Arrays.asList(syms.split(","));
-                        addApplicableSymbolsBatch(driver, ex, list);
-                    }
-                } else if ("3".equals(sub)) {
-                    System.out.print("Enter Exchange Filter (0=ALL [default], 1=DSE, 2=CSE): ");
-                    String exC = sc.nextLine().trim();
-                    String ex = "1".equals(exC) ? "DSE" : "2".equals(exC) ? "CSE" : "ALL";
-                    System.out.print("Enter Ticker Search Query: ");
-                    String q = sc.nextLine().trim();
-                    searchApplicableSymbols(driver, ex, q);
-                } else if ("4".equals(sub)) {
-                    System.out.print("Enter Exchange (1=DSE [default], 2=CSE): ");
-                    String exC = sc.nextLine().trim();
-                    String ex = "2".equals(exC) || "cse".equalsIgnoreCase(exC) ? "CSE" : "DSE";
-                    System.out.print("Enter Ticker to Remove: ");
-                    String sym = sc.nextLine().trim();
-                    if (!sym.isEmpty()) deleteApplicableSymbol(driver, ex, sym);
-                    displayApplicableSymbolsTable(driver);
-                } else if ("5".equals(sub)) {
-                    System.out.print("Enter File Path for Upload (e.g. symbols.csv): ");
-                    String fPath = sc.nextLine().trim();
-                    if (!fPath.isEmpty()) uploadApplicableSymbolsFile(driver, fPath);
-                } else {
-                    navigateToApplicableSymbolTab(driver);
-                    displayApplicableSymbolsTable(driver);
-                }
-            } else if ("4".equals(choice)) {
-                System.out.println("\n-------------------------------------------------------------");
-                System.out.println("   4. CONFIGURE CLIENT NETTING ELIGIBILITY (CLIENTS RMS)    ");
-                System.out.println("-------------------------------------------------------------");
-                System.out.println("Select Action:");
-                System.out.println("  1. Add / Configure Client Netting Status (Allowed / Disallowed) [Default]");
-                System.out.println("  2. Switch View (Allowed vs Disallowed List)");
-                System.out.println("  3. Search Client Code in Netting List");
-                System.out.println("  4. Display Current Clients RMS Table");
-                System.out.println("  5. Remove Client Code from Allowed / Disallowed List");
-                System.out.println("  6. Set Exclusive Client Netting State (Remove Opposite + Add Target + Verify)");
-                System.out.print("Enter Sub-Action (1-6, default=1): ");
-                String sub = sc.nextLine().trim();
-                if ("2".equals(sub)) {
-                    System.out.print("Switch List View (1=Allowed, 2=Disallowed [default]): ");
-                    boolean allowed = "1".equals(sc.nextLine().trim());
-                    switchClientsNettingList(driver, allowed);
-                    displayClientsRmsTable(driver);
-                } else if ("3".equals(sub)) {
-                    System.out.print("Enter Client Code to Search: ");
-                    String cln = sc.nextLine().trim();
-                    searchClientInNettingList(driver, cln);
-                } else if ("4".equals(sub)) {
-                    navigateToClientsRmsTab(driver);
-                    displayClientsRmsTable(driver);
-                } else if ("5".equals(sub)) {
-                    System.out.print("Enter Client Code to Remove (default=23986): ");
-                    String cln = readLineWithTimeout(sc, "23986", 4);
-                    System.out.print("Remove from List (1=Allowed [default], 2=Disallowed): ");
-                    String listChoice = readLineWithTimeout(sc, "1", 4);
-                    boolean allowed = !"2".equals(listChoice);
-                    System.out.print("Enter password authentication (default=12345): ");
-                    String pwd = readLineWithTimeout(sc, "12345", 4);
-                    removeClientFromNettingList(driver, cln, allowed, pwd);
-                } else if ("6".equals(sub)) {
-                    System.out.print("Enter Primary Client Code (default=002): ");
-                    String cln = readLineWithTimeout(sc, "002", 4);
-                    System.out.print("Set Exclusive Status (1=Allowed [default], 2=Disallowed): ");
-                    String st = readLineWithTimeout(sc, "1", 4);
-                    boolean isAllowed = !"2".equals(st) && !"disallowed".equalsIgnoreCase(st) && !"blocked".equalsIgnoreCase(st);
-                    System.out.print("Enter Other Clients for Opposite List (comma-separated, blank for single client): ");
-                    String otherRaw = readLineWithTimeout(sc, "", 4);
-                    System.out.print("Enter password authentication (default=12345): ");
-                    String pwd = readLineWithTimeout(sc, "12345", 4);
-                    if (otherRaw.isEmpty()) {
-                        setClientNettingAllowed(driver, cln, isAllowed, pwd);
-                    } else {
-                        List<String> others = Arrays.asList(otherRaw.split(","));
-                        RMS.applyClientExclusivityRule(driver, cln, isAllowed, others, pwd);
-                    }
-                } else {
-                    System.out.print("Enter Client Code (default=23986): ");
-                    String cln = sc.nextLine().trim();
-                    if (cln.isEmpty()) cln = "23986";
-                    System.out.print("Set Status (1=Allowed [default], 2=Disallowed): ");
-                    String st = sc.nextLine().trim();
-                    boolean isAllowed = !"2".equals(st) && !"disallowed".equalsIgnoreCase(st) && !"blocked".equalsIgnoreCase(st);
-                    System.out.print("Enter password authentication (default=12345, or press ENTER): ");
-                    String pwd = sc.nextLine().trim();
-                    addClientToNettingList(driver, cln, isAllowed, pwd);
-                }
-            } else if ("5".equals(choice)) {
-                System.out.println("\n-------------------------------------------------------------");
-                System.out.println("    5. CONFIGURE MARKET / BOARD-WISE RESTRICTIONS (RMS)      ");
-                System.out.println("-------------------------------------------------------------");
-                System.out.println("Select Action:");
-                System.out.println("  1. Configure Board Wise Blocking (CSE/DSE, Tag e.g. BLOCK, Toggle Block/Unblock)");
-                System.out.println("  2. Configure Spot Market Blocking (CSE/DSE, Toggle Block/Unblock)");
-                System.out.println("  3. Display Current Market & Boards Settings [Default]");
-                System.out.print("Enter Sub-Action (1-3, default=3): ");
-                String sub = sc.nextLine().trim();
-                if ("1".equals(sub)) {
-                    System.out.print("Enter Exchange (1=CSE [default], 2=DSE): ");
-                    String exC = sc.nextLine().trim();
-                    String ex = "2".equals(exC) || "dse".equalsIgnoreCase(exC) ? "DSE" : "CSE";
-                    System.out.print("Enter Board Tag (default=BLOCK): ");
-                    String tag = sc.nextLine().trim();
-                    if (tag.isEmpty()) tag = "BLOCK";
-                    System.out.print("Select Status (1=Block [Switch ON, default], 2=Unblock [Switch OFF]): ");
-                    String blkC = sc.nextLine().trim();
-                    boolean blk = !"2".equals(blkC) && !"unblock".equalsIgnoreCase(blkC);
-                    System.out.print("Enter password authentication (default=12345, or press ENTER): ");
-                    String pwd = sc.nextLine().trim();
-                    configureBoardWiseBlocking(driver, ex, tag, blk, pwd);
-                } else if ("2".equals(sub)) {
-                    System.out.print("Enter Exchange (1=CSE [default], 2=DSE): ");
-                    String exC = sc.nextLine().trim();
-                    String ex = "2".equals(exC) || "dse".equalsIgnoreCase(exC) ? "DSE" : "CSE";
-                    System.out.print("Select Status (1=Block [Switch ON], 2=Unblock [Switch OFF, default]): ");
-                    String blkC = sc.nextLine().trim();
-                    boolean blk = "1".equals(blkC) || "block".equalsIgnoreCase(blkC);
-                    System.out.print("Enter password authentication (default=12345, or press ENTER): ");
-                    String pwd = sc.nextLine().trim();
-                    configureSpotMarketBlocking(driver, ex, blk, pwd);
-                } else {
-                    navigateToUnauthorizedBoardsMarketTab(driver);
-                    displayUnauthorizedBoardsMarketTable(driver);
-                }
-            } else if ("6".equals(choice)) {
-                System.out.println("\n-------------------------------------------------------------");
-                System.out.println("     6. RUN UI NETTING INDICATORS AUDIT (3-IN-1 SELECTION)  ");
-                System.out.println("-------------------------------------------------------------");
-                System.out.println("Select Audit Scope individually or choose 3-in-1:");
-                System.out.println("  1. Market Depth Netting Indicator (Section 5.1)");
-                System.out.println("  2. Watchlists Netting Indicators (Default Watchlist 5.2, Existing Watchlists 5.3, Market Watch 5.4)");
-                System.out.println("  3. Order Window Netting Indicators (DSE/CSE Section 5.5, Client Blocked Status 5.6)");
-                System.out.println("  4. 3-in-1 Complete Audit (Execute All 3 Audits Sequentially) [Default]");
-                System.out.print("Enter Choice (1-4, default=4): ");
-                String auditChoice = sc.nextLine().trim();
-                if (auditChoice.isEmpty()) auditChoice = "4";
-                System.out.print("Enter Target Symbol to Audit (default=GP): ");
-                String sym = sc.nextLine().trim();
-                if (sym.isEmpty()) sym = "GP";
-                System.out.print("Enter Client Code to Audit (default=23986): ");
-                String cln = sc.nextLine().trim();
-                if (cln.isEmpty()) cln = "23986";
-                System.out.println("Select Trading Board to Audit (1=PUBLIC [Default], 2=BLOCK, 3=SPOT): ");
-                System.out.print("Enter Choice (1-3, default=1 [PUBLIC]): ");
-                String brdChoice = sc.nextLine().trim();
-                String board = "2".equals(brdChoice) || "block".equalsIgnoreCase(brdChoice) ? "BLOCK" :
-                               "3".equals(brdChoice) || "spot".equalsIgnoreCase(brdChoice) ? "SPOT" : "PUBLIC";
-                NettingApplicabilityReport rep = checkSelectedApplicability(driver, "DSE", sym, cln, board);
-                printApplicabilityVerificationReport(rep);
-                if ("1".equals(auditChoice) || "depth".equalsIgnoreCase(auditChoice)) {
-                    auditMarketDepthIndicator(driver, sym);
-                } else if ("2".equals(auditChoice) || "watchlist".equalsIgnoreCase(auditChoice)) {
-                    auditWatchlistsIndicators(driver, sym);
-                } else if ("3".equals(auditChoice) || "order".equalsIgnoreCase(auditChoice)) {
-                    auditOrderWindowIndicators(driver, sym, cln);
-                } else {
-                    System.out.println("\n>>> Running 3-in-1 Selection: Executing All 3 UI Netting Audits... <<<");
-                    run3in1UIIndicatorsAudit(driver, sym, cln);
-                }
-            } else if ("7".equals(choice) || "test".equalsIgnoreCase(choice)) {
-                runAllNettingTests(driver);
-            } else if ("8".equals(choice) || "check".equalsIgnoreCase(choice) || "applicable".equalsIgnoreCase(choice)) {
-                System.out.println("\n-------------------------------------------------------------");
-                System.out.println("   8. CHECK / VERIFY SYMBOL, CLIENT & BOARD APPLICABILITY    ");
-                System.out.println("-------------------------------------------------------------");
-                System.out.print("Enter Target Symbol to Verify (default=GP): ");
-                String sym = sc.nextLine().trim();
-                if (sym.isEmpty()) sym = "GP";
-                System.out.print("Enter Client Code to Verify (default=23986): ");
-                String cln = sc.nextLine().trim();
-                if (cln.isEmpty()) cln = "23986";
-                System.out.println("Select Trading Board to Verify:");
-                System.out.println("  1. PUBLIC (Standard Trading Board) [Default]");
-                System.out.println("  2. BLOCK (Block Market Board)");
-                System.out.println("  3. SPOT (Spot Market Board)");
-                System.out.print("Enter Choice (1-3, default=1 [PUBLIC]): ");
-                String brdChoice = sc.nextLine().trim();
-                String brd = "2".equals(brdChoice) || "block".equalsIgnoreCase(brdChoice) ? "BLOCK" :
-                             "3".equals(brdChoice) || "spot".equalsIgnoreCase(brdChoice) ? "SPOT" : "PUBLIC";
-                System.out.println("Select Target Exchange:");
-                System.out.println("  1. DSE [Default]");
-                System.out.println("  2. CSE");
-                System.out.println("  3. BOTH");
-                System.out.print("Enter Choice (1-3, default=1 [DSE]): ");
-                String exChoice = sc.nextLine().trim();
-                String ex = "2".equals(exChoice) || "cse".equalsIgnoreCase(exChoice) ? "CSE" :
-                            "3".equals(exChoice) || "both".equalsIgnoreCase(exChoice) ? "BOTH" : "DSE";
-                NettingApplicabilityReport rep = checkSelectedApplicability(driver, ex, sym, cln, brd);
-                printApplicabilityVerificationReport(rep);
-            } else if ("9".equals(choice) || "qa".equalsIgnoreCase(choice) || "test".equalsIgnoreCase(choice)) {
-                System.out.println("\n-----------------------------------------------------------------------------");
-                System.out.println("   9. QA DAY NETTING SUITE (DSE 25 / CSE 12, EXCESS SELL, NONE MODE)         ");
-                System.out.println("-----------------------------------------------------------------------------");
-                testQaDayNettingScenarios();
-            } else if ("10".equals(choice) || "matrix".equalsIgnoreCase(choice)) {
-                System.out.println("\n-----------------------------------------------------------------------------");
-                System.out.println("   10. 9-SCENARIO DAY NETTING & STOCK FILE COMPLIANCE MATRIX                 ");
-                System.out.println("-----------------------------------------------------------------------------");
-                NettingScenarioConfig cfg = new NettingScenarioConfig();
-                System.out.print("Enter Client 1 (Primary, default=002 in 4s): ");
-                cfg.primaryClient = readLineWithTimeout(sc, "002", 4);
-                System.out.print("Enter Other Client(s) comma-separated (default=23986 in 4s): ");
-                String otherCsv = readLineWithTimeout(sc, "23986", 4);
-                cfg.otherClients = new ArrayList<>();
-                for (String part : otherCsv.split(",")) {
-                    if (!part.trim().isEmpty()) cfg.otherClients.add(part.trim());
-                }
-                System.out.print("Enter Symbol (default=GP in 4s): ");
-                cfg.symbol = readLineWithTimeout(sc, "GP", 4);
-                System.out.print("Enter Exchange (DSE / CSE / BOTH, default=BOTH in 4s): ");
-                cfg.exchange = readLineWithTimeout(sc, "BOTH", 4);
-                System.out.print("Enter RMS Password (default=12345 in 4s): ");
-                cfg.rmsPassword = readLineWithTimeout(sc, "12345", 4);
-                System.out.print("Enter Stock File Path for Scenarios 7-9 (default=blank in 4s): ");
-                cfg.stockFilePath = readLineWithTimeout(sc, "", 4);
-                System.out.print("Allow Live Stock File Upload? (1=YES, 0=NO [Dry-Run], default=0 in 4s): ");
-                cfg.allowLiveStockUpload = "1".equals(readLineWithTimeout(sc, "0", 4));
-                runNetting9ScenarioMatrix(driver, cfg);
+                runAllConfigureSettingsMenu(driver, sc);
+            } else if ("3".equals(choice) || "qa".equalsIgnoreCase(choice) || "suite".equalsIgnoreCase(choice) || "matrix".equalsIgnoreCase(choice)) {
+                runDayNettingSuiteMenu(driver, sc);
             } else {
-                System.out.printf("[INVALID SELECTION] '%s' is not recognized. Please choose 0-10.%n", choice);
+                System.out.printf("[INVALID SELECTION] '%s' is not recognized. Please choose 0-3.%n", choice);
                 continue;
             }
             if (isCi) {
@@ -5158,10 +4975,6 @@ public class Day_Netting {
         }
     }
 
-    /**
-     * Standalone launcher for Eclipse & direct CLI execution.
-     * Pass 'qa' or 'test' as an argument for instant direct QA validation without launching browser.
-     */
     public static void main(String[] args) {
         if (args != null && args.length > 0 && ("qa".equalsIgnoreCase(args[0]) || "test".equalsIgnoreCase(args[0]) || "fast".equalsIgnoreCase(args[0]))) {
             System.out.println("===============================================================================");
@@ -5179,20 +4992,10 @@ public class Day_Netting {
         System.out.println("                  ECLIPSE DAY NETTING DIRECT EXECUTION ENGINE                 ");
         System.out.println("===============================================================================");
         System.out.println("Select Execution Instruction:");
-        System.out.println("  1. Run Multi-Exchange Audit Suite (None, Individual, Cross - Fast) [Default in 4s]");
+        System.out.println("  1. Run Multi-Exchange Audit Suite (None, Individual, Cross - Fast) [ENTER=Default]");
         System.out.println("  2. Launch Live Browser Automation (devoms.quantbd.com)");
-        System.out.print("Enter Choice (1-2, default=1 in 4s): ");
-        String choice = "1";
-        try {
-            long startWait = System.currentTimeMillis();
-            while (System.currentTimeMillis() - startWait < 4000) {
-                if (System.in.available() > 0) {
-                    choice = sc.nextLine().trim();
-                    break;
-                }
-                Thread.sleep(100);
-            }
-        } catch (Exception ignored) {}
+        System.out.print("Enter Choice (1-2, ENTER=1): ");
+        String choice = readLineWithTimeout(sc, "1", 0);
         if ("1".equals(choice) || choice.isEmpty() || "qa".equalsIgnoreCase(choice)) {
             System.out.println("\n[ECLIPSE RUNNER] Executing Multi-Exchange Audit Suite (Instruction-Wise)...");
             boolean passed = testQaDayNettingScenarios();
@@ -5209,12 +5012,10 @@ public class Day_Netting {
             OMSweb_Login.main(driver, sc);
             WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
             OMSweb_Trade.navigateToTradePage(driver, wait, true);
-            // Execute Day Netting engine
             main(driver, sc);
             System.out.println("\n=============================================================================");
             System.out.println(" [SUCCESS] Day Netting session finished. Chrome remains active on desktop.");
             System.out.println("=============================================================================\n");
-            // Automatically transition to persistent Main Menu session loop
             OMSwebmain.runSessionLoop(driver, sc);
         } catch (Exception e) {
             System.err.println("[DAY NETTING ERROR] " + e.getMessage());
