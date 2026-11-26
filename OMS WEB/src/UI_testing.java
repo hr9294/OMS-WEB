@@ -55,14 +55,15 @@ public class UI_testing {
             System.out.println("  [UI TESTING MENU] Select Page / Module to Test");
             System.out.println("=================================================================");
             System.out.println("  1. Admin Dashboard (All Cards, Chg% Sign, Active/Inactive Users & Live Trade)");
-            System.out.println("  2. RMS (Select RMS Option: Client, User, Branch, Margin, Broker, Netting, Settings, Limits, Identity)");
+            System.out.println("  2. RMS (Client, User, Branch, Margin, Broker, Netting, Settings)");
             System.out.println("  3. File Manager (Upload/Export Sub-Menus & History)");
             System.out.println("  4. Account (Profile, Password Validation & Eye Toggle)");
             System.out.println("  5. Trade Logs (FIX Order Logs, Filters & Table)");
             System.out.println("  6. Setting (Settings, Activity Logs & Responsive Check)");
-            System.out.println("  7. Run ALL 6 Pages (Choose Browser: Chrome, Firefox, Safari, or All)");
-            System.out.println("  8. Select Browser Target (Current / Chrome / Firefox / Safari / All)");
+            System.out.println("  7. Run ALL 6 Pages (Full Cross-Browser Suite: Chrome, Firefox, Safari)");
+            System.out.println("  8. Select Browser Target (Chrome / Firefox / Safari / All / Current)");
             System.out.println("  0. Return to Main Menu");
+            System.out.print("Enter Choice (1-8, 0=Return to Main Menu, ENTER=7): ");
             String ch = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "7", 300);
             if ("0".equals(ch) || "back".equalsIgnoreCase(ch) || "exit".equalsIgnoreCase(ch)) break;
             if ("1".equals(ch)) {
@@ -80,7 +81,9 @@ public class UI_testing {
                         r.get("jsErrorCount"), r.get("httpFailureCount"), r.get("overflowAt1366"));
                 System.out.println("  Functional: " + toJson(r.get("functionalTests")));
                 System.out.println("  UI Best-Practice: " + toJson(r.get("bestPracticeUiAudit")));
-            } else if ("7".equals(ch) || "8".equals(ch)) {
+            } else if ("7".equals(ch)) {
+                main(new String[0]);
+            } else if ("8".equals(ch)) {
                 runBrowserSelectionMenu(driver, sc);
             } else {
                 System.out.println("[INVALID] Choose 0-8.");
@@ -96,6 +99,7 @@ public class UI_testing {
         System.out.println("  4. All Browsers (Chrome + Firefox + Safari)");
         System.out.println("  5. Current Active Chrome Session");
         System.out.println("  0. Back");
+        System.out.print("Enter Choice (1-5, 0=Back, ENTER=4): ");
         String b = OMSwebmain.readLineWithIdleWatchdog(activeDriver, sc, "4", 300);
         if ("0".equals(b)) return;
         if ("1".equals(b)) System.out.println(toJson(runBrowserSuite("Chrome")));
@@ -134,6 +138,7 @@ public class UI_testing {
             }
             System.out.println("  8. Run ALL RMS Options");
             System.out.println("  0. Back to UI Testing Menu");
+            System.out.print("Enter Choice (1-8, 0=Back, ENTER=8): ");
             String c = OMSwebmain.readLineWithIdleWatchdog(driver, sc, "8", 300);
             if ("0".equals(c) || "back".equalsIgnoreCase(c)) break;
             navigateToPage(driver, js, TARGET_PAGES.get(1));
@@ -166,6 +171,7 @@ public class UI_testing {
             int allChoice = opts.length + 1;
             System.out.printf("  %d. All %s Options%n", allChoice, parent);
             System.out.println("  0. Back to RMS Menu");
+            System.out.printf("Enter Choice (1-%d, 0=Back, ENTER=%d): ", allChoice, allChoice);
             String s = OMSwebmain.readLineWithIdleWatchdog(driver, sc, String.valueOf(allChoice), 300);
             if ("0".equals(s) || "back".equalsIgnoreCase(s)) break;
             try {

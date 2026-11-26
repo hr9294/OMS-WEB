@@ -718,7 +718,9 @@ def run_ui_testing_menu(driver: Any, out_dir: str = OUT_DIR) -> None:
             print(f"[ui_testing | {tp.label}] nav={res.get('navMethod')} | loadMs={res.get('loadMs')} | jsErr={res.get('jsErrorCount')} | overflow1366={res.get('overflowAt1366')}")
             print("  Functional:", json.dumps(res.get("functionalTests"), indent=2))
             print("  UI Best-Practice:", json.dumps(res.get("bestPracticeUiAudit"), indent=2))
-        elif choice in ("7", "8"):
+        elif choice == "7":
+            run_ui_testing(out_dir=out_dir)
+        elif choice == "8":
             _run_browser_selection_menu(driver, out_dir)
         else:
             print("[INVALID] Choose 0-8.")
